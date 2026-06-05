@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "world-simulation-engine"
+authors = [
+  { name="Firefox2100", email="patrick@firefox2100.co.uk" },
+]
+description = "A python project to experiment with world simulation with LLM"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "pydantic~=2.13.4",
+    "pydantic-ai-slim[ollama,openai]~=1.104.0",
+    "pydantic-settings~=2.14.1",
+]
+dynamic = [
+    "version"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest~=9.0.3",
+    "pytest-asyncio~=1.4.0",
+    "pytest-cov~=7.1.0",
+    "pylint~=4.0.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/Firefox2100/world-simulation-engine"
+Repository = "https://github.com/Firefox2100/world-simulation-engine.git"
+Issues = "https://github.com/Firefox2100/world-simulation-engine/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "world_simulation_engine.__version__"}
