@@ -6,23 +6,33 @@ class Base(DeclarativeBase):
     pass
 
 
-class DataPresetModelTable(Base):
-    __tablename__ = "data_preset_models"
+class WorldTable(Base):
+    __tablename__ = 'world'
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
-    schema: Mapped[dict] = mapped_column(JSON, nullable=False)
-
-    preset_id: Mapped[int] = mapped_column(Integer, ForeignKey("data_presets.id"), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class DataPresetTable(Base):
-    __tablename__ = "data_presets"
+class SimulationTable(Base):
+    __tablename__ = 'simulation'
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    preset_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    world_id: Mapped[int] = mapped_column(Integer, ForeignKey('world.id'), nullable=False)
+    data_preset: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class CharacterTable(Base):
+    __tablename__ = 'character'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey('simulation.id'), nullable=False)
+
+
+class LocationTable(Base):
+    __tablename__ = 'location'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey('simulation.id'), nullable=False)

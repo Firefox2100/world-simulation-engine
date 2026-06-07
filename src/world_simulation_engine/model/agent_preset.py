@@ -10,7 +10,7 @@ class AgentProfile(BaseModel):
     An agent configuration profile for a specific agent, configuring the connection (backend), generation
     parameters, prompt history, and other settings. Should be subclassed for specific providers.
     """
-    profile: Optional[LlmConnectionProfile] = Field(
+    connection: Optional[LlmConnectionProfile] = Field(
         None,
         description="The connection profile to use. This may be None when exported/imported.",
     )

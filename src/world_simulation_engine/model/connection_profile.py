@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import LlmProvider
@@ -10,4 +11,12 @@ class LlmConnectionProfile(BaseModel):
     provider: LlmProvider = Field(
         ...,
         description="The LLM provider.",
+    )
+    base_url: Optional[str] = Field(
+        None,
+        description="The base URL for the LLM provider. Can be None if using an official API.",
+    )
+    api_key: Optional[str] = Field(
+        None,
+        description="The API key used to access the LLM provider. Can be None if using a self-hosted API.",
     )

@@ -1,62 +1,68 @@
-from typing import Optional, Any
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class DataPresetModel(BaseModel):
+class ModelAttribute(BaseModel):
     """
-    A model inside a preset.
+    An attribute is a (list of) tag to describe a certain aspect of a model object.
     """
-    id: int = Field(
-        ...,
-        description="The database generated ID of the model.",
-    )
     name: str = Field(
         ...,
-        description="The name of the model.",
+        description="The name of the attribute. Must match the model attribute dictionary key.",
     )
-    version: int = Field(
+    values: Optional[list[str]] = Field(
         None,
-        description="The version of the model.",
+        description="The allowed values for this attribute. If left empty or not specified, it's considered an open "
+                    "field, and LLM will invent the values.",
     )
-    description: Optional[str] = Field(
-        None,
-        description="The description of the model.",
-    )
-    schema: dict[str, Any] = Field(
+
+    creation_instruction: str = Field(
         ...,
-        description="The JSON schema of the model.",
+        description="The instruction to tell LLM how to assign this field when creating an entity.",
+    )
+    update_instruction: str = Field(
+        ...,
+        description="The instruction to tell LLM how to update this attribute.",
+    )
+    universal: bool = Field(
+        False,
+        description="Whether this attribute must be assigned to all entities of the type when creating."
+    )
+
+
+class ModelStat(BaseModel):
+    """
+    A stat that is numerical and used in internal comparison, and is subject to change frequently.
+    """
+    name: str = Field(
+        ...,
+        description="The name of the stat. Must match the model stat dictionary key.",
+    )
+
+    creation_instruction: str = Field(
+        ...,
+        description="The instruction to tell LLM how to assign this field when creating an entity.",
+    )
+    update_instruction: str = Field(
+        ...,
+        description="The instruction to tell LLM how to update this attribute.",
+    )
+    universal: bool = Field(
+        False,
+        description="Whether this stat must be assigned to all entities of the type when creating.",
     )
 
 
 class DataPreset(BaseModel):
     """
-    A preset is a set of user-supplied data models that describes the world session. Each preset must
-    at least have some core models, which contains at least some core fields, but the models can be
-    extended freely to accommodate more complicated data.
+    A preset is a set of extra data fields used in simulations in addition to the standard model fields.
+    These fields are usually specific to each world setup.
     """
-    id: int = Field(
+    character_attributes: list[ModelAttribute] = Field(
         ...,
-        description="The database generated ID of the preset.",
+        description="The list of character attributes for this preset.",
     )
-    preset_id: str = Field(
+    character_stats: list[ModelStat] = Field(
         ...,
-        description="The creator specified ID of the preset, reverse domain notation recommended."
-    )
-    version: int = Field(
-        ...,
-        description="The version of the preset. This is combined with the preset ID as the unique "
-                    "identifier of the preset.",
-    )
-    name: str = Field(
-        ...,
-        description="The name of the preset.",
-    )
-    description: Optional[str] = Field(
-        None,
-        description="The description of the preset.",
-    )
-
-    models: dict[str, DataPresetModel] = Field(
-        ...,
-        description="The models in the preset.",
+        description="The list of character stats for this preset.",
     )

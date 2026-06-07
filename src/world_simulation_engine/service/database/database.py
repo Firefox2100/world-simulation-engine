@@ -2,7 +2,6 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from .tables import Base
-from .data_preset import DataPresetRepository
 
 
 class DatabaseService:
@@ -20,7 +19,3 @@ class DatabaseService:
 
     async def close(self):
         await self._engine.dispose()
-
-    @property
-    def data_preset(self) -> DataPresetRepository:
-        return DataPresetRepository(self._session_factory)
