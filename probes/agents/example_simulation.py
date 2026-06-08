@@ -23,7 +23,11 @@ example_simulation = Simulation(
             )
         ],
         character_stats=[],
-        entity_types=["important-item"]
+        entity_types={
+            "important-item": "An important item that is relevant to the story, and can be interacted with. It "
+                              "should remain relevant after multiple rounds, and may be acquired or used by "
+                              "characters."
+        }
     ),
     language="en"
 )

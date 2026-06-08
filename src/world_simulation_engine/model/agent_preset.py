@@ -72,6 +72,11 @@ class AgentProfile(BaseModel):
         description="What separator to use when merging messages."
     )
 
+    max_tool_rounds: int = Field(
+        3,
+        description="The maximum number of tool rounds to use for the agent."
+    )
+
 
 class OllamaAgentProfile(AgentProfile):
     """

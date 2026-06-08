@@ -19,11 +19,11 @@ class WorldEntryRecaller:
         bi.setText(text)
 
         start = bi.first()
-        end = bi.nextBoundry()
+        end = bi.nextBoundary()
         while end != BreakIterator.DONE:
             yield text[start:end]
             start = end
-            end = bi.nextBoundry()
+            end = bi.nextBoundary()
 
     @staticmethod
     def _ngrams(tokens: list[str], min_n: int = 1, max_n: int = 4) -> list[str]:

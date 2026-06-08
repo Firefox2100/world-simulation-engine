@@ -6,6 +6,7 @@ import os
 import asyncio
 import json
 
+from probes.agents.example_simulation import example_simulation
 from world_simulation_engine.misc.enums import LlmProvider, MessageRole
 from world_simulation_engine.model import LlmConnectionProfile, OllamaAgentProfile, PromptMessage
 from world_simulation_engine.service.world_agent.world_generator_agent import WorldGeneratorAgent
@@ -203,6 +204,7 @@ Constraints:
                 )
             ],
         ),
+        entity_types=example_simulation.data_preset.entity_types.keys(),
     )
 
     asyncio.run(experiment_world_generator(world_generator))

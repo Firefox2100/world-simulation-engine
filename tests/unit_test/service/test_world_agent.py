@@ -10,6 +10,7 @@ class TestWorldAgent:
         agent = WorldAgent(
             profile=OllamaAgentProfile(
                 connection=LlmConnectionProfile(
+                    id=1,
                     provider=LlmProvider.OLLAMA,
                     base_url="http://127.0.0.1:11434",
                 ),

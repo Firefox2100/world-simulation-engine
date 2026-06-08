@@ -16,65 +16,6 @@ if TYPE_CHECKING:
 LcMessage = AIMessage | HumanMessage | SystemMessage | ToolMessage
 
 
-class CommitPolicy(StrEnum):
-    COMMIT_IF_DISCOVERED = "commit_if_discovered"
-    COMMIT_IF_SUCCEEDED = "commit_if_succeeded"
-    COMMIT_HIDDEN_IF_NEEDED = "commit_hidden_if_needed"
-    RESOLVER_DECIDES = "resolver_decides"
-
-
-class ProposedWorldEntry(BaseModel):
-    temp_id: str
-    scope: list[int]
-    content: str
-    visibility: str
-    confidence: float = Field(ge=0.0, le=1.0)
-    narration_permission: str
-    recall_type: WorldEntryRecallType
-    keywords: Optional[list[dict]] = None
-    chained_ids: Optional[list[int]] = None
-    semantic_instruction: Optional[str] = None
-    reason: str
-    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
-
-
-class ProposedEntity(BaseModel):
-    temp_id: str
-    name: str
-    type: str
-    description: str
-    status: str
-    interactions: list[str]
-    reason: str
-    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
-
-
-class ProposedLocation(BaseModel):
-    temp_id: str
-    primary_location: str
-    detailed_location: str
-    scene: str
-    description: str
-    attributes: dict[str, list[str]] = Field(default_factory=dict)
-    stats: dict[str, float] = Field(default_factory=dict)
-    entities: list[ProposedEntity] = Field(default_factory=list)
-    reason: str
-    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
-
-
-class ProposedItem(BaseModel):
-    temp_id: str
-    name: str
-    description: str
-    quality: Optional[str] = None
-    quantity: int = 1
-    unique: bool = True
-    proposed_owner_id: Optional[int] = None
-    proposed_location_id: Optional[int] = None
-    reason: str
-    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
-
-
 class WorldAgent:
     def __init__(self,
                  profile: AgentProfiles,
