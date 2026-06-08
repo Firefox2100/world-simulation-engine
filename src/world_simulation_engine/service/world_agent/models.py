@@ -1,5 +1,5 @@
 from enum import StrEnum
-from typing import Literal, Optional
+from typing import Literal, Optional, Any
 from pydantic import BaseModel, Field
 
 
@@ -68,7 +68,7 @@ class ProposedItem(BaseModel):
 class PendingGeneratedProposal(BaseModel):
     tool_name: str
     trigger: str
-    result: dict
+    result: dict[str, Any]
     intended_use: str
     resolver_policy: Literal[
         "resolver_decides",
@@ -79,36 +79,21 @@ class PendingGeneratedProposal(BaseModel):
     ] = "resolver_decides"
 
 
-class CharacterBriefing(BaseModel):
+class ActivationDecision(BaseModel):
     character_id: int
     character_name: str
-
     activate: bool
     priority: int = Field(ge=0, le=100)
-    activation_reason: str
-
-    # This is the compact context for the character agent.
-    # It should not contain another character's private knowledge.
-    briefing: str
-
-    immediate_pressure: str
-    suggested_focus: str
-
-    relevant_task_ids: list[int] = Field(default_factory=list)
-    relevant_world_entry_ids: list[int] = Field(default_factory=list)
-
-    private_motive_used_by_director: bool = False
-
-    constraints: list[str] = Field(default_factory=list)
+    reason_for_system: str
+    private_motive_used: bool = False
 
 
 class DirectorOutput(BaseModel):
     scene_focus: str
 
+    activations: list[ActivationDecision]
     active_character_ids: list[int]
     inactive_character_ids: list[int]
-
-    character_briefings: list[CharacterBriefing]
 
     pending_generated_proposals: list[PendingGeneratedProposal] = Field(default_factory=list)
 
@@ -119,3 +104,26 @@ class DirectorOutput(BaseModel):
     reason_to_wait: str | None = None
 
     director_notes: str = ""
+
+
+class CharacterBriefing(BaseModel):
+    character_id: int
+    character_name: str
+
+    scene_context: str
+    recent_context: str
+    known_relevant_facts: str
+    immediate_situation: str
+
+    instruction: str
+    available_interactions: list[str] = Field(default_factory=list)
+
+    relevant_task_ids: list[int] = Field(default_factory=list)
+    relevant_world_entry_ids: list[int] = Field(default_factory=list)
+
+    constraints: list[str] = Field(default_factory=list)
+
+
+class BriefingOutput(BaseModel):
+    briefings: list[CharacterBriefing]
+    notes: str = ""

@@ -2,18 +2,12 @@
 Experiment file to assist in designing the world generator agent.
 """
 
-import os
 import asyncio
 import json
 
-from probes.agents.example_simulation import example_simulation
-from world_simulation_engine.misc.enums import LlmProvider, MessageRole
-from world_simulation_engine.model import LlmConnectionProfile, OllamaAgentProfile, PromptMessage
 from world_simulation_engine.service.world_agent.world_generator_agent import WorldGeneratorAgent
 
-
-OLLAMA_URL = os.getenv("EXP_OLLAMA_URL")
-OLLAMA_MODEL = os.getenv("EXP_OLLAMA_MODEL")
+from agent_configuration import world_generator_agent
 
 
 async def generate_location(agent: WorldGeneratorAgent):
@@ -150,64 +144,7 @@ async def experiment_world_generator(agent: WorldGeneratorAgent):
 
 
 def main():
-    world_generator = WorldGeneratorAgent(
-        profile=OllamaAgentProfile(
-            connection=LlmConnectionProfile(
-                id=1,
-                provider=LlmProvider.OLLAMA,
-                base_url=OLLAMA_URL,
-            ),
-            model=OLLAMA_MODEL,
-            temperature=0.4,
-            context_window=65536,
-            prompts=[
-                PromptMessage(
-                    role=MessageRole.SYSTEM,
-                    content="""
-You are a world generation tool for a role-play simulation.
-
-You create proposed world content only. You do not commit canonical state.
-
-You may generate:
-- locations
-- entities
-- items
-- world entries
-- minor characters
-- environmental discoveries
-
-Rules:
-- Generated content must fit the existing world tone, time period, location, and mystery structure.
-- Do not solve major mysteries unless explicitly requested.
-- Do not contradict supplied canonical facts.
-- If generating clues, prefer partial, ambiguous, or actionable clues.
-- Use temporary IDs only.
-- Mark generated content as pending/proposed.
-- Include a commit_policy for resolver handling.
-- Do not narrate.
-- Do not decide whether the player or NPC succeeded.
-- Do not expose hidden GM-only truth unless the request explicitly allows GM-side generation.
-"""
-                ),
-                PromptMessage(
-                    role=MessageRole.USER,
-                    content="""
-Context:
-{{ data["context"] }}
-
-Trigger:
-{{ data["trigger"] }}
-
-Constraints:
-{{ data["constraints"] }}
-"""
-                )
-            ],
-        ),
-        entity_types=example_simulation.data_preset.entity_types.keys(),
-    )
-
-    asyncio.run(experiment_world_generator(world_generator))
+    asyncio.run(experiment_world_generator(world_generator_agent))
 
 
 if __name__ == "__main__":
