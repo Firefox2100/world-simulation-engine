@@ -38,6 +38,7 @@ class TaskPriority(StrEnum):
 
 
 class TaskStatus(StrEnum):
+    PAUSED = "paused"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -48,6 +49,13 @@ class TaskType(StrEnum):
     MAIN_QUEST = "main_quest"
     SIDE_QUEST = "side_quest"
     DAILY = "daily"
+
+
+class WorldEntryRecallType(StrEnum):
+    ALWAYS = "always"
+    KEYWORD = "keyword"
+    SEMANTIC = "semantic"
+    CHAINED = "chained"
 
 
 class WorldEntryVisibility(StrEnum):

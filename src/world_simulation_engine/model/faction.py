@@ -34,6 +34,10 @@ class FactionRelationship(BaseModel):
         ...,
         description="The type of relationship.",
     )
+    private: bool = Field(
+        False,
+        description="Whether or not this relationship is private, only known to the two parties.",
+    )
 
 
 class Faction(BaseModel):

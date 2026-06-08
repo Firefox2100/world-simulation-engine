@@ -1,7 +1,23 @@
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import NarrationPermission, WorldEntryVisibility
+from world_simulation_engine.misc.enums import NarrationPermission, WorldEntryRecallType, WorldEntryVisibility
+
+
+class WorldEntryRecallKeyword(BaseModel):
+    """
+    A keyword matching criteria for recalling the world entry
+    """
+    keyword: str = Field(
+        ...,
+        description="The phrase to match against.",
+    )
+    similarity: float = Field(
+        ...,
+        description="The minimum unified similarity to consider recalling the entry.",
+        ge=0.0,
+        le=1.0,
+    )
 
 
 class WorldEntry(BaseModel):
@@ -35,4 +51,21 @@ class WorldEntry(BaseModel):
         ...,
         description="The narration permission of the world entry. This is used to determine whether the world "
                     "entry can be narrated by the narrator agent.",
+    )
+
+    recall_type: WorldEntryRecallType = Field(
+        ...,
+        description="How this entry should be recalled and added to the context.",
+    )
+    keywords: Optional[list[WorldEntryRecallKeyword]] = Field(
+        None,
+        description="The keyword filters to recall the world entry.",
+    )
+    chained_ids: Optional[list[int]] = Field(
+        None,
+        description="A list of IDs that, if any of them are recalled, this entry will be recalled together."
+    )
+    semantic_instruction: Optional[str] = Field(
+        None,
+        description="The instruction for LLM to know when to recall this entry or not."
     )

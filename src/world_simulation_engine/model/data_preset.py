@@ -66,3 +66,8 @@ class DataPreset(BaseModel):
         ...,
         description="The list of character stats for this preset.",
     )
+
+    entity_types: dict[str, str] = Field(
+        ...,
+        description="The entity types allowed in a location, and its explanation.",
+    )

@@ -46,9 +46,9 @@ class Character(BaseModel):
         description="A dictionary of stats associated with the character."
     )
 
-    location: str = Field(
+    location: int = Field(
         ...,
-        description="The location of the character. Must match a scene entry."
+        description="The location ID of the character."
     )
 
     user_controlled: bool = Field(
