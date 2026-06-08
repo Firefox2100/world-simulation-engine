@@ -2,6 +2,7 @@ from .agent_preset import OllamaAgentProfile, OpenAiAgentProfile, AgentProfiles,
 from .character import Character
 from .connection_profile import LlmConnectionProfile
 from .data_preset import DataPreset, ModelAttribute, ModelStat
+from .embedding_profile import EmbeddingProfile
 from .faction import FactionRelationship, Faction
 from .inventory import Item, Equipment
 from .location import Location, Entity

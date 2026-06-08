@@ -25,6 +25,7 @@ example_simulation = Simulation(
         character_stats=[],
         entity_types=["important-item"]
     ),
+    language="en"
 )
 
 

@@ -1,6 +1,7 @@
 from typing import Optional, Union
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.misc.enums import SystemMessagePolicy
 from .connection_profile import LlmConnectionProfile
 from .prompt_message import PromptMessage
 
@@ -45,6 +46,30 @@ class AgentProfile(BaseModel):
     prompts: list[PromptMessage] = Field(
         ...,
         description="The prompt to use for the agent, allowing multiple messages to be constructed.",
+    )
+    remove_empty_messages: bool = Field(
+        True,
+        description="Whether to remove empty messages from the prompt.",
+    )
+    merge_adjacent_user: bool = Field(
+        True,
+        description="Whether to merge adjacent user messages into one.",
+    )
+    merge_adjacent_assistant: bool = Field(
+        False,
+        description="Whether to merge adjacent assistant messages into one.",
+    )
+    merge_assistant_with_tool_calls: bool = Field(
+        False,
+        description="If merging assistant messages, should the message with tool calls be merged too."
+    )
+    system_message_policy: SystemMessagePolicy = Field(
+        SystemMessagePolicy.MERGE_TO_TOP,
+        description="How to post-process the system message sequence.",
+    )
+    message_merge_separator: str = Field(
+        "\n\n",
+        description="What separator to use when merging messages."
     )
 
 

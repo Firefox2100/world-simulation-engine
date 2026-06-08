@@ -1,13 +1,78 @@
-from typing import Union, Any, TYPE_CHECKING
+from enum import StrEnum
+from copy import deepcopy
+from typing import Union, Optional, Any, TYPE_CHECKING
+from pydantic import BaseModel, Field
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from jinja2.sandbox import SandboxedEnvironment
 
-from world_simulation_engine.misc.enums import LlmProvider, MessageRole
-from world_simulation_engine.model.agent_preset import AgentProfiles, OllamaAgentProfile, OpenAiAgentProfile
+from world_simulation_engine.misc.enums import LlmProvider, MessageRole, SystemMessagePolicy, WorldEntryRecallType
+from world_simulation_engine.model import AgentProfiles, OllamaAgentProfile, OpenAiAgentProfile
 
 if TYPE_CHECKING:
     from langchain_ollama import ChatOllama
     from langchain_openai import ChatOpenAI
+
+
+LcMessage = AIMessage | HumanMessage | SystemMessage | ToolMessage
+
+
+class CommitPolicy(StrEnum):
+    COMMIT_IF_DISCOVERED = "commit_if_discovered"
+    COMMIT_IF_SUCCEEDED = "commit_if_succeeded"
+    COMMIT_HIDDEN_IF_NEEDED = "commit_hidden_if_needed"
+    RESOLVER_DECIDES = "resolver_decides"
+
+
+class ProposedWorldEntry(BaseModel):
+    temp_id: str
+    scope: list[int]
+    content: str
+    visibility: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    narration_permission: str
+    recall_type: WorldEntryRecallType
+    keywords: Optional[list[dict]] = None
+    chained_ids: Optional[list[int]] = None
+    semantic_instruction: Optional[str] = None
+    reason: str
+    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
+
+
+class ProposedEntity(BaseModel):
+    temp_id: str
+    name: str
+    type: str
+    description: str
+    status: str
+    interactions: list[str]
+    reason: str
+    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
+
+
+class ProposedLocation(BaseModel):
+    temp_id: str
+    primary_location: str
+    detailed_location: str
+    scene: str
+    description: str
+    attributes: dict[str, list[str]] = Field(default_factory=dict)
+    stats: dict[str, float] = Field(default_factory=dict)
+    entities: list[ProposedEntity] = Field(default_factory=list)
+    reason: str
+    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
+
+
+class ProposedItem(BaseModel):
+    temp_id: str
+    name: str
+    description: str
+    quality: Optional[str] = None
+    quantity: int = 1
+    unique: bool = True
+    proposed_owner_id: Optional[int] = None
+    proposed_location_id: Optional[int] = None
+    reason: str
+    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
 
 
 class WorldAgent:
@@ -25,6 +90,8 @@ class WorldAgent:
         if profile.connection.provider == LlmProvider.OLLAMA:
             if not isinstance(profile, OllamaAgentProfile):
                 raise ValueError(f"Profile class mismatch: connection profile is Ollama while profile is {type(profile)}")
+
+            from langchain_ollama import ChatOllama
 
             return ChatOllama(
                 model=profile.model,
@@ -58,9 +125,110 @@ class WorldAgent:
 
         return self._model
 
+    def _message_postprocess(self, messages: list[LcMessage]) -> list[LcMessage]:
+        """
+        Post process the composed message sequence.
+        :param messages: The LangChain messages to process
+        :return: The merged messages, if configured to do so
+        """
+
+        def is_empty_message(msg: LcMessage) -> bool:
+            if isinstance(msg, ToolMessage):
+                return False
+
+            content = msg.content
+
+            if content is None:
+                return True
+
+            if isinstance(content, str):
+                return content.strip() == ""
+
+            if isinstance(content, list):
+                return len(content) == 0
+
+            return False
+
+        def merge_content(a, b):
+            if isinstance(a, str) and isinstance(b, str):
+                return f"{a.rstrip()}{self.profile.message_merge_separator}{b.lstrip()}"
+
+            if isinstance(a, list) and isinstance(b, list):
+                return a + b
+
+            if isinstance(a, str) and isinstance(b, list):
+                return [{"type": "text", "text": a}] + b
+
+            if isinstance(a, list) and isinstance(b, str):
+                return a + [{"type": "text", "text": b}]
+
+            return f"{str(a).rstrip()}\n\n{str(b).lstrip()}"
+
+        def ai_has_tool_calls(msg: AIMessage) -> bool:
+            return bool(
+                getattr(msg, "tool_calls", None)
+                or msg.additional_kwargs.get("tool_calls")
+            )
+
+        cleaned = deepcopy(messages)
+        if self.profile.remove_empty_messages:
+            cleaned = [m for m in cleaned if not is_empty_message(m)]
+
+        if self.profile.system_message_policy == SystemMessagePolicy.MERGE_TO_TOP:
+            # Merge all the system messages into one at the top
+            system_messages: list[SystemMessage] = []
+            non_system: list[LcMessage] = []
+
+            for msg in cleaned:
+                if isinstance(msg, SystemMessage):
+                    system_messages.append(msg)
+                else:
+                    non_system.append(msg)
+
+            if system_messages:
+                merged_system_content = system_messages[0].content
+                for msg in system_messages[1:]:
+                    merged_system_content = merge_content(merged_system_content, msg.content)
+
+                cleaned = [
+                    SystemMessage(
+                        content=merged_system_content,
+                    )
+                ] + non_system
+        elif self.profile.system_message_policy == SystemMessagePolicy.DROP:
+            # Remove all system messages that are not at the top
+            cleaned = [m for m in cleaned if not (isinstance(m, SystemMessage) and m != cleaned[0])]
+
+        # Merge adjacent message
+        result = []
+        for msg in cleaned:
+            if not result:
+                result.append(msg)
+                continue
+
+            prev = result[-1]
+
+            if isinstance(prev, HumanMessage) and isinstance(msg, HumanMessage):
+                if self.profile.merge_adjacent_user:
+                    result[-1] = HumanMessage(content=merge_content(prev.content, msg.content))
+                    continue
+
+            if isinstance(prev, AIMessage) and isinstance(msg, AIMessage):
+                if self.profile.merge_adjacent_assistant:
+                    if not self.profile.merge_assistant_with_tool_calls and \
+                            (ai_has_tool_calls(prev) or ai_has_tool_calls(msg)):
+                        continue
+
+                    result[-1] = AIMessage(content=merge_content(prev.content, msg.content))
+                    continue
+
+            result.append(msg)
+
+        return result
+
     def _compose_messages(self,
                           data: dict[str, Any],
-                          ) -> list[AIMessage | HumanMessage | SystemMessage | ToolMessage]:
+                          ) -> list[LcMessage]:
         messages = []
 
         sandbox = SandboxedEnvironment()

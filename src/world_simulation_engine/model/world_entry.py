@@ -18,6 +18,10 @@ class WorldEntryRecallKeyword(BaseModel):
         ge=0.0,
         le=1.0,
     )
+    embedding: Optional[list[float]] = Field(
+        None,
+        description="The embedding of the world entry, used for recalling."
+    )
 
 
 class WorldEntry(BaseModel):
@@ -68,4 +72,8 @@ class WorldEntry(BaseModel):
     semantic_instruction: Optional[str] = Field(
         None,
         description="The instruction for LLM to know when to recall this entry or not."
+    )
+    embedding: Optional[list[float]] = Field(
+        None,
+        description="The embedding of the world entry, used for semantic recall."
     )

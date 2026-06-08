@@ -30,6 +30,12 @@ class NarrationPermission(StrEnum):
     INVISIBLE = "invisible"
 
 
+class SystemMessagePolicy(StrEnum):
+    PRESERVE = "preserve"
+    MERGE_TO_TOP = "merge_to_top"
+    DROP = "drop"
+
+
 class TaskPriority(StrEnum):
     URGENT = "urgent"
     IMPORTANT = "important"

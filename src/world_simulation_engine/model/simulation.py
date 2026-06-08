@@ -25,6 +25,10 @@ class Simulation(BaseModel):
         ...,
         description="The data preset for this simulation.",
     )
+    language: str = Field(
+        ...,
+        description="The language of the simulation, as a locale string.",
+    )
 
 
 class SimulationState(BaseModel):
