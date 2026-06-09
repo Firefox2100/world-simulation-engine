@@ -10,7 +10,7 @@ from world_simulation_engine.service import DirectorAgent, WorldGeneratorAgent, 
 from world_simulation_engine.component import WorldEntryRecaller
 
 from example_simulation import example_world_entries, example_simulation_state, example_characters, \
-    example_simulation, example_tasks, example_locations
+    example_simulation, example_tasks, example_locations, example_inventory
 from agent_configuration import embedding_service, world_generator_agent, director_agent
 
 
@@ -69,7 +69,19 @@ async def experiment_director_agent(director: DirectorAgent,
         c for c in example_characters if c.location == example_simulation_state.scene
     ]
     current_location = next(l for l in example_locations if l.id == example_simulation_state.scene)
-    generator_tools = generator.get_tools()
+    existing_items = []
+    for _, inventory in example_inventory.items():
+        existing_items.extend(inventory["items"])
+    generator_tools = generator.get_tools(
+        simulation=example_simulation,
+        state=example_simulation_state,
+        current_location=current_location,
+        present_characters=present_characters,
+        existing_locations=example_locations,
+        existing_entities=current_location.entities,
+        existing_items=existing_items,
+        entity_types=example_simulation.data_preset.entity_types.keys(),
+    )
 
     print("Testing direct generation")
     user_input = "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied before Harlan vanished."

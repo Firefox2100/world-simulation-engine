@@ -1,23 +1,50 @@
 from enum import StrEnum
+from typing import cast
 from langchain.tools import tool
 
-from world_simulation_engine.model import AgentProfiles
+from world_simulation_engine.misc.consts import LOGGER
+from world_simulation_engine.model import WorldGeneratorAgentProfile, Simulation, SimulationState, Location, \
+    Character, Entity, Item
 from .models import ProposedLocation, ProposedItem, ProposedEntity, ProposedWorldEntry
 from .world_agent import WorldAgent
 
 
-class WorldGeneratorAgent(WorldAgent):
-    def __init__(self,
-                 profile: AgentProfiles,
-                 entity_types: list[str],
-                 ):
-        super().__init__(profile)
-        self._entity_types = entity_types
+class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
+    @staticmethod
+    def _build_base_data(simulation: Simulation,
+                         state: SimulationState,
+                         current_location: Location,
+                         present_characters: list[Character],
+                         existing_locations: list[Location],
+                         existing_entities: list[Entity],
+                         existing_items: list[Item],
+                         goal: str,
+                         trigger: str,
+                         constraints: list[str],
+                         ):
+        return {
+            "generation_context": {
+                "simulation_name": simulation.name,
+                "simulation_description": simulation.description,
+                "round_number": state.round_number,
+                "time_label": state.time_label,
+                "state_summary": state.state,
+                "current_location": current_location.model_dump(),
+                "present_characters": [c.model_dump() for c in present_characters],
+                "existing_locations": [l.model_dump() for l in existing_locations],
+                "existing_entities": [e.model_dump() for e in existing_entities],
+                "existing_items": [i.model_dump() for i in existing_items],
+            },
+            "goal": goal,
+            "trigger": trigger,
+            "constraints": constraints,
+        }
 
-    def _patch_entity_model(self) -> type[ProposedEntity]:
+    @staticmethod
+    def _patch_entity_model(entity_types: list[str]) -> type[ProposedEntity]:
         EntityTypeEnum = StrEnum(
             "EntityTypeEnum",
-            {t.upper().replace("-", "_").replace(" ", "_"): t for t in self._entity_types},
+            {t.upper().replace("-", "_").replace(" ", "_"): t for t in entity_types},
         )
 
         class ProposedEntityPatched(ProposedEntity):
@@ -26,187 +53,339 @@ class WorldGeneratorAgent(WorldAgent):
         return ProposedEntityPatched
 
     async def generate_location(self,
-                                context: str,
+                                simulation: Simulation,
+                                state: SimulationState,
+                                current_location: Location,
+                                present_characters: list[Character],
+                                existing_locations: list[Location],
+                                existing_entities: list[Entity],
+                                existing_items: list[Item],
+                                goal: str,
                                 trigger: str,
                                 constraints: list[str],
                                 ) -> ProposedLocation:
-        messages = self._compose_messages(
-            data={
-                "context": context,
-                "trigger": trigger,
-                "constraints": constraints,
-            }
+        LOGGER.info("Generating location...")
+        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
+
+        data = self._build_base_data(
+            simulation=simulation,
+            state=state,
+            current_location=current_location,
+            present_characters=present_characters,
+            existing_locations=existing_locations,
+            existing_entities=existing_entities,
+            existing_items=existing_items,
+            goal=goal,
+            trigger=trigger,
+            constraints=constraints,
         )
-        messages[-1].content += "\n\nGenerate one proposed location."
+
+        messages = self._compose_messages(
+            prompts=self.profile.location_generation_prompt,
+            data=data
+        )
+        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         location_model = self.model.with_structured_output(ProposedLocation)
 
-        result = await location_model.ainvoke(messages)
+        result = cast(ProposedLocation, await location_model.ainvoke(messages))
+        LOGGER.info("Location generation completed for %s", result.scene)
+        LOGGER.debug("Location:\n%s", result.model_dump_json(indent=2))
 
         return result
 
     async def generate_item(self,
-                            context: str,
+                            simulation: Simulation,
+                            state: SimulationState,
+                            current_location: Location,
+                            present_characters: list[Character],
+                            existing_locations: list[Location],
+                            existing_entities: list[Entity],
+                            existing_items: list[Item],
+                            goal: str,
                             trigger: str,
                             constraints: list[str],
                             ) -> ProposedItem:
-        messages = self._compose_messages(
-            data={
-                "context": context,
-                "trigger": trigger,
-                "constraints": constraints,
-            }
+        LOGGER.info("Generating item...")
+        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
+
+        data = self._build_base_data(
+            simulation=simulation,
+            state=state,
+            current_location=current_location,
+            present_characters=present_characters,
+            existing_locations=existing_locations,
+            existing_entities=existing_entities,
+            existing_items=existing_items,
+            goal=goal,
+            trigger=trigger,
+            constraints=constraints,
         )
-        messages[-1].content += "\n\nGenerate one proposed item."
+
+        messages = self._compose_messages(
+            prompts=self.profile.item_generation_prompt,
+            data=data
+        )
+        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         item_model = self.model.with_structured_output(ProposedItem)
 
-        result = await item_model.ainvoke(messages)
+        result = cast(ProposedItem, await item_model.ainvoke(messages))
+        LOGGER.info("Item generation completed for %s", result.name)
+        LOGGER.debug("Item:\n%s", result.model_dump_json(indent=2))
 
         return result
 
     async def generate_entity(self,
-                              context: str,
+                              simulation: Simulation,
+                              state: SimulationState,
+                              current_location: Location,
+                              present_characters: list[Character],
+                              existing_locations: list[Location],
+                              existing_entities: list[Entity],
+                              existing_items: list[Item],
+                              goal: str,
                               trigger: str,
                               constraints: list[str],
                               entity_types: list[str],
                               ) -> ProposedEntity:
-        messages = self._compose_messages(
-            data={
-                "context": context,
-                "trigger": trigger,
-                "constraints": constraints,
-            }
+        LOGGER.info("Generating entity...")
+        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
+
+        data = self._build_base_data(
+            simulation=simulation,
+            state=state,
+            current_location=current_location,
+            present_characters=present_characters,
+            existing_locations=existing_locations,
+            existing_entities=existing_entities,
+            existing_items=existing_items,
+            goal=goal,
+            trigger=trigger,
+            constraints=constraints,
         )
-        messages[-1].content += "\n\nGenerate one proposed entity."
 
-        entity_model = self.model.with_structured_output(self._patch_entity_model())
+        messages = self._compose_messages(
+            prompts=self.profile.entity_generation_prompt,
+            data=data
+        )
+        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
-        result = await entity_model.ainvoke(messages)
+        entity_model = self.model.with_structured_output(self._patch_entity_model(entity_types))
+
+        result = cast(ProposedEntity, await entity_model.ainvoke(messages))
+        LOGGER.info("Entity generation completed for %s", result.name)
+        LOGGER.debug("Entity:\n%s", result.model_dump_json(indent=2))
 
         return result
 
     async def generate_world_entry(self,
-                                   context: str,
+                                   simulation: Simulation,
+                                   state: SimulationState,
+                                   current_location: Location,
+                                   present_characters: list[Character],
+                                   existing_locations: list[Location],
+                                   existing_entities: list[Entity],
+                                   existing_items: list[Item],
+                                   goal: str,
                                    trigger: str,
                                    constraints: list[str],
                                    ) -> ProposedWorldEntry:
-        messages = self._compose_messages(
-            data={
-                "context": context,
-                "trigger": trigger,
-                "constraints": constraints,
-            }
+        LOGGER.info("Generating world entry...")
+        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
+
+        data = self._build_base_data(
+            simulation=simulation,
+            state=state,
+            current_location=current_location,
+            present_characters=present_characters,
+            existing_locations=existing_locations,
+            existing_entities=existing_entities,
+            existing_items=existing_items,
+            goal=goal,
+            trigger=trigger,
+            constraints=constraints,
         )
-        messages[-1].content += "\n\nGenerate one proposed world entry."
+
+        messages = self._compose_messages(
+            prompts=self.profile.world_entry_generation_prompt,
+            data=data
+        )
+        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         world_entry_model = self.model.with_structured_output(ProposedWorldEntry)
 
-        result = await world_entry_model.ainvoke(messages)
+        result = cast(ProposedWorldEntry, await world_entry_model.ainvoke(messages))
+        LOGGER.info("World entry generation completed for %s", result.content)
+        LOGGER.debug("World entry:\n%s", result.model_dump_json(indent=2))
 
         return result
 
-    def get_tools(self):
+    def get_tools(self,
+                  simulation: Simulation,
+                  state: SimulationState,
+                  current_location: Location,
+                  present_characters: list[Character],
+                  existing_locations: list[Location],
+                  existing_entities: list[Entity],
+                  existing_items: list[Item],
+                  entity_types: list[str],
+                  ):
         @tool(parse_docstring=True)
-        async def generate_location(context: str, trigger: str, constraints: list[str]) -> ProposedLocation:
+        async def generate_location(goal: str, trigger: str, constraints: list[str]) -> ProposedLocation:
             """
-            Generate one proposed new location when the current round exposes an unknown place.
+            Generate one pending location proposal.
 
-            Use this only when a user or resolved action would reveal a place that does not
-            yet exist in canonical state, such as entering an unexplored room, opening a
-            hidden passage, descending into an unknown tunnel, or discovering a new scene.
+            Use this when the current round exposes an unknown place:
+            - entering an unexplored room;
+            - revealing a hidden passage;
+            - descending into an unknown tunnel;
+            - opening a route to a new scene;
+            - discovering a site that does not already exist in canonical locations.
 
-            The generated location is a pending proposal only. It must not be treated as
-            canonical until the resolver accepts it.
+            Do not use for known locations already present in existing_locations.
+            Do not use for flavour-only environmental detail.
+            Do not decide whether the action that revealed the location succeeds.
 
-            Do not use this for narration, flavour text, or known locations.
+            The result is pending and non-canonical until resolver approval.
 
             Args:
-                context: Serialized world state relevant to generation (for example known locations,
-                    entities, items, and relationships).
+                goal: The overarching goal or narrative purpose that this generation should serve.
                 trigger: Event or action that motivates creating a new location.
                 constraints: Hard requirements the generated location must satisfy.
 
             Returns:
                 ProposedLocation: A structured location proposal.
             """
-            return await self.generate_location(context, trigger, constraints)
+            return await self.generate_location(
+                simulation=simulation,
+                state=state,
+                current_location=current_location,
+                present_characters=present_characters,
+                existing_locations=existing_locations,
+                existing_entities=existing_entities,
+                existing_items=existing_items,
+                goal=goal,
+                trigger=trigger,
+                constraints=constraints,
+            )
 
         @tool(parse_docstring=True)
-        async def generate_item(context: str, trigger: str, constraints: list[str]) -> ProposedItem:
+        async def generate_item(goal: str, trigger: str, constraints: list[str]) -> ProposedItem:
             """
-            Generate one proposed inventory-style item, clue, document, key, tool, fragment,
-            token, or portable object.
+            Generate one pending portable item proposal.
 
-            Use this when a search, discovery, container opening, handover, or evidence
-            reveal may produce a portable item. The result is pending until the resolver
-            commits it.
+            Use this for objects that may enter an inventory:
+            - clues, keys, notes, letters, fragments, maps, receipts;
+            - tools, tokens, evidence, personal effects;
+            - contents discovered inside a searched container.
 
-            Do not use this for fixed environmental features; use generate_entity instead.
+            Do not use for fixed environmental features; use generate_entity instead.
+            Do not duplicate existing items.
+            Do not decide whether the search or discovery succeeds.
+
+            The result is pending and non-canonical until resolver approval.
 
             Args:
-                context: Serialized world state relevant to generation.
+                goal: The overarching goal or narrative purpose that this generation should serve.
                 trigger: Event or action that motivates creating a new item.
                 constraints: Hard requirements the generated item must satisfy.
 
             Returns:
                 ProposedItem: A structured item proposal.
             """
-            return await self.generate_item(context, trigger, constraints)
+            return await self.generate_item(
+                simulation=simulation,
+                state=state,
+                current_location=current_location,
+                present_characters=present_characters,
+                existing_locations=existing_locations,
+                existing_entities=existing_entities,
+                existing_items=existing_items,
+                goal=goal,
+                trigger=trigger,
+                constraints=constraints,
+            )
 
         @tool(parse_docstring=True)
-        async def generate_entity(
-            context: str,
-            trigger: str,
-            constraints: list[str],
-        ) -> ProposedEntity:
+        async def generate_entity(goal: str, trigger: str, constraints: list[str]) -> ProposedEntity:
             """
-            Generate one proposed interactable entity inside an existing location.
+            Generate one pending interactable entity proposal inside an existing location.
 
-            Use this when an action reveals or requires a physical object, fixture,
-            container, sign, clue-bearing surface, mechanism, document cache, trace, or
-            other interactable scene element that is not already in canonical state.
+            Use this for non-portable or scene-anchored objects:
+            - hidden caches;
+            - doors, plaques, shelves, mechanisms;
+            - signs, stains, traces, machinery;
+            - containers before their contents are separately generated;
+            - clue-bearing surfaces or fixtures.
 
-            The generated entity is pending only. The resolver decides whether it exists,
-            is discovered, remains hidden, or is discarded.
+            Do not use for portable inventory items; use generate_item instead.
+            Do not use if the entity already exists in current location or existing_entities.
+            Do not decide whether the entity is discovered successfully.
 
-            Do not use this to generate inventory items directly unless the entity remains
-            part of the scene.
+            The result is pending and non-canonical until resolver approval.
 
             Args:
-                context: Serialized world state relevant to generation.
+                goal: The overarching goal or narrative purpose that this generation should serve.
                 trigger: Event or action that motivates creating a new entity.
                 constraints: Hard requirements the generated entity must satisfy.
 
             Returns:
                 ProposedEntity: A structured entity proposal with a constrained `type` value.
             """
-            return await self.generate_entity(context, trigger, constraints)
+            return await self.generate_entity(
+                simulation=simulation,
+                state=state,
+                current_location=current_location,
+                present_characters=present_characters,
+                existing_locations=existing_locations,
+                existing_entities=existing_entities,
+                existing_items=existing_items,
+                goal=goal,
+                trigger=trigger,
+                constraints=constraints,
+                entity_types=entity_types,
+            )
 
         @tool(parse_docstring=True)
-        async def generate_world_entry(context: str, trigger: str, constraints: list[str]) -> ProposedWorldEntry:
+        async def generate_world_entry(goal: str, trigger: str, constraints: list[str]) -> ProposedWorldEntry:
             """
-            Generate one proposed world-entry fact, rumour, memory, belief, suspicion, or
-            scoped knowledge entry.
+            Generate one pending world-entry proposal.
 
-            Use this when the round introduces knowledge rather than a physical object:
-            rumours, overheard facts, changed beliefs, newly inferred motives, discoveries,
-            or hidden truths that should be stored in the world-entry recall system.
+            Use this only for persistent knowledge that should enter the recall system:
+            - a newly learned fact;
+            - a rumour;
+            - a belief, suspicion, memory, or inference;
+            - scoped knowledge for one or more characters;
+            - GM-hidden fact created by a generator request.
 
-            The entry is pending. The resolver decides whether to commit it and with what
-            scope, visibility, confidence, recall type, and narration permission.
+            Do not use for ordinary observations already implied by the current scene.
+            Do not use for temporary narration.
+            Do not use for facts already present in existing_world_entries.
+            Do not decide whether the fact is committed.
 
-            Content must be a complete factual sentence, not a title.
+            The result is pending and non-canonical until resolver approval.
 
             Args:
-                context: Serialized world state relevant to generation.
+                goal: The overarching goal or narrative purpose that this generation should serve.
                 trigger: Event or action that motivates creating a new world entry.
                 constraints: Hard requirements the generated world entry must satisfy.
 
             Returns:
                 ProposedWorldEntry: A structured world-entry proposal.
             """
-            return await self.generate_world_entry(context, trigger, constraints)
+            return await self.generate_world_entry(
+                simulation=simulation,
+                state=state,
+                current_location=current_location,
+                present_characters=present_characters,
+                existing_locations=existing_locations,
+                existing_entities=existing_entities,
+                existing_items=existing_items,
+                goal=goal,
+                trigger=trigger,
+                constraints=constraints,
+            )
 
         return [
             generate_location,

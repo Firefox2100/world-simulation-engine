@@ -6,10 +6,10 @@ from .connection_profile import LlmConnectionProfile
 from .prompt_message import PromptMessage
 
 
-class AgentProfile(BaseModel):
+class AgentBackendConfiguration(BaseModel):
     """
-    An agent configuration profile for a specific agent, configuring the connection (backend), generation
-    parameters, prompt history, and other settings. Should be subclassed for specific providers.
+    An agent configuration profile for a specific agent, configuring the connection (backend) and parameters
+    that are specific to the agent's LLM usage.
     """
     connection: Optional[LlmConnectionProfile] = Field(
         None,
@@ -43,9 +43,54 @@ class AgentProfile(BaseModel):
         description="The stop tokens to use for the agent.",
     )
 
-    prompts: list[PromptMessage] = Field(
+
+class OllamaAgentBackendConfiguration(AgentBackendConfiguration):
+    """
+    A configuration profile exposing Ollama-specific parameters.
+    """
+    mirostat: Optional[int] = Field(
+        None,
+        description="Enable Mirostat sampling for controlling perplexity.",
+    )
+    mirostat_eta: Optional[float] = Field(
+        None,
+        description="Influences how quickly the algorithm responds to feedback from generated text.",
+    )
+    mirostat_tau: Optional[float] = Field(
+        None,
+        description="Controls the balance between coherence and diversity of the output.",
+    )
+    num_predict: Optional[int] = Field(
+        None,
+        description="Maximum number of tokens to predict when generating text.",
+    )
+    repeat_penalty_window: Optional[int] = Field(
+        None,
+        description="Sets how far back for the model to look back to prevent repetition.",
+    )
+    repeat_penalty: Optional[float] = Field(
+        None,
+        description="Sets how strongly to penalize repetitions.",
+    )
+
+
+class OpenAiAgentBackendConfiguration(AgentBackendConfiguration):
+    pass
+
+
+AgentBackendConfigurations = Union[
+    OllamaAgentBackendConfiguration,
+    OpenAiAgentBackendConfiguration,
+]
+
+
+class AgentProfile(BaseModel):
+    """
+    A profile for a specific role of an agent.
+    """
+    backend_configuration: AgentBackendConfigurations = Field(
         ...,
-        description="The prompt to use for the agent, allowing multiple messages to be constructed.",
+        description="The backend configuration for the agent.",
     )
     remove_empty_messages: bool = Field(
         True,
@@ -78,44 +123,34 @@ class AgentProfile(BaseModel):
     )
 
 
-class OllamaAgentProfile(AgentProfile):
-    """
-    A configuration profile exposing Ollama-specific parameters.
-    """
-    mirostat: Optional[int] = Field(
-        None,
-        description="Enable Mirostat sampling for controlling perplexity.",
+class DirectorAgentProfile(AgentProfile):
+    generation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to decide whether to call generation tools."
     )
-    mirostat_eta: Optional[float] = Field(
-        None,
-        description="Influences how quickly the algorithm responds to feedback from generated text.",
-    )
-    mirostat_tau: Optional[float] = Field(
-        None,
-        description="Controls the balance between coherence and diversity of the output.",
-    )
-    num_predict: Optional[int] = Field(
-        None,
-        description="Maximum number of tokens to predict when generating text.",
-    )
-    repeat_penalty_window: Optional[int] = Field(
-        None,
-        description="Sets how far back for the model to look back to prevent repetition.",
-    )
-    repeat_penalty: Optional[float] = Field(
-        None,
-        description="Sets how strongly to penalize repetitions.",
+    planning_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use after generation, and ask it to output the plan."
     )
 
 
-class OpenAiAgentProfile(AgentProfile):
-    pass
-
-
-AgentProfiles = Union[
-    OllamaAgentProfile,
-    OpenAiAgentProfile,
-]
+class WorldGeneratorAgentProfile(AgentProfile):
+    location_generation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a location."
+    )
+    item_generation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate an item."
+    )
+    entity_generation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate an entity."
+    )
+    world_entry_generation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a world entry."
+    )
 
 
 class AgentPreset(BaseModel):
@@ -127,7 +162,11 @@ class AgentPreset(BaseModel):
         ...,
         description="The database generated ID of the preset.",
     )
-    director: AgentProfiles = Field(
+    director: DirectorAgentProfile = Field(
         ...,
         description="The agent configuration profiles for the director.",
+    )
+    world_generator: WorldGeneratorAgentProfile = Field(
+        ...,
+        description="The agent configuration profiles for the world generator.",
     )

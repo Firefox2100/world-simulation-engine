@@ -1,12 +1,11 @@
-from enum import StrEnum
 from copy import deepcopy
-from typing import Union, Optional, Any, TYPE_CHECKING
-from pydantic import BaseModel, Field
+from typing import Union, Any, TypeVar, Generic, TYPE_CHECKING
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from jinja2.sandbox import SandboxedEnvironment
 
-from world_simulation_engine.misc.enums import LlmProvider, MessageRole, SystemMessagePolicy, WorldEntryRecallType
-from world_simulation_engine.model import AgentProfiles, OllamaAgentProfile, OpenAiAgentProfile
+from world_simulation_engine.misc.enums import LlmProvider, MessageRole, SystemMessagePolicy
+from world_simulation_engine.model import AgentProfile, OllamaAgentBackendConfiguration, \
+    OpenAiAgentBackendConfiguration, PromptMessage
 
 if TYPE_CHECKING:
     from langchain_ollama import ChatOllama
@@ -16,44 +15,47 @@ if TYPE_CHECKING:
 LcMessage = AIMessage | HumanMessage | SystemMessage | ToolMessage
 
 
-class WorldAgent:
+AgentProfileT = TypeVar("AgentProfileT", bound="AgentProfile")
+
+
+class WorldAgent(Generic[AgentProfileT]):
     def __init__(self,
-                 profile: AgentProfiles,
+                 profile: AgentProfileT,
                  ):
         self._profile = profile
         self._model: Union["ChatOpenAI", "ChatOllama", None] = None
 
     @staticmethod
-    def _create_model(profile: AgentProfiles) -> Union["ChatOpenAI", "ChatOllama"]:
-        if profile.connection is None:
+    def _create_model(profile: AgentProfileT) -> Union["ChatOpenAI", "ChatOllama"]:
+        if profile.backend_configuration.connection is None:
             raise ValueError("Connection profile is required for creating a model.")
 
-        if profile.connection.provider == LlmProvider.OLLAMA:
-            if not isinstance(profile, OllamaAgentProfile):
+        if profile.backend_configuration.connection.provider == LlmProvider.OLLAMA:
+            if not isinstance(profile.backend_configuration, OllamaAgentBackendConfiguration):
                 raise ValueError(f"Profile class mismatch: connection profile is Ollama while profile is {type(profile)}")
 
             from langchain_ollama import ChatOllama
 
             return ChatOllama(
-                model=profile.model,
-                reasoning=profile.reasoning,
-                mirostat=profile.mirostat,
-                mirostat_eta=profile.mirostat_eta,
-                mirostat_tau=profile.mirostat_tau,
-                num_ctx=profile.context_window,
-                num_predict=profile.num_predict,
-                repeat_last_n=profile.repeat_penalty_window,
-                repeat_penalty=profile.repeat_penalty,
-                temperature=profile.temperature,
-                seed=profile.seed,
-                stop=profile.stop_tokens,
-                base_url=profile.connection.base_url,
+                model=profile.backend_configuration.model,
+                reasoning=profile.backend_configuration.reasoning,
+                mirostat=profile.backend_configuration.mirostat,
+                mirostat_eta=profile.backend_configuration.mirostat_eta,
+                mirostat_tau=profile.backend_configuration.mirostat_tau,
+                num_ctx=profile.backend_configuration.context_window,
+                num_predict=profile.backend_configuration.num_predict,
+                repeat_last_n=profile.backend_configuration.repeat_penalty_window,
+                repeat_penalty=profile.backend_configuration.repeat_penalty,
+                temperature=profile.backend_configuration.temperature,
+                seed=profile.backend_configuration.seed,
+                stop=profile.backend_configuration.stop_tokens,
+                base_url=profile.backend_configuration.connection.base_url,
             )
 
-        raise ValueError(f"Unsupported provider: {profile.connection.provider}")
+        raise ValueError(f"Unsupported provider: {profile.backend_configuration.connection.provider}")
 
     @property
-    def profile(self) -> AgentProfiles:
+    def profile(self) -> AgentProfileT:
         return self._profile.model_copy()
 
     @property
@@ -167,14 +169,15 @@ class WorldAgent:
 
         return result
 
-    def _compose_messages(self,
+    @staticmethod
+    def _compose_messages(prompts: list[PromptMessage],
                           data: dict[str, Any],
                           ) -> list[LcMessage]:
         messages = []
 
         sandbox = SandboxedEnvironment()
 
-        for prompt in self.profile.prompts:
+        for prompt in prompts:
             rendered_content = sandbox.from_string(
                 prompt.content
             ).render(

@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     app_port: int = Field(
         9797,
         description='Port for the local server. Only relevant if using the start script.'
+    )
+    logging_level: Literal['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'] = Field(
+        'INFO',
+        description='Logging level for the application'
     )
 
     database_path: str = Field(

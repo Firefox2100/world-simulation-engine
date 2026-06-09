@@ -1,33 +1,24 @@
-from world_simulation_engine.misc.enums import LlmProvider, MessageRole
+from world_simulation_engine.misc.enums import LlmProvider
 from world_simulation_engine.model.connection_profile import LlmConnectionProfile
-from world_simulation_engine.model.prompt_message import PromptMessage
-from world_simulation_engine.model.agent_preset import OllamaAgentProfile
+from world_simulation_engine.model.agent_preset import OllamaAgentBackendConfiguration, AgentProfile
 from world_simulation_engine.service.world_agent.world_agent import WorldAgent
 
 
 class TestWorldAgent:
     def test_init(self):
         agent = WorldAgent(
-            profile=OllamaAgentProfile(
-                connection=LlmConnectionProfile(
-                    id=1,
-                    provider=LlmProvider.OLLAMA,
-                    base_url="http://127.0.0.1:11434",
-                ),
-                model="llama3.1:7b",
-                prompts=[
-                    PromptMessage(
-                        role=MessageRole.SYSTEM,
-                        content="You are a helpful assistant."
+            profile=AgentProfile(
+                backend_configuration=OllamaAgentBackendConfiguration(
+                    connection=LlmConnectionProfile(
+                        id=1,
+                        provider=LlmProvider.OLLAMA,
+                        base_url="http://127.0.0.1:11434",
                     ),
-                    PromptMessage(
-                        role=MessageRole.USER,
-                        content="Hello!"
-                    )
-                ],
+                    model="llama3.1:7b",
+                ),
             ),
         )
 
-        assert agent.profile.connection.provider == LlmProvider.OLLAMA
-        assert agent.profile.connection.base_url == "http://127.0.0.1:11434"
-        assert agent.profile.connection.api_key is None
+        assert agent.profile.backend_configuration.connection.provider == LlmProvider.OLLAMA
+        assert agent.profile.backend_configuration.connection.base_url == "http://127.0.0.1:11434"
+        assert agent.profile.backend_configuration.connection.api_key is None

@@ -1,12 +1,16 @@
 import json
-from typing import Any
-from langchain.messages import ToolMessage, HumanMessage
+from typing import Any, cast
+from langchain.messages import ToolMessage
+from pydantic import TypeAdapter
 
-from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task
+from world_simulation_engine.misc.consts import LOGGER
+from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
+    DirectorAgentProfile
 from .world_agent import WorldAgent
 from .models import DirectorOutput
 
-class DirectorAgent(WorldAgent):
+
+class DirectorAgent(WorldAgent[DirectorAgentProfile]):
     """
     Schedules the turn and decides which agents to activate.
     Does not build per-character briefings.
@@ -27,6 +31,8 @@ class DirectorAgent(WorldAgent):
         long_term_history_summary: str | None = None,
         previous_resolver_notes: str | None = None,
     ) -> DirectorOutput:
+        LOGGER.info("Planning turn %s for simulation %s", state.round_number + 1, simulation.id)
+
         base_data = {
             "simulation": simulation,
             "state": state,
@@ -39,24 +45,34 @@ class DirectorAgent(WorldAgent):
             "present_characters": present_characters,
             "relevant_tasks": relevant_tasks,
             "recalled_world_entries": recalled_world_entries,
-            "pending_generated_proposals": [],
         }
+        LOGGER.debug("Base data:\n%s", TypeAdapter(dict[str, Any]).dump_json(base_data, indent=2).decode())
 
-        initial_messages = self._compose_messages(data=base_data)
+        generation_messages = self._compose_messages(
+            prompts=self.profile.generation_prompt,
+            data=base_data,
+        )
+        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in generation_messages]))
 
         tool_results: list[dict[str, Any]] = []
-        working = list(initial_messages)
+        working = list(generation_messages)
 
         if generation_tools:
             model_with_tools = self.model.bind_tools(generation_tools)
             tools_by_name = {tool.name: tool for tool in generation_tools}
 
-            for _ in range(self.profile.max_tool_rounds):
+            for i in range(self.profile.max_tool_rounds):
                 ai_msg = await model_with_tools.ainvoke(working)
                 working.append(ai_msg)
+                LOGGER.debug(
+                    "Model returned potential tool calls:\n%s\n%s",
+                    ai_msg.content,
+                    getattr(ai_msg, "tool_calls", None) or []
+                )
 
                 tool_calls = getattr(ai_msg, "tool_calls", None) or []
                 if not tool_calls:
+                    LOGGER.info("Model stopped calling tools on turn %s", i + 1)
                     break
 
                 for call in tool_calls:
@@ -112,26 +128,20 @@ class DirectorAgent(WorldAgent):
                             name=name,
                         )
                     )
+                    LOGGER.debug("Tool result added to messages:\n%s", working[-1].content)
 
         final_data = {
             **base_data,
             "pending_generated_proposals": tool_results,
         }
 
-        final_messages = self._compose_messages(data=final_data)
-        final_messages.append(
-            HumanMessage(
-                content="""
-Produce the final DirectorOutput.
-
-Rules:
-- Do not leak private information.
-- If wait_for_user is true, active_character_ids must be empty.
-- Do not treat pending generated proposals as canonical.
-- Return only valid structured output.
-"""
-            )
+        final_messages = self._compose_messages(
+            prompts=self.profile.generation_prompt,
+            data=final_data,
         )
 
+        LOGGER.info("Generating final plan for turn %s of simulation %s", state.round_number + 1, simulation.id)
+        LOGGER.debug("Final messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in final_messages]))
+
         structured_model = self.model.with_structured_output(DirectorOutput)
-        return await structured_model.ainvoke(final_messages)
+        return cast(DirectorOutput, await structured_model.ainvoke(final_messages))
