@@ -27,6 +27,7 @@ class EmbeddingService:
                 model=profile.model,
                 dimensions=profile.dimensions,
                 base_url=profile.connection.base_url,
+                num_ctx=profile.context_window,
             )
         if profile.connection.provider == LlmProvider.OPENAI:
             from langchain_openai import OpenAIEmbeddings

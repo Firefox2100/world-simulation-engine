@@ -70,13 +70,6 @@ class PendingGeneratedProposal(BaseModel):
     trigger: str
     result: dict[str, Any]
     intended_use: str
-    resolver_policy: Literal[
-        "resolver_decides",
-        "commit_if_user_action_succeeds",
-        "commit_if_npc_action_succeeds",
-        "commit_if_discovered",
-        "discard_if_action_fails",
-    ] = "resolver_decides"
 
 
 class ActivationDecision(BaseModel):
@@ -84,7 +77,7 @@ class ActivationDecision(BaseModel):
     character_name: str
     activate: bool
     priority: int = Field(ge=0, le=100)
-    reason_for_system: str
+    reason: str
     private_motive_used: bool = False
 
 
@@ -92,13 +85,6 @@ class DirectorOutput(BaseModel):
     scene_focus: str
 
     activations: list[ActivationDecision]
-    active_character_ids: list[int]
-    inactive_character_ids: list[int]
-
-    pending_generated_proposals: list[PendingGeneratedProposal] = Field(default_factory=list)
-
-    resolver_instructions: list[str] = Field(default_factory=list)
-    narrator_constraints: list[str] = Field(default_factory=list)
 
     wait_for_user: bool = False
     reason_to_wait: str | None = None

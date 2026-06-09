@@ -20,3 +20,7 @@ class EmbeddingProfile(BaseModel):
         None,
         description="The dimensionality of the embedding. Some models support setting this.",
     )
+    context_window: Optional[int] = Field(
+        None,
+        description="The context window to use for the embedding. Some provider support setting this.",
+    )

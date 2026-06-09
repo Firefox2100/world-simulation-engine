@@ -7,7 +7,7 @@ from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
     DirectorAgentProfile
 from .world_agent import WorldAgent
-from .models import DirectorOutput
+from .models import DirectorOutput, PendingGeneratedProposal
 
 
 class DirectorAgent(WorldAgent[DirectorAgentProfile]):
@@ -30,7 +30,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
         recent_history_summary: str | None = None,
         long_term_history_summary: str | None = None,
         previous_resolver_notes: str | None = None,
-    ) -> DirectorOutput:
+    ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
         LOGGER.info("Planning turn %s for simulation %s", state.round_number + 1, simulation.id)
 
         base_data = {
@@ -105,7 +105,6 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                                         "trigger",
                                         "Generated pending content for this round.",
                                     ),
-                                    "resolver_policy": "resolver_decides",
                                 }
                             )
 
@@ -136,7 +135,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
         }
 
         final_messages = self._compose_messages(
-            prompts=self.profile.generation_prompt,
+            prompts=self.profile.planning_prompt,
             data=final_data,
         )
 
@@ -144,4 +143,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
         LOGGER.debug("Final messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in final_messages]))
 
         structured_model = self.model.with_structured_output(DirectorOutput)
-        return cast(DirectorOutput, await structured_model.ainvoke(final_messages))
+        return (
+            cast(DirectorOutput, await structured_model.ainvoke(final_messages)),
+            [PendingGeneratedProposal.model_validate(p) for p in tool_results]
+        )

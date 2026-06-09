@@ -73,7 +73,7 @@ class WorldEntryRecaller:
                 if not entry.embedding:
                     continue
 
-                semantic_entries.append((entry, _score(embeddings[0], entry.embedding)))
+                semantic_entries.append((entry, self._score(embeddings[0], entry.embedding)))
             elif entry.recall_type == WorldEntryRecallType.KEYWORD:
                 if not entry.keywords:
                     continue
@@ -84,7 +84,7 @@ class WorldEntryRecaller:
 
                     recall = False
                     for e in embeddings[1:]:
-                        if _score(e, k.embedding) > k.similarity:
+                        if self._score(e, k.embedding) > k.similarity:
                             recall = True
                             break
 

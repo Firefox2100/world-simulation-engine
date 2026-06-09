@@ -1,5 +1,6 @@
 from .agent_preset import OllamaAgentBackendConfiguration, OpenAiAgentBackendConfiguration, \
-    AgentBackendConfigurations, AgentProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, AgentPreset
+    AgentBackendConfigurations, AgentProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, \
+    MemoryAgentProfile, AgentPreset
 from .character import Character
 from .connection_profile import LlmConnectionProfile
 from .data_preset import DataPreset, ModelAttribute, ModelStat

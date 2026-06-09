@@ -1,3 +1,3 @@
 from .database import DatabaseService
 from .embedding import EmbeddingService
-from .world_agent import DirectorAgent, BriefingAgent, WorldGeneratorAgent
+from .world_agent import DirectorAgent, MemoryAgent, WorldGeneratorAgent

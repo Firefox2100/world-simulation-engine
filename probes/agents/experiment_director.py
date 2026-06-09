@@ -90,7 +90,7 @@ async def experiment_director_agent(director: DirectorAgent,
         entries=filtered_entries,
         language=example_simulation.language,
     )
-    result = await director.plan_turn(
+    output, proposals = await director.plan_turn(
         simulation=example_simulation,
         state=example_simulation_state,
         current_location=current_location,
@@ -99,10 +99,13 @@ async def experiment_director_agent(director: DirectorAgent,
         recalled_world_entries=recalled_entries,
         generation_tools=generator_tools,
     )
-    print(json.dumps(result.model_dump(), indent=2))
+    print("Director output:")
+    print(json.dumps(output.model_dump(), indent=2))
+    print("Pending generated proposals:")
+    print(json.dumps([p.model_dump() for p in proposals], indent=2))
 
     print("Testing direct generation with history")
-    result = await director.plan_turn(
+    output, proposals = await director.plan_turn(
         simulation=example_simulation,
         state=example_simulation_state,
         current_location=current_location,
@@ -129,7 +132,10 @@ async def experiment_director_agent(director: DirectorAgent,
                                 "is available at the bar and is socially positioned to answer or redirect "
                                 "Arthur's questions.",
     )
-    print(json.dumps(result.model_dump(), indent=2))
+    print("Director output:")
+    print(json.dumps(output.model_dump(), indent=2))
+    print("Pending generated proposals:")
+    print(json.dumps([p.model_dump() for p in proposals], indent=2))
 
     print("Testing generating items/entities")
     user_input = ("Arthur asks Clara for permission to inspect the Visitor's Room Ledger, then looks closely "
@@ -139,7 +145,7 @@ async def experiment_director_agent(director: DirectorAgent,
         entries=filtered_entries,
         language=example_simulation.language,
     )
-    result = await director.plan_turn(
+    output, proposals = await director.plan_turn(
         simulation=example_simulation,
         state=example_simulation_state,
         current_location=current_location,
@@ -160,7 +166,10 @@ async def experiment_director_agent(director: DirectorAgent,
         previous_resolver_notes="Arthur is close enough to request access to the ledger. Clara has not yet "
                                 "decided whether to help openly, help indirectly, or protect her own information.",
     )
-    print(json.dumps(result.model_dump(), indent=2))
+    print("Director output:")
+    print(json.dumps(output.model_dump(), indent=2))
+    print("Pending generated proposals:")
+    print(json.dumps([p.model_dump() for p in proposals], indent=2))
 
     print("Testing wait for user")
     user_input = "Arthur says nothing for the moment and watches the room."
@@ -169,7 +178,7 @@ async def experiment_director_agent(director: DirectorAgent,
         entries=filtered_entries,
         language=example_simulation.language,
     )
-    result = await director.plan_turn(
+    output, proposals = await director.plan_turn(
         simulation=example_simulation,
         state=example_simulation_state,
         current_location=current_location,
@@ -188,7 +197,10 @@ async def experiment_director_agent(director: DirectorAgent,
         previous_resolver_notes="No NPC has a forced immediate action. Clara may observe Arthur, but there is no "
                                 "urgent need to interrupt unless her curiosity overrides caution.",
     )
-    print(json.dumps(result.model_dump(), indent=2))
+    print("Director output:")
+    print(json.dumps(output.model_dump(), indent=2))
+    print("Pending generated proposals:")
+    print(json.dumps([p.model_dump() for p in proposals], indent=2))
 
     print("Testing generating location")
     user_input = "Arthur leaves the bar and asks Clara to show him Room 7."
@@ -197,7 +209,7 @@ async def experiment_director_agent(director: DirectorAgent,
         entries=filtered_entries,
         language=example_simulation.language,
     )
-    result = await director.plan_turn(
+    output, proposals = await director.plan_turn(
         simulation=example_simulation,
         state=example_simulation_state,
         current_location=current_location,
@@ -216,7 +228,10 @@ async def experiment_director_agent(director: DirectorAgent,
                                 "location ID 4 already describes Room 7, so generation should not be necessary "
                                 "unless the Director wants a newly discovered entity inside the room.",
     )
-    print(json.dumps(result.model_dump(), indent=2))
+    print("Director output:")
+    print(json.dumps(output.model_dump(), indent=2))
+    print("Pending generated proposals:")
+    print(json.dumps([p.model_dump() for p in proposals], indent=2))
 
     print("Testing continues generation")
     user_input = ""
@@ -225,7 +240,7 @@ async def experiment_director_agent(director: DirectorAgent,
         entries=filtered_entries,
         language=example_simulation.language,
     )
-    result = await director.plan_turn(
+    output, proposals = await director.plan_turn(
         simulation=example_simulation,
         state=example_simulation_state,
         current_location=current_location,
@@ -244,7 +259,10 @@ async def experiment_director_agent(director: DirectorAgent,
         previous_resolver_notes="The scene risks stalling unless Clara responds, another NPC intervenes, or an "
                                 "external disturbance changes the pressure in the room.",
     )
-    print(json.dumps(result.model_dump(), indent=2))
+    print("Director output:")
+    print(json.dumps(output.model_dump(), indent=2))
+    print("Pending generated proposals:")
+    print(json.dumps([p.model_dump() for p in proposals], indent=2))
 
 
 def main():

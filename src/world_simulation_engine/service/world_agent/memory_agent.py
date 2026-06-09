@@ -1,12 +1,14 @@
-from typing import Any
-from langchain.messages import HumanMessage
+from typing import Any, cast
+from pydantic import TypeAdapter
 
-from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task
+from world_simulation_engine.misc.consts import LOGGER
+from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
+    MemoryAgentProfile
 from .world_agent import WorldAgent
 from .models import BriefingOutput
 
 
-class BriefingAgent(WorldAgent):
+class MemoryAgent(WorldAgent[MemoryAgentProfile]):
     """
     Builds safe per-character briefings after Director activation.
     Input should already be filtered to public/character-safe data.
@@ -18,7 +20,6 @@ class BriefingAgent(WorldAgent):
         state: SimulationState,
         current_location: Location,
         characters: list[Character],
-        character_ids: list[int],
         tasks: list[Task],
         world_entries: list[WorldEntry],
         pending_generated_proposals: list[dict[str, Any]] | None = None,
@@ -28,12 +29,13 @@ class BriefingAgent(WorldAgent):
         long_term_history_summary: str | None = None,
         previous_resolver_notes: str | None = None,
     ) -> BriefingOutput:
+        LOGGER.info("Generating briefings for turn %s of simulation %s", state.round_number + 1, simulation.id)
+
         data = {
             "simulation": simulation,
             "state": state,
             "location": current_location,
             "characters": characters,
-            "character_ids": character_ids,
             "tasks": tasks,
             "world_entries": world_entries,
             "pending_generated_proposals": pending_generated_proposals or [],
@@ -43,23 +45,13 @@ class BriefingAgent(WorldAgent):
             "long_term_history_summary": long_term_history_summary,
             "previous_resolver_notes": previous_resolver_notes,
         }
+        LOGGER.debug("Base data:\n%s", TypeAdapter(dict[str, Any]).dump_json(data, indent=2).decode())
 
-        messages = self._compose_messages(data=data)
-
-        messages.append(
-            HumanMessage(
-                content="""
-Produce the final BriefingOutput.
-
-Rules:
-- Build one briefing per requested active character where possible.
-- Use only supplied safe context.
-- Do not invent private knowledge.
-- Do not write exact dialogue.
-- Return only valid structured output.
-"""
-            )
+        messages = self._compose_messages(
+            prompts=self.profile.briefing_prompt,
+            data=data,
         )
+        LOGGER.debug("Messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         structured_model = self.model.with_structured_output(BriefingOutput)
-        return await structured_model.ainvoke(messages)
+        return cast(BriefingOutput, await structured_model.ainvoke(messages))

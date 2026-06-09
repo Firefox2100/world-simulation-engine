@@ -2,14 +2,14 @@ import os
 
 from world_simulation_engine.misc.enums import LlmProvider, MessageRole
 from world_simulation_engine.model import LlmConnectionProfile, OllamaAgentBackendConfiguration, PromptMessage, \
-    EmbeddingProfile, DirectorAgentProfile, WorldGeneratorAgentProfile
+    EmbeddingProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, MemoryAgentProfile
 from world_simulation_engine.service import EmbeddingService, WorldGeneratorAgent, DirectorAgent, \
-    BriefingAgent
+    MemoryAgent
 
 
-OLLAMA_URL = os.getenv("EXP_OLLAMA_URL")
-OLLAMA_MODEL = os.getenv("EXP_OLLAMA_MODEL")
-OLLAMA_MODEL_EMBED = os.getenv("EXP_OLLAMA_MODEL_EMBED")
+OLLAMA_URL = str(os.getenv("EXP_OLLAMA_URL"))
+OLLAMA_MODEL = str(os.getenv("EXP_OLLAMA_MODEL"))
+OLLAMA_MODEL_EMBED = str(os.getenv("EXP_OLLAMA_MODEL_EMBED"))
 
 
 embedding_service = EmbeddingService(
@@ -21,6 +21,7 @@ embedding_service = EmbeddingService(
         ),
         model=OLLAMA_MODEL_EMBED,
         dimensions=1024,
+        context_window=8192,
     ),
 )
 
@@ -473,7 +474,8 @@ Scheduling rules:
 - Do not activate user-controlled characters unless explicitly delegated by user input.
 - If wait_for_user=true, active_character_ids must be empty.
 - Priority uses 0-100, where 100 is most urgent.
-- If an NPC has already acted and previous resolver notes say the scene is waiting for user response, prefer wait_for_user=true.
+- If an NPC has already acted and previous resolver notes say the scene is waiting for user response,
+  prefer wait_for_user=true.
 - If a character is absent from the current scene, do not activate them.
 
 Pending proposal rules:
@@ -481,7 +483,16 @@ Pending proposal rules:
 - They may be referenced only as pending content for the resolver.
 - Do not treat them as facts.
 
-Return only valid DirectorOutput.
+Return only valid DirectorOutput. The output should contain:
+- Scene focus: what this scene should focus on, a directive guidance for the characters to act upon
+- Activations: a list of character activation decisions with reasons and priority. If the decision is based
+  their private motive, it should specify. The priority is 0-100, where 100 is most urgent. It indicates
+  how likely the actor is likely to act, and how fast. The priority is not a guarantee that the actor will
+  actually act or act first, just a tendency. It should also include a reason for the decision.
+- If a character should not be activated, still include them in the activations list, but mark their activation
+  as false, priority as 0, and provide the reason for not activating.
+- Whether to wait for the user, and the reason to wait for user, instead of progressing the scene.
+- Extra notes to mark some important decisions or reasons for audit. Can be empty.
 """
             ),
             PromptMessage(
@@ -595,17 +606,19 @@ Do not activate user-controlled characters unless explicitly delegated.
     ),
 )
 
-briefing_agent = BriefingAgent(
-    profile=OllamaAgentBackendConfiguration(
-        connection=LlmConnectionProfile(
-            id=1,
-            provider=LlmProvider.OLLAMA,
-            base_url=OLLAMA_URL,
+memory_agent = MemoryAgent(
+    profile=MemoryAgentProfile(
+        backend_configuration=OllamaAgentBackendConfiguration(
+            connection=LlmConnectionProfile(
+                id=1,
+                provider=LlmProvider.OLLAMA,
+                base_url=OLLAMA_URL,
+            ),
+            model=OLLAMA_MODEL,
+            temperature=0.4,
+            context_window=65536,
         ),
-        model=OLLAMA_MODEL,
-        temperature=0.4,
-        context_window=65536,
-        prompts=[
+        briefing_prompt=[
             PromptMessage(
                 role=MessageRole.SYSTEM,
                 content="""
@@ -626,11 +639,9 @@ Privacy rules:
 - The supplied context has already been filtered.
 - Do not infer hidden motives beyond the supplied safe data.
 - Do not include information belonging to another character unless it is public or explicitly supplied as safe.
-- Do not include Director private activation reasons unless they are present in the safe input.
 
 Briefing rules:
-- Build one briefing per requested character ID.
-- If a requested character is missing from supplied characters, omit it and note the omission.
+- Build one briefing per requested character. Each character must have a briefing.
 - Keep each briefing compact but complete enough that the character agent does not need chat history.
 - The briefing should orient the character to the scene, recent situation, known facts, immediate pressure, and possible focus.
 - Do not write exact dialogue.
@@ -738,9 +749,9 @@ None.
 
 # Required output
 
-Build safe briefings for the requested character IDs only.
+Build safe briefings for the requested characters only. Produce the final BriefingOutput.
 """
-            )
+            ),
         ],
     ),
 )

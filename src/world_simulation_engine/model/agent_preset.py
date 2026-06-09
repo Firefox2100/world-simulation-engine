@@ -153,6 +153,13 @@ class WorldGeneratorAgentProfile(AgentProfile):
     )
 
 
+class MemoryAgentProfile(AgentProfile):
+    briefing_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a briefing for character actions."
+    )
+
+
 class AgentPreset(BaseModel):
     """
     An agent preset is a set of user-supplied agent configurations for each agent, persisted in the database
