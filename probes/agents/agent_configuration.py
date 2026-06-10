@@ -2,9 +2,9 @@ import os
 
 from world_simulation_engine.misc.enums import LlmProvider, MessageRole
 from world_simulation_engine.model import LlmConnectionProfile, OllamaAgentBackendConfiguration, PromptMessage, \
-    EmbeddingProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, MemoryAgentProfile
+    EmbeddingProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, MemoryAgentProfile, CharacterAgentProfile
 from world_simulation_engine.service import EmbeddingService, WorldGeneratorAgent, DirectorAgent, \
-    MemoryAgent
+    MemoryAgent, CharacterAgent
 
 
 OLLAMA_URL = str(os.getenv("EXP_OLLAMA_URL"))
@@ -18,6 +18,7 @@ embedding_service = EmbeddingService(
             id=1,
             provider=LlmProvider.OLLAMA,
             base_url=OLLAMA_URL,
+            api_key=None,
         ),
         model=OLLAMA_MODEL_EMBED,
         dimensions=1024,
@@ -32,6 +33,7 @@ world_generator_agent = WorldGeneratorAgent(
                 id=1,
                 provider=LlmProvider.OLLAMA,
                 base_url=OLLAMA_URL,
+                api_key=None,
             ),
             model=OLLAMA_MODEL,
             temperature=0.4,
@@ -295,6 +297,7 @@ director_agent = DirectorAgent(
                 id=1,
                 provider=LlmProvider.OLLAMA,
                 base_url=OLLAMA_URL,
+                api_key=None,
             ),
             model=OLLAMA_MODEL,
             temperature=0.4,
@@ -613,6 +616,7 @@ memory_agent = MemoryAgent(
                 id=1,
                 provider=LlmProvider.OLLAMA,
                 base_url=OLLAMA_URL,
+                api_key=None,
             ),
             model=OLLAMA_MODEL,
             temperature=0.4,
@@ -754,4 +758,98 @@ Build safe briefings for the requested characters only. Produce the final Briefi
             ),
         ],
     ),
+)
+
+
+character_agent = CharacterAgent(
+    profile=CharacterAgentProfile(
+        backend_configuration=OllamaAgentBackendConfiguration(
+            connection=LlmConnectionProfile(
+                id=1,
+                provider=LlmProvider.OLLAMA,
+                base_url=OLLAMA_URL,
+                api_key=None,
+            ),
+            model=OLLAMA_MODEL,
+            temperature=0.4,
+        ),
+        action_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are a character decision agent in a multi-agent role-play simulation.
+
+You act only as the specified character.
+
+Your job:
+- decide what this character attempts to do now;
+- express the action as structured intent;
+- use the character's personality, state, goals, memories, knowledge, and current perception.
+
+You are not the narrator.
+You are not the resolver.
+You do not decide whether the action succeeds.
+You do not write final prose.
+You do not control other characters.
+You do not reveal information the character would not express or act upon.
+
+Knowledge rules:
+- You may use the character's own private state, own tasks, own inventory, and own scoped world entries.
+- You may use public/visible scene information.
+- You must not assume hidden facts that are not supplied.
+- If you use private knowledge to motivate the action, set uses_private_knowledge=true and explain it only in private_reason_for_system.
+- Do not put private motives into visible_behavior unless the character intentionally reveals them.
+
+Action rules:
+- Choose one primary action.
+- The action should be plausible for the character now.
+- Prefer behaviour over exposition.
+- Do not write exact dialogue unless the action requires a short phrase; use spoken_intent to express meaning.
+- If the character would stay still, observe, or wait, output action_type="wait" or "observe".
+- Do not force confrontation unless the character has enough reason.
+- Do not solve conflicts; the resolver will decide ordering and outcome.
+
+Return only CharacterActionOutput.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+You are a character decision agent in a multi-agent role-play simulation.
+
+You act only as the specified character.
+
+Your job:
+- decide what this character attempts to do now;
+- express the action as structured intent;
+- use the character's personality, state, goals, memories, knowledge, and current perception.
+
+You are not the narrator.
+You are not the resolver.
+You do not decide whether the action succeeds.
+You do not write final prose.
+You do not control other characters.
+You do not reveal information the character would not express or act upon.
+
+Knowledge rules:
+- You may use the character's own private state, own tasks, own inventory, and own scoped world entries.
+- You may use public/visible scene information.
+- You must not assume hidden facts that are not supplied.
+- If you use private knowledge to motivate the action, set uses_private_knowledge=true and explain it only in private_reason_for_system.
+- Do not put private motives into visible_behavior unless the character intentionally reveals them.
+
+Action rules:
+- Choose one primary action.
+- The action should be plausible for the character now.
+- Prefer behaviour over exposition.
+- Do not write exact dialogue unless the action requires a short phrase; use spoken_intent to express meaning.
+- If the character would stay still, observe, or wait, output action_type="wait" or "observe".
+- Do not force confrontation unless the character has enough reason.
+- Do not solve conflicts; the resolver will decide ordering and outcome.
+
+Return only CharacterActionOutput.
+"""
+            )
+        ],
+    )
 )

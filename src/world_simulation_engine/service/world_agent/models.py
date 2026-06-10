@@ -113,3 +113,45 @@ class CharacterBriefing(BaseModel):
 class BriefingOutput(BaseModel):
     briefings: list[CharacterBriefing]
     notes: str = ""
+
+
+class CharacterActionOutput(BaseModel):
+    character_id: int
+    character_name: str
+
+    intent: str
+    action_type: Literal[
+        "speak",
+        "move",
+        "inspect",
+        "manipulate_entity",
+        "use_item",
+        "give_item",
+        "take_item",
+        "observe",
+        "wait",
+        "leave_scene",
+        "custom",
+    ]
+
+    target_character_ids: list[int] = Field(default_factory=list)
+    target_entity_ids: list[int] = Field(default_factory=list)
+    target_location_id: int | None = None
+    target_item_ids: list[int] = Field(default_factory=list)
+
+    method: str
+    visible_behavior: str
+
+    spoken_intent: str | None = None
+
+    urgency: int = Field(ge=0, le=100)
+    persistence: int = Field(ge=0, le=100)
+
+    expected_outcome: str
+    fallback_if_blocked: str | None = None
+
+    uses_private_knowledge: bool = False
+    private_reason_for_system: str | None = None
+
+    constraints_for_resolver: list[str] = Field(default_factory=list)
+    notes: str = ""

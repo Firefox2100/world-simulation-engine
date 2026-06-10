@@ -160,6 +160,13 @@ class MemoryAgentProfile(AgentProfile):
     )
 
 
+class CharacterAgentProfile(AgentProfile):
+    action_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate an action for a character."
+    )
+
+
 class AgentPreset(BaseModel):
     """
     An agent preset is a set of user-supplied agent configurations for each agent, persisted in the database
