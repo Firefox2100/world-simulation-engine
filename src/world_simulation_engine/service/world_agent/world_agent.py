@@ -5,7 +5,7 @@ from jinja2.sandbox import SandboxedEnvironment
 
 from world_simulation_engine.misc.enums import LlmProvider, MessageRole, SystemMessagePolicy
 from world_simulation_engine.model import AgentProfile, OllamaAgentBackendConfiguration, \
-    OpenAiAgentBackendConfiguration, PromptMessage
+    OpenAiAgentBackendConfiguration, PromptMessage, LlmConnectionProfile
 
 if TYPE_CHECKING:
     from langchain_ollama import ChatOllama
@@ -21,38 +21,38 @@ AgentProfileT = TypeVar("AgentProfileT", bound="AgentProfile")
 class WorldAgent(Generic[AgentProfileT]):
     def __init__(self,
                  profile: AgentProfileT,
+                 connection: LlmConnectionProfile,
                  ):
         self._profile = profile
+        self._connection = connection
         self._model: Union["ChatOpenAI", "ChatOllama", None] = None
 
-    @staticmethod
-    def _create_model(profile: AgentProfileT) -> Union["ChatOpenAI", "ChatOllama"]:
-        if profile.backend_configuration.connection is None:
-            raise ValueError("Connection profile is required for creating a model.")
-
-        if profile.backend_configuration.connection.provider == LlmProvider.OLLAMA:
-            if not isinstance(profile.backend_configuration, OllamaAgentBackendConfiguration):
-                raise ValueError(f"Profile class mismatch: connection profile is Ollama while profile is {type(profile)}")
+    def _create_model(self) -> Union["ChatOpenAI", "ChatOllama"]:
+        if self._connection.provider == LlmProvider.OLLAMA:
+            if not isinstance(self._profile.backend_configuration, OllamaAgentBackendConfiguration):
+                raise ValueError(
+                    f"Profile class mismatch: connection profile is Ollama while profile is {type(self._profile)}"
+                )
 
             from langchain_ollama import ChatOllama
 
             return ChatOllama(
-                model=profile.backend_configuration.model,
-                reasoning=profile.backend_configuration.reasoning,
-                mirostat=profile.backend_configuration.mirostat,
-                mirostat_eta=profile.backend_configuration.mirostat_eta,
-                mirostat_tau=profile.backend_configuration.mirostat_tau,
-                num_ctx=profile.backend_configuration.context_window,
-                num_predict=profile.backend_configuration.num_predict,
-                repeat_last_n=profile.backend_configuration.repeat_penalty_window,
-                repeat_penalty=profile.backend_configuration.repeat_penalty,
-                temperature=profile.backend_configuration.temperature,
-                seed=profile.backend_configuration.seed,
-                stop=profile.backend_configuration.stop_tokens,
-                base_url=profile.backend_configuration.connection.base_url,
+                model=self._profile.backend_configuration.model,
+                reasoning=self._profile.backend_configuration.reasoning,
+                mirostat=self._profile.backend_configuration.mirostat,
+                mirostat_eta=self._profile.backend_configuration.mirostat_eta,
+                mirostat_tau=self._profile.backend_configuration.mirostat_tau,
+                num_ctx=self._profile.backend_configuration.context_window,
+                num_predict=self._profile.backend_configuration.num_predict,
+                repeat_last_n=self._profile.backend_configuration.repeat_penalty_window,
+                repeat_penalty=self._profile.backend_configuration.repeat_penalty,
+                temperature=self._profile.backend_configuration.temperature,
+                seed=self._profile.backend_configuration.seed,
+                stop=self._profile.backend_configuration.stop_tokens,
+                base_url=self._connection.base_url,
             )
 
-        raise ValueError(f"Unsupported provider: {profile.backend_configuration.connection.provider}")
+        raise ValueError(f"Unsupported provider: {self._connection.provider}")
 
     @property
     def profile(self) -> AgentProfileT:
@@ -61,7 +61,7 @@ class WorldAgent(Generic[AgentProfileT]):
     @property
     def model(self) -> Union["ChatOpenAI", "ChatOllama"]:
         if self._model is None:
-            self._model = self._create_model(self._profile)
+            self._model = self._create_model()
 
         if self._model is None:
             raise ValueError("Model is not initialized.")

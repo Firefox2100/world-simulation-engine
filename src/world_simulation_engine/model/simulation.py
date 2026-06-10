@@ -1,5 +1,7 @@
+from typing import Optional
 from pydantic import BaseModel, Field
 
+from .agent_preset import AgentPreset
 from .data_preset import DataPreset
 
 
@@ -21,6 +23,10 @@ class Simulation(BaseModel):
         description="The description of the simulation.",
     )
 
+    agent_preset: AgentPreset = Field(
+        ...,
+        description="The agent preset for the simulation.",
+    )
     data_preset: DataPreset = Field(
         ...,
         description="The data preset for this simulation.",
@@ -44,9 +50,9 @@ class SimulationState(BaseModel):
         description="The scene ID that is currently being described.",
     )
 
-    round_number: int = Field(
+    turn_number: int = Field(
         ...,
-        description="The current round number of the simulation.",
+        description="The current turn number of the simulation.",
     )
     state: str = Field(
         ...,
@@ -56,4 +62,12 @@ class SimulationState(BaseModel):
         ...,
         description="The current time in the simulation. Using a string to remain compatible for different "
                     "timing formats.",
+    )
+    recent_history_summary: Optional[str] = Field(
+        None,
+        description="The recent history summary of the simulation.",
+    )
+    long_term_history_summary: Optional[str] = Field(
+        None,
+        description="The long term history summary of the simulation.",
     )

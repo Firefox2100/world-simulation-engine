@@ -12,29 +12,28 @@ OLLAMA_MODEL = str(os.getenv("EXP_OLLAMA_MODEL"))
 OLLAMA_MODEL_EMBED = str(os.getenv("EXP_OLLAMA_MODEL_EMBED"))
 
 
+llm_connection_profile = LlmConnectionProfile(
+    id=1,
+    provider=LlmProvider.OLLAMA,
+    base_url=OLLAMA_URL,
+    api_key=None,
+)
+
+
 embedding_service = EmbeddingService(
     profile=EmbeddingProfile(
-        connection=LlmConnectionProfile(
-            id=1,
-            provider=LlmProvider.OLLAMA,
-            base_url=OLLAMA_URL,
-            api_key=None,
-        ),
+        connection=1,
         model=OLLAMA_MODEL_EMBED,
         dimensions=1024,
         context_window=8192,
     ),
+    connection=llm_connection_profile,
 )
 
 world_generator_agent = WorldGeneratorAgent(
     profile=WorldGeneratorAgentProfile(
         backend_configuration=OllamaAgentBackendConfiguration(
-            connection=LlmConnectionProfile(
-                id=1,
-                provider=LlmProvider.OLLAMA,
-                base_url=OLLAMA_URL,
-                api_key=None,
-            ),
+            connection=1,
             model=OLLAMA_MODEL,
             temperature=0.4,
             context_window=65536,
@@ -288,17 +287,13 @@ Generate exactly one ProposedWorldEntry.
             ),
         ],
     ),
+    connection=llm_connection_profile,
 )
 
 director_agent = DirectorAgent(
     profile=DirectorAgentProfile(
         backend_configuration=OllamaAgentBackendConfiguration(
-            connection=LlmConnectionProfile(
-                id=1,
-                provider=LlmProvider.OLLAMA,
-                base_url=OLLAMA_URL,
-                api_key=None,
-            ),
+            connection=1,
             model=OLLAMA_MODEL,
             temperature=0.4,
             context_window=65536,
@@ -380,10 +375,10 @@ State summary:
 {{ data.last_narration or "No previous narration." }}
 
 ## Recent history
-{{ data.recent_history_summary or "No recent history summary." }}
+{{ data.state.recent_history_summary or "No recent history summary." }}
 
 ## Long-term history
-{{ data.long_term_history_summary or "No long-term history summary." }}
+{{ data.state.long_term_history_summary or "No long-term history summary." }}
 
 ## Previous resolver notes
 {{ data.previous_resolver_notes or "No previous resolver notes." }}
@@ -523,10 +518,10 @@ State summary:
 {{ data.last_narration or "No previous narration." }}
 
 ## Recent history
-{{ data.recent_history_summary or "No recent history summary." }}
+{{ data.state.recent_history_summary or "No recent history summary." }}
 
 ## Long-term history
-{{ data.long_term_history_summary or "No long-term history summary." }}
+{{ data.state.long_term_history_summary or "No long-term history summary." }}
 
 ## Previous resolver notes
 {{ data.previous_resolver_notes or "No previous resolver notes." }}
@@ -607,17 +602,13 @@ Do not activate user-controlled characters unless explicitly delegated.
             )
         ]
     ),
+    connection=llm_connection_profile,
 )
 
 memory_agent = MemoryAgent(
     profile=MemoryAgentProfile(
         backend_configuration=OllamaAgentBackendConfiguration(
-            connection=LlmConnectionProfile(
-                id=1,
-                provider=LlmProvider.OLLAMA,
-                base_url=OLLAMA_URL,
-                api_key=None,
-            ),
+            connection=1,
             model=OLLAMA_MODEL,
             temperature=0.4,
             context_window=65536,
@@ -758,18 +749,14 @@ Build safe briefings for the requested characters only. Produce the final Briefi
             ),
         ],
     ),
+    connection=llm_connection_profile,
 )
 
 
 character_agent = CharacterAgent(
     profile=CharacterAgentProfile(
         backend_configuration=OllamaAgentBackendConfiguration(
-            connection=LlmConnectionProfile(
-                id=1,
-                provider=LlmProvider.OLLAMA,
-                base_url=OLLAMA_URL,
-                api_key=None,
-            ),
+            connection=1,
             model=OLLAMA_MODEL,
             temperature=0.4,
         ),
@@ -851,5 +838,6 @@ Return only CharacterActionOutput.
 """
             )
         ],
-    )
+    ),
+    connection=llm_connection_profile,
 )

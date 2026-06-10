@@ -1,7 +1,9 @@
 from world_simulation_engine.misc.enums import EquipmentStatus, FactionRelationshipEntity, NarrationPermission, \
     WorldEntryRecallType, WorldEntryVisibility, TaskType, TaskStatus, TaskPriority
 from world_simulation_engine.model import Character, DataPreset, Entity, Equipment, FactionRelationship, Faction, \
-    Item, Location, ModelAttribute, Simulation, SimulationState, Task, WorldEntry, WorldEntryRecallKeyword
+    Item, Location, ModelAttribute, Simulation, SimulationState, Task, WorldEntry, WorldEntryRecallKeyword, \
+    AgentPreset, DirectorAgentProfile, WorldGeneratorAgentProfile, OllamaAgentBackendConfiguration, \
+    MemoryAgentProfile, CharacterAgentProfile
 
 
 example_simulation = Simulation(
@@ -12,6 +14,40 @@ example_simulation = Simulation(
                 "Three weeks ago, the observatory's director vanished. Officially, he left without notice. "
                 "However, nobody believes that. The player arrives in town during the annual Founder's "
                 "Festival, where tensions between residents are beginning to surface.",
+    agent_preset=AgentPreset(
+        director=DirectorAgentProfile(
+            backend_configuration=OllamaAgentBackendConfiguration(
+                connection=1,
+                model="",
+            ),
+            generation_prompt=[],
+            planning_prompt=[],
+        ),
+        memory=MemoryAgentProfile(
+            backend_configuration=OllamaAgentBackendConfiguration(
+                connection=1,
+                model="",
+            ),
+            briefing_prompt=[],
+        ),
+        character=CharacterAgentProfile(
+            backend_configuration=OllamaAgentBackendConfiguration(
+                connection=1,
+                model="",
+            ),
+            action_prompt=[],
+        ),
+        world_generator=WorldGeneratorAgentProfile(
+            backend_configuration=OllamaAgentBackendConfiguration(
+                connection=1,
+                model="",
+            ),
+            location_generation_prompt=[],
+            item_generation_prompt=[],
+            entity_generation_prompt=[],
+            world_entry_generation_prompt=[],
+        ),
+    ),
     data_preset=DataPreset(
         character_attributes=[
             ModelAttribute(
@@ -36,7 +72,7 @@ example_simulation = Simulation(
 example_simulation_state = SimulationState(
     id=1,
     scene=3,
-    round_number=0,
+    turn_number=0,
     time_label="Founder's Festival evening, three weeks after Director Harlan's disappearance",
     state="Arthur Moore has arrived at the Iron Stag Inn during the Founder's Festival. Clara Whitlock is behind "
           "the bar, managing guests while quietly observing Arthur. The inn is busy with locals and festival "

@@ -3,9 +3,8 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Location, Character, WorldEntry, Task, Item, Equipment, \
-    CharacterAgentProfile
+    CharacterAgentProfile, CharacterBriefing, PendingGeneratedProposal, CharacterActionOutput
 from .world_agent import WorldAgent
-from .models import CharacterBriefing, PendingGeneratedProposal, CharacterActionOutput
 
 
 class CharacterAgent(WorldAgent[CharacterAgentProfile]):

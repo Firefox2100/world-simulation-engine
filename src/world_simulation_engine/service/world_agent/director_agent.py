@@ -5,9 +5,8 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
-    DirectorAgentProfile
+    DirectorAgentProfile, DirectorOutput, PendingGeneratedProposal
 from .world_agent import WorldAgent
-from .models import DirectorOutput, PendingGeneratedProposal
 
 
 class DirectorAgent(WorldAgent[DirectorAgentProfile]):
@@ -27,19 +26,15 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
         generation_tools: list,
         user_input: str | None = None,
         last_narration: str | None = None,
-        recent_history_summary: str | None = None,
-        long_term_history_summary: str | None = None,
         previous_resolver_notes: str | None = None,
     ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
-        LOGGER.info("Planning turn %s for simulation %s", state.round_number + 1, simulation.id)
+        LOGGER.info("Planning turn %s for simulation %s", state.turn_number + 1, simulation.id)
 
         base_data = {
             "simulation": simulation,
             "state": state,
             "last_narration": last_narration,
             "user_input": user_input,
-            "recent_history_summary": recent_history_summary,
-            "long_term_history_summary": long_term_history_summary,
             "previous_resolver_notes": previous_resolver_notes,
             "location": current_location,
             "present_characters": present_characters,
@@ -139,7 +134,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             data=final_data,
         )
 
-        LOGGER.info("Generating final plan for turn %s of simulation %s", state.round_number + 1, simulation.id)
+        LOGGER.info("Generating final plan for turn %s of simulation %s", state.turn_number + 1, simulation.id)
         LOGGER.debug("Final messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in final_messages]))
 
         structured_model = self.model.with_structured_output(DirectorOutput)

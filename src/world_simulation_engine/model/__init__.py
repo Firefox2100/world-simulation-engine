@@ -11,4 +11,7 @@ from .location import Location, Entity
 from .prompt_message import PromptMessage
 from .simulation import Simulation, SimulationState
 from .task import Task
+from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, ProposedLocation, \
+    PendingGeneratedProposal, ActivationDecision, DirectorOutput, CharacterBriefing, BriefingOutput, \
+    CharacterActionOutput, TurnRecord
 from .world_entry import WorldEntry, WorldEntryRecallKeyword

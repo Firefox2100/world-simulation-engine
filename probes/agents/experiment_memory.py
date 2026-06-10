@@ -1,9 +1,8 @@
 import asyncio
 import json
 
-from world_simulation_engine.model import WorldEntry, Task
 from world_simulation_engine.service import MemoryAgent, EmbeddingService
-from world_simulation_engine.service.world_agent.models import DirectorOutput, ActivationDecision
+from world_simulation_engine.model import DirectorOutput, ActivationDecision
 from world_simulation_engine.component import WorldEntryRecaller
 
 from example_simulation import example_world_entries, example_simulation_state, example_characters, \

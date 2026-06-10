@@ -3,9 +3,8 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
-    MemoryAgentProfile
+    MemoryAgentProfile, BriefingOutput
 from .world_agent import WorldAgent
-from .models import BriefingOutput
 
 
 class MemoryAgent(WorldAgent[MemoryAgentProfile]):
@@ -29,7 +28,7 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
         long_term_history_summary: str | None = None,
         previous_resolver_notes: str | None = None,
     ) -> BriefingOutput:
-        LOGGER.info("Generating briefings for turn %s of simulation %s", state.round_number + 1, simulation.id)
+        LOGGER.info("Generating briefings for turn %s of simulation %s", state.turn_number + 1, simulation.id)
 
         data = {
             "simulation": simulation,

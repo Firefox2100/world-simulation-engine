@@ -4,8 +4,7 @@ from langchain.tools import tool
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import WorldGeneratorAgentProfile, Simulation, SimulationState, Location, \
-    Character, Entity, Item
-from .models import ProposedLocation, ProposedItem, ProposedEntity, ProposedWorldEntry
+    Character, Entity, Item, ProposedLocation, ProposedItem, ProposedEntity, ProposedWorldEntry
 from .world_agent import WorldAgent
 
 
@@ -26,7 +25,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             "generation_context": {
                 "simulation_name": simulation.name,
                 "simulation_description": simulation.description,
-                "round_number": state.round_number,
+                "round_number": state.turn_number,
                 "time_label": state.time_label,
                 "state_summary": state.state,
                 "current_location": current_location.model_dump(),

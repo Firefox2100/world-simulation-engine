@@ -8,9 +8,9 @@ class EmbeddingProfile(BaseModel):
     """
     An embedding profile is a configuration to use a specific embedding model with a provider.
     """
-    connection: Optional[LlmConnectionProfile] = Field(
+    connection: Optional[int] = Field(
         None,
-        description="The connection profile to use. This may be None when exported/imported.",
+        description="The connection profile ID to use. This may be None when exported/imported.",
     )
     model: str = Field(
         ...,

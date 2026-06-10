@@ -2,7 +2,6 @@ from typing import Optional, Union
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import SystemMessagePolicy
-from .connection_profile import LlmConnectionProfile
 from .prompt_message import PromptMessage
 
 
@@ -11,9 +10,9 @@ class AgentBackendConfiguration(BaseModel):
     An agent configuration profile for a specific agent, configuring the connection (backend) and parameters
     that are specific to the agent's LLM usage.
     """
-    connection: Optional[LlmConnectionProfile] = Field(
+    connection: Optional[int] = Field(
         None,
-        description="The connection profile to use. This may be None when exported/imported.",
+        description="The connection profile ID to use. This may be None when exported/imported.",
     )
 
     model: str = Field(
@@ -172,13 +171,17 @@ class AgentPreset(BaseModel):
     An agent preset is a set of user-supplied agent configurations for each agent, persisted in the database
     and bound to a game session / world.
     """
-    id: int = Field(
-        ...,
-        description="The database generated ID of the preset.",
-    )
     director: DirectorAgentProfile = Field(
         ...,
         description="The agent configuration profiles for the director.",
+    )
+    memory: MemoryAgentProfile = Field(
+        ...,
+        description="The agent configuration profiles for the memory agent.",
+    )
+    character: CharacterAgentProfile = Field(
+        ...,
+        description="The agent configuration profiles for the character agent.",
     )
     world_generator: WorldGeneratorAgentProfile = Field(
         ...,

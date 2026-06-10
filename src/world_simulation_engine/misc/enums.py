@@ -1,6 +1,13 @@
 from enum import StrEnum
 
 
+class CommitPolicy(StrEnum):
+    COMMIT_IF_DISCOVERED = "commit_if_discovered"
+    COMMIT_IF_SUCCEEDED = "commit_if_succeeded"
+    COMMIT_HIDDEN_IF_NEEDED = "commit_hidden_if_needed"
+    RESOLVER_DECIDES = "resolver_decides"
+
+
 class EquipmentStatus(StrEnum):
     EQUIPPED = "equipped"
     IDLE = "idle"
@@ -49,6 +56,12 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     ABANDONED = "abandoned"
+
+
+class TurnType(StrEnum):
+    USER_INPUT = "user_input"
+    AI_RESPONSE = "ai_response"
+    AI_CONTINUE = "ai_continue"
 
 
 class TaskType(StrEnum):
