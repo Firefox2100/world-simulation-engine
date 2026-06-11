@@ -3,7 +3,7 @@ from world_simulation_engine.misc.enums import EquipmentStatus, FactionRelations
 from world_simulation_engine.model import Character, DataPreset, Entity, Equipment, FactionRelationship, Faction, \
     Item, Location, ModelAttribute, Simulation, SimulationState, Task, WorldEntry, WorldEntryRecallKeyword, \
     AgentPreset, DirectorAgentProfile, WorldGeneratorAgentProfile, OllamaAgentBackendConfiguration, \
-    MemoryAgentProfile, CharacterAgentProfile
+    MemoryAgentProfile, CharacterAgentProfile, EmbeddingProfile
 
 
 example_simulation = Simulation(
@@ -64,6 +64,10 @@ example_simulation = Simulation(
                               "should remain relevant after multiple rounds, and may be acquired or used by "
                               "characters."
         }
+    ),
+    embedding_profile=EmbeddingProfile(
+        connection=1,
+        model="",
     ),
     language="en"
 )

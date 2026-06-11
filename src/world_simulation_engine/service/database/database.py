@@ -1,5 +1,6 @@
 from pathlib import Path
 from sqlalchemy import event
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from .tables import Base
@@ -16,9 +17,19 @@ from .task import TaskRepository
 class DatabaseService:
     def __init__(self,
                  database_path: str | Path = "data/database.db",
+                 is_static: bool = False,
                  ):
         self._database_path = Path(database_path)
-        self._engine = create_async_engine(f"sqlite+aiosqlite:///{self._database_path}")
+        self._is_static = is_static
+
+        if not is_static:
+            self._engine = create_async_engine(f"sqlite+aiosqlite:///{self._database_path}")
+        else:
+            self._engine = create_async_engine(
+                f"sqlite+aiosqlite:///{self._database_path}",
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
 
         @event.listens_for(self._engine.sync_engine, "connect")

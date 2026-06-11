@@ -58,7 +58,7 @@ class LocationRepository:
         async with self._session_factory() as session:
             stmt = select(LocationOrm)
             if simulation_id:
-                stmt = stmt.where(LocationOrm.id == simulation_id)
+                stmt = stmt.where(LocationOrm.simulation_id == simulation_id)
 
             result = await session.scalars(stmt.order_by(LocationOrm.id.asc()))
             location_records = result.all()
@@ -86,6 +86,52 @@ class LocationRepository:
                     description=l.description,
                     attributes=l.attributes,
                     stats=l.stats,
-                    entities=entity_by_location.get(l.id, []),
+                    entities=[
+                        Entity (
+                            id=entity.id,
+                            name=entity.name,
+                            type=entity.type,
+                            description=entity.description,
+                            status=entity.status,
+                            interactions=entity.interactions,
+                        ) for entity in entity_by_location.get(l.id, [])
+                    ],
                 ) for l in location_records
             ]
+
+    async def create(self,
+                     location: Location,
+                     simulation_id: int,
+                     ) -> Location:
+        new_location = LocationOrm(
+            id=location.id,
+            simulation_id=simulation_id,
+            primary_location=location.primary_location,
+            detailed_location=location.detailed_location,
+            scene=location.scene,
+            description=location.description,
+            attributes=location.attributes,
+            stats=location.stats,
+        )
+
+        async with self._session_factory() as session:
+            session.add(new_location)
+
+            await session.flush()
+
+            new_entities = [
+                EntityOrm(
+                    id=entity.id,
+                    location_id=new_location.id,
+                    name=entity.name,
+                    type=entity.type,
+                    description=entity.description,
+                    status=entity.status,
+                    interactions=entity.interactions,
+                ) for entity in location.entities
+            ]
+
+            session.add_all(new_entities)
+            await session.commit()
+
+            return location.model_copy(update={'id': new_location.id})

@@ -64,3 +64,8 @@ Issues = "https://github.com/Firefox2100/world-simulation-engine/issues"
 
 [tool.setuptools.dynamic]
 version = {attr = "world_simulation_engine.__version__"}
+
+[tool.pytest]
+asyncio_mode = "auto"
+log_file = "audit.log"
+log_file_level = "DEBUG"

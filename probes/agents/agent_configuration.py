@@ -671,10 +671,10 @@ State summary:
 {{ data.last_narration or "No previous narration." }}
 
 ## Recent public history summary
-{{ data.recent_history_summary or "No recent public history summary." }}
+{{ data.state.recent_history_summary or "No recent public history summary." }}
 
 ## Long-term public history summary
-{{ data.long_term_history_summary or "No long-term public history summary." }}
+{{ data.state.long_term_history_summary or "No long-term public history summary." }}
 
 ## Previous resolver notes
 {{ data.previous_resolver_notes or "No previous resolver notes." }}

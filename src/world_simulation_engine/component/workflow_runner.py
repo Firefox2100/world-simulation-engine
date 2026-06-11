@@ -8,8 +8,9 @@ from langgraph.graph import StateGraph
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
-    PendingGeneratedProposal
-from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent
+    PendingGeneratedProposal, BriefingOutput
+from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
+    MemoryAgent
 from .world_entry_recaller import WorldEntryRecaller
 
 
@@ -18,6 +19,8 @@ class ConnectionProfileCache(BaseModel):
     memory: LlmConnectionProfile | None = None
     character: LlmConnectionProfile | None = None
     world_generator: LlmConnectionProfile | None = None
+
+    embedding: LlmConnectionProfile | None = None
 
 
 class TurnGeneratorState(BaseModel):
@@ -30,7 +33,8 @@ class TurnGeneratorState(BaseModel):
     connection_profiles: ConnectionProfileCache = Field(default_factory=ConnectionProfileCache)
 
     director_output: DirectorOutput | None = None
-    generated_proposals: PendingGeneratedProposal | None = None
+    generated_proposals: list[PendingGeneratedProposal] | None = None
+    briefing_output: BriefingOutput | None = None
 
 
 @dataclass
@@ -43,18 +47,45 @@ class WorkflowRunHandle:
 class TurnGenerator:
     def __init__(self,
                  database_service: DatabaseService,
-                 embedding_service: EmbeddingService,
                  ):
         self._db = database_service
-        self._embedding = embedding_service
 
     async def load_simulation(self, state: TurnGeneratorState) -> dict:
         simulation = await self._db.simulation.get(state.simulation_id)
         simulation_state = await self._db.state.get(state.simulation_id)
 
+        if simulation is None or simulation_state is None:
+            raise ValueError(f"Simulation {state.simulation_id} not found")
+
+        connection_ids = {
+            simulation.agent_preset.director.backend_configuration.connection,
+            simulation.agent_preset.memory.backend_configuration.connection,
+            simulation.agent_preset.character.backend_configuration.connection,
+            simulation.agent_preset.world_generator.backend_configuration.connection,
+            simulation.embedding_profile.connection,
+        }
+
+        connections = {}
+        for connection_id in connection_ids:
+            if connection_id is None:
+                raise ValueError("Not all connections are configured")
+
+            connection = await self._db.connection.llm.get(connection_id)
+            if not connection:
+                raise ValueError(f"Connection {connection_id} not found")
+
+            connections[connection_id] = connection
+
         return {
             "simulation": simulation,
             "state": simulation_state,
+            "connection_profiles": ConnectionProfileCache(
+                director=connections[simulation.agent_preset.director.backend_configuration.connection],
+                memory=connections[simulation.agent_preset.memory.backend_configuration.connection],
+                character=connections[simulation.agent_preset.character.backend_configuration.connection],
+                world_generator=connections[simulation.agent_preset.world_generator.backend_configuration.connection],
+                embedding=connections[simulation.embedding_profile.connection],
+            ),
         }
 
     async def director_planning(self, state: TurnGeneratorState) -> dict:
@@ -62,32 +93,27 @@ class TurnGenerator:
             raise RuntimeError("Simulation is not loaded")
 
         if state.connection_profiles.director is None:
-            if state.simulation.agent_preset.director.backend_configuration.connection is None:
-                raise ValueError("Director connection is not configured.")
-            state.connection_profiles.director = await self._db.connection.llm.get(
-                state.simulation.agent_preset.director.backend_configuration.connection
-            )
-            if state.connection_profiles.director is None:
-                raise ValueError("Director connection configuration not found")
+            raise RuntimeError("Director connection profile not loaded")
         director_agent = DirectorAgent(
             profile=state.simulation.agent_preset.director,
             connection=state.connection_profiles.director,
         )
 
+        if state.connection_profiles.embedding is None:
+            raise RuntimeError("Embedding service connection profile not loaded")
+        embedding_service = EmbeddingService(
+            profile=state.simulation.embedding_profile,
+            connection=state.connection_profiles.embedding,
+        )
+        recaller = WorldEntryRecaller(
+            embedding_service=embedding_service,
+        )
+
         if state.connection_profiles.world_generator is None:
-            if state.simulation.agent_preset.world_generator.backend_configuration.connection is None:
-                raise ValueError("World generator connection is not configured.")
-            state.connection_profiles.world_generator = await self._db.connection.llm.get(
-                state.simulation.agent_preset.world_generator.backend_configuration.connection
-            )
-            if state.connection_profiles.world_generator is None:
-                raise ValueError("World generator connection configuration not found")
+            raise RuntimeError("World generator connection profile not loaded")
         generator = WorldGeneratorAgent(
             profile=state.simulation.agent_preset.world_generator,
             connection=state.connection_profiles.world_generator,
-        )
-        recaller = WorldEntryRecaller(
-            embedding_service=self._embedding,
         )
 
         present_characters = await self._db.character.list(
@@ -100,11 +126,11 @@ class TurnGenerator:
         all_locations = await self._db.location.list(simulation_id=state.simulation_id)
         existing_items = await self._db.item.list(simulation_id=state.simulation_id)
         last_record = await self._db.record.get_last_record(simulation_id=state.simulation_id)
-        filtered_entries = await self._db.entry.list(
+        world_entries = await self._db.entry.list(
             simulation_id=state.simulation_id,
             search_scope=[0] + [c.id for c in present_characters],
         )
-        filtered_tasks = await self._db.task.list(
+        tasks = await self._db.task.list(
             character_ids=[c.id for c in present_characters],
         )
 
@@ -122,19 +148,19 @@ class TurnGenerator:
         if state.user_input:
             recalled_entries = await recaller.recall(
                 query=state.user_input,
-                entries=filtered_entries,
+                entries=world_entries,
                 language=state.simulation.language,
             )
         elif last_record:
             recalled_entries = await recaller.recall(
                 query=last_record.narration,
-                entries=filtered_entries,
+                entries=world_entries,
                 language=state.simulation.language
             )
         else:
             recalled_entries = await recaller.recall(
                 query=None,
-                entries=filtered_entries,
+                entries=world_entries,
                 language=state.simulation.language
             )
 
@@ -143,7 +169,7 @@ class TurnGenerator:
             state=state.state,
             current_location=current_location,
             present_characters=present_characters,
-            relevant_tasks=filtered_tasks,
+            relevant_tasks=tasks,
             recalled_world_entries=recalled_entries,
             generation_tools=generator_tools,
             last_narration=last_record.narration if last_record else None,
@@ -153,6 +179,82 @@ class TurnGenerator:
         return {
             "director_output": output,
             "generated_proposals": proposals,
+        }
+
+    async def memory_briefing(self, state: TurnGeneratorState) -> dict:
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
+
+        if state.connection_profiles.memory is None:
+            raise RuntimeError("Memory connection profile not loaded")
+        memory_agent = MemoryAgent(
+            profile=state.simulation.agent_preset.memory,
+            connection=state.connection_profiles.memory,
+        )
+
+        if state.connection_profiles.embedding is None:
+            raise RuntimeError("Embedding service connection profile not loaded")
+        embedding_service = EmbeddingService(
+            profile=state.simulation.embedding_profile,
+            connection=state.connection_profiles.embedding,
+        )
+        recaller = WorldEntryRecaller(
+            embedding_service=embedding_service,
+        )
+
+        if state.director_output is None:
+            raise RuntimeError("Director output not generated")
+
+        current_location = await self._db.location.get(state.state.scene)
+        if not current_location:
+            raise ValueError("Current location does not exist")
+        active_characters = await self._db.character.list(
+            simulation_id=state.simulation_id,
+            character_ids=[a.character_id for a in state.director_output.activations]
+        )
+        tasks = await self._db.task.list(
+            character_ids=[c.id for c in active_characters],
+            private=False,
+        )
+        last_record = await self._db.record.get_last_record(simulation_id=state.simulation_id)
+        world_entries = await self._db.entry.list(
+            simulation_id=state.simulation_id,
+            search_scope=[0] + [c.id for c in active_characters],
+        )
+        if state.user_input:
+            recalled_entries = await recaller.recall(
+                query=state.director_output.scene_focus + " " + state.user_input,
+                entries=world_entries,
+                language=state.simulation.language,
+            )
+        elif last_record:
+            recalled_entries = await recaller.recall(
+                query=state.director_output.scene_focus + " " + last_record.narration,
+                entries=world_entries,
+                language=state.simulation.language
+            )
+        else:
+            recalled_entries = await recaller.recall(
+                query=state.director_output.scene_focus,
+                entries=world_entries,
+                language=state.simulation.language
+            )
+
+        result = await memory_agent.build_briefings(
+            simulation=state.simulation,
+            state=state.state,
+            current_location=current_location,
+            characters=active_characters,
+            tasks=tasks,
+            world_entries=recalled_entries,
+            pending_generated_proposals=state.generated_proposals,
+            user_input=state.user_input,
+            last_narration=last_record.narration if last_record else None,
+            previous_resolver_notes="",
+        )
+
+        return {
+            "briefing_output": result,
         }
 
     def build_graph(self):

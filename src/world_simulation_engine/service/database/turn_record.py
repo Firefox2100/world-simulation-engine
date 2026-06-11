@@ -36,7 +36,7 @@ class TurnRecordRepository:
             if simulation_id:
                 stmt = stmt.where(TurnRecordOrm.simulation_id == simulation_id)
             if turn_type:
-                stmt = stmt.where(TurnRecord.type == turn_type)
+                stmt = stmt.where(TurnRecordOrm.type == turn_type)
 
             result = await session.scalars(stmt)
             records = result.all()
@@ -55,9 +55,9 @@ class TurnRecordRepository:
     async def get_last_record(self, simulation_id: int) -> TurnRecord | None:
         async with self._session_factory() as session:
             result = await session.scalars(
-                select(TurnRecord)
-                .where(TurnRecord.simulation_id == simulation_id)
-                .order_by(desc(TurnRecord.turn_number))
+                select(TurnRecordOrm)
+                .where(TurnRecordOrm.simulation_id == simulation_id)
+                .order_by(desc(TurnRecordOrm.turn_number))
                 .limit(1)
             )
             record = result.one_or_none()

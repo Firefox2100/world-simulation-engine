@@ -36,32 +36,10 @@ class CharacterRepository:
                 user_controlled=character.user_controlled,
             )
 
-    async def create(self, character: Character, simulation_id: int) -> None:
-        """
-        Create a character in the database.
-        :param character: The character to create.
-        :param simulation_id: The simulation id that the character belongs to
-        """
-        async with self._session_factory() as session:
-            session.add(CharacterOrm(
-                id=character.id,
-                simulation_id=simulation_id,
-                name=character.name,
-                description=character.description,
-                gender=character.gender,
-                age=character.age,
-                appearance=character.appearance,
-                public_state=character.public_state,
-                private_state=character.private_state,
-                location=character.location,
-                user_controlled=character.user_controlled,
-            ))
-
-            await session.commit()
-
     async def list(self,
                    simulation_id: int | None = None,
                    location: int | None = None,
+                   character_ids: list[int] | None = None,
                    ) -> list[Character]:
         async with self._session_factory() as session:
             stmt = select(CharacterOrm)
@@ -69,6 +47,8 @@ class CharacterRepository:
                 stmt = stmt.where(CharacterOrm.simulation_id == simulation_id)
             if location:
                 stmt = stmt.where(CharacterOrm.location == location)
+            if character_ids:
+                stmt = stmt.where(CharacterOrm.id.in_(character_ids))
 
             result = await session.scalars(stmt)
             records = result.all()
@@ -87,3 +67,32 @@ class CharacterRepository:
                     user_controlled=r.user_controlled,
                 ) for r in records
             ]
+
+    async def create(self,
+                     character: Character,
+                     simulation_id: int,
+                     ) -> Character:
+        """
+        Create a character in the database.
+        :param character: The character to create.
+        :param simulation_id: The simulation id that the character belongs to
+        """
+        async with self._session_factory() as session:
+            new_character = CharacterOrm(
+                simulation_id=simulation_id,
+                name=character.name,
+                description=character.description,
+                gender=character.gender,
+                age=character.age,
+                appearance=character.appearance,
+                public_state=character.public_state,
+                private_state=character.private_state,
+                attributes=character.attributes,
+                stats=character.stats,
+                location=character.location,
+                user_controlled=character.user_controlled,
+            )
+            session.add(new_character)
+
+            await session.commit()
+            return character.model_copy(update={'id': new_character.id})

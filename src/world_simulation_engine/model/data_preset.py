@@ -59,24 +59,24 @@ class DataPreset(BaseModel):
     These fields are usually specific to each world setup.
     """
     character_attributes: list[ModelAttribute] = Field(
-        ...,
+        default_factory=list,
         description="The list of character attributes for this preset.",
     )
     character_stats: list[ModelStat] = Field(
-        ...,
+        default_factory=list,
         description="The list of character stats for this preset.",
     )
 
     faction_attributes: list[ModelAttribute] = Field(
-        None,
+        default_factory=list,
         description="The list of faction attributes for this preset.",
     )
     faction_stats: list[ModelStat] = Field(
-        None,
+        default_factory=list,
         description="The list of faction stats for this preset.",
     )
 
     entity_types: dict[str, str] = Field(
-        ...,
+        default_factory=dict,
         description="The entity types allowed in a location, and its explanation.",
     )

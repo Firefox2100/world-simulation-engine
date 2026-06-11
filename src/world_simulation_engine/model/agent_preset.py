@@ -166,6 +166,13 @@ class CharacterAgentProfile(AgentProfile):
     )
 
 
+class ResolverAgentProfile(AgentProfile):
+    resolve_character_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to resolve character actions."
+    )
+
+
 class AgentPreset(BaseModel):
     """
     An agent preset is a set of user-supplied agent configurations for each agent, persisted in the database
@@ -183,6 +190,11 @@ class AgentPreset(BaseModel):
         ...,
         description="The agent configuration profiles for the character agent.",
     )
+    resolver: ResolverAgentProfile = Field(
+        ...,
+        description="The agent configuration profiles for the resolver agent.",
+    )
+
     world_generator: WorldGeneratorAgentProfile = Field(
         ...,
         description="The agent configuration profiles for the world generator.",

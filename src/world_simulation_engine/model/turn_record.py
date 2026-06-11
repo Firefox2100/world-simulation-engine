@@ -148,6 +148,90 @@ class CharacterActionOutput(BaseModel):
     notes: str = ""
 
 
+class ResolvedAction(BaseModel):
+    actor_id: int
+    actor_name: str
+
+    original_intent: str
+    final_status: Literal[
+        "succeeded",
+        "partially_succeeded",
+        "failed",
+        "blocked",
+        "delayed",
+        "invalid",
+        "cancelled",
+    ]
+
+    resolved_order: int | None = None
+
+    visible_result: str
+    private_result_for_actor: str | None = None
+
+    failure_reason: str | None = None
+    blocking_actor_id: int | None = None
+    blocking_entity_id: int | None = None
+
+    state_change_hints: list[str] = Field(default_factory=list)
+    world_entry_hints: list[str] = Field(default_factory=list)
+
+    requires_actor_retry: bool = False
+    retry_instruction: str | None = None
+
+
+class ConflictRecord(BaseModel):
+    conflict_type: Literal[
+        "same_target",
+        "mutually_exclusive",
+        "interruption",
+        "timing",
+        "knowledge_invalid",
+        "location_invalid",
+        "item_unavailable",
+        "entity_unavailable",
+        "social_conflict",
+        "other",
+    ]
+
+    involved_character_ids: list[int]
+    description: str
+    resolution: str
+    winner_character_id: int | None = None
+    loser_character_ids: list[int] = Field(default_factory=list)
+
+
+class FailedCharacterRecord(BaseModel):
+    character_id: int
+    character_name: str
+    failed_action_summary: str
+    reason: str
+    retry_allowed: bool = True
+    retry_context: str | None = None
+
+
+class ResolverOutput(BaseModel):
+    mode: Literal["normal_action_resolution", "user_input_validation"]
+
+    accepted: bool
+    rejection_reason: str | None = None
+
+    resolved_actions: list[ResolvedAction]
+    conflicts: list[ConflictRecord] = Field(default_factory=list)
+    failed_characters: list[FailedCharacterRecord] = Field(default_factory=list)
+
+    scene_result_summary: str
+    next_round_note: str
+
+    narrator_context: list[str] = Field(default_factory=list)
+    state_update_suggestions: list[str] = Field(default_factory=list)
+    pending_world_entry_suggestions: list[str] = Field(default_factory=list)
+
+    requires_director_rerun: bool = False
+    director_rerun_reason: str | None = None
+
+    notes: str = ""
+
+
 class TurnRecord(BaseModel):
     id: int = Field(
         ...,
@@ -164,6 +248,15 @@ class TurnRecord(BaseModel):
     type: TurnType = Field(
         ...,
         description="The type of this turn."
+    )
+
+    director_output: Optional[DirectorOutput] = Field(
+        None,
+        description="Director output for this turn record."
+    )
+    briefing_output: Optional[BriefingOutput] = Field(
+        None,
+        description="Briefing output for this turn record."
     )
 
     narration: str = Field(

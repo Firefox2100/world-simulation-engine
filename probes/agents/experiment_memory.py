@@ -99,15 +99,6 @@ async def generate_briefing(agent: MemoryAgent,
                        "cheer, but her eyes returned to Arthur more often than chance required. Eleanor "
                        "Graves had just left the doorway after offering a polished welcome, and several "
                        "locals pretended not to listen.",
-        recent_history_summary="Arthur arrived at the Iron Stag Inn during the Founder's Festival. Clara "
-                               "noticed his controlled manner and suspected he was not merely a curious "
-                               "traveller. Eleanor briefly greeted Arthur, presenting the town as orderly "
-                               "and festive while probing his purpose. Arthur has not yet revealed the "
-                               "anonymous letter.",
-        long_term_history_summary="Director Harlan disappeared three weeks ago. Officially he left without "
-                                  "notice, but many residents doubt this. The observatory, the old mine, "
-                                  "altered property records, the unknown visitor, and Harlan's missing "
-                                  "notebook are all unresolved investigation threads.",
         previous_resolver_notes="No active conflict remained from the previous round. Eleanor successfully "
                                 "withdrew from the immediate conversation without revealing concern. Clara "
                                 "is available at the bar and is socially positioned to answer or redirect "

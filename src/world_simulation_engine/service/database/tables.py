@@ -89,10 +89,15 @@ class ItemOrm(Base):
     __tablename__ = "item"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    character_id: Mapped[int] = mapped_column(Integer, ForeignKey("character.id"), nullable=False)
+    simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation.id"), nullable=False)
+    character_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("character.id", ondelete="SET NULL"),
+        nullable=True
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    quality: Mapped[str] = mapped_column(String(32), nullable=False)
+    quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unique: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
@@ -101,10 +106,10 @@ class LlmConnectionProfileOrm(Base):
     __tablename__ = "llm_connection_profile"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider: Mapped[str] = mapped_column(String(16), nullable=False)
     base_url: Mapped[str] = mapped_column(String(255), nullable=False)
-    api_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class LocationOrm(Base):
@@ -126,9 +131,14 @@ class SimulationOrm(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    world_id: Mapped[int] = mapped_column(Integer, ForeignKey("world.id"), nullable=False)
+    world_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("world.id", ondelete="SET NULL"),
+        nullable=True
+    )
     agent_preset: Mapped[dict] = mapped_column(JSON, nullable=False)
     data_preset: Mapped[dict] = mapped_column(JSON, nullable=False)
+    embedding_profile: Mapped[dict] = mapped_column(JSON, nullable=False)
     language: Mapped[str] = mapped_column(String(8), nullable=False)
 
 
@@ -154,7 +164,7 @@ class TaskOrm(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     type: Mapped[str] = mapped_column(String(16), nullable=False)
     goal: Mapped[str] = mapped_column(Text, nullable=False)
-    progress: Mapped[int] = mapped_column(Integer, nullable=True)
+    progress: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(255), nullable=False)
     reward: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -186,10 +196,10 @@ class WorldEntryOrm(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     visibility: Mapped[str] = mapped_column(String(16), nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
-    created_at: Mapped[int] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     narration_permission: Mapped[str] = mapped_column(String(16), nullable=False)
     recall_type: Mapped[str] = mapped_column(String(16), nullable=False)
-    keywords: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    chained_ids: Mapped[list[int]] = mapped_column(JSON, nullable=True)
-    semantic_instruction: Mapped[str] = mapped_column(Text, nullable=True)
-    embedding: Mapped[np.ndarray] = mapped_column(NumpyArray(dtype=np.float32), nullable=True)
+    keywords: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    chained_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
+    semantic_instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding: Mapped[np.ndarray | None] = mapped_column(NumpyArray(dtype=np.float32), nullable=True)

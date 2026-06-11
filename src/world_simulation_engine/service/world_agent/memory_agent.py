@@ -3,7 +3,7 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
-    MemoryAgentProfile, BriefingOutput
+    MemoryAgentProfile, BriefingOutput, PendingGeneratedProposal
 from .world_agent import WorldAgent
 
 
@@ -21,11 +21,9 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
         characters: list[Character],
         tasks: list[Task],
         world_entries: list[WorldEntry],
-        pending_generated_proposals: list[dict[str, Any]] | None = None,
+        pending_generated_proposals: list[PendingGeneratedProposal] | None = None,
         user_input: str | None = None,
         last_narration: str | None = None,
-        recent_history_summary: str | None = None,
-        long_term_history_summary: str | None = None,
         previous_resolver_notes: str | None = None,
     ) -> BriefingOutput:
         LOGGER.info("Generating briefings for turn %s of simulation %s", state.turn_number + 1, simulation.id)
@@ -40,8 +38,6 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
             "pending_generated_proposals": pending_generated_proposals or [],
             "user_input": user_input,
             "last_narration": last_narration,
-            "recent_history_summary": recent_history_summary,
-            "long_term_history_summary": long_term_history_summary,
             "previous_resolver_notes": previous_resolver_notes,
         }
         LOGGER.debug("Base data:\n%s", TypeAdapter(dict[str, Any]).dump_json(data, indent=2).decode())

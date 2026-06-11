@@ -1,9 +1,8 @@
-from sqlalchemy import select, desc
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from world_simulation_engine.misc.enums import TurnType
 from world_simulation_engine.model import Item, Equipment
-from .tables import CharacterOrm, ItemOrm
+from .tables import ItemOrm
 
 
 class ItemRepository:
@@ -32,33 +31,12 @@ class ItemRepository:
                    simulation_id: int | None = None,
                    character_id: int | None = None,
                    ) -> list[Item]:
-        if simulation_id and character_id:
-            raise ValueError("Only one of simulation_id and character_id can be provided")
+        stmt = select(ItemOrm)
 
         if simulation_id:
-            async with self._session_factory() as session:
-                result = await session.scalars(
-                    select(ItemOrm)
-                    .select_from(ItemOrm)
-                    .join(CharacterOrm)
-                    .where(CharacterOrm.simulation_id == simulation_id)
-                )
-                records = result.all()
+            stmt = stmt.where(ItemOrm.simulation_id == simulation_id)
 
-                return [
-                    Item(
-                        id=r.id,
-                        name=r.name,
-                        description=r.description,
-                        quality=r.quality,
-                        quantity=r.quantity,
-                        unique=r.unique,
-                    ) for r in records
-                ]
-
-        stmt = select(ItemOrm)
-        if character_id:
-            stmt = stmt.where(ItemOrm.character_id == character_id)
+        stmt = stmt.where(ItemOrm.character_id == character_id)
 
         async with self._session_factory() as session:
             result = await session.scalars(stmt)
@@ -74,6 +52,27 @@ class ItemRepository:
                     unique=r.unique,
                 ) for r in records
             ]
+
+    async def create(self,
+                     item: Item,
+                     simulation_id: int,
+                     character_id: int | None = None,
+                     ) -> Item:
+        new_item = ItemOrm(
+            simulation_id=simulation_id,
+            character_id=character_id,
+            name=item.name,
+            description=item.description,
+            quality=item.quality,
+            quantity=item.quantity,
+            unique=item.unique,
+        )
+
+        async with self._session_factory() as session:
+            session.add(new_item)
+            await session.commit()
+
+            return item.model_copy(update={"id": new_item.id})
 
 
 class EquipmentRepository:

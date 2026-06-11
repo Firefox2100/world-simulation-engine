@@ -40,6 +40,7 @@ class TaskRepository:
     async def list(self,
                    simulation_id: int | None = None,
                    character_ids: list[int] | None = None,
+                   private: bool | None = None,
                    ):
         if simulation_id and character_ids:
             raise ValueError("Only one of simulation_id and character_ids can be specified ")
@@ -71,6 +72,9 @@ class TaskRepository:
         else:
             stmt = select(TaskOrm)
 
+        if private is not None:
+            stmt = stmt.where(TaskOrm.private == private)
+
         async with self._session_factory() as session:
             result = await session.scalars(stmt)
             records = result.all()
@@ -89,3 +93,23 @@ class TaskRepository:
                     reward=r.reward,
                 ) for r in records
             ]
+
+    async def create(self, task: Task):
+        new_task = TaskOrm(
+            character_ids=task.character_ids,
+            private=task.private,
+            priority=task.priority.value,
+            status=task.status.value,
+            type=task.type.value,
+            goal=task.goal,
+            progress=task.progress,
+            source=task.source,
+            reward=task.reward,
+        )
+
+        async with self._session_factory() as session:
+            session.add(new_task)
+
+            await session.commit()
+
+            return task.model_copy(update={"id": new_task.id})

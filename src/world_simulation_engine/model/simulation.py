@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 from .agent_preset import AgentPreset
 from .data_preset import DataPreset
+from .embedding_profile import EmbeddingProfile
 
 
 class Simulation(BaseModel):
@@ -30,6 +31,10 @@ class Simulation(BaseModel):
     data_preset: DataPreset = Field(
         ...,
         description="The data preset for this simulation.",
+    )
+    embedding_profile: EmbeddingProfile = Field(
+        ...,
+        description="The embedding profile for this simulation.",
     )
     language: str = Field(
         ...,
