@@ -99,6 +99,14 @@ class TurnGenerator:
             raise ValueError("Current location does not exist")
         all_locations = await self._db.location.list(simulation_id=state.simulation_id)
         existing_items = await self._db.item.list(simulation_id=state.simulation_id)
+        last_record = await self._db.record.get_last_record(simulation_id=state.simulation_id)
+        filtered_entries = await self._db.entry.list(
+            simulation_id=state.simulation_id,
+            search_scope=[0] + [c.id for c in present_characters],
+        )
+        filtered_tasks = await self._db.task.list(
+            character_ids=[c.id for c in present_characters],
+        )
 
         generator_tools = generator.get_tools(
             simulation=state.simulation,
@@ -111,11 +119,24 @@ class TurnGenerator:
             entity_types=state.simulation.data_preset.entity_types.keys(),
         )
 
-        recalled_entries = await recaller.recall(
-            query=state.user_input,
-            entries=filtered_entries,
-            language=example_simulation.language,
-        )
+        if state.user_input:
+            recalled_entries = await recaller.recall(
+                query=state.user_input,
+                entries=filtered_entries,
+                language=state.simulation.language,
+            )
+        elif last_record:
+            recalled_entries = await recaller.recall(
+                query=last_record.narration,
+                entries=filtered_entries,
+                language=state.simulation.language
+            )
+        else:
+            recalled_entries = await recaller.recall(
+                query=None,
+                entries=filtered_entries,
+                language=state.simulation.language
+            )
 
         output, proposals = await director_agent.plan_turn(
             simulation=state.simulation,
@@ -125,7 +146,7 @@ class TurnGenerator:
             relevant_tasks=filtered_tasks,
             recalled_world_entries=recalled_entries,
             generation_tools=generator_tools,
-            last_narration="",
+            last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
         )
 

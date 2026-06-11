@@ -1,5 +1,31 @@
-from sqlalchemy import ForeignKey, String, Text, Integer, JSON, LargeBinary, Boolean
+from typing import Any
+import numpy as np
+from sqlalchemy import ForeignKey, String, Text, Integer, Float, JSON, LargeBinary, Boolean, TypeDecorator
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class NumpyArray(TypeDecorator):
+    """Stores a numpy array as a binary blob."""
+    impl = LargeBinary
+    cache_ok = True
+
+    def __init__(self, dtype=np.float32, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dtype = dtype
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            # Ensure it's a numpy array and convert to bytes
+            if not isinstance(value, np.ndarray):
+                value = np.array(value, dtype=self.dtype)
+            return value.tobytes()
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            # Reconstruct array from bytes
+            return np.frombuffer(value, dtype=self.dtype)
+        return value
 
 
 class Base(DeclarativeBase):
@@ -118,6 +144,21 @@ class SimulationStateOrm(Base):
     long_term_history_summary: Mapped[str] = mapped_column(Text, nullable=True)
 
 
+class TaskOrm(Base):
+    __tablename__ = "task"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    character_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    private: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    priority: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    type: Mapped[str] = mapped_column(String(16), nullable=False)
+    goal: Mapped[str] = mapped_column(Text, nullable=False)
+    progress: Mapped[int] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+    reward: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class TurnRecordOrm(Base):
     __tablename__ = "turn_record"
 
@@ -134,3 +175,21 @@ class WorldOrm(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class WorldEntryOrm(Base):
+    __tablename__ = "world_entry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation.id"), nullable=False)
+    scope: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=True)
+    narration_permission: Mapped[str] = mapped_column(String(16), nullable=False)
+    recall_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    keywords: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    chained_ids: Mapped[list[int]] = mapped_column(JSON, nullable=True)
+    semantic_instruction: Mapped[str] = mapped_column(Text, nullable=True)
+    embedding: Mapped[np.ndarray] = mapped_column(NumpyArray(dtype=np.float32), nullable=True)

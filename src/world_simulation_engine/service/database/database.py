@@ -9,6 +9,8 @@ from .connection import ConnectionRepository
 from .location import LocationRepository
 from .turn_record import TurnRecordRepository
 from .inventory import ItemRepository, EquipmentRepository
+from .world_entry import WorldEntryRepository
+from .task import TaskRepository
 
 
 class DatabaseService:
@@ -42,6 +44,10 @@ class DatabaseService:
         return ConnectionRepository(self._session_factory)
 
     @property
+    def entry(self) -> WorldEntryRepository:
+        return WorldEntryRepository(self._session_factory)
+
+    @property
     def equipment(self) -> EquipmentRepository:
         return EquipmentRepository(self._session_factory)
 
@@ -64,3 +70,7 @@ class DatabaseService:
     @property
     def state(self) -> SimulationStateRepository:
         return SimulationStateRepository(self._session_factory)
+
+    @property
+    def task(self) -> TaskRepository:
+        return TaskRepository(self._session_factory)

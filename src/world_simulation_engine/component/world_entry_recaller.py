@@ -1,5 +1,6 @@
 import numpy as np
 from icu import BreakIterator, Locale
+from langchain_ollama import embeddings
 
 from world_simulation_engine.misc.enums import WorldEntryRecallType
 from world_simulation_engine.model import WorldEntry
@@ -46,7 +47,7 @@ class WorldEntryRecaller:
         return max(0.0, min(1.0, c))
 
     async def recall(self,
-                     query: str,
+                     query: str | None,
                      entries: list[WorldEntry],
                      language: str,
                      ) -> list[WorldEntry]:
@@ -57,10 +58,13 @@ class WorldEntryRecaller:
         :param language: The language to segment the query in.
         :return: A trimmed list of world entries that matches the recall rules.
         """
-        query_tokens = list(self._segment_text(query, language))
-        ngrams = list(self._ngrams(query_tokens, min_n=1, max_n=4))
+        query_tokens = list(self._segment_text(query, language)) if query else []
+        ngrams = list(self._ngrams(query_tokens, min_n=1, max_n=4)) if query_tokens else []
 
-        embeddings = await self._embedding_service.embed_texts([query] + ngrams)
+        if query and ngrams:
+            embeddings = await self._embedding_service.embed_texts([query] + ngrams)
+        else:
+            embeddings = []
 
         recalled_entries = []
         semantic_entries = []
@@ -70,12 +74,12 @@ class WorldEntryRecaller:
             if entry.recall_type == WorldEntryRecallType.ALWAYS:
                 recalled_entries.append(entry)
             elif entry.recall_type == WorldEntryRecallType.SEMANTIC:
-                if not entry.embedding:
+                if not entry.embedding or not embeddings:
                     continue
 
                 semantic_entries.append((entry, self._score(embeddings[0], entry.embedding)))
             elif entry.recall_type == WorldEntryRecallType.KEYWORD:
-                if not entry.keywords:
+                if not entry.keywords or not embeddings:
                     continue
 
                 for k in entry.keywords:
