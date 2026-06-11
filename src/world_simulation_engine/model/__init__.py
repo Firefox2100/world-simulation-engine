@@ -14,4 +14,5 @@ from .task import Task
 from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, ProposedLocation, \
     PendingGeneratedProposal, ActivationDecision, DirectorOutput, CharacterBriefing, BriefingOutput, \
     CharacterActionOutput, ResolvedAction, ConflictRecord, FailedCharacterRecord, ResolverOutput, TurnRecord
+from .world import World
 from .world_entry import WorldEntry, WorldEntryRecallKeyword

@@ -1,7 +1,6 @@
 from sqlalchemy import select, func, exists
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from world_simulation_engine.misc.enums import TaskPriority, TaskStatus, TaskType
 from world_simulation_engine.model import Task
 from .tables import TaskOrm, CharacterOrm
 
@@ -11,6 +10,11 @@ class TaskRepository:
                  session_factory: async_sessionmaker[AsyncSession],
                  ):
         self._session_factory = session_factory
+
+    @staticmethod
+    def _to_model(record: TaskOrm) -> Task:
+        payload = {column.name: getattr(record, column.name) for column in TaskOrm.__table__.columns}
+        return Task.model_validate(payload)
 
     async def get(self, task_id: int) -> Task | None:
         """
@@ -24,22 +28,12 @@ class TaskRepository:
             if not task:
                 return None
 
-            return Task(
-                id=task.id,
-                character_ids=task.character_ids,
-                private=task.private,
-                priority=TaskPriority(task.priority),
-                status=TaskStatus(task.status),
-                type=TaskType(task.type),
-                goal=task.goal,
-                progress=task.progress,
-                source=task.source,
-                reward=task.reward,
-            )
+            return self._to_model(task)
 
     async def list(self,
                    simulation_id: int | None = None,
                    character_ids: list[int] | None = None,
+                   task_ids: list[int] | None = None,
                    private: bool | None = None,
                    ):
         if simulation_id and character_ids:
@@ -72,6 +66,9 @@ class TaskRepository:
         else:
             stmt = select(TaskOrm)
 
+        if task_ids:
+            stmt = stmt.where(TaskOrm.id.in_(task_ids))
+
         if private is not None:
             stmt = stmt.where(TaskOrm.private == private)
 
@@ -79,37 +76,15 @@ class TaskRepository:
             result = await session.scalars(stmt)
             records = result.all()
 
-            return [
-                Task(
-                    id=r.id,
-                    character_ids=r.character_ids,
-                    private=r.private,
-                    priority=TaskPriority(r.priority),
-                    status=TaskStatus(r.status),
-                    type=TaskType(r.type),
-                    goal=r.goal,
-                    progress=r.progress,
-                    source=r.source,
-                    reward=r.reward,
-                ) for r in records
-            ]
+            return [self._to_model(record) for record in records]
 
     async def create(self, task: Task):
-        new_task = TaskOrm(
-            character_ids=task.character_ids,
-            private=task.private,
-            priority=task.priority.value,
-            status=task.status.value,
-            type=task.type.value,
-            goal=task.goal,
-            progress=task.progress,
-            source=task.source,
-            reward=task.reward,
-        )
+        payload = task.model_dump(mode="json", exclude={"id"})
+        new_task = TaskOrm(**payload)
 
         async with self._session_factory() as session:
             session.add(new_task)
 
             await session.commit()
 
-            return task.model_copy(update={"id": new_task.id})
+            return self._to_model(new_task)

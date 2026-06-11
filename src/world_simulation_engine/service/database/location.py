@@ -13,6 +13,24 @@ class LocationRepository:
                  ):
         self._session_factory = session_factory
 
+    @staticmethod
+    def _to_entity(record: EntityOrm) -> Entity:
+        payload = {
+            column.name: getattr(record, column.name)
+            for column in EntityOrm.__table__.columns
+            if column.name != "location_id"
+        }
+        return Entity.model_validate(payload)
+
+    def _to_location(self, location: LocationOrm, entities: list[EntityOrm]) -> Location:
+        payload = {
+            column.name: getattr(location, column.name)
+            for column in LocationOrm.__table__.columns
+            if column.name != "simulation_id"
+        }
+        payload["entities"] = [self._to_entity(entity) for entity in entities]
+        return Location.model_validate(payload)
+
     async def get(self, location_id: int) -> Location | None:
         """
         Fetch a location by its ID
@@ -27,25 +45,7 @@ class LocationRepository:
             result = await session.scalars(select(EntityOrm).where(EntityOrm.location_id == location_id))
             entity_records = result.all()
 
-            return Location(
-                id=location.id,
-                primary_location=location.primary_location,
-                detailed_location=location.detailed_location,
-                scene=location.scene,
-                description=location.description,
-                attributes=location.attributes,
-                stats=location.stats,
-                entities=[
-                    Entity(
-                        id=e.id,
-                        name=e.name,
-                        type=e.type,
-                        description=e.description,
-                        status=e.status,
-                        interactions=e.interactions,
-                    ) for e in entity_records
-                ],
-            )
+            return self._to_location(location, entity_records)
 
     async def list(self,
                    simulation_id: int | None = None,
@@ -78,41 +78,16 @@ class LocationRepository:
             }
 
             return [
-                Location(
-                    id=l.id,
-                    primary_location=l.primary_location,
-                    detailed_location=l.detailed_location,
-                    scene=l.scene,
-                    description=l.description,
-                    attributes=l.attributes,
-                    stats=l.stats,
-                    entities=[
-                        Entity (
-                            id=entity.id,
-                            name=entity.name,
-                            type=entity.type,
-                            description=entity.description,
-                            status=entity.status,
-                            interactions=entity.interactions,
-                        ) for entity in entity_by_location.get(l.id, [])
-                    ],
-                ) for l in location_records
+                self._to_location(location, entity_by_location.get(location.id, []))
+                for location in location_records
             ]
 
     async def create(self,
                      location: Location,
                      simulation_id: int,
                      ) -> Location:
-        new_location = LocationOrm(
-            id=location.id,
-            simulation_id=simulation_id,
-            primary_location=location.primary_location,
-            detailed_location=location.detailed_location,
-            scene=location.scene,
-            description=location.description,
-            attributes=location.attributes,
-            stats=location.stats,
-        )
+        location_payload = location.model_dump(mode="json", exclude={"entities"})
+        new_location = LocationOrm(simulation_id=simulation_id, **location_payload)
 
         async with self._session_factory() as session:
             session.add(new_location)
@@ -120,18 +95,11 @@ class LocationRepository:
             await session.flush()
 
             new_entities = [
-                EntityOrm(
-                    id=entity.id,
-                    location_id=new_location.id,
-                    name=entity.name,
-                    type=entity.type,
-                    description=entity.description,
-                    status=entity.status,
-                    interactions=entity.interactions,
-                ) for entity in location.entities
+                EntityOrm(location_id=new_location.id, **entity.model_dump(mode="json"))
+                for entity in location.entities
             ]
 
             session.add_all(new_entities)
             await session.commit()
 
-            return location.model_copy(update={'id': new_location.id})
+            return self._to_location(new_location, new_entities)

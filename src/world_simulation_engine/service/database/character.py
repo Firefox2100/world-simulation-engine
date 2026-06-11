@@ -11,6 +11,15 @@ class CharacterRepository:
                  ):
         self._session_factory = session_factory
 
+    @staticmethod
+    def _to_model(record: CharacterOrm) -> Character:
+        payload = {
+            column.name: getattr(record, column.name)
+            for column in CharacterOrm.__table__.columns
+            if column.name != "simulation_id"
+        }
+        return Character.model_validate(payload)
+
     async def get(self, character_id: int) -> Character | None:
         """
         Retrieve a character by its ID.
@@ -23,18 +32,7 @@ class CharacterRepository:
             if not character:
                 return None
 
-            return Character(
-                id=character.id,
-                name=character.name,
-                description=character.description,
-                gender=character.gender,
-                age=character.age,
-                appearance=character.appearance,
-                public_state=character.public_state,
-                private_state=character.private_state,
-                location=character.location,
-                user_controlled=character.user_controlled,
-            )
+            return self._to_model(character)
 
     async def list(self,
                    simulation_id: int | None = None,
@@ -53,20 +51,7 @@ class CharacterRepository:
             result = await session.scalars(stmt)
             records = result.all()
 
-            return [
-                Character(
-                    id=r.id,
-                    name=r.name,
-                    description=r.description,
-                    gender=r.gender,
-                    age=r.age,
-                    appearance=r.appearance,
-                    public_state=r.public_state,
-                    private_state=r.private_state,
-                    location=r.location,
-                    user_controlled=r.user_controlled,
-                ) for r in records
-            ]
+            return [self._to_model(record) for record in records]
 
     async def create(self,
                      character: Character,
@@ -77,22 +62,11 @@ class CharacterRepository:
         :param character: The character to create.
         :param simulation_id: The simulation id that the character belongs to
         """
+        payload = character.model_dump(mode="json", exclude={"id"})
+
         async with self._session_factory() as session:
-            new_character = CharacterOrm(
-                simulation_id=simulation_id,
-                name=character.name,
-                description=character.description,
-                gender=character.gender,
-                age=character.age,
-                appearance=character.appearance,
-                public_state=character.public_state,
-                private_state=character.private_state,
-                attributes=character.attributes,
-                stats=character.stats,
-                location=character.location,
-                user_controlled=character.user_controlled,
-            )
+            new_character = CharacterOrm(simulation_id=simulation_id, **payload)
             session.add(new_character)
 
             await session.commit()
-            return character.model_copy(update={'id': new_character.id})
+            return self._to_model(new_character)

@@ -12,6 +12,7 @@ from .turn_record import TurnRecordRepository
 from .inventory import ItemRepository, EquipmentRepository
 from .world_entry import WorldEntryRepository
 from .task import TaskRepository
+from .world import WorldRepository
 
 
 class DatabaseService:
@@ -85,3 +86,7 @@ class DatabaseService:
     @property
     def task(self) -> TaskRepository:
         return TaskRepository(self._session_factory)
+
+    @property
+    def world(self) -> WorldRepository:
+        return WorldRepository(self._session_factory)

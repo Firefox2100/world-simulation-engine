@@ -102,6 +102,22 @@ class ItemOrm(Base):
     unique: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
+class EquipmentOrm(Base):
+    __tablename__ = "equipment"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation.id"), nullable=False)
+    character_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("character.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    quality: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
 class LlmConnectionProfileOrm(Base):
     __tablename__ = "llm_connection_profile"
 
@@ -184,8 +200,20 @@ class WorldOrm(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    agent_preset: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    data_preset: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    embedding_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    language: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    characters: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    locations: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    factions: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    faction_relationships: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    inventory: Mapped[dict[int, dict[str, list[dict]]] | None] = mapped_column(JSON, nullable=True)
+    tasks: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    world_entries: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    turn_records: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
 
 class WorldEntryOrm(Base):
     __tablename__ = "world_entry"

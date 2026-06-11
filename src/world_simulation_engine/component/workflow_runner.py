@@ -1,16 +1,18 @@
 import asyncio
 import json
+import operator
 from uuid import uuid4
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Literal, Annotated
 from langgraph.constants import START
 from langgraph.graph import StateGraph
+from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
-    PendingGeneratedProposal, BriefingOutput
+    PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, ResolverOutput
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
-    MemoryAgent
+    MemoryAgent, CharacterAgent, ResolverAgent
 from .world_entry_recaller import WorldEntryRecaller
 
 
@@ -35,6 +37,20 @@ class TurnGeneratorState(BaseModel):
     director_output: DirectorOutput | None = None
     generated_proposals: list[PendingGeneratedProposal] | None = None
     briefing_output: BriefingOutput | None = None
+    character_action_outputs: Annotated[
+        list[CharacterActionOutput],
+        operator.add,
+    ] = Field(default_factory=list)
+    resolver_output: ResolverOutput | None = None
+
+
+class CharacterActionState(BaseModel):
+    user_input: str | None
+    simulation: Simulation | None
+    state: SimulationState | None
+    connection_profiles: ConnectionProfileCache
+    generated_proposals: list[PendingGeneratedProposal] | None = None
+    briefing: CharacterBriefing
 
 
 @dataclass
@@ -257,14 +273,100 @@ class TurnGenerator:
             "briefing_output": result,
         }
 
+    async def character_action(self, state: CharacterActionState) -> dict:
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
+
+        if state.connection_profiles.character is None:
+            raise RuntimeError("Memory connection profile not loaded")
+        character_agent = CharacterAgent(
+            profile=state.simulation.agent_preset.character,
+            connection=state.connection_profiles.character,
+        )
+
+        character = await self._db.character.get(state.briefing.character_id)
+        if not character:
+            raise ValueError(f"Character {state.briefing.character_id} not found")
+        current_location = await self._db.location.get(character.location)
+        if not current_location:
+            raise ValueError(f"Current location {character.location} does not exist")
+        present_characters = await self._db.character.list(location=character.location)
+        present_characters = [c for c in present_characters if c.id != character.id]
+        tasks = await self._db.task.list(
+            task_ids=state.briefing.relevant_task_ids,
+        )
+        world_entries = await self._db.entry.list(
+            entry_ids=state.briefing.relevant_world_entry_ids,
+        )
+        items = await self._db.item.list(character_id=character.id)
+        equipments = await self._db.equipment.list(character_id=character.id)
+        last_record = await self._db.record.get_last_record(simulation_id=state.simulation.id)
+
+        result = await character_agent.generate_action(
+            character=character,
+            briefing=state.briefing,
+            current_location=current_location,
+            visible_characters=present_characters,
+            tasks=tasks,
+            world_entries=world_entries,
+            inventory=items,
+            equipments=equipments,
+            proposals=state.generated_proposals or [],
+            user_input=state.user_input,
+            last_narration=last_record.narration if last_record else None,
+            previous_resolver_notes="",
+        )
+
+        return {
+            "character_action_outputs": [result]
+        }
+
+    def route_after_director(self, state: TurnGeneratorState) -> Literal["memory"]:
+        if not state.director_output:
+            raise RuntimeError("Director output not generated")
+
+        if not state.director_output.wait_for_user:
+            return "memory"
+
+    def route_after_briefing(self, state: TurnGeneratorState):
+        if not state.briefing_output:
+            raise RuntimeError("Briefing output not generated")
+
+        return [
+            Send(
+                "character_action",
+                CharacterActionState(
+                    simulation=state.simulation,
+                    state=state.state,
+                    connection_profiles=state.connection_profiles,
+                    user_input=state.user_input,
+                    briefing=briefing
+                ),
+            )
+            for briefing in state.briefing_output.briefings
+        ]
+
     def build_graph(self):
         graph = StateGraph(TurnGeneratorState)
 
         graph.add_node("load_simulation", self.load_simulation)
         graph.add_node("director_planning", self.director_planning)
+        graph.add_node("memory_briefing", self.memory_briefing)
+        graph.add_node("character_action", self.character_action)
 
         graph.add_edge(START, "load_simulation")
         graph.add_edge("load_simulation", "director_planning")
+        graph.add_conditional_edges(
+            "director_planning",
+            self.route_after_director,
+            {
+                "memory": "memory_briefing",
+            }
+        )
+        graph.add_conditional_edges(
+            "memory_briefing",
+            self.route_after_briefing,
+        )
 
         return graph.compile()
 

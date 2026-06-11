@@ -75,3 +75,44 @@ async def test_list_items(db,
 
     assert isinstance(fetched, list)
     assert len(fetched) == len(mock_items_1)
+
+
+async def test_create_equipment(db,
+                                mock_equipments_4,
+                                ):
+    result = await db.equipment.create(
+        equipment=mock_equipments_4[0],
+        simulation_id=1,
+    )
+
+    assert isinstance(result, Equipment)
+
+
+async def test_get_equipment(db,
+                            mock_equipments_4,
+                            ):
+    result = await db.equipment.create(
+        equipment=mock_equipments_4[0],
+        simulation_id=1,
+    )
+
+    fetched = await db.equipment.get(result.id)
+
+    assert isinstance(fetched, Equipment)
+    assert fetched.id == result.id
+    assert fetched.name == mock_equipments_4[0].name
+
+
+async def test_list_equipment(db,
+                              mock_equipments_4,
+                              ):
+    for equipment in mock_equipments_4:
+        await db.equipment.create(
+            equipment=equipment,
+            simulation_id=1,
+        )
+
+    fetched = await db.equipment.list(simulation_id=1)
+
+    assert isinstance(fetched, list)
+    assert len(fetched) == len(mock_equipments_4)

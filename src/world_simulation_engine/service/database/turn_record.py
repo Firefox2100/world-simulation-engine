@@ -12,6 +12,11 @@ class TurnRecordRepository:
                  ):
         self._session_factory = session_factory
 
+    @staticmethod
+    def _to_model(record: TurnRecordOrm) -> TurnRecord:
+        payload = {column.name: getattr(record, column.name) for column in TurnRecordOrm.__table__.columns}
+        return TurnRecord.model_validate(payload)
+
     async def get(self, record_id: int) -> TurnRecord | None:
         async with self._session_factory() as session:
             record = await session.get(TurnRecordOrm, record_id)
@@ -19,13 +24,7 @@ class TurnRecordRepository:
             if not record:
                 return None
 
-            return TurnRecord(
-                id=record.id,
-                simulation_id=record.simulation_id,
-                turn_number=record.turn_number,
-                type=TurnType(record.type),
-                narration=record.narration,
-            )
+            return self._to_model(record)
 
     async def list(self,
                    simulation_id: int | None = None,
@@ -41,16 +40,7 @@ class TurnRecordRepository:
             result = await session.scalars(stmt)
             records = result.all()
 
-            return [
-                TurnRecord(
-                    id=r.id,
-                    simulation_id=r.simulation_id,
-                    turn_number=r.turn_number,
-                    type=TurnType(r.type),
-                    narration=r.narration,
-                )
-                for r in records
-            ]
+            return [self._to_model(record) for record in records]
 
     async def get_last_record(self, simulation_id: int) -> TurnRecord | None:
         async with self._session_factory() as session:
@@ -65,10 +55,4 @@ class TurnRecordRepository:
             if not record:
                 return None
 
-            return TurnRecord(
-                id=record.id,
-                simulation_id=record.simulation_id,
-                turn_number=record.turn_number,
-                type=TurnType(record.type),
-                narration=record.narration,
-            )
+            return self._to_model(record)
