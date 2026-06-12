@@ -6,23 +6,12 @@ from .character import Character
 from .data_preset import DataPreset
 from .embedding_profile import EmbeddingProfile
 from .faction import Faction, FactionRelationship
-from .inventory import Item, Equipment
+from .inventory import CharacterInventory
 from .location import Location
 from .simulation import SimulationState
 from .task import Task
 from .turn_record import TurnRecord
 from .world_entry import WorldEntry
-
-
-class CharacterInventory(BaseModel):
-    items: list[Item] = Field(
-        default_factory=list,
-        description="The list of items in the character's inventory."
-    )
-    equipment: list[Equipment] = Field(
-        default_factory=list,
-        description="The list of equipment in the character's inventory."
-    )
 
 
 class WorldCreate(BaseModel):

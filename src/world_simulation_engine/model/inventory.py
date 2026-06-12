@@ -60,3 +60,14 @@ class Equipment(BaseModel):
         ...,
         description="Whether or not the item is equipped.",
     )
+
+
+class CharacterInventory(BaseModel):
+    items: list[Item] = Field(
+        default_factory=list,
+        description="The list of items in the character's inventory."
+    )
+    equipments: list[Equipment] = Field(
+        default_factory=list,
+        description="The list of equipment in the character's inventory."
+    )

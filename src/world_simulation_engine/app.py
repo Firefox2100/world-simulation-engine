@@ -3,7 +3,7 @@ from fastapi import FastAPI
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService
-from world_simulation_engine.router import connection_router, simulation_router
+from world_simulation_engine.router import connection_router, simulation_router, world_router
 
 
 @asynccontextmanager
@@ -27,6 +27,7 @@ def create_app() -> FastAPI:
 
     app.include_router(connection_router)
     app.include_router(simulation_router)
+    app.include_router(world_router)
 
     return app
 

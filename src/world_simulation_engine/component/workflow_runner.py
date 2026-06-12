@@ -10,7 +10,8 @@ from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
-    PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, ResolverOutput
+    PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
+    ResolverOutput
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
     MemoryAgent, CharacterAgent, ResolverAgent
 from .world_entry_recaller import WorldEntryRecaller
@@ -20,6 +21,7 @@ class ConnectionProfileCache(BaseModel):
     director: LlmConnectionProfile | None = None
     memory: LlmConnectionProfile | None = None
     character: LlmConnectionProfile | None = None
+    resolver: LlmConnectionProfile | None = None
     world_generator: LlmConnectionProfile | None = None
 
     embedding: LlmConnectionProfile | None = None
@@ -321,6 +323,56 @@ class TurnGenerator:
             "character_action_outputs": [result]
         }
 
+    async def resolve_character_actions(self, state: TurnGeneratorState):
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
+        if not state.briefing_output:
+            raise RuntimeError("Briefing output is not generated")
+        if not state.character_action_outputs:
+            raise RuntimeError("Character action outputs is not generated")
+
+        if state.connection_profiles.resolver is None:
+            raise RuntimeError("Memory connection profile not loaded")
+        resolver_agent = ResolverAgent(
+            profile=state.simulation.agent_preset.resolver,
+            connection=state.connection_profiles.resolver,
+        )
+        current_location = await self._db.location.get(state.state.scene)
+        if not current_location:
+            raise ValueError(f"Current location {state.state.scene} does not exist")
+        characters = await self._db.character.list(
+            character_ids=[a.character_id for a in state.character_action_outputs]
+        )
+        inventory = {}
+        for character in characters:
+            items = await self._db.item.list(character_id=character.id)
+            equipments = await self._db.equipment.list(character_id=character.id)
+            inventory[character.id] = CharacterInventory(
+                items=items,
+                equipments=equipments,
+            )
+        world_entry_ids = set()
+        for b in state.briefing_output.briefings:
+            world_entry_ids |= set(b.relevant_world_entry_ids)
+        world_entries = await self._db.entry.list(entry_ids=list(world_entry_ids))
+        last_record = await self._db.record.get_last_record(simulation_id=state.simulation.id)
+
+        result = await resolver_agent.resolve_character_actions(
+            simulation=state.simulation,
+            state=state.state,
+            current_location=current_location,
+            characters=characters,
+            character_actions=state.character_action_outputs,
+            proposals=state.generated_proposals or [],
+            inventory=inventory,
+            world_entries=world_entries,
+            last_narration=last_record.narration if last_record else None,
+            previous_resolver_notes="",
+        )
+        return {
+            "resolver_output": result,
+        }
+
     def route_after_director(self, state: TurnGeneratorState) -> Literal["memory"]:
         if not state.director_output:
             raise RuntimeError("Director output not generated")
@@ -353,6 +405,7 @@ class TurnGenerator:
         graph.add_node("director_planning", self.director_planning)
         graph.add_node("memory_briefing", self.memory_briefing)
         graph.add_node("character_action", self.character_action)
+        graph.add_node("resolve_character_actions", self.resolve_character_actions)
 
         graph.add_edge(START, "load_simulation")
         graph.add_edge("load_simulation", "director_planning")
@@ -367,6 +420,7 @@ class TurnGenerator:
             "memory_briefing",
             self.route_after_briefing,
         )
+        graph.add_edge("character_action", "resolve_character_actions")
 
         return graph.compile()
 

@@ -2,8 +2,8 @@ from typing import Any, cast
 from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
-from world_simulation_engine.model import Location, Character, WorldEntry, Simulation, SimulationState, Equipment, \
-    ResolverAgentProfile, CharacterActionOutput, PendingGeneratedProposal, Entity, ResolverOutput
+from world_simulation_engine.model import Location, Character, WorldEntry, Simulation, SimulationState, \
+    CharacterInventory, ResolverAgentProfile, CharacterActionOutput, PendingGeneratedProposal, ResolverOutput
 from .world_agent import WorldAgent
 
 
@@ -16,8 +16,7 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
         characters: list[Character],
         character_actions: list[CharacterActionOutput],
         proposals: list[PendingGeneratedProposal],
-        visible_entities: list[Entity],
-        inventory: dict[int, dict[str, list]],
+        inventory: dict[int, CharacterInventory],
         world_entries: list[WorldEntry],
         last_narration: str | None = None,
         previous_resolver_notes: str | None = None,
@@ -31,7 +30,6 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             "characters": characters,
             "character_actions": character_actions,
             "pending_generated_proposals": proposals,
-            "visible_entities": visible_entities,
             "inventory": inventory,
             "world_entries": world_entries,
             "last_narration": last_narration,

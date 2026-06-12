@@ -38,23 +38,23 @@ def mock_world_create(mock_simulation,
         inventory={
             0: CharacterInventory(
                 items=mock_items_0,
-                equipment=mock_equipments_0,
+                equipments=mock_equipments_0,
             ),
             1: CharacterInventory(
                 items=mock_items_1,
-                equipment=mock_equipments_1,
+                equipments=mock_equipments_1,
             ),
             2: CharacterInventory(
                 items=mock_items_2,
-                equipment=mock_equipments_2,
+                equipments=mock_equipments_2,
             ),
             3: CharacterInventory(
                 items=mock_items_3,
-                equipment=mock_equipments_3,
+                equipments=mock_equipments_3,
             ),
             4: CharacterInventory(
                 items=mock_items_4,
-                equipment=mock_equipments_4,
+                equipments=mock_equipments_4,
             ),
         },
         tasks=mock_tasks,
