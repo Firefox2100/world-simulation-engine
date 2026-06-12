@@ -1,6 +1,7 @@
 import json
 from typing import Any, cast
 from langchain.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig, patch_config
 from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
@@ -15,23 +16,23 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
     Does not build per-character briefings.
     """
 
-    async def plan_turn(
-        self,
-        simulation: Simulation,
-        state: SimulationState,
-        current_location: Location,
-        present_characters: list[Character],
-        relevant_tasks: list[Task],
-        recalled_world_entries: list[WorldEntry],
-        generation_tools: list,
-        existing_items: list[Item] | None = None,
-        existing_equipments: list[Equipment] | None = None,
-        factions: list[Faction] | None = None,
-        faction_relationships: list[FactionRelationship] | None = None,
-        user_input: str | None = None,
-        last_narration: str | None = None,
-        previous_resolver_notes: str | None = None,
-    ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
+    async def plan_turn(self,
+                        simulation: Simulation,
+                        state: SimulationState,
+                        current_location: Location,
+                        present_characters: list[Character],
+                        relevant_tasks: list[Task],
+                        recalled_world_entries: list[WorldEntry],
+                        generation_tools: list,
+                        existing_items: list[Item] | None = None,
+                        existing_equipments: list[Equipment] | None = None,
+                        factions: list[Faction] | None = None,
+                        faction_relationships: list[FactionRelationship] | None = None,
+                        user_input: str | None = None,
+                        last_narration: str | None = None,
+                        previous_resolver_notes: str | None = None,
+                        config: RunnableConfig | None = None,
+                        ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
         LOGGER.info("Planning turn %s for simulation %s", state.turn_number + 1, simulation.id)
 
         base_data = {
@@ -66,7 +67,13 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             tools_by_name = {tool.name: tool for tool in generation_tools}
 
             for i in range(self.profile.max_tool_rounds):
-                ai_msg = await model_with_tools.ainvoke(working)
+                ai_msg = await model_with_tools.ainvoke(
+                    working,
+                    config=patch_config(
+                        config,
+                        run_name="director_tool_calling",
+                    ) if config else None,
+                )
                 working.append(ai_msg)
                 LOGGER.debug(
                     "Model returned potential tool calls:\n%s\n%s",
@@ -148,6 +155,15 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
 
         structured_model = self.model.with_structured_output(DirectorOutput)
         return (
-            cast(DirectorOutput, await structured_model.ainvoke(final_messages)),
+            cast(
+                DirectorOutput,
+                await structured_model.ainvoke(
+                    final_messages,
+                    config=patch_config(
+                        config,
+                        run_name="director_planning",
+                    ) if config else None,
+                )
+            ),
             [PendingGeneratedProposal.model_validate(p) for p in tool_results]
         )

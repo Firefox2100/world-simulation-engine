@@ -1,4 +1,7 @@
+from uuid import uuid4
 from langgraph.graph.state import CompiledStateGraph
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 import pytest
 
 from world_simulation_engine.component import TurnGenerator, TurnGeneratorState
@@ -78,6 +81,8 @@ async def test_run_turn(db):
     turn_generator = TurnGenerator(db)
 
     graph = turn_generator.build_graph()
+    langfuse = Langfuse()
+    langfuse_handler = CallbackHandler()
 
     result = await graph.ainvoke(
         TurnGeneratorState(
@@ -86,6 +91,17 @@ async def test_run_turn(db):
             user_input="Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
                        "before Harlan vanished.",
         ),
+        config={
+            "callbacks": [langfuse_handler],
+            "run_name": "turn_generator",
+            "metadata": {
+                "simulation_id": 1,
+            },
+            "configurable": {
+                "thread_id": str(uuid4()),
+            },
+            "tags": ["turn-generator", "simulation"],
+        },
     )
 
     result_obj = TurnGeneratorState.model_validate(result)

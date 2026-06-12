@@ -1,14 +1,12 @@
-import json
 from uuid import uuid4
 from copy import deepcopy
 from typing import Any, cast
 from langchain.tools import tool
-from langchain.messages import ToolMessage
 from .world_agent import WorldAgent
 
 from world_simulation_engine.model import CommitterAgentProfile, Simulation, SimulationState, Character, \
     Location, CharacterInventory, Task, WorldEntry, LlmConnectionProfile, SandboxMutationRecord, SandboxObjectRef, \
-    CommitterValidationOutput, CommitterFinalOutput
+    CommitterValidationOutput, CommitterFinalOutput, Faction, FactionRelationship
 
 
 class CommitterAgent(WorldAgent[CommitterAgentProfile]):
@@ -20,6 +18,8 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                  characters: list[Character],
                  locations: list[Location],
                  inventory: dict[int, CharacterInventory],
+                 factions: list[Faction],
+                 faction_relationships: list[FactionRelationship],
                  tasks: list[Task],
                  world_entries: list[WorldEntry],
                  ):
@@ -35,6 +35,8 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             "characters": characters,
             "locations": locations,
             "inventory": inventory,
+            "factions": factions,
+            "faction_relationships": faction_relationships,
             "tasks": tasks,
             "world_entries": world_entries,
         }
@@ -57,6 +59,13 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
     def mutation_log(self) -> list[dict[str, Any]]:
         return [m.model_dump() for m in self._mutation_log]
+
+    @staticmethod
+    def _object_id(obj: Any) -> int | str | None:
+        if isinstance(obj, dict):
+            return obj.get("id", obj.get("temp_id"))
+
+        return getattr(obj, "id", None)
 
     def _record(
         self,
@@ -81,7 +90,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
     def _find_list_object(self, collection_name: str, object_id: int):
         collection = self._sandbox[collection_name]
         for index, obj in enumerate(collection):
-            if getattr(obj, "id", None) == object_id:
+            if self._object_id(obj) == object_id:
                 return index, obj
         raise KeyError(f"{collection_name} object id={object_id} not found")
 
@@ -89,10 +98,128 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         if hasattr(obj, "model_copy"):
             return obj.model_copy(update=patch)
 
+        if isinstance(obj, dict):
+            return {**obj, **patch}
+
         for key, value in patch.items():
             setattr(obj, key, value)
 
         return obj
+
+    def _append_collection_object(
+        self,
+        collection_name: str,
+        object_type: str,
+        data: dict[str, Any],
+        reason: str,
+        source_event: str | None = None,
+    ) -> dict[str, Any]:
+        self._sandbox[collection_name].append(data)
+        return self._record(
+            operation="create",
+            target=SandboxObjectRef(object_type=object_type, object_id=data.get("id", data.get("temp_id", "new"))),
+            payload=data,
+            reason=reason,
+            source_event=source_event,
+        )
+
+    def _create_inventory_object(
+        self,
+        object_type: str,
+        data: dict[str, Any],
+        reason: str,
+        source_event: str | None = None,
+    ) -> dict[str, Any]:
+        owner_id = data.get("owner_id", data.get("character_id", data.get("proposed_owner_id", 0))) or 0
+        if owner_id not in self._sandbox["inventory"]:
+            self._sandbox["inventory"][owner_id] = CharacterInventory()
+
+        inventory = self._sandbox["inventory"][owner_id]
+        field_name = "equipments" if object_type == "equipment" else "items"
+        current_values = inventory[field_name] if isinstance(inventory, dict) else getattr(inventory, field_name)
+        self._sandbox["inventory"][owner_id] = self._patch_model_object(
+            inventory,
+            {
+                field_name: [*current_values, data],
+            },
+        )
+        return self._record(
+            operation="create",
+            target=SandboxObjectRef(object_type=object_type, object_id=data.get("id", data.get("temp_id", "new"))),
+            payload={"owner_id": owner_id, **data},
+            reason=reason,
+            source_event=source_event,
+        )
+
+    def _create_entity_object(
+        self,
+        data: dict[str, Any],
+        reason: str,
+        source_event: str | None = None,
+    ) -> dict[str, Any]:
+        location_id = data.get("location_id", data.get("proposed_location_id"))
+        if location_id is None:
+            raise ValueError("Creating an entity requires location_id or proposed_location_id")
+
+        loc_index, location = self._find_list_object("locations", location_id)
+        entities = location["entities"] if isinstance(location, dict) else location.entities
+        self._sandbox["locations"][loc_index] = self._patch_model_object(
+            location,
+            {
+                "entities": [*entities, data],
+            },
+        )
+        return self._record(
+            operation="create",
+            target=SandboxObjectRef(object_type="entity", object_id=data.get("id", data.get("temp_id", "new"))),
+            payload=data,
+            reason=reason,
+            source_event=source_event,
+        )
+
+    def _remove_from_collection(self, collection_name: str, object_id: int | str) -> bool:
+        collection = self._sandbox[collection_name]
+        for index, obj in enumerate(collection):
+            if self._object_id(obj) == object_id:
+                del collection[index]
+                return True
+
+        return False
+
+    def _remove_entity_object(self, object_id: int | str) -> bool:
+        for loc_index, location in enumerate(self._sandbox["locations"]):
+            entities = location["entities"] if isinstance(location, dict) else location.entities
+            for entity_index, entity in enumerate(entities):
+                if self._object_id(entity) == object_id:
+                    new_entities = list(entities)
+                    del new_entities[entity_index]
+                    self._sandbox["locations"][loc_index] = self._patch_model_object(
+                        location,
+                        {
+                            "entities": new_entities,
+                        },
+                    )
+                    return True
+
+        return False
+
+    def _remove_inventory_object(self, object_type: str, object_id: int | str) -> bool:
+        field_name = "equipments" if object_type == "equipment" else "items"
+        for owner_id, inventory in self._sandbox["inventory"].items():
+            current_values = inventory[field_name] if isinstance(inventory, dict) else getattr(inventory, field_name)
+            for index, obj in enumerate(current_values):
+                if self._object_id(obj) == object_id:
+                    new_values = list(current_values)
+                    del new_values[index]
+                    self._sandbox["inventory"][owner_id] = self._patch_model_object(
+                        inventory,
+                        {
+                            field_name: new_values,
+                        },
+                    )
+                    return True
+
+        return False
 
     def get_tools(self):
         @tool
@@ -107,7 +234,13 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Use this every turn to update the overall scene/state summary,
             round-level state, scene id, time label, or other SimulationState fields.
 
-            This does not write to the database.
+            Args:
+                patch: Partial SimulationState fields to update, such as state, scene, time_label, or summaries.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the update mutation.
             """
             self._sandbox["state"] = self._patch_model_object(
                 self._sandbox["state"],
@@ -135,6 +268,15 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             or other character fields that changed because of resolved events.
 
             Do not delete dead or absent characters. Use state changes instead.
+
+            Args:
+                character_id: Existing character ID to update.
+                patch: Partial Character fields to update.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the update mutation.
             """
             index, obj = self._find_list_object("characters", character_id)
             self._sandbox["characters"][index] = self._patch_model_object(obj, patch)
@@ -160,6 +302,15 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             or entity list changes when the whole location needs patching.
 
             Prefer update_entity for a single entity status change.
+
+            Args:
+                location_id: Existing location ID to update.
+                patch: Partial Location fields to update.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the update mutation.
             """
             index, obj = self._find_list_object("locations", location_id)
             self._sandbox["locations"][index] = self._patch_model_object(obj, patch)
@@ -186,15 +337,26 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             entity properties after a resolved action.
 
             Prefer status changes over deletion for auditability.
+
+            Args:
+                location_id: Existing location ID containing the entity.
+                entity_id: Existing entity ID to update.
+                patch: Partial Entity fields to update.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the update mutation.
             """
             loc_index, loc = self._find_list_object("locations", location_id)
+            entities = loc["entities"] if isinstance(loc, dict) else loc.entities
 
-            for entity_index, entity in enumerate(loc.entities):
-                if entity.id == entity_id:
+            for entity_index, entity in enumerate(entities):
+                if self._object_id(entity) == entity_id:
                     updated_entity = self._patch_model_object(entity, patch)
-                    new_entities = list(loc.entities)
+                    new_entities = list(entities)
                     new_entities[entity_index] = updated_entity
-                    self._sandbox["locations"][loc_index] = loc.model_copy(update={"entities": new_entities})
+                    self._sandbox["locations"][loc_index] = self._patch_model_object(loc, {"entities": new_entities})
                     return self._record(
                         operation="update",
                         target=SandboxObjectRef(object_type="entity", object_id=entity_id),
@@ -218,12 +380,19 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             a new canonical location.
 
             Use temporary negative/string IDs only if the database ID is not known.
+
+            Args:
+                data: Complete Location-like payload to add to the sandbox.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the create mutation.
             """
-            self._sandbox["locations"].append(data)
-            return self._record(
-                operation="create",
-                target=SandboxObjectRef(object_type="location", object_id=data.get("id", data.get("temp_id", "new"))),
-                payload=data,
+            return self._append_collection_object(
+                collection_name="locations",
+                object_type="location",
+                data=data,
                 reason=reason,
                 source_event=source_event,
             )
@@ -241,12 +410,19 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             newly revealed information, or GM-side truth that must enter recall.
 
             Content must be a complete factual sentence.
+
+            Args:
+                data: Complete WorldEntry-like payload to add to the sandbox.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the create mutation.
             """
-            self._sandbox["world_entries"].append(data)
-            return self._record(
-                operation="create",
-                target=SandboxObjectRef(object_type="world_entry", object_id=data.get("id", data.get("temp_id", "new"))),
-                payload=data,
+            return self._append_collection_object(
+                collection_name="world_entries",
+                object_type="world_entry",
+                data=data,
                 reason=reason,
                 source_event=source_event,
             )
@@ -262,12 +438,19 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
             Use when resolved events create a new goal, obligation, lead,
             investigation thread, promise, danger, or persistent objective.
+
+            Args:
+                data: Complete Task-like payload to add to the sandbox.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the create mutation.
             """
-            self._sandbox["tasks"].append(data)
-            return self._record(
-                operation="create",
-                target=SandboxObjectRef(object_type="task", object_id=data.get("id", data.get("temp_id", "new"))),
-                payload=data,
+            return self._append_collection_object(
+                collection_name="tasks",
+                object_type="task",
+                data=data,
                 reason=reason,
                 source_event=source_event,
             )
@@ -284,6 +467,15 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
             Use for progress, status, priority, goal refinement, source update,
             or task completion after resolved events.
+
+            Args:
+                task_id: Existing task ID to update.
+                patch: Partial Task fields to update.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the update mutation.
             """
             index, obj = self._find_list_object("tasks", task_id)
             self._sandbox["tasks"][index] = self._patch_model_object(obj, patch)
@@ -308,6 +500,15 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Use for adding/removing/updating items and equipment.
 
             The patch may replace the items/equipments list or update inventory metadata.
+
+            Args:
+                owner_id: Character ID whose inventory should be patched.
+                patch: Partial CharacterInventory fields, usually items and/or equipments.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the update mutation.
             """
             if owner_id not in self._sandbox["inventory"]:
                 raise KeyError(f"Inventory owner id={owner_id} not found")
@@ -336,9 +537,48 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Use sparingly. Prefer specialised tools when possible.
             Supported object_type examples:
             character, item, equipment, entity, faction, faction_relationship.
+            For item/equipment, include owner_id, character_id, or proposed_owner_id in data when known.
+            For entity, include location_id or proposed_location_id in data.
 
-            This does not write to the database.
+            Args:
+                object_type: Type of object to create. Prefer a specialised tool for state, location, task, and world_entry.
+                data: Complete object payload to add to the sandbox or preview in the mutation log.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the create mutation.
             """
+            collection_by_type = {
+                "character": "characters",
+                "faction": "factions",
+                "faction_relationship": "faction_relationships",
+            }
+            collection_name = collection_by_type.get(object_type)
+            if collection_name is not None:
+                return self._append_collection_object(
+                    collection_name=collection_name,
+                    object_type=object_type,
+                    data=data,
+                    reason=reason,
+                    source_event=source_event,
+                )
+
+            if object_type in {"item", "equipment"}:
+                return self._create_inventory_object(
+                    object_type=object_type,
+                    data=data,
+                    reason=reason,
+                    source_event=source_event,
+                )
+
+            if object_type == "entity":
+                return self._create_entity_object(
+                    data=data,
+                    reason=reason,
+                    source_event=source_event,
+                )
+
             return self._record(
                 operation="create",
                 target=SandboxObjectRef(object_type=object_type, object_id=data.get("id", data.get("temp_id", "new"))),
@@ -360,12 +600,39 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Use sparingly. Prefer status updates for narrative changes.
             Do not remove characters merely because they die, leave, vanish, or become inactive.
 
-            This records removal intent. Your database layer should validate it.
+            This removes the object from the sandbox when it can be found and records removal intent.
+            The database layer should still validate removals before persistence.
+
+            Args:
+                object_type: Type of object to remove.
+                object_id: Existing object ID or temporary proposal ID.
+                reason: Short justification tied to a resolver result or accepted proposal.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the remove mutation.
             """
+            collection_by_type = {
+                "character": "characters",
+                "location": "locations",
+                "task": "tasks",
+                "world_entry": "world_entries",
+                "faction": "factions",
+                "faction_relationship": "faction_relationships",
+            }
+            collection_name = collection_by_type.get(object_type)
+            removed = False
+            if collection_name is not None:
+                removed = self._remove_from_collection(collection_name, object_id)
+            elif object_type in {"item", "equipment"}:
+                removed = self._remove_inventory_object(object_type, object_id)
+            elif object_type == "entity":
+                removed = self._remove_entity_object(object_id)
+
             return self._record(
                 operation="remove",
                 target=SandboxObjectRef(object_type=object_type, object_id=object_id),
-                payload={},
+                payload={"removed_from_sandbox": removed},
                 reason=reason,
                 source_event=source_event,
             )
@@ -382,6 +649,14 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Use when a resolved event confirms that the proposed content should
             become canonical. You must also create/update the corresponding
             canonical object with another tool call.
+
+            Args:
+                temp_id: Temporary proposal ID to accept.
+                reason: Short justification tied to a resolver result.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the proposal acceptance.
             """
             return self._record(
                 operation="accept_proposal",
@@ -401,6 +676,14 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Mark a pending generated proposal as rejected.
 
             Use when a proposed generated object is not supported by resolved events.
+
+            Args:
+                temp_id: Temporary proposal ID to reject.
+                reason: Short justification tied to a resolver result.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the proposal rejection.
             """
             return self._record(
                 operation="reject_proposal",
@@ -420,6 +703,14 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             Mark a pending generated proposal as deferred.
 
             Use when it may become canonical later, but this turn does not confirm it.
+
+            Args:
+                temp_id: Temporary proposal ID to defer.
+                reason: Short justification tied to a resolver result.
+                source_event: Optional ID or text naming the source resolved action/proposal.
+
+            Returns:
+                SandboxMutationRecord as a dict describing the proposal deferral.
             """
             return self._record(
                 operation="defer_proposal",
@@ -463,6 +754,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         tools_by_name = {tool.name: tool for tool in tools}
 
         previous_validation: CommitterValidationOutput | None = None
+        previous_tool_results: list[dict[str, Any]] = []
 
         for round_index in range(max_rounds):
             data = {
@@ -482,6 +774,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                     if previous_validation is not None
                     else None
                 ),
+                "previous_tool_results": previous_tool_results,
             }
 
             messages = self._compose_messages(
@@ -491,12 +784,12 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
             ai_msg = await tool_model.ainvoke(messages)
             tool_calls = getattr(ai_msg, "tool_calls", None) or []
+            round_tool_results: list[dict[str, Any]] = []
 
             if tool_calls:
                 for call in tool_calls:
                     name = call["name"]
                     args = call.get("args", {})
-                    tool_call_id = call.get("id")
 
                     if name not in tools_by_name:
                         result_payload = {
@@ -514,16 +807,17 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                                 "args": args,
                             }
 
-                    _ = ToolMessage(
-                        content=json.dumps(result_payload, ensure_ascii=False, default=str),
-                        tool_call_id=tool_call_id,
-                        name=name,
-                    )
+                    round_tool_results.append({
+                        "tool": name,
+                        "args": args,
+                        "result": self._dump_obj(result_payload),
+                    })
 
             validation_data = {
                 **data,
                 "current_sandbox_state": self.snapshot(),
                 "mutation_log": self.mutation_log(),
+                "tool_results": round_tool_results,
             }
 
             validation_messages = self._compose_messages(
@@ -533,6 +827,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
             validation_model = self.model.with_structured_output(CommitterValidationOutput)
             previous_validation = await validation_model.ainvoke(validation_messages)
+            previous_tool_results = round_tool_results
 
             if previous_validation.complete and not previous_validation.needs_more_changes:
                 break
@@ -548,6 +843,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             "original_state": self._dump_obj(self._original),
             "final_sandbox_state": self.snapshot(),
             "mutation_log": self.mutation_log(),
+            "tool_results": previous_tool_results,
             "last_validation": (
                 previous_validation.model_dump()
                 if previous_validation is not None

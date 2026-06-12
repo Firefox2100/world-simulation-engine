@@ -82,10 +82,17 @@ async def run_simulation(simulation_id: int,
                          run_request: RunSimulationRequest,
                          turn_runner: turn_runner_dep
                          ):
-    run_id = await turn_runner.start({
-        "simulation_id": simulation_id,
-        "user_input": run_request.user_input,
-    })
+    run_id = await turn_runner.start(
+        input_data={
+            "simulation_id": simulation_id,
+            "user_input": run_request.user_input,
+        },
+        run_name="turn_generator",
+        metadata={
+            "simulation_id": simulation_id,
+        },
+        tags=["turn-generator", "simulation"],
+    )
 
     return RunSimulationResponse(
         run_id=run_id,

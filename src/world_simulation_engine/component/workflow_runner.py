@@ -4,15 +4,17 @@ import operator
 from uuid import uuid4
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Literal, Annotated
+from langchain_core.runnables import RunnableConfig
 from langgraph.constants import START
-from langgraph.graph import StateGraph
+from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langgraph.types import Send
+from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import FactionRelationshipEntity
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
     PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
-    ResolverOutput, Faction, FactionRelationship
+    ResolverOutput, Faction, FactionRelationship, CommitterFinalOutput
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
     MemoryAgent, CharacterAgent, ResolverAgent, CommitterAgent
 from .world_entry_recaller import WorldEntryRecaller
@@ -46,6 +48,7 @@ class TurnGeneratorState(BaseModel):
         operator.add,
     ] = Field(default_factory=list)
     resolver_output: ResolverOutput | None = None
+    committer_output: CommitterFinalOutput | None = None
 
 
 class CharacterActionState(BaseModel):
@@ -226,7 +229,7 @@ class TurnGenerator:
             ),
         }
 
-    async def director_planning(self, state: TurnGeneratorState) -> dict:
+    async def director_planning(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -332,6 +335,7 @@ class TurnGenerator:
             faction_relationships=faction_relationships,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
+            config=config,
         )
 
         return {
@@ -339,7 +343,7 @@ class TurnGenerator:
             "generated_proposals": proposals,
         }
 
-    async def memory_briefing(self, state: TurnGeneratorState) -> dict:
+    async def memory_briefing(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -425,13 +429,14 @@ class TurnGenerator:
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
+            config=config,
         )
 
         return {
             "briefing_output": result,
         }
 
-    async def character_action(self, state: CharacterActionState) -> dict:
+    async def character_action(self, state: CharacterActionState, config: RunnableConfig) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -482,13 +487,14 @@ class TurnGenerator:
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
+            config=config,
         )
 
         return {
             "character_action_outputs": [result]
         }
 
-    async def resolve_character_actions(self, state: TurnGeneratorState):
+    async def resolve_character_actions(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
         if not state.briefing_output:
@@ -543,14 +549,68 @@ class TurnGenerator:
             faction_relationships=faction_relationships,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
+            config=config,
         )
         return {
             "resolver_output": result,
         }
 
-    async def commit_changes(self, state: TurnGeneratorState):
+    async def commit_changes(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
+        if state.connection_profiles.committer is None:
+            raise RuntimeError("Committer connection profile not loaded")
+        if state.resolver_output is None:
+            raise RuntimeError("Resolver output is not generated")
+
+        characters = await self._db.character.list(simulation_id=state.simulation_id)
+        locations = await self._db.location.list(simulation_id=state.simulation_id)
+        tasks = await self._db.task.list(simulation_id=state.simulation_id)
+        world_entries = await self._db.entry.list(simulation_id=state.simulation_id)
+        factions = await self._db.faction.list(simulation_id=state.simulation_id)
+        faction_relationships = await self._db.faction_relationship.list()
+
+        inventory = {}
+        world_items = await self._db.item.list(simulation_id=state.simulation_id)
+        world_equipments = await self._db.equipment.list(simulation_id=state.simulation_id)
+        inventory[0] = CharacterInventory(
+            items=world_items,
+            equipments=world_equipments,
+        )
+        for character in characters:
+            items = await self._db.item.list(character_id=character.id)
+            equipments = await self._db.equipment.list(character_id=character.id)
+            inventory[character.id] = CharacterInventory(
+                items=items,
+                equipments=equipments,
+            )
+
+        committer_agent = CommitterAgent(
+            profile=state.simulation.agent_preset.committer,
+            connection=state.connection_profiles.committer,
+            simulation=state.simulation,
+            state=state.state,
+            characters=characters,
+            locations=locations,
+            inventory=inventory,
+            factions=factions,
+            faction_relationships=faction_relationships,
+            tasks=tasks,
+            world_entries=world_entries,
+        )
+
+        result = await committer_agent.commit_changes(
+            user_input=state.user_input,
+            director_output=state.director_output,
+            briefing_output=state.briefing_output,
+            character_actions=state.character_action_outputs,
+            resolver_output=state.resolver_output,
+            pending_generated_proposals=state.generated_proposals,
+        )
+
+        return {
+            "committer_output": result,
+        }
 
     def route_after_director(self, state: TurnGeneratorState) -> Literal["memory"]:
         if not state.director_output:
@@ -586,6 +646,7 @@ class TurnGenerator:
         graph.add_node("memory_briefing", self.memory_briefing)
         graph.add_node("character_action", self.character_action)
         graph.add_node("resolve_character_actions", self.resolve_character_actions)
+        graph.add_node("commit_changes", self.commit_changes)
 
         graph.add_edge(START, "load_simulation")
         graph.add_edge("load_simulation", "director_planning")
@@ -606,8 +667,12 @@ class TurnGenerator:
 
 
 class WorkflowRunner:
-    def __init__(self, graph):
+    def __init__(self,
+                 graph: CompiledStateGraph,
+                 langfuse_handler: CallbackHandler,
+                 ):
         self._graph = graph
+        self._langfuse_handler = langfuse_handler
         self._runs: dict[str, WorkflowRunHandle] = {}
 
     @staticmethod
@@ -617,16 +682,27 @@ class WorkflowRunner:
     async def _run_graph(self,
                          run_id: str,
                          input_data: dict[str, Any],
-                         handle: WorkflowRunHandle
+                         handle: WorkflowRunHandle,
+                         run_name: str | None = None,
+                         metadata: dict | None = None,
+                         tags: list[str] | None = None,
                          ):
         try:
+            config = {
+                "callbacks": [self._langfuse_handler],
+                "configurable": {
+                    "thread_id": run_id,
+                },
+            }
+            if run_name:
+                config["run_name"] = run_name
+            if metadata:
+                config["metadata"] = metadata
+            if tags:
+                config["tags"] = tags
             async for mode, chunk in self._graph.astream(
                 input_data,
-                config={
-                    "configurable": {
-                        "thread_id": run_id,
-                    },
-                },
+                config=config,
                 stream_mode=["updates", "messages"],
             ):
                 if mode == "updates":
@@ -666,6 +742,9 @@ class WorkflowRunner:
 
     async def start(self,
                     input_data: dict[str, Any],
+                    run_name: str | None = None,
+                    metadata: dict | None = None,
+                    tags: list[str] | None = None,
                     ) -> str:
         run_id = str(uuid4())
         handle = WorkflowRunHandle()
@@ -678,6 +757,9 @@ class WorkflowRunner:
                 run_id=run_id,
                 input_data=input_data,
                 handle=handle,
+                run_name=run_name,
+                metadata=metadata,
+                tags=tags,
             )
         )
 
@@ -688,13 +770,13 @@ class WorkflowRunner:
 
         while True:
             try:
-                event = await asyncio.wait_for(handle.queue.get(), timeout=55),
+                event = await asyncio.wait_for(handle.queue.get(), timeout=55)
                 yield self._format_sse(
                     event=event["event"],
                     data=event["data"],
                 )
 
-                if event["event"] in {"done", "error"}:
+                if event["event"] in {"done", "error", "cancelled"}:
                     break
             except asyncio.TimeoutError:
                 yield self._format_sse(

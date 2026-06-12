@@ -2134,6 +2134,9 @@ None.
 ## Previous validation
 {{ data.previous_validation or "No previous validation." }}
 
+## Previous tool results
+{{ data.previous_tool_results or "No previous tool results." }}
+
 # Task
 
 Apply any missing sandbox state changes using tools.
@@ -2244,6 +2247,9 @@ None.
 ## Mutation log
 {{ data.mutation_log }}
 
+## Tool results this pass
+{{ data.tool_results or "No tool calls were made this pass." }}
+
 # Required output
 
 Return CommitterValidationOutput.
@@ -2297,6 +2303,9 @@ Output schema:
 
 ## Mutation log
 {{ data.mutation_log }}
+
+## Last tool results
+{{ data.tool_results or "No tool calls were made in the last mutation pass." }}
 
 ## Last validation
 {{ data.last_validation }}

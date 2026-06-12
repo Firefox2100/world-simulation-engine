@@ -1,5 +1,6 @@
 from typing import Any, cast
 from pydantic import TypeAdapter
+from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Location, Character, WorldEntry, Task, Item, Equipment, \
@@ -25,6 +26,7 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
                               user_input: str | None = None,
                               last_narration: str | None = None,
                               previous_resolver_notes: str | None = None,
+                              config: RunnableConfig | None = None,
                               ):
         LOGGER.info("Generating action for character %s", character.id)
 
@@ -54,4 +56,12 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
         LOGGER.debug("Messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         structured_model = self.model.with_structured_output(CharacterActionOutput)
-        return cast(CharacterActionOutput, await structured_model.ainvoke(messages))
+        return cast(
+            CharacterActionOutput,
+            await structured_model.ainvoke(
+                messages,
+                config=patch_config(
+                    config,
+                    run_name="character_acting",
+                ) if config else None,
+            ))
