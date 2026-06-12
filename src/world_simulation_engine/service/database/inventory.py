@@ -32,13 +32,17 @@ class ItemRepository:
     async def list(self,
                    simulation_id: int | None = None,
                    character_id: int | None = None,
+                   include_character_items: bool = False,
                    ) -> list[Item]:
         stmt = select(ItemOrm)
 
         if simulation_id:
             stmt = stmt.where(ItemOrm.simulation_id == simulation_id)
 
-        stmt = stmt.where(ItemOrm.character_id == character_id)
+        if character_id is not None:
+            stmt = stmt.where(ItemOrm.character_id == character_id)
+        elif not include_character_items:
+            stmt = stmt.where(ItemOrm.character_id == character_id)
 
         async with self._session_factory() as session:
             result = await session.scalars(stmt)
@@ -88,13 +92,17 @@ class EquipmentRepository:
     async def list(self,
                    simulation_id: int | None = None,
                    character_id: int | None = None,
+                   include_character_equipment: bool = False,
                    ) -> list[Equipment]:
         stmt = select(EquipmentOrm)
 
         if simulation_id:
             stmt = stmt.where(EquipmentOrm.simulation_id == simulation_id)
 
-        stmt = stmt.where(EquipmentOrm.character_id == character_id)
+        if character_id is not None:
+            stmt = stmt.where(EquipmentOrm.character_id == character_id)
+        elif not include_character_equipment:
+            stmt = stmt.where(EquipmentOrm.character_id == character_id)
 
         async with self._session_factory() as session:
             result = await session.scalars(stmt)
@@ -115,4 +123,3 @@ class EquipmentRepository:
             await session.commit()
 
             return self._to_model(new_equipment)
-

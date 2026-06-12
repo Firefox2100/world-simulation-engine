@@ -95,14 +95,26 @@ You are a location generation tool for a role-play simulation.
 
 Generate exactly one ProposedLocation.
 
+Output schema:
+- temp_id: temporary string ID for this proposal, for example "loc_temp_iron_stag_cellar". Do not use a database ID.
+- primary_location: broad area or parent place.
+- detailed_location: specific named place inside the parent area.
+- scene: concise scene label used for the current playable area.
+- description: objective, playable description of what characters can perceive and interact with.
+- attributes: mapping of attribute names to lists of string values. Use {} unless constraints require attributes.
+- stats: mapping of stat names to numeric values. Use {} unless constraints require stats.
+- entities: 0-3 ProposedEntity objects already present in this location.
+- reason: why this proposal is useful and how it satisfies the trigger.
+- commit_policy: "resolver_decides" unless a constraint explicitly says otherwise.
+
 Hard rules:
 - The location is a pending proposal, not canonical.
 - Do not reuse an existing location.
 - Do not contradict existing locations or state summary.
 - Do not solve major mysteries.
 - Do not reveal final answers unless explicitly required.
-- Use temporary IDs only for generated entities.
-- If adding entities inside the location, their type must be one of allowed_entity_types.
+- Use temporary IDs only for the location and generated entities.
+- If adding entities inside the location, their type must match an existing setting entity type when possible.
 - Keep the location useful for interaction, not just description.
 - The location must fit the setting, era, tone, and current scene.
 - Include commit_policy="resolver_decides" unless constraints specify otherwise.
@@ -128,7 +140,98 @@ This is only a guidance. You do not have to generate exactly the same content as
 goal aligns. However, your proposed location must match the world style and is sensible.
 
 ## Canonical generation context
-{{ data.generation_context }}
+Simulation: {{ data.generation_context.simulation_name }}
+Description:
+{{ data.generation_context.simulation_description }}
+
+Round: {{ data.generation_context.round_number }}
+Time: {{ data.generation_context.time_label }}
+State summary:
+{{ data.generation_context.state_summary }}
+
+Data preset constraints:
+- Entity types:
+{% for type_name, description in data.generation_context.data_preset.entity_types.items() %}
+  - {{ type_name }}: {{ description }}
+{% else %}
+  - No custom entity types configured.
+{% endfor %}
+- Character attributes:
+{% for attr in data.generation_context.data_preset.character_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Character stats:
+{% for stat in data.generation_context.data_preset.character_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction attributes:
+{% for attr in data.generation_context.data_preset.faction_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction stats:
+{% for stat in data.generation_context.data_preset.faction_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+
+Current location:
+{{ data.generation_context.current_location }}
+
+Present characters:
+{% for c in data.generation_context.present_characters %}
+- {{ c.id }}: {{ c.name }} | public_state={{ c.public_state }} | location={{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+Existing locations:
+{% for l in data.generation_context.existing_locations %}
+- {{ l.id }}: {{ l.primary_location }} / {{ l.detailed_location }} / {{ l.scene }}
+{% else %}
+None.
+{% endfor %}
+
+Existing entities in current location:
+{% for e in data.generation_context.existing_entities %}
+- {{ e.id }}: {{ e.name }} | type={{ e.type }} | status={{ e.status }}
+{% else %}
+None.
+{% endfor %}
+
+Existing items:
+{% for i in data.generation_context.existing_items %}
+- {{ i.id }}: {{ i.name }} | description={{ i.description }}
+{% else %}
+None.
+{% endfor %}
+
+Existing equipment:
+{% for e in data.generation_context.existing_equipments %}
+- {{ e.id }}: {{ e.name }} | status={{ e.status }} | description={{ e.description }}
+{% else %}
+None.
+{% endfor %}
+
+Relevant factions and relationships:
+{% for f in data.generation_context.factions %}
+- Faction {{ f.id }}: {{ f.name }} | {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.generation_context.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
 
 ## Trigger
 {{ data.trigger }}
@@ -150,6 +253,18 @@ You are an item generation tool for a role-play simulation.
 
 Generate exactly one ProposedItem.
 
+Output schema:
+- temp_id: temporary string ID for this proposal, for example "item_temp_torn_receipt". Do not use a database ID.
+- name: short item name.
+- description: what the item is and what can be noticed about it. Do not narrate discovery.
+- quality: optional condition label such as "worn", "torn", "polished", or null.
+- quantity: integer count. Use 1 for unique or clue items.
+- unique: true for named clues/evidence, false only for ordinary stackable objects.
+- proposed_owner_id: existing character ID if the item clearly belongs in a character inventory; otherwise null.
+- proposed_location_id: existing location ID if the item clearly belongs in a known location; otherwise null.
+- reason: why this item is useful and how it satisfies the trigger.
+- commit_policy: "resolver_decides" unless a constraint explicitly says otherwise.
+
 Hard rules:
 - The item is a pending proposal, not canonical.
 - Do not duplicate existing items.
@@ -157,8 +272,8 @@ Hard rules:
 - Do not create a final-answer clue unless explicitly required.
 - The item must fit the setting, era, tone, and trigger.
 - Use temp_id only.
-- proposed_owner_id must be null unless the item is clearly generated for a valid character ID.
-- proposed_location_id must be null or one of valid_location_ids.
+- proposed_owner_id must be null unless the item is clearly generated for one of the present character IDs.
+- proposed_location_id must be null or one of the existing location IDs.
 - Include commit_policy="resolver_decides" unless constraints specify otherwise.
 
 Item quality rules:
@@ -182,7 +297,91 @@ This is only a guidance. You do not have to generate exactly the same content as
 goal aligns. However, your proposed location must match the world style and is sensible.
 
 ## Canonical generation context
-{{ data.generation_context }}
+Simulation: {{ data.generation_context.simulation_name }}
+Description:
+{{ data.generation_context.simulation_description }}
+
+Round: {{ data.generation_context.round_number }}
+Time: {{ data.generation_context.time_label }}
+State summary:
+{{ data.generation_context.state_summary }}
+
+Data preset constraints:
+- Entity types:
+{% for type_name, description in data.generation_context.data_preset.entity_types.items() %}
+  - {{ type_name }}: {{ description }}
+{% else %}
+  - No custom entity types configured.
+{% endfor %}
+- Character attributes:
+{% for attr in data.generation_context.data_preset.character_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Character stats:
+{% for stat in data.generation_context.data_preset.character_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction attributes:
+{% for attr in data.generation_context.data_preset.faction_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction stats:
+{% for stat in data.generation_context.data_preset.faction_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+
+Current location:
+{{ data.generation_context.current_location }}
+
+Present characters:
+{% for c in data.generation_context.present_characters %}
+- {{ c.id }}: {{ c.name }} | public_state={{ c.public_state }} | location={{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+Existing locations:
+{% for l in data.generation_context.existing_locations %}
+- {{ l.id }}: {{ l.primary_location }} / {{ l.detailed_location }} / {{ l.scene }}
+{% else %}
+None.
+{% endfor %}
+
+Existing items:
+{% for i in data.generation_context.existing_items %}
+- {{ i.id }}: {{ i.name }} | quality={{ i.quality }} | description={{ i.description }}
+{% else %}
+None.
+{% endfor %}
+
+Existing equipment:
+{% for e in data.generation_context.existing_equipments %}
+- {{ e.id }}: {{ e.name }} | status={{ e.status }} | quality={{ e.quality }} | description={{ e.description }}
+{% else %}
+None.
+{% endfor %}
+
+Relevant factions and relationships:
+{% for f in data.generation_context.factions %}
+- Faction {{ f.id }}: {{ f.name }} | {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.generation_context.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
 
 ## Trigger
 {{ data.trigger }}
@@ -191,12 +390,6 @@ goal aligns. However, your proposed location must match the world style and is s
 {% for c in data.constraints %}
 - {{ c }}
 {% endfor %}
-
-Valid character IDs:
-{{ data.valid_character_ids }}
-
-Valid location IDs:
-{{ data.valid_location_ids }}
 
 Generate exactly one ProposedItem.
 """
@@ -210,11 +403,21 @@ You are an entity generation tool for a role-play simulation.
 
 Generate exactly one ProposedEntity.
 
+Output schema:
+- temp_id: temporary string ID for this proposal, for example "entity_temp_locked_cabinet". Do not use a database ID.
+- name: short entity name.
+- type: exactly one supported entity type from the simulation data preset.
+- description: objective details visible or discoverable by interaction.
+- status: current state, access, damage, concealment, or other condition.
+- interactions: concrete verbs or short phrases characters can attempt.
+- reason: why this entity is useful and how it satisfies the trigger.
+- commit_policy: "resolver_decides" unless a constraint explicitly says otherwise.
+
 Hard rules:
 - The entity is a pending proposal, not canonical.
 - The entity must belong to or be discoverable within the current location unless constraints specify another location.
 - Do not duplicate existing entities.
-- type must be exactly one value from allowed_entity_types.
+- type must be exactly one supported entity type from the simulation data preset.
 - Do not invent unsupported entity types.
 - Do not solve major mysteries.
 - Do not create portable inventory items as entities unless they remain scene-anchored containers or fixtures.
@@ -242,7 +445,91 @@ This is only a guidance. You do not have to generate exactly the same content as
 goal aligns. However, your proposed location must match the world style and is sensible.
 
 ## Canonical generation context
-{{ data.generation_context }}
+Simulation: {{ data.generation_context.simulation_name }}
+Description:
+{{ data.generation_context.simulation_description }}
+
+Round: {{ data.generation_context.round_number }}
+Time: {{ data.generation_context.time_label }}
+State summary:
+{{ data.generation_context.state_summary }}
+
+Data preset constraints:
+- Entity types:
+{% for type_name, description in data.generation_context.data_preset.entity_types.items() %}
+  - {{ type_name }}: {{ description }}
+{% else %}
+  - No custom entity types configured.
+{% endfor %}
+- Character attributes:
+{% for attr in data.generation_context.data_preset.character_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Character stats:
+{% for stat in data.generation_context.data_preset.character_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction attributes:
+{% for attr in data.generation_context.data_preset.faction_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction stats:
+{% for stat in data.generation_context.data_preset.faction_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+
+Current location:
+{{ data.generation_context.current_location }}
+
+Present characters:
+{% for c in data.generation_context.present_characters %}
+- {{ c.id }}: {{ c.name }} | public_state={{ c.public_state }} | location={{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+Existing entities in current location:
+{% for e in data.generation_context.existing_entities %}
+- {{ e.id }}: {{ e.name }} | type={{ e.type }} | status={{ e.status }}
+{% else %}
+None.
+{% endfor %}
+
+Existing items:
+{% for i in data.generation_context.existing_items %}
+- {{ i.id }}: {{ i.name }} | description={{ i.description }}
+{% else %}
+None.
+{% endfor %}
+
+Existing equipment:
+{% for e in data.generation_context.existing_equipments %}
+- {{ e.id }}: {{ e.name }} | status={{ e.status }} | description={{ e.description }}
+{% else %}
+None.
+{% endfor %}
+
+Relevant factions and relationships:
+{% for f in data.generation_context.factions %}
+- Faction {{ f.id }}: {{ f.name }} | {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.generation_context.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
 
 ## Trigger
 {{ data.trigger }}
@@ -251,9 +538,6 @@ goal aligns. However, your proposed location must match the world style and is s
 {% for c in data.constraints %}
 - {{ c }}
 {% endfor %}
-
-Allowed entity types:
-{{ data.allowed_entity_types }}
 
 Generate exactly one ProposedEntity.
 """
@@ -267,18 +551,29 @@ You are a world-entry generation tool for a role-play simulation.
 
 Generate exactly one ProposedWorldEntry.
 
+Output schema:
+- temp_id: temporary string ID for this proposal, for example "entry_temp_clara_suspicion". Do not use a database ID.
+- scope: list of IDs that can know this entry. Use [0] for public/common knowledge, [-1] for hidden GM-only, or character IDs from present characters.
+- content: one complete factual sentence. It may describe a belief or rumour, but make uncertainty explicit.
+- visibility: one of "known", "suspected", "perceived", or "inferred".
+- confidence: 0.0-1.0. Use less than 1.0 for rumours, suspicions, guesses, and unreliable testimony.
+- narration_permission: one of "visible", "may_hint", or "invisible".
+- recall_type: one of "always", "keyword", "semantic", or "chained".
+- keywords: for keyword recall, provide useful keyword dicts; otherwise null.
+- chained_ids: for chained recall, provide existing world entry IDs; otherwise null.
+- semantic_instruction: for semantic recall, describe when this entry should be recalled; otherwise null.
+- reason: why this persistent knowledge is needed.
+- commit_policy: "resolver_decides" unless a constraint explicitly says otherwise.
+
 Hard rules:
 - The world entry is a pending proposal, not canonical.
 - content must be a complete factual sentence, not a title.
 - Do not duplicate existing world entries.
 - Do not contradict canonical state.
 - Do not solve major mysteries unless explicitly required.
-- scope may contain only valid_character_ids, 0 for everyone, or -1 for hidden GM-only.
-- visibility must be exactly one value from allowed_visibility_values.
-- narration_permission must be exactly one value from allowed_narration_permissions.
-- recall_type must be exactly one value from allowed_recall_types.
+- scope may contain only present character IDs, 0 for everyone, or -1 for hidden GM-only.
 - If recall_type is KEYWORD, include useful keywords.
-- If recall_type is CHAINED, include chained_ids only from existing_world_entries.
+- If recall_type is CHAINED, include chained_ids only if known from supplied context; otherwise use SEMANTIC.
 - If recall_type is SEMANTIC, include semantic_instruction.
 - Include commit_policy="resolver_decides" unless constraints specify otherwise.
 
@@ -304,7 +599,84 @@ This is only a guidance. You do not have to generate exactly the same content as
 goal aligns. However, your proposed location must match the world style and is sensible.
 
 ## Canonical generation context
-{{ data.generation_context_json }}
+Simulation: {{ data.generation_context.simulation_name }}
+Description:
+{{ data.generation_context.simulation_description }}
+
+Round: {{ data.generation_context.round_number }}
+Time: {{ data.generation_context.time_label }}
+State summary:
+{{ data.generation_context.state_summary }}
+
+Data preset constraints:
+- Entity types:
+{% for type_name, description in data.generation_context.data_preset.entity_types.items() %}
+  - {{ type_name }}: {{ description }}
+{% else %}
+  - No custom entity types configured.
+{% endfor %}
+- Character attributes:
+{% for attr in data.generation_context.data_preset.character_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Character stats:
+{% for stat in data.generation_context.data_preset.character_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction attributes:
+{% for attr in data.generation_context.data_preset.faction_attributes %}
+  - {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+- Faction stats:
+{% for stat in data.generation_context.data_preset.faction_stats %}
+  - {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }}
+{% else %}
+  - None.
+{% endfor %}
+
+Current location:
+{{ data.generation_context.current_location }}
+
+Present characters:
+{% for c in data.generation_context.present_characters %}
+- {{ c.id }}: {{ c.name }} | public_state={{ c.public_state }} | location={{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+Existing items:
+{% for i in data.generation_context.existing_items %}
+- {{ i.id }}: {{ i.name }} | description={{ i.description }}
+{% else %}
+None.
+{% endfor %}
+
+Existing equipment:
+{% for e in data.generation_context.existing_equipments %}
+- {{ e.id }}: {{ e.name }} | status={{ e.status }} | description={{ e.description }}
+{% else %}
+None.
+{% endfor %}
+
+Relevant factions and relationships:
+{% for f in data.generation_context.factions %}
+- Faction {{ f.id }}: {{ f.name }} | {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.generation_context.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
 
 ## Trigger
 {{ data.trigger }}
@@ -312,23 +684,6 @@ goal aligns. However, your proposed location must match the world style and is s
 ## Constraints
 {% for c in data.constraints %}
 - {{ c }}
-{% endfor %}
-
-Valid character IDs:
-{{ data.valid_character_ids }}
-
-Allowed visibility values:
-{{ data.allowed_visibility_values }}
-
-Allowed narration permissions:
-{{ data.allowed_narration_permissions }}
-
-Allowed recall types:
-{{ data.allowed_recall_types }}
-
-Existing world entry IDs:
-{% for e in data.existing_world_entries %}
-- {{ e.id }}: {{ e.content }}
 {% endfor %}
 
 Generate exactly one ProposedWorldEntry.
@@ -409,8 +764,38 @@ Name: {{ data.simulation.name }}
 Description:
 {{ data.simulation.description }}
 
+## Data preset
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+Character attributes/stats:
+{% for attr in data.data_preset.character_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom character attributes.
+{% endfor %}
+{% for stat in data.data_preset.character_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom character stats.
+{% endfor %}
+Faction attributes/stats:
+{% for attr in data.data_preset.faction_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom faction attributes.
+{% endfor %}
+{% for stat in data.data_preset.faction_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom faction stats.
+{% endfor %}
+
 ## Current state
-Round: {{ data.state.round_number }}
+Turn: {{ data.state.turn_number }}
 Time: {{ data.state.time_label }}
 Scene/location ID: {{ data.state.scene }}
 
@@ -480,6 +865,34 @@ None.
 None.
 {% endfor %}
 
+## Existing items and equipment
+{% for i in data.existing_items %}
+- Item {{ i.id }}: {{ i.name }} | {{ i.description }}
+{% else %}
+No known items.
+{% endfor %}
+{% for e in data.existing_equipments %}
+- Equipment {{ e.id }}: {{ e.name }} | status={{ e.status }} | {{ e.description }}
+{% else %}
+No known equipment.
+{% endfor %}
+
+## Relevant faction context
+These may include private relationships. Use only for tool-gating decisions.
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
+
 # Decision
 
 Call generation tools only if needed.
@@ -513,13 +926,13 @@ Privacy rules:
 - You may use private states, private tasks, and private motives for activation decisions.
 - If private data influenced activation, mark private_motive_used=true.
 - Do not produce text intended for character agents.
-- Do not leak private reasoning into narrator_constraints.
-- reason_for_system is internal only.
+- Do not leak private reasoning into scene_focus or any text that later agents may treat as visible.
+- ActivationDecision.reason and director_notes are internal only.
 
 Scheduling rules:
 - Do not activate every character by default.
 - Do not activate user-controlled characters unless explicitly delegated by user input.
-- If wait_for_user=true, active_character_ids must be empty.
+- If wait_for_user=true, all activation decisions should have activate=false and priority=0.
 - Priority uses 0-100, where 100 is most urgent.
 - If this scene cannot meaningfully continue or will stall without further user actions or input, and user did not
   provide sufficient input, prefer wait_for_user = true. Otherwise, activate the characters accordingly, do not
@@ -541,6 +954,19 @@ Return only valid DirectorOutput. The output should contain:
   as false, priority as 0, and provide the reason for not activating.
 - Whether to wait for the user, and the reason to wait for user, instead of progressing the scene.
 - Extra notes to mark some important decisions or reasons for audit. Can be empty.
+
+Schema fields:
+- scene_focus: concise instruction for what this scene is about now.
+- activations: one ActivationDecision for each present character considered.
+- ActivationDecision.character_id: existing character ID.
+- ActivationDecision.character_name: matching character name.
+- ActivationDecision.activate: true if this character should produce an action this turn.
+- ActivationDecision.priority: integer from 0 to 100. Use 0 when activate=false.
+- ActivationDecision.reason: internal reason for the activation decision.
+- ActivationDecision.private_motive_used: true only if private state/tasks affected the decision.
+- wait_for_user: true only when the scene should pause for player input instead of NPC action.
+- reason_to_wait: required when wait_for_user=true; otherwise null.
+- director_notes: internal audit notes, or "" if none.
 """
             ),
             PromptMessage(
@@ -553,8 +979,38 @@ Name: {{ data.simulation.name }}
 Description:
 {{ data.simulation.description }}
 
+## Data preset
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+Character attributes/stats:
+{% for attr in data.data_preset.character_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom character attributes.
+{% endfor %}
+{% for stat in data.data_preset.character_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom character stats.
+{% endfor %}
+Faction attributes/stats:
+{% for attr in data.data_preset.faction_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom faction attributes.
+{% endfor %}
+{% for stat in data.data_preset.faction_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom faction stats.
+{% endfor %}
+
 ## Current state
-Round: {{ data.state.round_number }}
+Turn: {{ data.state.turn_number }}
 Time: {{ data.state.time_label }}
 Scene/location ID: {{ data.state.scene }}
 
@@ -615,6 +1071,42 @@ None.
   Content: {{ e.content }}
 {% else %}
 None.
+{% endfor %}
+
+## Existing items and equipment
+{% for i in data.existing_items %}
+- Item {{ i.id }}: {{ i.name }}
+  Description: {{ i.description }}
+  Quality: {{ i.quality }}
+  Quantity: {{ i.quantity }}
+{% else %}
+No known items.
+{% endfor %}
+{% for e in data.existing_equipments %}
+- Equipment {{ e.id }}: {{ e.name }}
+  Status: {{ e.status }}
+  Quality: {{ e.quality }}
+  Description: {{ e.description }}
+{% else %}
+No known equipment.
+{% endfor %}
+
+## Relevant faction context
+These may include private relationships. Use for scheduling, but do not leak private relationship details into scene_focus.
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+  Attributes: {{ f.attributes }}
+  Stats: {{ f.stats }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
 {% endfor %}
 
 ## Relevant tasks
@@ -692,6 +1184,21 @@ Briefing rules:
 - Do not write exact dialogue.
 
 Return only BriefingOutput.
+
+Output schema:
+- briefings: one CharacterBriefing for each requested character.
+- CharacterBriefing.character_id: existing requested character ID.
+- CharacterBriefing.character_name: matching character name.
+- CharacterBriefing.scene_context: stable scene context visible/known to the character.
+- CharacterBriefing.recent_context: compact recent events relevant to this character.
+- CharacterBriefing.known_relevant_facts: facts this character may safely know.
+- CharacterBriefing.immediate_situation: what is happening right now from this character's perspective.
+- CharacterBriefing.instruction: short action guidance from the Director focus.
+- CharacterBriefing.available_interactions: concrete available interactions from scene/entity context.
+- CharacterBriefing.relevant_task_ids: supplied task IDs relevant to this character.
+- CharacterBriefing.relevant_world_entry_ids: supplied world entry IDs relevant to this character.
+- CharacterBriefing.constraints: limits the character agent must respect.
+- notes: optional internal notes, or "".
 """
             ),
             PromptMessage(
@@ -699,16 +1206,51 @@ Return only BriefingOutput.
                 content="""
 # Briefing Builder Input
 
-## Requested character IDs
-{{ data.character_ids }}
+## Requested characters
+{% for c in data.characters %}
+- {{ c.id }}: {{ c.name }}
+{% else %}
+None.
+{% endfor %}
 
 ## Simulation
 Name: {{ data.simulation.name }}
 Description:
 {{ data.simulation.description }}
 
+## Public data preset descriptions
+Use these only to interpret existing attributes, stats, and entity types in safe context.
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+Character attributes/stats:
+{% for attr in data.data_preset.character_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom character attributes.
+{% endfor %}
+{% for stat in data.data_preset.character_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom character stats.
+{% endfor %}
+Faction attributes/stats:
+{% for attr in data.data_preset.faction_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom faction attributes.
+{% endfor %}
+{% for stat in data.data_preset.faction_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom faction stats.
+{% endfor %}
+
 ## Current state
-Round: {{ data.state.round_number }}
+Turn: {{ data.state.turn_number }}
 Time: {{ data.state.time_label }}
 
 State summary:
@@ -784,6 +1326,21 @@ No safe world entries.
 No safe tasks.
 {% endfor %}
 
+## Public faction context
+Only public faction relationships are provided here. Treat private faction ties as unknown unless they are explicitly present in the character's safe world entries.
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+{% else %}
+No public relevant factions.
+{% endfor %}
+{% for r in data.faction_relationships %}
+- Public relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+{% else %}
+No public relevant faction relationships.
+{% endfor %}
+
 ## Pending generated proposals
 These are not canonical facts. Mention only if relevant as pending/possible context.
 {% for p in data.pending_generated_proposals %}
@@ -846,42 +1403,224 @@ Action rules:
 - Do not solve conflicts; the resolver will decide ordering and outcome.
 
 Return only CharacterActionOutput.
+
+Output schema:
+- character_id: the acting character ID.
+- character_name: the acting character name.
+- intent: the character's immediate goal in plain language.
+- action_type: one of speak, move, inspect, manipulate_entity, use_item, give_item, take_item, observe, wait, leave_scene, custom.
+- target_character_ids: IDs of characters directly targeted, or [].
+- target_entity_ids: IDs of entities directly targeted, or [].
+- target_location_id: destination location ID for movement, or null.
+- target_item_ids: IDs of inventory/world items directly used or targeted, or [].
+- method: how the character attempts the action.
+- visible_behavior: what other characters can observe.
+- spoken_intent: short meaning of any speech, or null.
+- urgency: 0-100, how quickly the character tries to act.
+- persistence: 0-100, how hard the character keeps trying if resisted or delayed.
+- expected_outcome: what the character hopes will happen, not a guaranteed result.
+- fallback_if_blocked: backup attempt if the action cannot proceed, or null.
+- uses_private_knowledge: true if private state, private tasks, or scoped facts motivated the action.
+- private_reason_for_system: private explanation when uses_private_knowledge=true; otherwise null.
+- constraints_for_resolver: facts or limits the resolver should respect.
+- notes: optional internal notes, or "".
 """
             ),
             PromptMessage(
                 role=MessageRole.USER,
                 content="""
-You are a character decision agent in a multi-agent role-play simulation.
+# Character Action Input
 
-You act only as the specified character.
+## Acting character
+ID: {{ data.character.id }}
+Name: {{ data.character.name }}
+User controlled: {{ data.character.user_controlled }}
+Description:
+{{ data.character.description }}
+Appearance:
+{{ data.character.appearance }}
+Public state:
+{{ data.character.public_state }}
+Private state:
+{{ data.character.private_state }}
+Current location ID: {{ data.character.location }}
 
-Your job:
-- decide what this character attempts to do now;
-- express the action as structured intent;
-- use the character's personality, state, goals, memories, knowledge, and current perception.
+## Data preset descriptions
+Use these to interpret custom attributes, stats, and entity types. Do not update state here.
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+Character attributes/stats:
+{% for attr in data.data_preset.character_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | meaning={{ attr.creation_instruction }} | update meaning={{ attr.update_instruction }}
+{% else %}
+No custom character attributes.
+{% endfor %}
+{% for stat in data.data_preset.character_stats %}
+- Stat {{ stat.name }} | meaning={{ stat.creation_instruction }} | update meaning={{ stat.update_instruction }}
+{% else %}
+No custom character stats.
+{% endfor %}
+Faction attributes/stats:
+{% for attr in data.data_preset.faction_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | meaning={{ attr.creation_instruction }} | update meaning={{ attr.update_instruction }}
+{% else %}
+No custom faction attributes.
+{% endfor %}
+{% for stat in data.data_preset.faction_stats %}
+- Stat {{ stat.name }} | meaning={{ stat.creation_instruction }} | update meaning={{ stat.update_instruction }}
+{% else %}
+No custom faction stats.
+{% endfor %}
 
-You are not the narrator.
-You are not the resolver.
-You do not decide whether the action succeeds.
-You do not write final prose.
-You do not control other characters.
-You do not reveal information the character would not express or act upon.
+## Briefing
+Scene context:
+{{ data.briefing.scene_context }}
 
-Knowledge rules:
-- You may use the character's own private state, own tasks, own inventory, and own scoped world entries.
-- You may use public/visible scene information.
-- You must not assume hidden facts that are not supplied.
-- If you use private knowledge to motivate the action, set uses_private_knowledge=true and explain it only in private_reason_for_system.
-- Do not put private motives into visible_behavior unless the character intentionally reveals them.
+Recent context:
+{{ data.briefing.recent_context }}
 
-Action rules:
-- Choose one primary action.
-- The action should be plausible for the character now.
-- Prefer behaviour over exposition.
-- Do not write exact dialogue unless the action requires a short phrase; use spoken_intent to express meaning.
-- If the character would stay still, observe, or wait, output action_type="wait" or "observe".
-- Do not force confrontation unless the character has enough reason.
-- Do not solve conflicts; the resolver will decide ordering and outcome.
+Known relevant facts:
+{{ data.briefing.known_relevant_facts }}
+
+Immediate situation:
+{{ data.briefing.immediate_situation }}
+
+Instruction:
+{{ data.briefing.instruction }}
+
+Available interactions:
+{% for interaction in data.briefing.available_interactions %}
+- {{ interaction }}
+{% else %}
+None specified.
+{% endfor %}
+
+Briefing constraints:
+{% for constraint in data.briefing.constraints %}
+- {{ constraint }}
+{% else %}
+None.
+{% endfor %}
+
+## Current location
+ID: {{ data.current_location.id }}
+Primary: {{ data.current_location.primary_location }}
+Detailed: {{ data.current_location.detailed_location }}
+Scene: {{ data.current_location.scene }}
+Description:
+{{ data.current_location.description }}
+
+Entities:
+{% for e in data.current_location.entities %}
+- Entity {{ e.id }}: {{ e.name }}
+  Type: {{ e.type }}
+  Description: {{ e.description }}
+  Status: {{ e.status }}
+  Interactions: {{ e.interactions | join(", ") }}
+{% else %}
+None.
+{% endfor %}
+
+## Visible other characters
+{% for c in data.visible_characters %}
+- Character {{ c.id }}: {{ c.name }}
+  User controlled: {{ c.user_controlled }}
+  Description: {{ c.description }}
+  Public state: {{ c.public_state }}
+  Location: {{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+## Relevant tasks
+{% for t in data.tasks %}
+- Task {{ t.id }}
+  Characters: {{ t.character_ids }}
+  Private: {{ t.private }}
+  Priority: {{ t.priority }}
+  Status: {{ t.status }}
+  Type: {{ t.type }}
+  Goal: {{ t.goal }}
+  Progress: {{ t.progress }}
+  Source: {{ t.source }}
+{% else %}
+None.
+{% endfor %}
+
+## Relevant world entries
+{% for e in data.world_entries %}
+- Entry {{ e.id }}
+  Scope: {{ e.scope }}
+  Visibility: {{ e.visibility }}
+  Confidence: {{ e.confidence }}
+  Narration permission: {{ e.narration_permission }}
+  Content: {{ e.content }}
+{% else %}
+None.
+{% endfor %}
+
+## Relevant faction context
+This includes public faction context visible in the scene plus private faction relationships involving {{ data.character.name }} or their inventory. Do not reveal private ties in visible_behavior unless the character intentionally exposes them.
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+  Attributes: {{ f.attributes }}
+  Stats: {{ f.stats }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
+
+## Inventory
+{% for i in data.inventory %}
+- Item {{ i.id }}: {{ i.name }}
+  Quality: {{ i.quality }}
+  Quantity: {{ i.quantity }}
+  Description: {{ i.description }}
+{% else %}
+No inventory items.
+{% endfor %}
+
+## Equipment
+{% for e in data.equipments %}
+- Equipment {{ e.id }}: {{ e.name }}
+  Status: {{ e.status }}
+  Quality: {{ e.quality }}
+  Description: {{ e.description }}
+{% else %}
+No equipment.
+{% endfor %}
+
+## Pending generated proposals
+These are pending and non-canonical. Treat them only as possible content if the briefing makes them relevant.
+{% for p in data.pending_generated_proposals %}
+- {{ p }}
+{% else %}
+None.
+{% endfor %}
+
+## User input
+{{ data.user_input or "No explicit user input." }}
+
+## Last narration
+{{ data.last_narration or "No previous narration." }}
+
+## Previous resolver notes
+{{ data.previous_resolver_notes or "No previous resolver notes." }}
+
+# Required output
+
+Choose exactly one plausible action for {{ data.character.name }} now.
 
 Return only CharacterActionOutput.
 """
@@ -942,6 +1681,33 @@ Pending generation rules:
 - Do not treat them as existing unless an action successfully reveals or uses them.
 
 Return only ResolverOutput.
+
+Output schema:
+- accepted: false only when the action set cannot be resolved coherently at all.
+- rejection_reason: reason when accepted=false; otherwise null.
+- resolved_actions: one ResolvedAction for each attempted character action.
+- ResolvedAction.actor_id / actor_name: acting character.
+- ResolvedAction.original_intent: copied or summarized from the attempted action.
+- ResolvedAction.final_status: succeeded, partially_succeeded, failed, blocked, delayed, invalid, or cancelled.
+- ResolvedAction.resolved_order: 1-based action order when ordering matters; otherwise null.
+- ResolvedAction.visible_result: observable result in plain event terms.
+- ResolvedAction.private_result_for_actor: private realization/result for that actor, or null.
+- ResolvedAction.failure_reason: required for failed, blocked, invalid, or cancelled actions; otherwise null.
+- ResolvedAction.blocking_actor_id / blocking_entity_id: IDs that blocked the action, or null.
+- ResolvedAction.state_change_hints: concise hints for persistent state changes.
+- ResolvedAction.world_entry_hints: concise hints for persistent memories/facts.
+- ResolvedAction.requires_actor_retry: true only if another action attempt is useful this round.
+- ResolvedAction.retry_instruction: instruction for retry, or null.
+- conflicts: any meaningful conflicts between actions.
+- failed_characters: characters whose action failed and may need a retry.
+- scene_result_summary: concise internal summary of what happened.
+- next_round_note: guidance for the next Director turn.
+- narrator_context: facts the eventual narrator may use without adding new outcomes.
+- state_update_suggestions: state changes for the committer to consider.
+- pending_world_entry_suggestions: persistent facts or memories the committer should consider.
+- requires_director_rerun: true only if scheduling must be redone.
+- director_rerun_reason: reason when requires_director_rerun=true; otherwise null.
+- notes: optional internal notes, or "".
 """
             ),
             PromptMessage(
@@ -954,8 +1720,39 @@ Name: {{ data.simulation.name }}
 Description:
 {{ data.simulation.description }}
 
+## Data preset descriptions
+Use these to interpret custom attributes, stats, entity types, and action plausibility.
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+Character attributes/stats:
+{% for attr in data.data_preset.character_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom character attributes.
+{% endfor %}
+{% for stat in data.data_preset.character_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom character stats.
+{% endfor %}
+Faction attributes/stats:
+{% for attr in data.data_preset.faction_attributes %}
+- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
+{% else %}
+No custom faction attributes.
+{% endfor %}
+{% for stat in data.data_preset.faction_stats %}
+- Stat {{ stat.name }} | update={{ stat.update_instruction }}
+{% else %}
+No custom faction stats.
+{% endfor %}
+
 ## Current state
-Round: {{ data.state.round_number }}
+Turn: {{ data.state.turn_number }}
 Time: {{ data.state.time_label }}
 State summary:
 {{ data.state.state }}
@@ -969,9 +1766,10 @@ Description:
 {{ data.current_location.description }}
 
 ## Visible entities
-{% for e in data.visible_entities %}
+{% for e in data.current_location.entities %}
 - Entity {{ e.id }}: {{ e.name }}
   Type: {{ e.type }}
+  Description: {{ e.description }}
   Status: {{ e.status }}
   Interactions: {{ e.interactions | join(", ") }}
 {% else %}
@@ -979,10 +1777,12 @@ None.
 {% endfor %}
 
 ## Present characters
-{% for c in data.present_characters %}
+{% for c in data.characters %}
 - Character {{ c.id }}: {{ c.name }}
   User controlled: {{ c.user_controlled }}
+  Description: {{ c.description }}
   Public state: {{ c.public_state }}
+  Private state: {{ c.private_state }}
   Location: {{ c.location }}
 {% endfor %}
 
@@ -1010,18 +1810,54 @@ None.
 No character actions.
 {% endfor %}
 
-## Priority order
-Higher priority generally acts earlier:
-{{ data.round_constraints.priority_order }}
+## Inventory by character
+{% for character_id, inventory in data.inventory.items() %}
+- Character {{ character_id }}
+  Items:
+  {% for item in inventory.items %}
+  - {{ item.id }}: {{ item.name }} | quantity={{ item.quantity }} | quality={{ item.quality }}
+  {% else %}
+  None.
+  {% endfor %}
+  Equipment:
+  {% for equipment in inventory.equipments %}
+  - {{ equipment.id }}: {{ equipment.name }} | status={{ equipment.status }} | quality={{ equipment.quality }}
+  {% else %}
+  None.
+  {% endfor %}
+{% else %}
+None.
+{% endfor %}
+
+## Priority guidance
+Higher urgency usually acts earlier. Persistence indicates how much an actor keeps trying if interrupted.
 
 ## Recalled resolver-safe world entries
-{% for e in data.recalled_world_entries %}
+{% for e in data.world_entries %}
 - Entry {{ e.id }}: {{ e.content }}
   Scope: {{ e.scope }}
   Visibility: {{ e.visibility }}
   Confidence: {{ e.confidence }}
 {% else %}
 None.
+{% endfor %}
+
+## Relevant faction context
+These relationships may include private system-side context for resolving action plausibility. Use them to judge access, allegiance, and conflicts, but do not invent new faction facts.
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+  Attributes: {{ f.attributes }}
+  Stats: {{ f.stats }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
 {% endfor %}
 
 ## Pending generated proposals
@@ -1033,7 +1869,7 @@ None.
 {% endfor %}
 
 ## Recent history
-{{ data.recent_history_summary or "No recent history summary." }}
+{{ data.state.recent_history_summary or "No recent history summary." }}
 
 ## Last narration
 {{ data.last_narration or "No last narration." }}
@@ -1046,7 +1882,7 @@ None.
 Resolve the attempted actions.
 
 Detect conflicts, failures, blocked actions, and invalid assumptions.
-Return ResolverOutput with mode="normal_action_resolution".
+Return ResolverOutput.
 """
             )
         ],
@@ -1087,54 +1923,64 @@ Validation rules:
 - If part of the input is valid and part is invalid, accept the valid part and mark the invalid part in rejection_reason or notes.
 
 Output rules:
-- Use mode="user_input_validation".
 - If accepted=false, explain why in rejection_reason.
 - If accepted=true, produce one or more resolved_actions representing accepted user attempts.
 - For valid attempts, final_status should normally be "succeeded" only for trivial positioning or speech preparation.
 - For uncertain outcomes, use "delayed" or "partially_succeeded" and state that later resolver/director stages should handle outcome.
+
+Return only ResolverOutput. Do not include a mode field.
 """
             ),
             PromptMessage(
                 role=MessageRole.USER,
                 content="""
-You are the User Input Resolver for a role-play simulation.
+# User Input Resolver Input
 
-Your job:
-- inspect the user's freeform input before the Director runs;
-- decide whether the input is acceptable, needs rewriting, or should be rejected;
-- convert valid user-described actions into resolved/accepted action records using the shared ResolverOutput format.
+## Simulation
+{{ data.simulation }}
 
-This mode does not resolve NPC agent actions.
-This mode checks whether the user's declared action is legal and coherent.
+## Current state
+{{ data.state }}
 
-Assumption:
-- The user usually means well.
-- Prefer preserving user intent.
-- Do not over-police style.
-- In permissive mode, accept most plausible input.
-- In strict mode, reject or rewrite direct control of NPCs, impossible outcomes, or unsupported world-state assertions.
+## Current location
+{{ data.current_location }}
 
-You are not the narrator.
-You do not write prose.
-You do not decide hidden discoveries unless the input only attempts to discover them.
-You do not generate new canonical facts.
-You do not force NPC reactions.
+## Player character
+{{ data.player_character }}
 
-Validation rules:
-- The user may control the player character.
-- The user may not directly decide another character's internal state, success, failure, or exact reaction.
-- The user may attempt actions, but cannot guarantee outcomes.
-- The user may describe tone, posture, speech intent, movement, and interaction attempts.
-- If the user says they find/open/reveal unknown content, convert it into an attempt; do not confirm the discovery.
-- If the user asserts an impossible or unsupported fact, reject or rewrite that part.
-- If part of the input is valid and part is invalid, accept the valid part and mark the invalid part in rejection_reason or notes.
+## Present characters
+{{ data.present_characters }}
 
-Output rules:
-- Use mode="user_input_validation".
-- If accepted=false, explain why in rejection_reason.
-- If accepted=true, produce one or more resolved_actions representing accepted user attempts.
-- For valid attempts, final_status should normally be "succeeded" only for trivial positioning or speech preparation.
-- For uncertain outcomes, use "delayed" or "partially_succeeded" and state that later resolver/director stages should handle outcome.
+## Visible entities
+{{ data.visible_entities }}
+
+## Player inventory
+{{ data.player_inventory }}
+
+## Player tasks
+{{ data.player_tasks }}
+
+## Player world entries
+{{ data.player_world_entries }}
+
+## User input
+{{ data.user_input }}
+
+## Last narration
+{{ data.last_narration or "No last narration." }}
+
+## Recent history
+{{ data.recent_history_summary or "No recent history summary." }}
+
+## Previous resolver notes
+{{ data.previous_resolver_notes or "No previous resolver notes." }}
+
+## Strictness
+{{ data.strictness }}
+
+# Required output
+
+Validate the user's input as player intent. Preserve valid intent, reject only impossible or unauthorized assertions, and return ResolverOutput only.
 """
             ),
         ],
@@ -1173,6 +2019,11 @@ Mutation rules:
 - Every turn should update SimulationState.state to reflect progress.
 - Prefer minimal precise changes.
 - Use status updates instead of deletion for narrative state changes.
+- DataPreset is authoritative for custom attributes, stats, and entity types.
+- When creating character or faction attributes/stats, follow each preset creation_instruction and required universal fields.
+- When updating character or faction attributes/stats, follow each preset update_instruction and allowed values.
+- Do not invent custom attribute/stat keys outside DataPreset unless a resolved event clearly requires a one-off freeform field.
+- Entity type values must match DataPreset.entity_types exactly when creating or updating entities.
 - Do not delete characters because they die, leave, vanish, or become inactive.
 - If a character dies, update the character state and create/mark a body/entity if appropriate.
 - If an entity becomes an inventory item, update the entity status and update the inventory.
@@ -1192,6 +2043,11 @@ Incremental loop rules:
 
 Use tools only.
 If no more mutations are needed, respond with no tool calls.
+
+Tool-use contract:
+- Use sandbox mutation tools only; do not return structured text in this pass.
+- Every tool reason should cite the resolver event or pending proposal that requires the mutation.
+- Do not create broad rewrites when a precise update is enough.
 """
             ),
             PromptMessage(
@@ -1218,6 +2074,56 @@ Mutation round: {{ data.mutation_round }} / {{ data.max_mutation_rounds }}
 
 ## Pending generated proposals
 {{ data.pending_generated_proposals }}
+
+## Data preset constraints
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+
+Character attributes:
+{% for attr in data.data_preset.character_attributes %}
+- {{ attr.name }}
+  Universal: {{ attr.universal }}
+  Allowed values: {{ attr.values or "open" }}
+  Creation instruction: {{ attr.creation_instruction }}
+  Update instruction: {{ attr.update_instruction }}
+{% else %}
+None.
+{% endfor %}
+
+Character stats:
+{% for stat in data.data_preset.character_stats %}
+- {{ stat.name }}
+  Universal: {{ stat.universal }}
+  Creation instruction: {{ stat.creation_instruction }}
+  Update instruction: {{ stat.update_instruction }}
+{% else %}
+None.
+{% endfor %}
+
+Faction attributes:
+{% for attr in data.data_preset.faction_attributes %}
+- {{ attr.name }}
+  Universal: {{ attr.universal }}
+  Allowed values: {{ attr.values or "open" }}
+  Creation instruction: {{ attr.creation_instruction }}
+  Update instruction: {{ attr.update_instruction }}
+{% else %}
+None.
+{% endfor %}
+
+Faction stats:
+{% for stat in data.data_preset.faction_stats %}
+- {{ stat.name }}
+  Universal: {{ stat.universal }}
+  Creation instruction: {{ stat.creation_instruction }}
+  Update instruction: {{ stat.update_instruction }}
+{% else %}
+None.
+{% endfor %}
 
 ## Current sandbox state
 {{ data.current_sandbox_state }}
@@ -1261,6 +2167,10 @@ Validation rules:
 - Successful and partially successful actions should be reflected in sandbox state where persistent.
 - Failed/blocked/invalid actions should not be over-applied.
 - Every turn should update SimulationState.state.
+- DataPreset is authoritative for custom attributes, stats, and entity types.
+- Created or updated character/faction attributes and stats should obey DataPreset creation/update instructions.
+- Universal preset attributes/stats should be present when new character/faction objects are created.
+- Entity type values should match DataPreset.entity_types exactly.
 - Pending generated proposals should be accepted, rejected, or deferred if relevant.
 - Persistent discoveries, memories, rumours, changed knowledge, or important events should have world-entry suggestions or actual mutations.
 - Character public/private states should reflect meaningful social, physical, or investigative changes.
@@ -1269,6 +2179,14 @@ Validation rules:
 
 If more changes are needed, set needs_more_changes=true and describe them.
 If complete, set complete=true and needs_more_changes=false.
+
+Output schema:
+- complete: true only when no required state changes are missing.
+- needs_more_changes: true when another mutation pass should run.
+- missing_changes: required mutations that are absent.
+- questionable_changes: mutations that may be wrong, excessive, or inconsistent.
+- consistency_notes: observations about consistency and state quality.
+- next_instruction: concise instruction for the next mutation pass, or null.
 """
             ),
             PromptMessage(
@@ -1287,6 +2205,38 @@ If complete, set complete=true and needs_more_changes=false.
 
 ## Pending generated proposals
 {{ data.pending_generated_proposals }}
+
+## Data preset constraints
+Entity types:
+{% for type_name, description in data.data_preset.entity_types.items() %}
+- {{ type_name }}: {{ description }}
+{% else %}
+None.
+{% endfor %}
+Character attributes:
+{% for attr in data.data_preset.character_attributes %}
+- {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }} | update={{ attr.update_instruction }}
+{% else %}
+None.
+{% endfor %}
+Character stats:
+{% for stat in data.data_preset.character_stats %}
+- {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }} | update={{ stat.update_instruction }}
+{% else %}
+None.
+{% endfor %}
+Faction attributes:
+{% for attr in data.data_preset.faction_attributes %}
+- {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }} | update={{ attr.update_instruction }}
+{% else %}
+None.
+{% endfor %}
+Faction stats:
+{% for stat in data.data_preset.faction_stats %}
+- {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }} | update={{ stat.update_instruction }}
+{% else %}
+None.
+{% endfor %}
 
 ## Current sandbox state
 {{ data.current_sandbox_state }}
@@ -1304,29 +2254,22 @@ Return CommitterValidationOutput.
             PromptMessage(
                 role=MessageRole.SYSTEM,
                 content="""
-# Committer Validation Pass
+You are the sandbox Committer Finalizer.
 
-## User input
-{{ data.user_input or "No user input." }}
+Your job is to summarize the final sandbox state and mutation log after validation.
 
-## Character actions
-{{ data.character_actions }}
+You do not call tools.
+You do not write narration for the player.
+You only return CommitterFinalOutput.
+DataPreset remains authoritative for the final state: custom attributes, stats, and entity types in the mutation log and final state should obey the supplied preset.
 
-## Resolver output
-{{ data.resolver_output }}
-
-## Pending generated proposals
-{{ data.pending_generated_proposals }}
-
-## Current sandbox state
-{{ data.current_sandbox_state }}
-
-## Mutation log
-{{ data.mutation_log }}
-
-# Required output
-
-Return CommitterValidationOutput.
+Output schema:
+- ready_to_commit: true only if the validated sandbox state is coherent enough to persist.
+- round_summary: compact internal summary of persistent changes this turn.
+- mutation_log: complete list of sandbox mutations that led to the final state.
+- warnings: consistency or uncertainty warnings, or [].
+- final_state: the final sandbox state object.
+- database_patch_preview: incremental mutation records needed by the DB layer, not the whole database.
 """
             ),
             PromptMessage(
@@ -1342,6 +2285,9 @@ Return CommitterValidationOutput.
 
 ## Pending generated proposals
 {{ data.pending_generated_proposals }}
+
+## Data preset constraints
+{{ data.data_preset }}
 
 ## Original state
 {{ data.original_state }}

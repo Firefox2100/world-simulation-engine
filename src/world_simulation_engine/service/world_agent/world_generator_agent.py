@@ -4,7 +4,8 @@ from langchain.tools import tool
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import WorldGeneratorAgentProfile, Simulation, SimulationState, Location, \
-    Character, Entity, Item, ProposedLocation, ProposedItem, ProposedEntity, ProposedWorldEntry
+    Character, Entity, Item, Equipment, Faction, FactionRelationship, ProposedLocation, ProposedItem, ProposedEntity, \
+    ProposedWorldEntry
 from .world_agent import WorldAgent
 
 
@@ -17,6 +18,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                          existing_locations: list[Location],
                          existing_entities: list[Entity],
                          existing_items: list[Item],
+                         existing_equipments: list[Equipment] | None,
+                         factions: list[Faction] | None,
+                         faction_relationships: list[FactionRelationship] | None,
                          goal: str,
                          trigger: str,
                          constraints: list[str],
@@ -25,6 +29,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             "generation_context": {
                 "simulation_name": simulation.name,
                 "simulation_description": simulation.description,
+                "data_preset": simulation.data_preset.model_dump(),
                 "round_number": state.turn_number,
                 "time_label": state.time_label,
                 "state_summary": state.state,
@@ -33,6 +38,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 "existing_locations": [l.model_dump() for l in existing_locations],
                 "existing_entities": [e.model_dump() for e in existing_entities],
                 "existing_items": [i.model_dump() for i in existing_items],
+                "existing_equipments": [e.model_dump() for e in existing_equipments or []],
+                "factions": [f.model_dump() for f in factions or []],
+                "faction_relationships": [r.model_dump() for r in faction_relationships or []],
             },
             "goal": goal,
             "trigger": trigger,
@@ -62,6 +70,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                                 goal: str,
                                 trigger: str,
                                 constraints: list[str],
+                                existing_equipments: list[Equipment] | None = None,
+                                factions: list[Faction] | None = None,
+                                faction_relationships: list[FactionRelationship] | None = None,
                                 ) -> ProposedLocation:
         LOGGER.info("Generating location...")
         LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
@@ -74,6 +85,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             existing_locations=existing_locations,
             existing_entities=existing_entities,
             existing_items=existing_items,
+            existing_equipments=existing_equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             goal=goal,
             trigger=trigger,
             constraints=constraints,
@@ -104,6 +118,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                             goal: str,
                             trigger: str,
                             constraints: list[str],
+                            existing_equipments: list[Equipment] | None = None,
+                            factions: list[Faction] | None = None,
+                            faction_relationships: list[FactionRelationship] | None = None,
                             ) -> ProposedItem:
         LOGGER.info("Generating item...")
         LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
@@ -116,6 +133,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             existing_locations=existing_locations,
             existing_entities=existing_entities,
             existing_items=existing_items,
+            existing_equipments=existing_equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             goal=goal,
             trigger=trigger,
             constraints=constraints,
@@ -147,6 +167,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                               trigger: str,
                               constraints: list[str],
                               entity_types: list[str],
+                              existing_equipments: list[Equipment] | None = None,
+                              factions: list[Faction] | None = None,
+                              faction_relationships: list[FactionRelationship] | None = None,
                               ) -> ProposedEntity:
         LOGGER.info("Generating entity...")
         LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
@@ -159,6 +182,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             existing_locations=existing_locations,
             existing_entities=existing_entities,
             existing_items=existing_items,
+            existing_equipments=existing_equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             goal=goal,
             trigger=trigger,
             constraints=constraints,
@@ -189,6 +215,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                                    goal: str,
                                    trigger: str,
                                    constraints: list[str],
+                                   existing_equipments: list[Equipment] | None = None,
+                                   factions: list[Faction] | None = None,
+                                   faction_relationships: list[FactionRelationship] | None = None,
                                    ) -> ProposedWorldEntry:
         LOGGER.info("Generating world entry...")
         LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
@@ -201,6 +230,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             existing_locations=existing_locations,
             existing_entities=existing_entities,
             existing_items=existing_items,
+            existing_equipments=existing_equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             goal=goal,
             trigger=trigger,
             constraints=constraints,
@@ -229,6 +261,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                   existing_entities: list[Entity],
                   existing_items: list[Item],
                   entity_types: list[str],
+                  existing_equipments: list[Equipment] | None = None,
+                  factions: list[Faction] | None = None,
+                  faction_relationships: list[FactionRelationship] | None = None,
                   ):
         @tool(parse_docstring=True)
         async def generate_location(goal: str, trigger: str, constraints: list[str]) -> ProposedLocation:
@@ -264,6 +299,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 existing_locations=existing_locations,
                 existing_entities=existing_entities,
                 existing_items=existing_items,
+                existing_equipments=existing_equipments,
+                factions=factions,
+                faction_relationships=faction_relationships,
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
@@ -301,6 +339,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 existing_locations=existing_locations,
                 existing_entities=existing_entities,
                 existing_items=existing_items,
+                existing_equipments=existing_equipments,
+                factions=factions,
+                faction_relationships=faction_relationships,
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
@@ -340,6 +381,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 existing_locations=existing_locations,
                 existing_entities=existing_entities,
                 existing_items=existing_items,
+                existing_equipments=existing_equipments,
+                factions=factions,
+                faction_relationships=faction_relationships,
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
@@ -381,6 +425,9 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 existing_locations=existing_locations,
                 existing_entities=existing_entities,
                 existing_items=existing_items,
+                existing_equipments=existing_equipments,
+                factions=factions,
+                faction_relationships=faction_relationships,
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,

@@ -5,7 +5,7 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
-    DirectorAgentProfile, DirectorOutput, PendingGeneratedProposal
+    Item, Equipment, Faction, FactionRelationship, DirectorAgentProfile, DirectorOutput, PendingGeneratedProposal
 from .world_agent import WorldAgent
 
 
@@ -24,6 +24,10 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
         relevant_tasks: list[Task],
         recalled_world_entries: list[WorldEntry],
         generation_tools: list,
+        existing_items: list[Item] | None = None,
+        existing_equipments: list[Equipment] | None = None,
+        factions: list[Faction] | None = None,
+        faction_relationships: list[FactionRelationship] | None = None,
         user_input: str | None = None,
         last_narration: str | None = None,
         previous_resolver_notes: str | None = None,
@@ -32,6 +36,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
 
         base_data = {
             "simulation": simulation,
+            "data_preset": simulation.data_preset,
             "state": state,
             "last_narration": last_narration,
             "user_input": user_input,
@@ -40,6 +45,10 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             "present_characters": present_characters,
             "relevant_tasks": relevant_tasks,
             "recalled_world_entries": recalled_world_entries,
+            "existing_items": existing_items or [],
+            "existing_equipments": existing_equipments or [],
+            "factions": factions or [],
+            "faction_relationships": faction_relationships or [],
         }
         LOGGER.debug("Base data:\n%s", TypeAdapter(dict[str, Any]).dump_json(base_data, indent=2).decode())
 

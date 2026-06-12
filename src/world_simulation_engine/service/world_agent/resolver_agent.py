@@ -3,7 +3,8 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Location, Character, WorldEntry, Simulation, SimulationState, \
-    CharacterInventory, ResolverAgentProfile, CharacterActionOutput, PendingGeneratedProposal, ResolverOutput
+    CharacterInventory, Faction, FactionRelationship, ResolverAgentProfile, CharacterActionOutput, \
+    PendingGeneratedProposal, ResolverOutput
 from .world_agent import WorldAgent
 
 
@@ -18,6 +19,8 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
         proposals: list[PendingGeneratedProposal],
         inventory: dict[int, CharacterInventory],
         world_entries: list[WorldEntry],
+        factions: list[Faction] | None = None,
+        faction_relationships: list[FactionRelationship] | None = None,
         last_narration: str | None = None,
         previous_resolver_notes: str | None = None,
     ) -> ResolverOutput:
@@ -25,6 +28,7 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
 
         data = {
             "simulation": simulation,
+            "data_preset": simulation.data_preset,
             "state": state,
             "current_location": current_location,
             "characters": characters,
@@ -32,6 +36,8 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             "pending_generated_proposals": proposals,
             "inventory": inventory,
             "world_entries": world_entries,
+            "factions": factions or [],
+            "faction_relationships": faction_relationships or [],
             "last_narration": last_narration,
             "previous_resolver_notes": previous_resolver_notes,
         }

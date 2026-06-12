@@ -3,7 +3,8 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Location, Character, WorldEntry, Task, Item, Equipment, \
-    CharacterAgentProfile, CharacterBriefing, PendingGeneratedProposal, CharacterActionOutput
+    Faction, FactionRelationship, DataPreset, CharacterAgentProfile, CharacterBriefing, PendingGeneratedProposal, \
+    CharacterActionOutput
 from .world_agent import WorldAgent
 
 
@@ -17,7 +18,10 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
                               world_entries: list[WorldEntry],
                               inventory: list[Item],
                               equipments: list[Equipment],
+                              factions: list[Faction],
+                              faction_relationships: list[FactionRelationship],
                               proposals: list[PendingGeneratedProposal],
+                              data_preset: DataPreset | None = None,
                               user_input: str | None = None,
                               last_narration: str | None = None,
                               previous_resolver_notes: str | None = None,
@@ -33,6 +37,9 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
             "world_entries": world_entries,
             "inventory": inventory,
             "equipments": equipments,
+            "factions": factions,
+            "faction_relationships": faction_relationships,
+            "data_preset": data_preset,
             "pending_generated_proposals": proposals,
             "user_input": user_input,
             "last_narration": last_narration,

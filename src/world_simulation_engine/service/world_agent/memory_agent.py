@@ -3,7 +3,7 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
-    MemoryAgentProfile, BriefingOutput, PendingGeneratedProposal
+    Faction, FactionRelationship, MemoryAgentProfile, BriefingOutput, PendingGeneratedProposal
 from .world_agent import WorldAgent
 
 
@@ -21,6 +21,8 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
         characters: list[Character],
         tasks: list[Task],
         world_entries: list[WorldEntry],
+        factions: list[Faction] | None = None,
+        faction_relationships: list[FactionRelationship] | None = None,
         pending_generated_proposals: list[PendingGeneratedProposal] | None = None,
         user_input: str | None = None,
         last_narration: str | None = None,
@@ -30,11 +32,14 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
 
         data = {
             "simulation": simulation,
+            "data_preset": simulation.data_preset,
             "state": state,
             "location": current_location,
             "characters": characters,
             "tasks": tasks,
             "world_entries": world_entries,
+            "factions": factions or [],
+            "faction_relationships": faction_relationships or [],
             "pending_generated_proposals": pending_generated_proposals or [],
             "user_input": user_input,
             "last_narration": last_narration,

@@ -9,11 +9,12 @@ from langgraph.graph import StateGraph
 from langgraph.types import Send
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.misc.enums import FactionRelationshipEntity
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
     PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
-    ResolverOutput
+    ResolverOutput, Faction, FactionRelationship
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
-    MemoryAgent, CharacterAgent, ResolverAgent
+    MemoryAgent, CharacterAgent, ResolverAgent, CommitterAgent
 from .world_entry_recaller import WorldEntryRecaller
 
 
@@ -68,6 +69,120 @@ class TurnGenerator:
                  database_service: DatabaseService,
                  ):
         self._db = database_service
+
+    @staticmethod
+    def _dedupe_relationships(relationships: list[FactionRelationship]) -> list[FactionRelationship]:
+        seen = set()
+        result = []
+        for relationship in relationships:
+            key = (
+                relationship.from_type,
+                relationship.from_id,
+                relationship.to_type,
+                relationship.to_id,
+                relationship.relationship,
+                relationship.private,
+            )
+            if key in seen:
+                continue
+
+            seen.add(key)
+            result.append(relationship)
+
+        return result
+
+    @staticmethod
+    def _faction_ids_from_relationships(relationships: list[FactionRelationship]) -> list[int]:
+        faction_ids = set()
+        for relationship in relationships:
+            if relationship.from_type == FactionRelationshipEntity.FACTION:
+                faction_ids.add(relationship.from_id)
+            if relationship.to_type == FactionRelationshipEntity.FACTION:
+                faction_ids.add(relationship.to_id)
+
+        return list(faction_ids)
+
+    async def _load_faction_context(
+        self,
+        simulation_id: int,
+        character_ids: list[int] | None = None,
+        item_ids: list[int] | None = None,
+        include_private: bool = False,
+    ) -> tuple[list[Faction], list[FactionRelationship]]:
+        entity_refs = [
+            (FactionRelationshipEntity.CHARACTER, character_id)
+            for character_id in (character_ids or [])
+        ] + [
+            (FactionRelationshipEntity.ITEM, item_id)
+            for item_id in (item_ids or [])
+        ]
+        if not entity_refs:
+            return [], []
+
+        privacy_filter = None if include_private else False
+        relationships = await self._db.faction_relationship.list(
+            entity_refs=entity_refs or None,
+            private=privacy_filter,
+        )
+
+        faction_ids = self._faction_ids_from_relationships(relationships)
+        if faction_ids:
+            faction_relationships = await self._db.faction_relationship.list(
+                entity_refs=[
+                    (FactionRelationshipEntity.FACTION, faction_id)
+                    for faction_id in faction_ids
+                ],
+                private=privacy_filter,
+            )
+            relationships = self._dedupe_relationships(relationships + faction_relationships)
+            faction_ids = self._faction_ids_from_relationships(relationships)
+
+        if not faction_ids:
+            return [], relationships
+
+        factions = await self._db.faction.list(
+            simulation_id=simulation_id,
+            faction_ids=faction_ids,
+        )
+
+        return factions, relationships
+
+    async def _load_character_faction_context(
+        self,
+        simulation_id: int,
+        acting_character_id: int,
+        visible_character_ids: list[int],
+        item_ids: list[int],
+    ) -> tuple[list[Faction], list[FactionRelationship]]:
+        public_factions, public_relationships = await self._load_faction_context(
+            simulation_id=simulation_id,
+            character_ids=[acting_character_id] + visible_character_ids,
+            item_ids=item_ids,
+            include_private=False,
+        )
+        private_relationships = await self._db.faction_relationship.list(
+            entity_refs=[
+                (FactionRelationshipEntity.CHARACTER, acting_character_id),
+                *[
+                    (FactionRelationshipEntity.ITEM, item_id)
+                    for item_id in item_ids
+                ],
+            ],
+            private=True,
+        )
+        relationships = self._dedupe_relationships(public_relationships + private_relationships)
+        faction_ids = self._faction_ids_from_relationships(relationships)
+
+        if not faction_ids:
+            return [], relationships
+
+        private_factions = await self._db.faction.list(
+            simulation_id=simulation_id,
+            faction_ids=faction_ids,
+        )
+        factions_by_id = {faction.id: faction for faction in public_factions + private_factions}
+
+        return list(factions_by_id.values()), relationships
 
     async def load_simulation(self, state: TurnGeneratorState) -> dict:
         simulation = await self._db.simulation.get(state.simulation_id)
@@ -147,7 +262,20 @@ class TurnGenerator:
         if not current_location:
             raise ValueError("Current location does not exist")
         all_locations = await self._db.location.list(simulation_id=state.simulation_id)
-        existing_items = await self._db.item.list(simulation_id=state.simulation_id)
+        existing_items = await self._db.item.list(
+            simulation_id=state.simulation_id,
+            include_character_items=True,
+        )
+        existing_equipments = await self._db.equipment.list(
+            simulation_id=state.simulation_id,
+            include_character_equipment=True,
+        )
+        factions, faction_relationships = await self._load_faction_context(
+            simulation_id=state.simulation_id,
+            character_ids=[c.id for c in present_characters],
+            item_ids=[i.id for i in existing_items],
+            include_private=True,
+        )
         last_record = await self._db.record.get_last_record(simulation_id=state.simulation_id)
         world_entries = await self._db.entry.list(
             simulation_id=state.simulation_id,
@@ -165,6 +293,9 @@ class TurnGenerator:
             existing_locations=all_locations,
             existing_entities=current_location.entities,
             existing_items=existing_items,
+            existing_equipments=existing_equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             entity_types=state.simulation.data_preset.entity_types.keys(),
         )
 
@@ -195,6 +326,10 @@ class TurnGenerator:
             relevant_tasks=tasks,
             recalled_world_entries=recalled_entries,
             generation_tools=generator_tools,
+            existing_items=existing_items,
+            existing_equipments=existing_equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
         )
@@ -231,14 +366,28 @@ class TurnGenerator:
         current_location = await self._db.location.get(state.state.scene)
         if not current_location:
             raise ValueError("Current location does not exist")
-        active_characters = await self._db.character.list(
+        active_character_ids = [
+            a.character_id
+            for a in state.director_output.activations
+            if a.activate
+        ]
+        active_characters = []
+        if active_character_ids:
+            active_characters = await self._db.character.list(
+                simulation_id=state.simulation_id,
+                character_ids=active_character_ids
+            )
+        public_factions, public_faction_relationships = await self._load_faction_context(
             simulation_id=state.simulation_id,
-            character_ids=[a.character_id for a in state.director_output.activations]
+            character_ids=active_character_ids,
+            include_private=False,
         )
-        tasks = await self._db.task.list(
-            character_ids=[c.id for c in active_characters],
-            private=False,
-        )
+        tasks = []
+        if active_characters:
+            tasks = await self._db.task.list(
+                character_ids=[c.id for c in active_characters],
+                private=False,
+            )
         last_record = await self._db.record.get_last_record(simulation_id=state.simulation_id)
         world_entries = await self._db.entry.list(
             simulation_id=state.simulation_id,
@@ -270,6 +419,8 @@ class TurnGenerator:
             characters=active_characters,
             tasks=tasks,
             world_entries=recalled_entries,
+            factions=public_factions,
+            faction_relationships=public_faction_relationships,
             pending_generated_proposals=state.generated_proposals,
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
@@ -307,6 +458,12 @@ class TurnGenerator:
         )
         items = await self._db.item.list(character_id=character.id)
         equipments = await self._db.equipment.list(character_id=character.id)
+        factions, faction_relationships = await self._load_character_faction_context(
+            simulation_id=state.simulation.id,
+            acting_character_id=character.id,
+            visible_character_ids=[c.id for c in present_characters],
+            item_ids=[i.id for i in items],
+        )
         last_record = await self._db.record.get_last_record(simulation_id=state.simulation.id)
 
         result = await character_agent.generate_action(
@@ -318,7 +475,10 @@ class TurnGenerator:
             world_entries=world_entries,
             inventory=items,
             equipments=equipments,
+            factions=factions,
+            faction_relationships=faction_relationships,
             proposals=state.generated_proposals or [],
+            data_preset=state.simulation.data_preset,
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
@@ -349,13 +509,21 @@ class TurnGenerator:
             character_ids=[a.character_id for a in state.character_action_outputs]
         )
         inventory = {}
+        item_ids = []
         for character in characters:
             items = await self._db.item.list(character_id=character.id)
             equipments = await self._db.equipment.list(character_id=character.id)
+            item_ids.extend([item.id for item in items])
             inventory[character.id] = CharacterInventory(
                 items=items,
                 equipments=equipments,
             )
+        factions, faction_relationships = await self._load_faction_context(
+            simulation_id=state.simulation.id,
+            character_ids=[character.id for character in characters],
+            item_ids=item_ids,
+            include_private=True,
+        )
         world_entry_ids = set()
         for b in state.briefing_output.briefings:
             world_entry_ids |= set(b.relevant_world_entry_ids)
@@ -371,12 +539,18 @@ class TurnGenerator:
             proposals=state.generated_proposals or [],
             inventory=inventory,
             world_entries=world_entries,
+            factions=factions,
+            faction_relationships=faction_relationships,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
         )
         return {
             "resolver_output": result,
         }
+
+    async def commit_changes(self, state: TurnGeneratorState):
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
 
     def route_after_director(self, state: TurnGeneratorState) -> Literal["memory"]:
         if not state.director_output:
@@ -397,6 +571,7 @@ class TurnGenerator:
                     state=state.state,
                     connection_profiles=state.connection_profiles,
                     user_input=state.user_input,
+                    generated_proposals=state.generated_proposals,
                     briefing=briefing
                 ),
             )

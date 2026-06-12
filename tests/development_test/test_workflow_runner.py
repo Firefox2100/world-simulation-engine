@@ -49,6 +49,21 @@ async def setup(db,
         await db.item.create(item=item, simulation_id=1, character_id=3)
     for item in mock_items_4:
         await db.item.create(item=item, simulation_id=1, character_id=4)
+    for equipment in mock_equipments_0:
+        await db.equipment.create(equipment=equipment, simulation_id=1)
+    for equipment in mock_equipments_1:
+        await db.equipment.create(equipment=equipment, simulation_id=1, character_id=1)
+    for equipment in mock_equipments_2:
+        await db.equipment.create(equipment=equipment, simulation_id=1, character_id=2)
+    for equipment in mock_equipments_3:
+        await db.equipment.create(equipment=equipment, simulation_id=1, character_id=3)
+    for equipment in mock_equipments_4:
+        await db.equipment.create(equipment=equipment, simulation_id=1, character_id=4)
+
+    for faction in mock_factions:
+        await db.faction.create(faction=faction, simulation_id=1)
+    for relationship in mock_faction_relationships:
+        await db.faction_relationship.create(relationship=relationship)
 
 
 async def test_compile_graph(db):

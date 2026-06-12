@@ -30,6 +30,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
         self._original = {
             "simulation": simulation,
+            "data_preset": simulation.data_preset,
             "state": state,
             "characters": characters,
             "locations": locations,
@@ -473,6 +474,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                 "character_actions": self._dump_obj(character_actions),
                 "resolver_output": self._dump_obj(resolver_output),
                 "pending_generated_proposals": self._dump_obj(pending_generated_proposals or []),
+                "data_preset": self._dump_obj(self._sandbox["data_preset"]),
                 "current_sandbox_state": self.snapshot(),
                 "mutation_log": self.mutation_log(),
                 "previous_validation": (
@@ -542,6 +544,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             "character_actions": self._dump_obj(character_actions),
             "resolver_output": self._dump_obj(resolver_output),
             "pending_generated_proposals": self._dump_obj(pending_generated_proposals or []),
+            "data_preset": self._dump_obj(self._sandbox["data_preset"]),
             "original_state": self._dump_obj(self._original),
             "final_sandbox_state": self.snapshot(),
             "mutation_log": self.mutation_log(),

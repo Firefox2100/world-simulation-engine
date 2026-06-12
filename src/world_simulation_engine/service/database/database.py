@@ -13,6 +13,7 @@ from .inventory import ItemRepository, EquipmentRepository
 from .world_entry import WorldEntryRepository
 from .task import TaskRepository
 from .world import WorldRepository
+from .faction import FactionRepository, FactionRelationshipRepository
 
 
 class DatabaseService:
@@ -58,6 +59,14 @@ class DatabaseService:
     @property
     def entry(self) -> WorldEntryRepository:
         return WorldEntryRepository(self._session_factory)
+
+    @property
+    def faction(self) -> FactionRepository:
+        return FactionRepository(self._session_factory)
+
+    @property
+    def faction_relationship(self) -> FactionRelationshipRepository:
+        return FactionRelationshipRepository(self._session_factory)
 
     @property
     def equipment(self) -> EquipmentRepository:
