@@ -171,6 +171,25 @@ class ResolverAgentProfile(AgentProfile):
         ...,
         description="The prompts to use when asking it to resolve character actions."
     )
+    resolve_user_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to resolve user input."
+    )
+
+
+class CommitterAgentProfile(AgentProfile):
+    mutation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when ask it to generate new mutations for the world states."
+    )
+    validation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to validate the mutations."
+    )
+    final_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to finalise the output."
+    )
 
 
 class AgentPreset(BaseModel):
@@ -193,6 +212,10 @@ class AgentPreset(BaseModel):
     resolver: ResolverAgentProfile = Field(
         ...,
         description="The agent configuration profiles for the resolver agent.",
+    )
+    committer: CommitterAgentProfile = Field(
+        ...,
+        description="The agent configuration profiles for the committer agent.",
     )
 
     world_generator: WorldGeneratorAgentProfile = Field(

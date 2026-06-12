@@ -1,7 +1,7 @@
 from typing import Literal, Optional, Any
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import WorldEntryRecallType, CommitPolicy, TurnType
+from world_simulation_engine.misc.enums import WorldEntryRecallType, CommitPolicy, TurnType, SandboxObjectType
 
 
 class ProposedWorldEntry(BaseModel):
@@ -210,8 +210,6 @@ class FailedCharacterRecord(BaseModel):
 
 
 class ResolverOutput(BaseModel):
-    mode: Literal["normal_action_resolution", "user_input_validation"]
-
     accepted: bool
     rejection_reason: str | None = None
 
@@ -230,6 +228,50 @@ class ResolverOutput(BaseModel):
     director_rerun_reason: str | None = None
 
     notes: str = ""
+
+
+class SandboxObjectRef(BaseModel):
+    object_type: SandboxObjectType
+    object_id: int | str
+
+
+class SandboxMutationRecord(BaseModel):
+    mutation_id: str
+    operation: Literal[
+        "create",
+        "update",
+        "remove",
+        "move",
+        "accept_proposal",
+        "reject_proposal",
+        "defer_proposal",
+    ]
+    target: SandboxObjectRef | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    reason: str
+    source_event: str | None = None
+
+
+class CommitterValidationOutput(BaseModel):
+    complete: bool
+    needs_more_changes: bool
+    missing_changes: list[str] = Field(default_factory=list)
+    questionable_changes: list[str] = Field(default_factory=list)
+    consistency_notes: list[str] = Field(default_factory=list)
+    next_instruction: str | None = None
+
+
+class CommitterFinalOutput(BaseModel):
+    ready_to_commit: bool
+    round_summary: str
+    mutation_log: list[SandboxMutationRecord]
+    warnings: list[str] = Field(default_factory=list)
+
+    final_state: dict[str, Any]
+
+    # This is for your DB layer.
+    # It contains only incremental changes, not the whole DB.
+    database_patch_preview: list[SandboxMutationRecord]
 
 
 class TurnRecord(BaseModel):

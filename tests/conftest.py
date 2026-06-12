@@ -9,7 +9,7 @@ from world_simulation_engine.model import LlmConnectionProfile, EmbeddingProfile
     OllamaAgentBackendConfiguration, PromptMessage, DirectorAgentProfile, MemoryAgentProfile, \
     CharacterAgentProfile, Simulation, AgentPreset, DataPreset, ModelAttribute, SimulationState, Character, \
     Faction, FactionRelationship, Item, Equipment, Location, Entity, WorldEntry, WorldEntryRecallKeyword, Task, \
-    ResolverAgentProfile
+    ResolverAgentProfile, CommitterAgentProfile
 from world_simulation_engine.model.connection_profile import LlmConnectionCreate
 from world_simulation_engine.service import DatabaseService
 
@@ -521,8 +521,9 @@ Scheduling rules:
 - Do not activate user-controlled characters unless explicitly delegated by user input.
 - If wait_for_user=true, active_character_ids must be empty.
 - Priority uses 0-100, where 100 is most urgent.
-- If an NPC has already acted and previous resolver notes say the scene is waiting for user response,
-  prefer wait_for_user=true.
+- If this scene cannot meaningfully continue or will stall without further user actions or input, and user did not
+  provide sufficient input, prefer wait_for_user = true. Otherwise, activate the characters accordingly, do not
+  wait for user. Only wait when it's genuinely not possible to proceed with the simulation.
 - If a character is absent from the current scene, do not activate them.
 
 Pending proposal rules:
@@ -1049,6 +1050,317 @@ Return ResolverOutput with mode="normal_action_resolution".
 """
             )
         ],
+        resolve_user_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the User Input Resolver for a role-play simulation.
+
+Your job:
+- inspect the user's freeform input before the Director runs;
+- decide whether the input is acceptable, needs rewriting, or should be rejected;
+- convert valid user-described actions into resolved/accepted action records using the shared ResolverOutput format.
+
+This mode does not resolve NPC agent actions.
+This mode checks whether the user's declared action is legal and coherent.
+
+Assumption:
+- The user usually means well.
+- Prefer preserving user intent.
+- Do not over-police style.
+- In permissive mode, accept most plausible input.
+- In strict mode, reject or rewrite direct control of NPCs, impossible outcomes, or unsupported world-state assertions.
+
+You are not the narrator.
+You do not write prose.
+You do not decide hidden discoveries unless the input only attempts to discover them.
+You do not generate new canonical facts.
+You do not force NPC reactions.
+
+Validation rules:
+- The user may control the player character.
+- The user may not directly decide another character's internal state, success, failure, or exact reaction.
+- The user may attempt actions, but cannot guarantee outcomes.
+- The user may describe tone, posture, speech intent, movement, and interaction attempts.
+- If the user says they find/open/reveal unknown content, convert it into an attempt; do not confirm the discovery.
+- If the user asserts an impossible or unsupported fact, reject or rewrite that part.
+- If part of the input is valid and part is invalid, accept the valid part and mark the invalid part in rejection_reason or notes.
+
+Output rules:
+- Use mode="user_input_validation".
+- If accepted=false, explain why in rejection_reason.
+- If accepted=true, produce one or more resolved_actions representing accepted user attempts.
+- For valid attempts, final_status should normally be "succeeded" only for trivial positioning or speech preparation.
+- For uncertain outcomes, use "delayed" or "partially_succeeded" and state that later resolver/director stages should handle outcome.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+You are the User Input Resolver for a role-play simulation.
+
+Your job:
+- inspect the user's freeform input before the Director runs;
+- decide whether the input is acceptable, needs rewriting, or should be rejected;
+- convert valid user-described actions into resolved/accepted action records using the shared ResolverOutput format.
+
+This mode does not resolve NPC agent actions.
+This mode checks whether the user's declared action is legal and coherent.
+
+Assumption:
+- The user usually means well.
+- Prefer preserving user intent.
+- Do not over-police style.
+- In permissive mode, accept most plausible input.
+- In strict mode, reject or rewrite direct control of NPCs, impossible outcomes, or unsupported world-state assertions.
+
+You are not the narrator.
+You do not write prose.
+You do not decide hidden discoveries unless the input only attempts to discover them.
+You do not generate new canonical facts.
+You do not force NPC reactions.
+
+Validation rules:
+- The user may control the player character.
+- The user may not directly decide another character's internal state, success, failure, or exact reaction.
+- The user may attempt actions, but cannot guarantee outcomes.
+- The user may describe tone, posture, speech intent, movement, and interaction attempts.
+- If the user says they find/open/reveal unknown content, convert it into an attempt; do not confirm the discovery.
+- If the user asserts an impossible or unsupported fact, reject or rewrite that part.
+- If part of the input is valid and part is invalid, accept the valid part and mark the invalid part in rejection_reason or notes.
+
+Output rules:
+- Use mode="user_input_validation".
+- If accepted=false, explain why in rejection_reason.
+- If accepted=true, produce one or more resolved_actions representing accepted user attempts.
+- For valid attempts, final_status should normally be "succeeded" only for trivial positioning or speech preparation.
+- For uncertain outcomes, use "delayed" or "partially_succeeded" and state that later resolver/director stages should handle outcome.
+"""
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def mock_committer_agent_profile(inference_model) -> CommitterAgentProfile:
+    return CommitterAgentProfile(
+        backend_configuration=OllamaAgentBackendConfiguration(
+            connection=1,
+            model=inference_model,
+            temperature=0.4,
+        ),
+        mutation_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the sandbox Committer Agent for a role-play simulation.
+
+Your job is to apply state changes to a sandboxed in-memory copy of the world using tools.
+
+You are the final LLM stage that can affect state before narration.
+You do not write narration.
+You do not write prose for the user.
+You do not modify the real database.
+You only call sandbox mutation tools.
+
+ResolverOutput is authoritative:
+- Apply successful and partially successful resolved actions.
+- Do not apply failed, blocked, invalid, cancelled, or rejected actions except as failed attempts, changed attitudes, or persistent memories when appropriate.
+- Do not reinterpret success or failure.
+- Do not change outcomes.
+
+Mutation rules:
+- Every turn should update SimulationState.state to reflect progress.
+- Prefer minimal precise changes.
+- Use status updates instead of deletion for narrative state changes.
+- Do not delete characters because they die, leave, vanish, or become inactive.
+- If a character dies, update the character state and create/mark a body/entity if appropriate.
+- If an entity becomes an inventory item, update the entity status and update the inventory.
+- If a pending generated proposal becomes real, accept it and create/update the corresponding canonical object.
+- If a pending generated proposal is not confirmed, reject or defer it.
+- Create world entries for persistent facts, memories, rumours, discoveries, or changed knowledge that should be recalled later.
+- Create or update tasks when resolved events create, advance, pause, or complete goals.
+- If unsure, prefer no mutation and leave a note through validation later.
+
+Incremental loop rules:
+- This is one mutation pass.
+- Look at the current sandbox state and mutation log.
+- Add missing changes only.
+- You may refine a previous change by applying another update to the same object.
+- Do not attempt to erase the mutation log.
+- Do not call tools if nothing else needs to change.
+
+Use tools only.
+If no more mutations are needed, respond with no tool calls.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Committer Mutation Pass
+
+Mutation round: {{ data.mutation_round }} / {{ data.max_mutation_rounds }}
+
+## User input
+{{ data.user_input or "No user input." }}
+
+## Director output
+{{ data.director_output }}
+
+## Briefing output
+{{ data.briefing_output }}
+
+## Character actions
+{{ data.character_actions }}
+
+## Resolver output
+{{ data.resolver_output }}
+
+## Pending generated proposals
+{{ data.pending_generated_proposals }}
+
+## Current sandbox state
+{{ data.current_sandbox_state }}
+
+## Mutation log so far
+{{ data.mutation_log }}
+
+## Previous validation
+{{ data.previous_validation or "No previous validation." }}
+
+# Task
+
+Apply any missing sandbox state changes using tools.
+
+Do not narrate.
+Do not explain unless needed inside tool reason fields.
+If no changes are needed, make no tool calls.
+"""
+            ),
+        ],
+        validation_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the sandbox Committer Validator.
+
+Your job is to inspect:
+- what happened this turn;
+- the current sandbox state;
+- the mutation log.
+
+Decide whether the state changes are complete and consistent.
+
+You do not call tools.
+You do not mutate state.
+You do not write narration.
+You only return CommitterValidationOutput.
+
+Validation rules:
+- ResolverOutput is authoritative.
+- Successful and partially successful actions should be reflected in sandbox state where persistent.
+- Failed/blocked/invalid actions should not be over-applied.
+- Every turn should update SimulationState.state.
+- Pending generated proposals should be accepted, rejected, or deferred if relevant.
+- Persistent discoveries, memories, rumours, changed knowledge, or important events should have world-entry suggestions or actual mutations.
+- Character public/private states should reflect meaningful social, physical, or investigative changes.
+- Entity/item/location/task changes should be present when resolved events require them.
+- Avoid over-mutating for trivial flavour.
+
+If more changes are needed, set needs_more_changes=true and describe them.
+If complete, set complete=true and needs_more_changes=false.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Committer Validation Pass
+
+## User input
+{{ data.user_input or "No user input." }}
+
+## Character actions
+{{ data.character_actions }}
+
+## Resolver output
+{{ data.resolver_output }}
+
+## Pending generated proposals
+{{ data.pending_generated_proposals }}
+
+## Current sandbox state
+{{ data.current_sandbox_state }}
+
+## Mutation log
+{{ data.mutation_log }}
+
+# Required output
+
+Return CommitterValidationOutput.
+"""
+            ),
+        ],
+        final_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+# Committer Validation Pass
+
+## User input
+{{ data.user_input or "No user input." }}
+
+## Character actions
+{{ data.character_actions }}
+
+## Resolver output
+{{ data.resolver_output }}
+
+## Pending generated proposals
+{{ data.pending_generated_proposals }}
+
+## Current sandbox state
+{{ data.current_sandbox_state }}
+
+## Mutation log
+{{ data.mutation_log }}
+
+# Required output
+
+Return CommitterValidationOutput.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Final Committer Output
+
+## User input
+{{ data.user_input or "No user input." }}
+
+## Resolver output
+{{ data.resolver_output }}
+
+## Pending generated proposals
+{{ data.pending_generated_proposals }}
+
+## Original state
+{{ data.original_state }}
+
+## Final sandbox state
+{{ data.final_sandbox_state }}
+
+## Mutation log
+{{ data.mutation_log }}
+
+## Last validation
+{{ data.last_validation }}
+
+# Required output
+
+Return CommitterFinalOutput only.
+"""
+            ),
+        ],
     )
 
 
@@ -1057,6 +1369,7 @@ def mock_simulation(mock_director_profile,
                     mock_memory_agent_profile,
                     mock_character_agent_profile,
                     mock_resolver_agent_profile,
+                    mock_committer_agent_profile,
                     mock_world_generator_profile,
                     mock_embedding_profile,
                     ) -> Simulation:
@@ -1072,8 +1385,9 @@ def mock_simulation(mock_director_profile,
             director=mock_director_profile,
             memory=mock_memory_agent_profile,
             character=mock_character_agent_profile,
-            world_generator=mock_world_generator_profile,
             resolver=mock_resolver_agent_profile,
+            committer=mock_committer_agent_profile,
+            world_generator=mock_world_generator_profile,
         ),
         data_preset=DataPreset(
             character_attributes=[
@@ -1112,6 +1426,14 @@ def mock_simulation_state_1() -> SimulationState:
               "not yet revealed the full contents of the anonymous letter. Eleanor Graves is aware that an outside "
               "investigator has arrived in town, but has not yet confronted him directly. Marcus Reed remains at or "
               "near the observatory, anxious about Harlan's missing notebook and the unauthorized signal experiments.",
+        recent_history_summary="Arthur arrived at the Iron Stag Inn during the Founder's Festival. Clara noticed "
+                               "his controlled manner and suspected he was not merely a curious traveller. Eleanor "
+                               "briefly greeted Arthur, presenting the town as orderly and festive while probing "
+                               "his purpose. Arthur has not yet revealed the anonymous letter.",
+        long_term_history_summary="Director Harlan disappeared three weeks ago. Officially he left without notice, "
+                                  "but many residents doubt this. The observatory, the old mine, altered property "
+                                  "records, the unknown visitor, and Harlan's missing notebook are all unresolved "
+                                  "investigation threads."
     )
 
 

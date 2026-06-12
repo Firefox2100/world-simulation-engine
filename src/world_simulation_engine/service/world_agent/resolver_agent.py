@@ -45,3 +45,24 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
 
         structured_model = self.model.with_structured_output(ResolverOutput)
         return cast(ResolverOutput, await structured_model.ainvoke(messages))
+
+    async def resolve_user_input(self):
+        data = {
+            "simulation": Simulation,
+            "state": SimulationState,
+            "current_location": Location,
+            "player_character": Character,
+            "present_characters": list[Character],
+            "visible_entities": list[Entity],
+            "player_inventory": dict,
+            "player_tasks": list[Task],
+            "player_world_entries": list[WorldEntry],
+
+            "user_input": str,
+
+            "last_narration": str | None,
+            "recent_history_summary": str | None,
+            "previous_resolver_notes": str | None,
+
+            "strictness": Literal["permissive", "normal", "strict"],
+        }

@@ -22,6 +22,7 @@ class ConnectionProfileCache(BaseModel):
     memory: LlmConnectionProfile | None = None
     character: LlmConnectionProfile | None = None
     resolver: LlmConnectionProfile | None = None
+    committer: LlmConnectionProfile | None = None
     world_generator: LlmConnectionProfile | None = None
 
     embedding: LlmConnectionProfile | None = None
@@ -79,6 +80,8 @@ class TurnGenerator:
             simulation.agent_preset.director.backend_configuration.connection,
             simulation.agent_preset.memory.backend_configuration.connection,
             simulation.agent_preset.character.backend_configuration.connection,
+            simulation.agent_preset.resolver.backend_configuration.connection,
+            simulation.agent_preset.committer.backend_configuration.connection,
             simulation.agent_preset.world_generator.backend_configuration.connection,
             simulation.embedding_profile.connection,
         }
@@ -101,6 +104,8 @@ class TurnGenerator:
                 director=connections[simulation.agent_preset.director.backend_configuration.connection],
                 memory=connections[simulation.agent_preset.memory.backend_configuration.connection],
                 character=connections[simulation.agent_preset.character.backend_configuration.connection],
+                resolver=connections[simulation.agent_preset.resolver.backend_configuration.connection],
+                committer=connections[simulation.agent_preset.committer.backend_configuration.connection],
                 world_generator=connections[simulation.agent_preset.world_generator.backend_configuration.connection],
                 embedding=connections[simulation.embedding_profile.connection],
             ),
@@ -332,7 +337,7 @@ class TurnGenerator:
             raise RuntimeError("Character action outputs is not generated")
 
         if state.connection_profiles.resolver is None:
-            raise RuntimeError("Memory connection profile not loaded")
+            raise RuntimeError("Resolver connection profile not loaded")
         resolver_agent = ResolverAgent(
             profile=state.simulation.agent_preset.resolver,
             connection=state.connection_profiles.resolver,
@@ -478,12 +483,20 @@ class WorkflowRunner:
         finally:
             handle.done.set()
 
+    def has_run(self, run_id: str) -> bool:
+        if run_id in self._runs:
+            return True
+
+        return False
+
     async def start(self,
                     input_data: dict[str, Any],
                     ) -> str:
         run_id = str(uuid4())
         handle = WorkflowRunHandle()
         self._runs[run_id] = handle
+
+        input_data["run_id"] = run_id
 
         handle.task = asyncio.create_task(
             self._run_graph(

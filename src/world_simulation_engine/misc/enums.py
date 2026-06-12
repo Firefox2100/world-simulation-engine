@@ -37,6 +37,22 @@ class NarrationPermission(StrEnum):
     INVISIBLE = "invisible"
 
 
+class SandboxObjectType(StrEnum):
+    SIMULATION = "simulation"
+    STATE = "state"
+    CHARACTER = "character"
+    LOCATION = "location"
+    ENTITY = "entity"
+    ITEM = "item"
+    EQUIPMENT = "equipment"
+    INVENTORY = "inventory"
+    TASK = "task"
+    WORLD_ENTRY = "world_entry"
+    FACTION = "faction"
+    FACTION_RELATIONSHIP = "faction_relationship"
+    PENDING_GENERATED_PROPOSAL = "pending_generated_proposal"
+
+
 class SystemMessagePolicy(StrEnum):
     PRESERVE = "preserve"
     MERGE_TO_TOP = "merge_to_top"
