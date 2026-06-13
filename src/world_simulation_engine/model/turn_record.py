@@ -230,6 +230,34 @@ class ResolverOutput(BaseModel):
     notes: str = ""
 
 
+class CharacterReactionContext(BaseModel):
+    character_id: int
+    character_name: str
+
+    original_action: CharacterActionOutput
+    failure_record: FailedCharacterRecord
+
+    fixed_visible_events: list[str] = Field(default_factory=list)
+    fixed_private_events_for_actor: list[str] = Field(default_factory=list)
+    relevant_task_ids: list[int] = Field(default_factory=list)
+    relevant_world_entry_ids: list[int] = Field(default_factory=list)
+
+    changed_scene_context: str
+    immediate_failure_context: str
+
+    retry_number: int = 1
+    max_retries_this_round: int = 1
+
+    allowed_reaction_scope: Literal[
+        "adjust_original_intent",
+        "respond_to_failure",
+        "abort_or_wait",
+        "any_plausible_reaction",
+    ] = "respond_to_failure"
+
+    constraints: list[str] = Field(default_factory=list)
+
+
 class SandboxObjectRef(BaseModel):
     object_type: SandboxObjectType
     object_id: int | str
@@ -269,8 +297,6 @@ class CommitterFinalOutput(BaseModel):
 
     final_state: dict[str, Any]
 
-    # This is for your DB layer.
-    # It contains only incremental changes, not the whole DB.
     database_patch_preview: list[SandboxMutationRecord]
 
 

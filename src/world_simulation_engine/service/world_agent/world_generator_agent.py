@@ -1,8 +1,8 @@
 from enum import StrEnum
 from typing import cast
 from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig, patch_config
 
-from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import WorldGeneratorAgentProfile, Simulation, SimulationState, Location, \
     Character, Entity, Item, Equipment, Faction, FactionRelationship, ProposedLocation, ProposedItem, ProposedEntity, \
     ProposedWorldEntry
@@ -73,10 +73,8 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                                 existing_equipments: list[Equipment] | None = None,
                                 factions: list[Faction] | None = None,
                                 faction_relationships: list[FactionRelationship] | None = None,
+                                config: RunnableConfig | None = None,
                                 ) -> ProposedLocation:
-        LOGGER.info("Generating location...")
-        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
-
         data = self._build_base_data(
             simulation=simulation,
             state=state,
@@ -97,13 +95,19 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             prompts=self.profile.location_generation_prompt,
             data=data
         )
-        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         location_model = self.model.with_structured_output(ProposedLocation)
 
-        result = cast(ProposedLocation, await location_model.ainvoke(messages))
-        LOGGER.info("Location generation completed for %s", result.scene)
-        LOGGER.debug("Location:\n%s", result.model_dump_json(indent=2))
+        result = cast(
+            ProposedLocation,
+            await location_model.ainvoke(
+                messages,
+                config=patch_config(
+                    config,
+                    run_name="generate_location",
+                ) if config else None,
+            )
+        )
 
         return result
 
@@ -121,10 +125,8 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                             existing_equipments: list[Equipment] | None = None,
                             factions: list[Faction] | None = None,
                             faction_relationships: list[FactionRelationship] | None = None,
+                            config: RunnableConfig | None = None,
                             ) -> ProposedItem:
-        LOGGER.info("Generating item...")
-        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
-
         data = self._build_base_data(
             simulation=simulation,
             state=state,
@@ -145,13 +147,19 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             prompts=self.profile.item_generation_prompt,
             data=data
         )
-        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         item_model = self.model.with_structured_output(ProposedItem)
 
-        result = cast(ProposedItem, await item_model.ainvoke(messages))
-        LOGGER.info("Item generation completed for %s", result.name)
-        LOGGER.debug("Item:\n%s", result.model_dump_json(indent=2))
+        result = cast(
+            ProposedItem,
+            await item_model.ainvoke(
+                messages,
+                config=patch_config(
+                    config,
+                    run_name="generate_item",
+                ) if config else None,
+            )
+        )
 
         return result
 
@@ -170,10 +178,8 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                               existing_equipments: list[Equipment] | None = None,
                               factions: list[Faction] | None = None,
                               faction_relationships: list[FactionRelationship] | None = None,
+                              config: RunnableConfig | None = None,
                               ) -> ProposedEntity:
-        LOGGER.info("Generating entity...")
-        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
-
         data = self._build_base_data(
             simulation=simulation,
             state=state,
@@ -194,14 +200,18 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             prompts=self.profile.entity_generation_prompt,
             data=data
         )
-        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
-
         entity_model = self.model.with_structured_output(self._patch_entity_model(entity_types))
 
-        result = cast(ProposedEntity, await entity_model.ainvoke(messages))
-        LOGGER.info("Entity generation completed for %s", result.name)
-        LOGGER.debug("Entity:\n%s", result.model_dump_json(indent=2))
-
+        result = cast(
+            ProposedEntity,
+            await entity_model.ainvoke(
+                messages,
+                config=patch_config(
+                    config,
+                    run_name="generate_entity",
+                ) if config else None,
+            )
+        )
         return result
 
     async def generate_world_entry(self,
@@ -218,10 +228,8 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                                    existing_equipments: list[Equipment] | None = None,
                                    factions: list[Faction] | None = None,
                                    faction_relationships: list[FactionRelationship] | None = None,
+                                   config: RunnableConfig | None = None,
                                    ) -> ProposedWorldEntry:
-        LOGGER.info("Generating world entry...")
-        LOGGER.debug("Goal: %s\nTrigger: %s\nConstraints: %s", goal, trigger, constraints)
-
         data = self._build_base_data(
             simulation=simulation,
             state=state,
@@ -242,14 +250,19 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             prompts=self.profile.world_entry_generation_prompt,
             data=data
         )
-        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in messages]))
 
         world_entry_model = self.model.with_structured_output(ProposedWorldEntry)
 
-        result = cast(ProposedWorldEntry, await world_entry_model.ainvoke(messages))
-        LOGGER.info("World entry generation completed for %s", result.content)
-        LOGGER.debug("World entry:\n%s", result.model_dump_json(indent=2))
-
+        result = cast(
+            ProposedWorldEntry,
+            await world_entry_model.ainvoke(
+                messages,
+                config=patch_config(
+                    config,
+                    run_name="generate_world_entry",
+                ) if config else None,
+            )
+        )
         return result
 
     def get_tools(self,
@@ -264,6 +277,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                   existing_equipments: list[Equipment] | None = None,
                   factions: list[Faction] | None = None,
                   faction_relationships: list[FactionRelationship] | None = None,
+                  config: RunnableConfig | None = None,
                   ):
         @tool(parse_docstring=True)
         async def generate_location(goal: str, trigger: str, constraints: list[str]) -> ProposedLocation:
@@ -305,6 +319,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
+                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -345,6 +360,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
+                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -388,6 +404,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 trigger=trigger,
                 constraints=constraints,
                 entity_types=entity_types,
+                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -431,6 +448,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
+                config=config,
             )
 
         return [

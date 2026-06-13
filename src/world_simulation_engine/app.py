@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService
@@ -18,8 +20,14 @@ async def lifespan(app: FastAPI):
     )
     turn_generator_graph = turn_generator.build_graph()
 
+    _ = Langfuse()
+    langfuse_handler = CallbackHandler()
+
     turn_runner = WorkflowRunner(
         graph=turn_generator_graph,
+        langfuse_handler=langfuse_handler,
+        preserve_updates=["commit_changes"],
+        callback=turn_generator.write_commits_to_database,
     )
 
     app.state.database_service = database_service

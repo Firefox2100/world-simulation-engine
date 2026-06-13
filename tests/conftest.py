@@ -9,7 +9,7 @@ from world_simulation_engine.model import LlmConnectionProfile, EmbeddingProfile
     OllamaAgentBackendConfiguration, PromptMessage, DirectorAgentProfile, MemoryAgentProfile, \
     CharacterAgentProfile, Simulation, AgentPreset, DataPreset, ModelAttribute, SimulationState, Character, \
     Faction, FactionRelationship, Item, Equipment, Location, Entity, WorldEntry, WorldEntryRecallKeyword, Task, \
-    ResolverAgentProfile, CommitterAgentProfile
+    ResolverAgentProfile, CommitterAgentProfile, NarratorAgentProfile
 from world_simulation_engine.model.connection_profile import LlmConnectionCreate
 from world_simulation_engine.service import DatabaseService
 
@@ -1626,6 +1626,274 @@ Return only CharacterActionOutput.
 """
             )
         ],
+        reaction_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are a character reaction agent in a multi-agent role-play simulation.
+
+You act only as the specified character.
+
+This is a reaction pass after your previous action failed, was blocked, delayed, or only partially succeeded.
+
+Your job:
+- understand what you attempted;
+- understand why it failed or was blocked;
+- react plausibly based on what your character can perceive and know;
+- produce one new attempted action.
+
+You are not the narrator.
+You are not the resolver.
+You do not decide whether the new action succeeds.
+You do not control other characters.
+You do not rewrite already resolved events.
+You do not undo another character's successful action.
+
+Fixed-event rules:
+- Events listed as fixed visible events already happened.
+- You may react to them.
+- You may not contradict them.
+- You may not prevent them retroactively.
+- Your new action must start from the changed scene state.
+
+Retry rules:
+- This is a limited reaction opportunity, not a full new turn.
+- Prefer a direct adjustment, fallback, response to being blocked, or withdrawal.
+- Do not repeat the exact same failed action unless there is a clearly different method.
+- If the sensible response is to stop, observe, or wait, output action_type="wait" or "observe".
+- This is the final retry for this character this round.
+
+Knowledge rules:
+- Use only your own private state, own tasks, own recalled world entries, and visible/fixed events.
+- Do not assume hidden reasons for other characters' actions unless supplied.
+- If private knowledge motivates your reaction, set uses_private_knowledge=true and explain it only in private_reason_for_system.
+
+Return only CharacterActionOutput.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Character Reaction Input
+
+## Acting character
+ID: {{ data.character.id }}
+Name: {{ data.character.name }}
+Gender: {{ data.character.gender }}
+Age: {{ data.character.age }}
+
+Description:
+{{ data.character.description }}
+
+Appearance:
+{{ data.character.appearance }}
+
+Public state:
+{{ data.character.public_state }}
+
+Private state:
+{{ data.character.private_state }}
+
+Location: {{ data.character.location }}
+
+Attributes:
+{% for key, values in data.character.attributes.items() %}
+- {{ key }}: {{ values | join(", ") }}
+{% else %}
+None.
+{% endfor %}
+
+Stats:
+{% for key, value in data.character.stats.items() %}
+- {{ key }}: {{ value }}
+{% else %}
+None.
+{% endfor %}
+
+## Original attempted action
+Intent:
+{{ data.reaction_context.original_action.intent }}
+
+Action type:
+{{ data.reaction_context.original_action.action_type }}
+
+Method:
+{{ data.reaction_context.original_action.method }}
+
+Visible behaviour:
+{{ data.reaction_context.original_action.visible_behavior }}
+
+Spoken intent:
+{{ data.reaction_context.original_action.spoken_intent or "None." }}
+
+Expected outcome:
+{{ data.reaction_context.original_action.expected_outcome }}
+
+Fallback if blocked:
+{{ data.reaction_context.original_action.fallback_if_blocked or "None." }}
+
+## Failure / block reason
+Failed action summary:
+{{ data.reaction_context.failure_record.failed_action_summary }}
+
+Reason:
+{{ data.reaction_context.failure_record.reason }}
+
+Retry context:
+{{ data.reaction_context.failure_record.retry_context or "No additional retry context." }}
+
+## Fixed visible events
+These already happened and cannot be undone.
+{% for event in data.reaction_context.fixed_visible_events %}
+- {{ event }}
+{% else %}
+None.
+{% endfor %}
+
+## Private realisations for this character
+{% for event in data.reaction_context.fixed_private_events_for_actor %}
+- {{ event }}
+{% else %}
+None.
+{% endfor %}
+
+## Changed scene context
+{{ data.reaction_context.changed_scene_context }}
+
+## Immediate failure context
+{{ data.reaction_context.immediate_failure_context }}
+
+## Retry limit
+Retry number: {{ data.reaction_context.retry_number }}
+Maximum retries this round: {{ data.reaction_context.max_retries_this_round }}
+
+Allowed reaction scope:
+{{ data.reaction_context.allowed_reaction_scope }}
+
+Reaction constraints:
+{% for c in data.reaction_context.constraints %}
+- {{ c }}
+{% else %}
+None.
+{% endfor %}
+
+## Current location
+Location ID: {{ data.current_location.id }}
+Primary: {{ data.current_location.primary_location }}
+Detailed: {{ data.current_location.detailed_location }}
+Scene: {{ data.current_location.scene }}
+
+Description:
+{{ data.current_location.description }}
+
+Entities:
+{% for e in data.current_location.entities %}
+- Entity {{ e.id }}: {{ e.name }}
+  Type: {{ e.type }}
+  Description: {{ e.description }}
+  Status: {{ e.status }}
+  Interactions: {{ e.interactions | join(", ") }}
+{% else %}
+No visible entities.
+{% endfor %}
+
+## Visible characters
+{% for c in data.visible_characters %}
+- Character {{ c.id }}: {{ c.name }}
+  User controlled: {{ c.user_controlled }}
+  Description: {{ c.description }}
+  Public state: {{ c.public_state }}
+  Location: {{ c.location }}
+{% else %}
+No visible characters.
+{% endfor %}
+
+## Tasks
+{% for t in data.tasks %}
+- Task {{ t.id }}
+  Private: {{ t.private }}
+  Priority: {{ t.priority }}
+  Status: {{ t.status }}
+  Type: {{ t.type }}
+  Goal: {{ t.goal }}
+  Progress: {{ t.progress }}
+  Source: {{ t.source }}
+{% else %}
+No active tasks.
+{% endfor %}
+
+## Recalled world entries
+{% for e in data.world_entries %}
+- Entry {{ e.id }}
+  Visibility: {{ e.visibility }}
+  Confidence: {{ e.confidence }}
+  Content: {{ e.content }}
+{% else %}
+No recalled world entries.
+{% endfor %}
+
+## Inventory
+{% for item in data.inventory %}
+- Item {{ item.id }}: {{ item.name }}
+  Description: {{ item.description }}
+  Quantity: {{ item.quantity }}
+  Quality: {{ item.quality }}
+{% else %}
+No items.
+{% endfor %}
+
+## Equipment
+{% for eq in data.equipments %}
+- Equipment {{ eq.id }}: {{ eq.name }}
+  Description: {{ eq.description }}
+  Status: {{ eq.status }}
+  Quality: {{ eq.quality }}
+{% else %}
+No equipment.
+{% endfor %}
+
+## Factions
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+
+## Faction relationships
+{% for r in data.faction_relationships %}
+- {{ r }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
+
+## Pending generated proposals
+These are not canonical facts.
+{% for p in data.pending_generated_proposals %}
+- {{ p }}
+{% else %}
+None.
+{% endfor %}
+
+## User input
+{{ data.user_input or "No explicit user input." }}
+
+## Last narration
+{{ data.last_narration or "No previous narration." }}
+
+## Previous resolver notes
+{{ data.previous_resolver_notes or "No previous resolver notes." }}
+
+# Required output
+
+Produce one CharacterActionOutput representing this character's reaction.
+
+Do not repeat the same failed action unless the method or target changes.
+Do not contradict fixed events.
+Do not decide success.
+"""
+            ),
+        ],
     )
 
 
@@ -1885,6 +2153,177 @@ Detect conflicts, failures, blocked actions, and invalid assumptions.
 Return ResolverOutput.
 """
             )
+        ],
+        resolve_reaction_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the Resolver for a second-pass character reaction in a multi-agent role-play simulation.
+
+A previous resolver pass already produced fixed resolved actions.
+Some characters failed, were blocked, or were delayed.
+Those characters have now produced reaction actions.
+
+Your job:
+- resolve only the supplied reaction actions;
+- respect previous resolved actions as fixed truth;
+- detect whether the reaction succeeds, partially succeeds, fails, is blocked, or is invalid;
+- output the same ResolverOutput schema used by normal resolution.
+
+You are not the narrator.
+You do not write literary prose.
+You do not mutate canonical state.
+You do not re-resolve successful fixed actions.
+You do not undo previous successful actions.
+
+Second-pass rules:
+- Fixed resolved actions already happened and cannot be undone.
+- Reaction actions start after or during the consequences of those fixed actions.
+- If a reaction conflicts with fixed truth, mark it failed or invalid.
+- This is the final retry for these characters this round.
+- If a reaction fails again, set requires_actor_retry=false.
+- Do not request another retry.
+
+Resolution rules:
+- Use reasonable fictional causality.
+- Do not assume user-controlled character responses unless explicitly supplied.
+- Do not generate exact dialogue.
+- visible_result should describe observable event outcome in plain terms.
+- private_result_for_actor may describe what the actor privately realises.
+
+Return only ResolverOutput with mode="normal_action_resolution".
+""",
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Reaction Resolver Input
+
+## Simulation
+Name: {{ data.simulation.name }}
+Description:
+{{ data.simulation.description }}
+
+## Current state
+Round: {{ data.state.round_number }}
+Time: {{ data.state.time_label }}
+State summary:
+{{ data.state.state }}
+
+## Current location
+ID: {{ data.current_location.id }}
+Primary: {{ data.current_location.primary_location }}
+Detailed: {{ data.current_location.detailed_location }}
+Scene: {{ data.current_location.scene }}
+Description:
+{{ data.current_location.description }}
+
+Entities:
+{% for e in data.current_location.entities %}
+- Entity {{ e.id }}: {{ e.name }}
+  Type: {{ e.type }}
+  Status: {{ e.status }}
+  Interactions: {{ e.interactions | join(", ") }}
+{% else %}
+None.
+{% endfor %}
+
+## Present characters
+{% for c in data.characters %}
+- Character {{ c.id }}: {{ c.name }}
+  User controlled: {{ c.user_controlled }}
+  Public state: {{ c.public_state }}
+  Location: {{ c.location }}
+{% endfor %}
+
+## Previous resolver output
+These actions/conflicts are already resolved.
+{{ data.previous_resolver_output }}
+
+## Reaction actions to resolve
+Resolve only these actions.
+{% for a in data.reaction_actions %}
+- Actor {{ a.character_id }}: {{ a.character_name }}
+  Intent: {{ a.intent }}
+  Action type: {{ a.action_type }}
+  Targets characters: {{ a.target_character_ids }}
+  Targets entities: {{ a.target_entity_ids }}
+  Target location: {{ a.target_location_id }}
+  Target items: {{ a.target_item_ids }}
+  Method: {{ a.method }}
+  Visible behaviour: {{ a.visible_behavior }}
+  Spoken intent: {{ a.spoken_intent }}
+  Urgency: {{ a.urgency }}
+  Persistence: {{ a.persistence }}
+  Expected outcome: {{ a.expected_outcome }}
+  Fallback if blocked: {{ a.fallback_if_blocked }}
+  Uses private knowledge: {{ a.uses_private_knowledge }}
+  Constraints for resolver:
+  {% for c in a.constraints_for_resolver %}
+  - {{ c }}
+  {% else %}
+  None.
+  {% endfor %}
+{% else %}
+No reaction actions supplied.
+{% endfor %}
+
+## Retry constraints
+Second pass: {{ data.round_constraints.second_pass }}
+Retrying character IDs: {{ data.round_constraints.retrying_character_ids }}
+No more retries after this: {{ data.round_constraints.no_more_retries_after_this }}
+
+## Inventory
+{{ data.inventory }}
+
+## World entries
+{% for e in data.world_entries %}
+- Entry {{ e.id }}
+  Scope: {{ e.scope }}
+  Visibility: {{ e.visibility }}
+  Confidence: {{ e.confidence }}
+  Content: {{ e.content }}
+{% else %}
+No resolver-safe world entries.
+{% endfor %}
+
+## Factions
+{% for f in data.factions %}
+- Faction {{ f.id }}: {{ f.name }}
+  Description: {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+
+## Faction relationships
+{% for r in data.faction_relationships %}
+- {{ r }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
+
+## Pending generated proposals
+These are not canonical.
+{% for p in data.pending_generated_proposals %}
+- {{ p }}
+{% else %}
+None.
+{% endfor %}
+
+## Last narration
+{{ data.last_narration or "No previous narration." }}
+
+## Previous resolver notes
+{{ data.previous_resolver_notes or "No previous resolver notes." }}
+
+# Required resolution
+
+Resolve the reaction actions only.
+
+Return ResolverOutput.
+Do not request further retries.
+"""
+            ),
         ],
         resolve_user_prompt=[
             PromptMessage(
@@ -2320,11 +2759,287 @@ Return CommitterFinalOutput only.
 
 
 @pytest.fixture
+def mock_narrator_agent_profile(inference_model) -> NarratorAgentProfile:
+    return NarratorAgentProfile(
+        backend_configuration=OllamaAgentBackendConfiguration(
+            connection=1,
+            model=inference_model,
+            temperature=0.4,
+        ),
+        narrate_resolved_turn_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the narrator for an interactive role-play simulation.
+
+You write natural language narration for the player.
+
+You receive resolved events from the resolver. These are authoritative.
+Do not change outcomes.
+Do not add new actions.
+Do not make unresolved actions succeed.
+Do not reveal hidden facts unless supplied world entries permit narration.
+
+You are not the resolver.
+You are not the committer.
+You do not output JSON.
+You do not describe database changes.
+You do not mention internal agent names, resolver records, or system stages.
+
+Narration rules:
+- Describe what the player character can perceive.
+- Include successful and failed actions as visible events.
+- Preserve uncertainty when facts are not confirmed.
+- If a character failed or was blocked, narrate the attempt and the visible reason.
+- Do not over-explain private motives.
+- Use concise but atmospheric prose.
+- End with a natural opening for the player to respond.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Resolved Turn Narration
+
+## Simulation
+{{ data.simulation.name }}
+{{ data.simulation.description }}
+
+## Current state
+Time: {{ data.state.time_label }}
+State summary:
+{{ data.state.state }}
+
+## Location
+{{ data.current_location.primary_location }} / {{ data.current_location.detailed_location }} / {{ data.current_location.scene }}
+
+{{ data.current_location.description }}
+
+## Last narration
+{{ data.last_narration or "No previous narration." }}
+
+## User input
+{{ data.user_input or "No explicit user input." }}
+
+## Recent history
+{{ data.recent_history_summary or "No recent history summary." }}
+
+## Long-term history
+{{ data.long_term_history_summary or "No long-term history summary." }}
+
+## Present characters
+{% for c in data.characters %}
+- {{ c.name }}: {{ c.public_state }}
+{% endfor %}
+
+## Character attempted actions
+{% for a in data.character_actions %}
+- {{ a.character_name }} attempted: {{ a.intent }}
+  Visible behaviour: {{ a.visible_behavior }}
+{% else %}
+None.
+{% endfor %}
+
+## Resolver output
+{{ data.resolver_output }}
+
+## Narrator-visible world entries
+Use these only according to their narration permission.
+{% for e in data.world_entries_for_narrator %}
+- {{ e.content }}
+  Permission: {{ e.narration_permission }}
+  Visibility: {{ e.visibility }}
+{% else %}
+None.
+{% endfor %}
+
+## Pending generated proposals
+These are not canonical unless the resolver output accepted them.
+{% for p in data.pending_generated_proposals %}
+- {{ p }}
+{% else %}
+None.
+{% endfor %}
+
+# Required narration
+
+Write the narration for this resolved turn.
+
+Output natural language only.
+"""
+            ),
+        ],
+        narrate_wait_for_user_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the narrator for an interactive role-play simulation.
+
+This mode is used when the Director determines the scene cannot continue meaningfully without player input.
+
+Your job:
+- briefly restate the immediate situation;
+- make clear that the scene is waiting on the player character;
+- do not progress NPC actions;
+- do not resolve new events;
+- do not invent new facts.
+
+Do not output JSON.
+Do not mention Director, scheduler, agents, or system stages.
+
+Narration rules:
+- Keep it short.
+- Focus on the immediate social or physical pressure.
+- The final sentence should naturally invite player action or response.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Wait For User Narration
+
+## Simulation
+{{ data.simulation.name }}
+{{ data.simulation.description }}
+
+## Current state
+Time: {{ data.state.time_label }}
+State summary:
+{{ data.state.state }}
+
+## Location
+{{ data.current_location.primary_location }} / {{ data.current_location.detailed_location }} / {{ data.current_location.scene }}
+
+{{ data.current_location.description }}
+
+## Last narration
+{{ data.last_narration or "No previous narration." }}
+
+## User input
+{{ data.user_input or "No explicit user input." }}
+
+## Recent history
+{{ data.recent_history_summary or "No recent history summary." }}
+
+## Long-term history
+{{ data.long_term_history_summary or "No long-term history summary." }}
+
+## Present characters
+{% for c in data.characters %}
+- {{ c.name }}: {{ c.public_state }}
+{% endfor %}
+
+## Director output
+Use this only to understand why the scene is waiting.
+{{ data.director_output }}
+
+## Narrator-visible world entries
+{% for e in data.world_entries_for_narrator %}
+- {{ e.content }}
+  Permission: {{ e.narration_permission }}
+  Visibility: {{ e.visibility }}
+{% else %}
+None.
+{% endfor %}
+
+# Required narration
+
+Write a short narration indicating the scene is waiting for the player.
+
+Output natural language only.
+"""
+            ),
+        ],
+        narrate_user_input_failure_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are the narrator for an interactive role-play simulation.
+
+This narration is for an early user-input validation failure.
+
+The user's attempted action was not accepted as stated.
+Your job is to narrate the failed or blocked attempt in-world, while preserving player agency.
+
+Do not punish the player harshly unless the resolver output says so.
+Do not invent major consequences.
+Do not make the action succeed.
+Do not reveal hidden facts.
+Do not output JSON.
+Do not mention validation, resolver, legality checks, or system rules.
+
+Narration rules:
+- Show the player character attempting or reconsidering the action.
+- Explain the immediate in-world obstacle.
+- Keep the tone immersive.
+- End with the player still able to choose another action.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# User Input Failure Narration
+
+## Simulation
+{{ data.simulation.name }}
+{{ data.simulation.description }}
+
+## Current state
+Time: {{ data.state.time_label }}
+State summary:
+{{ data.state.state }}
+
+## Location
+{{ data.current_location.primary_location }} / {{ data.current_location.detailed_location }} / {{ data.current_location.scene }}
+
+{{ data.current_location.description }}
+
+## Player character
+{{ data.player_character.name }}
+Public state: {{ data.player_character.public_state }}
+
+## User attempted input
+{{ data.user_input }}
+
+## Resolver validation output
+{{ data.resolver_output }}
+
+## Last narration
+{{ data.last_narration or "No previous narration." }}
+
+## Recent history
+{{ data.recent_history_summary or "No recent history summary." }}
+
+## Long-term history
+{{ data.long_term_history_summary or "No long-term history summary." }}
+
+## Narrator-visible world entries
+{% for e in data.world_entries_for_narrator %}
+- {{ e.content }}
+  Permission: {{ e.narration_permission }}
+  Visibility: {{ e.visibility }}
+{% else %}
+None.
+{% endfor %}
+
+# Required narration
+
+Narrate the failed or blocked attempt naturally.
+
+Output natural language only.
+"""
+            )
+        ],
+    )
+
+
+@pytest.fixture
 def mock_simulation(mock_director_profile,
                     mock_memory_agent_profile,
                     mock_character_agent_profile,
                     mock_resolver_agent_profile,
                     mock_committer_agent_profile,
+                    mock_narrator_agent_profile,
                     mock_world_generator_profile,
                     mock_embedding_profile,
                     ) -> Simulation:
@@ -2342,6 +3057,7 @@ def mock_simulation(mock_director_profile,
             character=mock_character_agent_profile,
             resolver=mock_resolver_agent_profile,
             committer=mock_committer_agent_profile,
+            narrator=mock_narrator_agent_profile,
             world_generator=mock_world_generator_profile,
         ),
         data_preset=DataPreset(

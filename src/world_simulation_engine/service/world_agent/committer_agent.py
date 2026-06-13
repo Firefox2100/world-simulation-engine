@@ -2,6 +2,7 @@ from uuid import uuid4
 from copy import deepcopy
 from typing import Any, cast
 from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig, patch_config
 from .world_agent import WorldAgent
 
 from world_simulation_engine.model import CommitterAgentProfile, Simulation, SimulationState, Character, \
@@ -737,16 +738,16 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             defer_generated_proposal,
         ]
 
-    async def commit_changes(
-        self,
-        user_input: str | None,
-        director_output: Any | None,
-        briefing_output: Any | None,
-        character_actions: list[Any],
-        resolver_output: Any,
-        pending_generated_proposals: list[Any] | None = None,
-        max_mutation_rounds: int | None = None,
-    ) -> CommitterFinalOutput:
+    async def commit_changes(self,
+                             user_input: str | None,
+                             director_output: Any | None,
+                             briefing_output: Any | None,
+                             character_actions: list[Any],
+                             resolver_output: Any,
+                             pending_generated_proposals: list[Any] | None = None,
+                             max_mutation_rounds: int | None = None,
+                             config: RunnableConfig | None = None,
+                             ) -> CommitterFinalOutput:
         max_rounds = max_mutation_rounds or getattr(self.profile, "max_mutation_rounds", 4)
 
         tools = self.get_tools()
@@ -782,7 +783,13 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                 data=data,
             )
 
-            ai_msg = await tool_model.ainvoke(messages)
+            ai_msg = await tool_model.ainvoke(
+                messages,
+                config=patch_config(
+                    config,
+                    run_name="committer_tool_calling",
+                ) if config else None,
+            )
             tool_calls = getattr(ai_msg, "tool_calls", None) or []
             round_tool_results: list[dict[str, Any]] = []
 
@@ -857,4 +864,13 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         )
 
         final_model = self.model.with_structured_output(CommitterFinalOutput)
-        return cast(CommitterFinalOutput, await final_model.ainvoke(final_messages))
+        return cast(
+            CommitterFinalOutput,
+            await final_model.ainvoke(
+                final_messages,
+                config=patch_config(
+                    config,
+                    run_name="committer_final_output",
+                ) if config else None,
+            )
+        )

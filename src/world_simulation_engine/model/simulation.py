@@ -41,6 +41,19 @@ class Simulation(BaseModel):
         description="The language of the simulation, as a locale string.",
     )
 
+    act_for_user: bool = Field(
+        False,
+        description="Whether the simulation should act for the user, or can only control other characters.",
+    )
+    enable_tts: bool = Field(
+        False,
+        description="Whether the simulation should enable text-to-speech.",
+    )
+    enable_image_generation: bool = Field(
+        False,
+        description="Whether the simulation should enable image generation.",
+    )
+
 
 class SimulationState(BaseModel):
     """

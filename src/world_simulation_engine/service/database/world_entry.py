@@ -2,6 +2,7 @@ import numpy as np
 from sqlalchemy import select, func, exists
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from world_simulation_engine.misc.enums import NarrationPermission
 from world_simulation_engine.model import WorldEntry
 from .tables import WorldEntryOrm
 
@@ -38,6 +39,7 @@ class WorldEntryRepository:
                    simulation_id: int | None = None,
                    search_scope: list[int] | None = None,
                    entry_ids: list[int] | None = None,
+                   narration_only: bool = False,
                    ) -> list[WorldEntry]:
         stmt = select(WorldEntryOrm)
         if simulation_id:
@@ -54,6 +56,10 @@ class WorldEntryRepository:
             )
         if entry_ids:
             stmt = stmt.where(WorldEntryOrm.id.in_(entry_ids))
+        if narration_only:
+            stmt = stmt.where(WorldEntryOrm.narration_permission.in_(
+                [NarrationPermission.VISIBLE, NarrationPermission.MAY_HINT]
+            ))
 
         async with self._session_factory() as session:
             result = await session.scalars(stmt)

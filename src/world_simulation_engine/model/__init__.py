@@ -1,6 +1,7 @@
 from .agent_preset import OllamaAgentBackendConfiguration, OpenAiAgentBackendConfiguration, \
     AgentBackendConfigurations, AgentProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, \
-    MemoryAgentProfile, CharacterAgentProfile, ResolverAgentProfile, CommitterAgentProfile, AgentPreset
+    MemoryAgentProfile, CharacterAgentProfile, ResolverAgentProfile, CommitterAgentProfile, \
+    NarratorAgentProfile, AgentPreset
 from .character import Character
 from .connection_profile import LlmConnectionProfile
 from .data_preset import DataPreset, ModelAttribute, ModelStat
@@ -14,6 +15,7 @@ from .task import Task
 from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, ProposedLocation, \
     PendingGeneratedProposal, ActivationDecision, DirectorOutput, CharacterBriefing, BriefingOutput, \
     CharacterActionOutput, ResolvedAction, ConflictRecord, FailedCharacterRecord, ResolverOutput, \
-    SandboxObjectRef, SandboxMutationRecord, CommitterValidationOutput, CommitterFinalOutput, TurnRecord
+    CharacterReactionContext, SandboxObjectRef, SandboxMutationRecord, CommitterValidationOutput, \
+    CommitterFinalOutput, TurnRecord
 from .world import World
 from .world_entry import WorldEntry, WorldEntryRecallKeyword

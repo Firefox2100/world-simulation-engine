@@ -164,12 +164,20 @@ class CharacterAgentProfile(AgentProfile):
         ...,
         description="The prompts to use when asking it to generate an action for a character."
     )
+    reaction_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a reaction after failed actions."
+    )
 
 
 class ResolverAgentProfile(AgentProfile):
     resolve_character_prompt: list[PromptMessage] = Field(
         ...,
         description="The prompts to use when asking it to resolve character actions."
+    )
+    resolve_reaction_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to resolve character reactions."
     )
     resolve_user_prompt: list[PromptMessage] = Field(
         ...,
@@ -189,6 +197,21 @@ class CommitterAgentProfile(AgentProfile):
     final_prompt: list[PromptMessage] = Field(
         ...,
         description="The prompts to use when asking it to finalise the output."
+    )
+
+
+class NarratorAgentProfile(AgentProfile):
+    narrate_resolved_turn_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to narrate a resolved turn."
+    )
+    narrate_user_input_failure_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to narrate a user input failure."
+    )
+    narrate_wait_for_user_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to narrate a scenario to wait for user prompt."
     )
 
 
@@ -216,6 +239,10 @@ class AgentPreset(BaseModel):
     committer: CommitterAgentProfile = Field(
         ...,
         description="The agent configuration profiles for the committer agent.",
+    )
+    narrator: NarratorAgentProfile = Field(
+        ...,
+        description="The agent configuration profiles for the narrator agent.",
     )
 
     world_generator: WorldGeneratorAgentProfile = Field(

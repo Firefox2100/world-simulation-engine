@@ -156,6 +156,9 @@ class SimulationOrm(Base):
     data_preset: Mapped[dict] = mapped_column(JSON, nullable=False)
     embedding_profile: Mapped[dict] = mapped_column(JSON, nullable=False)
     language: Mapped[str] = mapped_column(String(8), nullable=False)
+    act_for_user: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    enable_tts: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    enable_image_generation: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
 class SimulationStateOrm(Base):

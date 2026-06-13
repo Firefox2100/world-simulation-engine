@@ -2,9 +2,7 @@ import json
 from typing import Any, cast
 from langchain.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig, patch_config
-from pydantic import TypeAdapter
 
-from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
     Item, Equipment, Faction, FactionRelationship, DirectorAgentProfile, DirectorOutput, PendingGeneratedProposal
 from .world_agent import WorldAgent
@@ -33,8 +31,6 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                         previous_resolver_notes: str | None = None,
                         config: RunnableConfig | None = None,
                         ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
-        LOGGER.info("Planning turn %s for simulation %s", state.turn_number + 1, simulation.id)
-
         base_data = {
             "simulation": simulation,
             "data_preset": simulation.data_preset,
@@ -51,14 +47,10 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             "factions": factions or [],
             "faction_relationships": faction_relationships or [],
         }
-        LOGGER.debug("Base data:\n%s", TypeAdapter(dict[str, Any]).dump_json(base_data, indent=2).decode())
-
         generation_messages = self._compose_messages(
             prompts=self.profile.generation_prompt,
             data=base_data,
         )
-        LOGGER.debug("Generation messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in generation_messages]))
-
         tool_results: list[dict[str, Any]] = []
         working = list(generation_messages)
 
@@ -75,15 +67,9 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                     ) if config else None,
                 )
                 working.append(ai_msg)
-                LOGGER.debug(
-                    "Model returned potential tool calls:\n%s\n%s",
-                    ai_msg.content,
-                    getattr(ai_msg, "tool_calls", None) or []
-                )
 
                 tool_calls = getattr(ai_msg, "tool_calls", None) or []
                 if not tool_calls:
-                    LOGGER.info("Model stopped calling tools on turn %s", i + 1)
                     break
 
                 for call in tool_calls:
@@ -138,7 +124,6 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                             name=name,
                         )
                     )
-                    LOGGER.debug("Tool result added to messages:\n%s", working[-1].content)
 
         final_data = {
             **base_data,
@@ -149,9 +134,6 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             prompts=self.profile.planning_prompt,
             data=final_data,
         )
-
-        LOGGER.info("Generating final plan for turn %s of simulation %s", state.turn_number + 1, simulation.id)
-        LOGGER.debug("Final messages:\n%s", "\n".join([f"{m.type}: {m.content}" for m in final_messages]))
 
         structured_model = self.model.with_structured_output(DirectorOutput)
         return (
