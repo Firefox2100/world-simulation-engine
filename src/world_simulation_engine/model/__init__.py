@@ -12,10 +12,11 @@ from .location import Location, Entity
 from .prompt_message import PromptMessage
 from .simulation import Simulation, SimulationState
 from .task import Task
-from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, ProposedLocation, \
-    PendingGeneratedProposal, ActivationDecision, DirectorOutput, CharacterBriefing, BriefingOutput, \
-    CharacterActionOutput, ResolvedAction, ConflictRecord, FailedCharacterRecord, ResolverOutput, \
-    CharacterReactionContext, SandboxObjectRef, SandboxMutationRecord, CommitterValidationOutput, \
-    CommitterFinalOutput, TurnRecord
+from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, ProposedLocation, ProposedEquipment, \
+    ProposedLink, ProposedGenerationPackage, PendingGeneratedProposal, ActivationDecision, DirectorOutput, \
+    CharacterBriefing, BriefingOutput, CharacterActionOutput, ResolvedAction, ConflictRecord, \
+    FailedCharacterRecord, ResolverOutput, CharacterReactionContext, NarratorResolvedEvent, NarratorResolutionView, \
+    CommitterPlannedMutation, CommitterMutationPlanOutput, SandboxObjectRef, SandboxMutationRecord, \
+    CommitterValidationOutput, CommitterFinalOutput, TurnRecord
 from .world import World
 from .world_entry import WorldEntry, WorldEntryRecallKeyword

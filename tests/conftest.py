@@ -124,6 +124,9 @@ Location quality rules:
 - Include sensory details only when they imply interaction or atmosphere.
 - Include 0-3 proposed entities maximum.
 - Entities should be clues, obstacles, containers, mechanisms, traces, or interactable fixtures.
+- Entity description and status must only contain objective observable/mechanical/physical state.
+  Do not include inferred facts, hidden contents, clue interpretation, private knowledge, or deductions.
+  They needed to be added to world entry, which is not in scope of this generation
 """
             ),
             PromptMessage(
@@ -144,7 +147,7 @@ Simulation: {{ data.generation_context.simulation_name }}
 Description:
 {{ data.generation_context.simulation_description }}
 
-Round: {{ data.generation_context.round_number }}
+Round: {{ data.generation_context.turn_number  }}
 Time: {{ data.generation_context.time_label }}
 State summary:
 {{ data.generation_context.state_summary }}
@@ -294,14 +297,14 @@ Your goal is:
 {{ data.goal }}
 
 This is only a guidance. You do not have to generate exactly the same content as it describes, as long as the
-goal aligns. However, your proposed location must match the world style and is sensible.
+goal aligns. However, your proposed item must match the world style and is sensible.
 
 ## Canonical generation context
 Simulation: {{ data.generation_context.simulation_name }}
 Description:
 {{ data.generation_context.simulation_description }}
 
-Round: {{ data.generation_context.round_number }}
+Round: {{ data.generation_context.turn_number  }}
 Time: {{ data.generation_context.time_label }}
 State summary:
 {{ data.generation_context.state_summary }}
@@ -395,6 +398,107 @@ Generate exactly one ProposedItem.
 """
             ),
         ],
+        equipment_generation_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are an equipment generation tool for a role-play simulation.
+
+Generate exactly one ProposedEquipment.
+
+Output schema:
+- temp_id: temporary string ID for this proposal, for example "equip_temp_storm_lantern". Do not use a database ID.
+- name: short equipment name.
+- description: what the equipment is and what can be observed about it.
+- status: current usable/equipped/damaged/stored condition.
+- quality: optional condition label such as "worn", "damaged", "polished", or null.
+- proposed_owner_id: existing character ID if the equipment clearly belongs to a present character; otherwise null.
+- proposed_location_id: existing location ID if the equipment clearly belongs in a known location; otherwise null.
+- reason: why this equipment is useful and how it satisfies the trigger.
+- commit_policy: "resolver_decides" unless a constraint explicitly says otherwise.
+
+Hard rules:
+- The equipment is a pending proposal, not canonical.
+- Do not duplicate existing equipment.
+- Do not generate portable clue documents as equipment; use generate_item instead.
+- Do not generate fixed environmental fixtures as equipment; use generate_entity instead.
+- Do not solve major mysteries.
+- Do not create final-answer evidence unless explicitly required.
+- Use temp_id only.
+- proposed_owner_id must be null unless clearly generated for one of the present character IDs.
+- proposed_location_id must be null or one of the existing location IDs.
+- Include commit_policy="resolver_decides" unless constraints specify otherwise.
+
+Equipment quality rules:
+- Equipment should be repeatedly usable or have meaningful state/status.
+- Description and status must not include hidden deductions, inferred facts, or private knowledge.
+- If hidden meaning is needed, create a linked world entry using generate_generation_package instead.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Generate Equipment
+
+## Goal
+{{ data.goal }}
+
+## Canonical generation context
+Simulation: {{ data.generation_context.simulation_name }}
+Description:
+{{ data.generation_context.simulation_description }}
+
+Round: {{ data.generation_context.turn_number  }}
+Time: {{ data.generation_context.time_label }}
+
+State summary:
+{{ data.generation_context.state_summary }}
+
+Current location:
+{{ data.generation_context.current_location }}
+
+Present characters:
+{% for c in data.generation_context.present_characters %}
+- {{ c.id }}: {{ c.name }} | public_state={{ c.public_state }} | location={{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+Existing locations:
+{% for l in data.generation_context.existing_locations %}
+- {{ l.id }}: {{ l.primary_location }} / {{ l.detailed_location }} / {{ l.scene }}
+{% else %}
+None.
+{% endfor %}
+
+Existing items:
+{% for i in data.generation_context.existing_items %}
+- {{ i.id }}: {{ i.name }} | description={{ i.description }}
+{% else %}
+None.
+{% endfor %}
+
+Existing equipment:
+{% for e in data.generation_context.existing_equipments %}
+- {{ e.id }}: {{ e.name }} | status={{ e.status }} | quality={{ e.quality }} | description={{ e.description }}
+{% else %}
+None.
+{% endfor %}
+
+## Trigger
+{{ data.trigger }}
+
+## Constraints
+{% for c in data.constraints %}
+- {{ c }}
+{% else %}
+None.
+{% endfor %}
+
+Generate exactly one ProposedEquipment.
+"""
+            ),
+        ],
         entity_generation_prompt=[
             PromptMessage(
                 role=MessageRole.SYSTEM,
@@ -423,6 +527,9 @@ Hard rules:
 - Do not create portable inventory items as entities unless they remain scene-anchored containers or fixtures.
 - Use temp_id only.
 - Include commit_policy="resolver_decides" unless constraints specify otherwise.
+- Entity description and status must only contain objective observable/mechanical/physical state.
+  Do not include inferred facts, hidden contents, clue interpretation, private knowledge, or deductions.
+  They are encoded in world entries, which is out of scope of this generation.
 
 Entity quality rules:
 - The entity must support meaningful interactions.
@@ -449,7 +556,7 @@ Simulation: {{ data.generation_context.simulation_name }}
 Description:
 {{ data.generation_context.simulation_description }}
 
-Round: {{ data.generation_context.round_number }}
+Round: {{ data.generation_context.turn_number  }}
 Time: {{ data.generation_context.time_label }}
 State summary:
 {{ data.generation_context.state_summary }}
@@ -603,7 +710,7 @@ Simulation: {{ data.generation_context.simulation_name }}
 Description:
 {{ data.generation_context.simulation_description }}
 
-Round: {{ data.generation_context.round_number }}
+Round: {{ data.generation_context.turn_number }}
 Time: {{ data.generation_context.time_label }}
 State summary:
 {{ data.generation_context.state_summary }}
@@ -690,6 +797,166 @@ Generate exactly one ProposedWorldEntry.
 """
             ),
         ],
+        generation_package_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are a linked world-generation package tool for a role-play simulation.
+
+Generate exactly one ProposedGenerationPackage.
+
+Use this tool when generated content is interdependent and must share temporary IDs:
+- a location with entities inside it;
+- an entity with hidden or scoped world-entry facts;
+- a container with possible item contents;
+- an item or equipment with associated knowledge;
+- a clue that requires both a physical object and scoped memory/world entries.
+
+Output schema:
+- temp_id: temporary package ID, for example "pkg_temp_room_7_cache".
+- title: short package title.
+- package_type: one of "linked_discovery", "location_with_contents", "entity_with_clues", "item_with_knowledge", "equipment_with_knowledge", or "mixed".
+- summary: concise summary of the package.
+- locations: list of ProposedLocation objects.
+- entities: list of ProposedEntity objects.
+- items: list of ProposedItem objects.
+- equipments: list of ProposedEquipment objects.
+- world_entries: list of ProposedWorldEntry objects.
+- links: list of ProposedLink objects.
+- reason: why this package is useful and how it satisfies the trigger.
+- commit_policy: "resolver_decides" unless a constraint explicitly says otherwise.
+
+Temporary ID rules:
+- Every generated object must have a temp_id.
+- Use readable temporary IDs such as "entity_temp_locked_trunk" or "entry_temp_trunk_latent_clue".
+- If one generated object refers to another generated object, use that object's temp_id exactly.
+- Do not use database IDs for generated objects.
+- Existing canonical objects may be referred to by their existing integer IDs only where the schema expects canonical IDs.
+- The application will namespace temporary IDs after generation; your internal references must still be consistent.
+
+Entity rules:
+- Entity description and status must contain only objective, observable, mechanical, or physical state.
+- Do not put inferred facts, hidden contents, clue interpretation, ownership deductions, or private knowledge into entity description/status.
+- Put hidden facts, inferred facts, private knowledge, rumours, beliefs, or latent clue meaning into world_entries instead.
+
+Item and equipment rules:
+- Item description must describe the object, not narrate discovery or guarantee interpretation.
+- Equipment is for worn, carried, installed, or repeatedly usable gear.
+- Items are for portable objects, documents, clues, tokens, receipts, fragments, and consumables.
+
+World-entry rules:
+- World entries hold persistent knowledge, hidden facts, deductions, rumours, beliefs, memories, and clue meanings.
+- scope must use [0] for public/common knowledge, [-1] for GM-only hidden facts, or present character IDs.
+- Use confidence below 1.0 for rumours, suspicions, guesses, or unreliable testimony.
+- If recall_type is "keyword", include useful keywords.
+- If recall_type is "semantic", include semantic_instruction.
+- If recall_type is "chained", chained_ids may refer only to existing canonical entry IDs supplied in context, not generated temp IDs.
+- Use links to connect generated entries to generated objects.
+
+Package quality rules:
+- Keep the package minimal. Generate only what is needed now.
+- Do not solve major mysteries unless explicitly required.
+- Prefer partial, ambiguous, actionable clues.
+- Do not duplicate existing locations, entities, items, equipment, or world entries.
+- Do not decide whether the triggering action succeeds.
+- Include commit_policy="resolver_decides" unless constraints specify otherwise.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Generate Linked Package
+
+## Goal
+{{ data.goal }}
+
+## Canonical generation context
+Simulation: {{ data.generation_context.simulation_name }}
+Description:
+{{ data.generation_context.simulation_description }}
+
+Round: {{ data.generation_context.turn_number }}
+Time: {{ data.generation_context.time_label }}
+
+State summary:
+{{ data.generation_context.state_summary }}
+
+Data preset constraints:
+- Entity types:
+{% for type_name, description in data.generation_context.data_preset.entity_types.items() %}
+  - {{ type_name }}: {{ description }}
+{% else %}
+  - No custom entity types configured.
+{% endfor %}
+
+Current location:
+{{ data.generation_context.current_location }}
+
+Present characters:
+{% for c in data.generation_context.present_characters %}
+- {{ c.id }}: {{ c.name }} | public_state={{ c.public_state }} | location={{ c.location }}
+{% else %}
+None.
+{% endfor %}
+
+Existing locations:
+{% for l in data.generation_context.existing_locations %}
+- {{ l.id }}: {{ l.primary_location }} / {{ l.detailed_location }} / {{ l.scene }}
+{% else %}
+None.
+{% endfor %}
+
+Existing entities in current location:
+{% for e in data.generation_context.existing_entities %}
+- {{ e.id }}: {{ e.name }} | type={{ e.type }} | status={{ e.status }}
+{% else %}
+None.
+{% endfor %}
+
+Existing items:
+{% for i in data.generation_context.existing_items %}
+- {{ i.id }}: {{ i.name }} | description={{ i.description }}
+{% else %}
+None.
+{% endfor %}
+
+Existing equipment:
+{% for e in data.generation_context.existing_equipments %}
+- {{ e.id }}: {{ e.name }} | status={{ e.status }} | description={{ e.description }}
+{% else %}
+None.
+{% endfor %}
+
+Relevant factions and relationships:
+{% for f in data.generation_context.factions %}
+- Faction {{ f.id }}: {{ f.name }} | {{ f.description }}
+{% else %}
+No relevant factions.
+{% endfor %}
+{% for r in data.generation_context.faction_relationships %}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
+{% else %}
+No relevant faction relationships.
+{% endfor %}
+
+## Trigger
+{{ data.trigger }}
+
+## Constraints
+{% for c in data.constraints %}
+- {{ c }}
+{% else %}
+None.
+{% endfor %}
+
+Generate exactly one ProposedGenerationPackage.
+
+Use the package only for linked content. If only one independent object is required, this tool should not have been called; still produce the smallest valid package.
+"""
+            ),
+        ]
     )
 
 
@@ -716,7 +983,8 @@ Use tools only when concrete unknown content is required now, such as:
 - the user enters or discovers an unknown location;
 - a known action exposes an unknown hidden entity;
 - a container, drawer, cache, corpse, desk, shelf, or room is searched and may contain an item;
-- a new persistent fact, rumour, suspicion, memory, or belief needs to be stored as a world entry;
+- use world-entry generation only when a newly introduced fact must persist beyond this turn and is not
+  already represented in state, history, tasks, entities, or character private/public state.
 - a concrete external event must be proposed.
 
 Do not call tools for:
@@ -752,6 +1020,18 @@ Bad:
 - generate_entity and generate_item where the item is inside the generated entity
 
 If one generated object depends on another, call only the parent object first and let a later stage request dependent generation.
+When uncertain, prefer NO_TOOL_NEEDED unless the next Director scheduling step cannot proceed without a concrete new object.
+
+When generated content has linked parts, prefer generate_generation_package instead of multiple separate tool calls.
+
+Use generate_generation_package for:
+- a generated location with entities inside it;
+- an entity that needs latent hidden facts or scoped knowledge entries;
+- a container that may contain generated items;
+- an item or equipment that needs associated world entries;
+- any case where several generated objects must share temporary IDs.
+
+Use single-object tools only for independent standalone proposals.
 """
             ),
             PromptMessage(
@@ -910,63 +1190,84 @@ You are the Director/Scheduler for a multi-agent role-play simulation.
 
 Your job:
 - decide which present non-user characters should act now;
-- provide internal activation reasons;
-- provide resolver and narrator constraints;
+- decide whether the scene should wait for player input;
+- provide internal activation reasons for audit;
 - include pending generated proposals supplied in the input.
 
 You are not the narrator.
 You are not the resolver.
+You are not a character agent.
 You do not write character briefings.
 You do not decide whether actions succeed.
 You do not commit world state.
-You do not write exact dialogue.
+You do not write dialogue.
 You do not call tools in this phase.
 
+Core scheduling principle:
+Activate characters based on:
+1. opportunity in the current scene;
+2. ability to influence the current scene;
+3. motivation or obligation to act.
+
+Do not activate a character merely because they have a relevant goal.
+They must also be present and have a plausible opportunity to affect the current scene now.
+
 Privacy rules:
-- You may use private states, private tasks, and private motives for activation decisions.
-- If private data influenced activation, mark private_motive_used=true.
-- Do not produce text intended for character agents.
-- Do not leak private reasoning into scene_focus or any text that later agents may treat as visible.
-- ActivationDecision.reason and director_notes are internal only.
+- You may use private states, private tasks, and private motives for scheduling.
+- If private data influenced activation, set private_motive_used=true.
+- Record whether activation came from public state, private state, public task, private task, scene opportunity, or user input.
+- Do not leak private information into scene_focus.
+- ActivationDecision.reason and director_notes are internal audit text only.
+- Do not put character instructions, dialogue instructions, or narration guidance in director_notes.
+- Do not convert a task goal into progress or knowledge. If a task says the character wants to identify, find, confirm, 
+  uncover, or investigate something, that means they do not necessarily know it yet.
 
 Scheduling rules:
 - Do not activate every character by default.
 - Do not activate user-controlled characters unless explicitly delegated by user input.
-- If wait_for_user=true, all activation decisions should have activate=false and priority=0.
-- Priority uses 0-100, where 100 is most urgent.
-- If this scene cannot meaningfully continue or will stall without further user actions or input, and user did not
-  provide sufficient input, prefer wait_for_user = true. Otherwise, activate the characters accordingly, do not
-  wait for user. Only wait when it's genuinely not possible to proceed with the simulation.
 - If a character is absent from the current scene, do not activate them.
+- If wait_for_user=true, every activation must have activate=false and priority=0.
+- If user input says passive continuation is requested, do not wait for user unless the scene genuinely cannot continue.
+- If an NPC has just asked the user-controlled character a direct question or the scene clearly awaits player choice, prefer wait_for_user=true.
+- Otherwise, continue the scene by activating appropriate present non-user characters.
+
+Priority scale:
+- 100: immediate and scene-dominating need to act.
+- 80-99: highly likely to act this turn.
+- 60-79: likely to act this turn.
+- 40-59: may act if the opportunity naturally arises.
+- 20-39: mainly observing or waiting; usually do not activate unless needed.
+- 0: inactive.
+
+Priority measures scheduling importance, not guaranteed action order.
+The resolver determines how actions interact.
+The character agent decides the actual action.
 
 Pending proposal rules:
 - Pending generated proposals are not canonical.
 - They may be referenced only as pending content for the resolver.
-- Do not treat them as facts.
+- Do not treat pending proposals as facts.
 
-Return only valid DirectorOutput. The output should contain:
-- Scene focus: what this scene should focus on, a directive guidance for the characters to act upon
-- Activations: a list of character activation decisions with reasons and priority. If the decision is based
-  their private motive, it should specify. The priority is 0-100, where 100 is most urgent. It indicates
-  how likely the actor is likely to act, and how fast. The priority is not a guarantee that the actor will
-  actually act or act first, just a tendency. It should also include a reason for the decision.
-- If a character should not be activated, still include them in the activations list, but mark their activation
-  as false, priority as 0, and provide the reason for not activating.
-- Whether to wait for the user, and the reason to wait for user, instead of progressing the scene.
-- Extra notes to mark some important decisions or reasons for audit. Can be empty.
+Return only valid DirectorOutput.
 
 Schema fields:
-- scene_focus: concise instruction for what this scene is about now.
+- scene_focus: concise public-safe instruction for what this scene is about now.
 - activations: one ActivationDecision for each present character considered.
 - ActivationDecision.character_id: existing character ID.
 - ActivationDecision.character_name: matching character name.
 - ActivationDecision.activate: true if this character should produce an action this turn.
 - ActivationDecision.priority: integer from 0 to 100. Use 0 when activate=false.
 - ActivationDecision.reason: internal reason for the activation decision.
-- ActivationDecision.private_motive_used: true only if private state/tasks affected the decision.
-- wait_for_user: true only when the scene should pause for player input instead of NPC action.
+- ActivationDecision.private_motive_used: true only if private state or private task affected the decision.
+- ActivationDecision.activation_sources.public_state: true if public character state influenced activation.
+- ActivationDecision.activation_sources.private_state: true if private character state influenced activation.
+- ActivationDecision.activation_sources.public_task: true if a public task influenced activation.
+- ActivationDecision.activation_sources.private_task: true if a private task influenced activation.
+- ActivationDecision.activation_sources.scene_opportunity: true if current scene opportunity influenced activation.
+- ActivationDecision.activation_sources.user_input: true if current user input influenced activation.
+- wait_for_user: true only when the scene should pause for player input.
 - reason_to_wait: required when wait_for_user=true; otherwise null.
-- director_notes: internal audit notes, or "" if none.
+- director_notes: internal audit notes only, or "" if none.
 """
             ),
             PromptMessage(
@@ -978,36 +1279,6 @@ Schema fields:
 Name: {{ data.simulation.name }}
 Description:
 {{ data.simulation.description }}
-
-## Data preset
-Entity types:
-{% for type_name, description in data.data_preset.entity_types.items() %}
-- {{ type_name }}: {{ description }}
-{% else %}
-None.
-{% endfor %}
-Character attributes/stats:
-{% for attr in data.data_preset.character_attributes %}
-- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
-{% else %}
-No custom character attributes.
-{% endfor %}
-{% for stat in data.data_preset.character_stats %}
-- Stat {{ stat.name }} | update={{ stat.update_instruction }}
-{% else %}
-No custom character stats.
-{% endfor %}
-Faction attributes/stats:
-{% for attr in data.data_preset.faction_attributes %}
-- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
-{% else %}
-No custom faction attributes.
-{% endfor %}
-{% for stat in data.data_preset.faction_stats %}
-- Stat {{ stat.name }} | update={{ stat.update_instruction }}
-{% else %}
-No custom faction stats.
-{% endfor %}
 
 ## Current state
 Turn: {{ data.state.turn_number }}
@@ -1040,11 +1311,10 @@ Scene: {{ data.location.scene }}
 Description:
 {{ data.location.description }}
 
-Entities:
+Visible entities:
 {% for e in data.location.entities %}
 - {{ e.id }}: {{ e.name }}
   Type: {{ e.type }}
-  Description: {{ e.description }}
   Status: {{ e.status }}
   Interactions: {{ e.interactions | join(", ") }}
 {% else %}
@@ -1059,54 +1329,6 @@ None.
   Public state: {{ c.public_state }}
   Director-only private state: {{ c.private_state }}
   Location: {{ c.location }}
-{% endfor %}
-
-## Recalled world entries
-{% for e in data.recalled_world_entries %}
-- Entry {{ e.id }}
-  Scope: {{ e.scope }}
-  Visibility: {{ e.visibility }}
-  Confidence: {{ e.confidence }}
-  Narration permission: {{ e.narration_permission }}
-  Content: {{ e.content }}
-{% else %}
-None.
-{% endfor %}
-
-## Existing items and equipment
-{% for i in data.existing_items %}
-- Item {{ i.id }}: {{ i.name }}
-  Description: {{ i.description }}
-  Quality: {{ i.quality }}
-  Quantity: {{ i.quantity }}
-{% else %}
-No known items.
-{% endfor %}
-{% for e in data.existing_equipments %}
-- Equipment {{ e.id }}: {{ e.name }}
-  Status: {{ e.status }}
-  Quality: {{ e.quality }}
-  Description: {{ e.description }}
-{% else %}
-No known equipment.
-{% endfor %}
-
-## Relevant faction context
-These may include private relationships. Use for scheduling, but do not leak private relationship details into scene_focus.
-{% for f in data.factions %}
-- Faction {{ f.id }}: {{ f.name }}
-  Description: {{ f.description }}
-  Attributes: {{ f.attributes }}
-  Stats: {{ f.stats }}
-{% else %}
-No relevant factions.
-{% endfor %}
-{% for r in data.faction_relationships %}
-- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
-  Type: {{ r.relationship }}
-  Private: {{ r.private }}
-{% else %}
-No relevant faction relationships.
 {% endfor %}
 
 ## Relevant tasks
@@ -1125,6 +1347,20 @@ These may include private tasks. Use them only for scheduling.
 None.
 {% endfor %}
 
+## Recalled scheduling-relevant world entries
+Use these only if they affect who should act now.
+Do not leak private information into scene_focus.
+{% for e in data.recalled_world_entries %}
+- Entry {{ e.id }}
+  Scope: {{ e.scope }}
+  Visibility: {{ e.visibility }}
+  Confidence: {{ e.confidence }}
+  Narration permission: {{ e.narration_permission }}
+  Content: {{ e.content }}
+{% else %}
+None.
+{% endfor %}
+
 ## Pending generated proposals
 These are pending and non-canonical.
 {% for p in data.pending_generated_proposals %}
@@ -1138,7 +1374,10 @@ None.
 Produce DirectorOutput only.
 
 Do not write character briefings.
-Do not leak private information into narrator constraints.
+Do not write dialogue.
+Do not write narration.
+Do not give behavioural instructions to character agents.
+Do not leak private information into scene_focus.
 Do not activate user-controlled characters unless explicitly delegated.
 """
             )
@@ -1159,52 +1398,89 @@ def mock_memory_agent_profile(inference_model) -> MemoryAgentProfile:
             PromptMessage(
                 role=MessageRole.SYSTEM,
                 content="""
-You are the Briefing Builder for a multi-agent role-play simulation.
+You are the Public Briefing Builder for a multi-agent role-play simulation.
 
 Your job:
-- build compact, safe context briefings for selected character agents;
+- build compact, safe public-context briefings for selected character agents;
 - include only information available in the supplied input;
-- avoid chat-history dependence by summarising the immediate situation.
+- summarise the immediate situation so character agents do not depend on chat history;
+- preserve the distinction between established facts, current observations, and possible interactions.
 
 You are not the character.
 You are not the narrator.
 You are not the resolver.
+You are not the Director.
 You do not decide whether actions succeed.
 You do not add new world facts.
+You do not write dialogue.
+You do not choose the character's action.
+You do not create new IDs.
 
 Privacy rules:
-- The supplied context has already been filtered.
+- The supplied context has already been filtered, but you must still avoid leaking private information.
 - Do not infer hidden motives beyond the supplied safe data.
 - Do not include information belonging to another character unless it is public or explicitly supplied as safe.
+- Do not expose private tasks, private motives, hidden facts, private relationships, or director-only reasoning unless explicitly present in the safe input.
+- Director activation reasons are not character knowledge. Use only the public-safe scene focus, not private scheduling reasons.
+
+Grounding rules:
+- Every briefing statement must be directly supported by the supplied input.
+- Do not convert available interactions into facts that have already happened.
+- Do not say a character is holding, reading, revealing, moving, searching, opening, showing, or using an object unless the supplied input says so.
+- If an object is available nearby, describe it as available, not already in use.
+- Do not infer what a character sees unless they are present and the event is public or directly visible in the scene.
+- Do not invent NPCs, items, locations, rumours, memories, clues, or actions.
+- Do not add new facts to explain the scene.
+- If a fact is uncertain, phrase it as uncertain.
+
+ID rules:
+- Existing IDs must be copied exactly from the input.
+- CharacterBriefing.character_id must match a requested character ID.
+- relevant_task_ids may contain only task IDs supplied in Safe tasks.
+- relevant_world_entry_ids may contain only entry IDs supplied in Safe world entries.
+- Entity IDs may be mentioned only if supplied in the current location.
+- Pending generated proposal IDs, if any, are temporary but must be repeated exactly as supplied.
+- Do not renumber, merge, reinterpret, or invent IDs.
 
 Briefing rules:
-- Build one briefing per requested character. Each character must have a briefing.
+- Build one briefing per requested character.
+- Each requested character must have exactly one briefing.
 - Keep each briefing compact but complete enough that the character agent does not need chat history.
-- The briefing should orient the character to the scene, recent situation, known facts, immediate pressure, and possible focus.
+- The briefing should orient the character to:
+  - stable scene context;
+  - recent public events;
+  - safely known facts;
+  - current public situation;
+  - available scene/entity/social affordances.
 - Do not write exact dialogue.
+- Do not give tactical instructions disguised as briefing.
+- The instruction field should restate the Director scene focus in character-neutral terms, not command a specific action.
+- available_interactions must describe possibilities, not completed actions.
+- constraints must contain hard limits only, not personality traits or goals.
 
-Return only BriefingOutput.
+Output rules:
+Return only valid BriefingOutput.
 
 Output schema:
 - briefings: one CharacterBriefing for each requested character.
 - CharacterBriefing.character_id: existing requested character ID.
 - CharacterBriefing.character_name: matching character name.
 - CharacterBriefing.scene_context: stable scene context visible/known to the character.
-- CharacterBriefing.recent_context: compact recent events relevant to this character.
+- CharacterBriefing.recent_context: compact recent public events relevant to this character.
 - CharacterBriefing.known_relevant_facts: facts this character may safely know.
-- CharacterBriefing.immediate_situation: what is happening right now from this character's perspective.
-- CharacterBriefing.instruction: short action guidance from the Director focus.
-- CharacterBriefing.available_interactions: concrete available interactions from scene/entity context.
-- CharacterBriefing.relevant_task_ids: supplied task IDs relevant to this character.
-- CharacterBriefing.relevant_world_entry_ids: supplied world entry IDs relevant to this character.
-- CharacterBriefing.constraints: limits the character agent must respect.
+- CharacterBriefing.immediate_situation: what is happening right now from this character's safe perspective.
+- CharacterBriefing.instruction: short, non-tactical orientation derived from Director scene focus.
+- CharacterBriefing.available_interactions: possible scene/entity/social affordances, phrased as possibilities.
+- CharacterBriefing.relevant_task_ids: supplied safe task IDs relevant to this character.
+- CharacterBriefing.relevant_world_entry_ids: supplied safe world entry IDs relevant to this character.
+- CharacterBriefing.constraints: hard limits the character agent must respect.
 - notes: optional internal notes, or "".
 """
             ),
             PromptMessage(
                 role=MessageRole.USER,
                 content="""
-# Briefing Builder Input
+# Public Briefing Builder Input
 
 ## Requested characters
 {% for c in data.characters %}
@@ -1217,37 +1493,6 @@ None.
 Name: {{ data.simulation.name }}
 Description:
 {{ data.simulation.description }}
-
-## Public data preset descriptions
-Use these only to interpret existing attributes, stats, and entity types in safe context.
-Entity types:
-{% for type_name, description in data.data_preset.entity_types.items() %}
-- {{ type_name }}: {{ description }}
-{% else %}
-None.
-{% endfor %}
-Character attributes/stats:
-{% for attr in data.data_preset.character_attributes %}
-- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
-{% else %}
-No custom character attributes.
-{% endfor %}
-{% for stat in data.data_preset.character_stats %}
-- Stat {{ stat.name }} | update={{ stat.update_instruction }}
-{% else %}
-No custom character stats.
-{% endfor %}
-Faction attributes/stats:
-{% for attr in data.data_preset.faction_attributes %}
-- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | update={{ attr.update_instruction }}
-{% else %}
-No custom faction attributes.
-{% endfor %}
-{% for stat in data.data_preset.faction_stats %}
-- Stat {{ stat.name }} | update={{ stat.update_instruction }}
-{% else %}
-No custom faction stats.
-{% endfor %}
 
 ## Current state
 Turn: {{ data.state.turn_number }}
@@ -1271,6 +1516,10 @@ State summary:
 ## Previous resolver notes
 {{ data.previous_resolver_notes or "No previous resolver notes." }}
 
+## Director scene focus
+This is public-safe scheduling orientation. Do not treat it as a character command.
+{{ data.director_output.scene_focus if data.director_output else "No Director scene focus supplied." }}
+
 ## Current location
 Location ID: {{ data.location.id }}
 Primary location: {{ data.location.primary_location }}
@@ -1280,13 +1529,14 @@ Scene: {{ data.location.scene }}
 Description:
 {{ data.location.description }}
 
-Entities:
+## Visible entities and possible interactions
+These describe possible interactions, not actions already taken.
 {% for entity in data.location.entities %}
 - Entity {{ entity.id }}: {{ entity.name }}
   Type: {{ entity.type }}
   Description: {{ entity.description }}
   Status: {{ entity.status }}
-  Interactions: {{ entity.interactions | join(", ") }}
+  Possible interactions: {{ entity.interactions | join(", ") }}
 {% else %}
 No notable entities.
 {% endfor %}
@@ -1301,6 +1551,7 @@ No notable entities.
 {% endfor %}
 
 ## Safe world entries
+Only include these if relevant to the requested character's safe briefing.
 {% for e in data.world_entries %}
 - Entry {{ e.id }}
   Scope: {{ e.scope }}
@@ -1312,6 +1563,7 @@ No safe world entries.
 {% endfor %}
 
 ## Safe tasks
+Only include supplied safe tasks. Do not invent, infer, or expose hidden tasks.
 {% for t in data.tasks %}
 - Task {{ t.id }}
   Characters: {{ t.character_ids }}
@@ -1327,7 +1579,8 @@ No safe tasks.
 {% endfor %}
 
 ## Public faction context
-Only public faction relationships are provided here. Treat private faction ties as unknown unless they are explicitly present in the character's safe world entries.
+Only public faction relationships are provided here.
+Treat private faction ties as unknown unless explicitly present in the safe input.
 {% for f in data.factions %}
 - Faction {{ f.id }}: {{ f.name }}
   Description: {{ f.description }}
@@ -1342,7 +1595,9 @@ No public relevant faction relationships.
 {% endfor %}
 
 ## Pending generated proposals
-These are not canonical facts. Mention only if relevant as pending/possible context.
+These are not canonical facts.
+Mention only if relevant as pending or possible context.
+Preserve any temporary proposal IDs exactly.
 {% for p in data.pending_generated_proposals %}
 - {{ p }}
 {% else %}
@@ -1351,7 +1606,17 @@ None.
 
 # Required output
 
-Build safe briefings for the requested characters only. Produce the final BriefingOutput.
+Build safe briefings for the requested characters only.
+
+Important:
+- Do not say an interaction has happened unless it is explicitly stated in the input.
+- Do not say a character is holding, reading, showing, moving, searching, opening, revealing, or using an object unless explicitly stated.
+- Phrase available interactions as possibilities.
+- Do not write dialogue.
+- Do not choose the character's action.
+- Do not create new IDs.
+- Use only supplied IDs in relevant_task_ids and relevant_world_entry_ids.
+- Produce BriefingOutput only.
 """
             ),
         ],
@@ -1376,31 +1641,59 @@ You act only as the specified character.
 
 Your job:
 - decide what this character attempts to do now;
-- express the action as structured intent;
-- use the character's personality, state, goals, memories, knowledge, and current perception.
+- express the action as structured intent for the Resolver;
+- use only this character's personality, state, goals, memories, knowledge, inventory, and current perception.
 
 You are not the narrator.
 You are not the resolver.
+You are not the Director.
 You do not decide whether the action succeeds.
 You do not write final prose.
 You do not control other characters.
-You do not reveal information the character would not express or act upon.
+You do not decide how other characters react.
+You do not commit world state.
+You do not create new IDs.
 
 Knowledge rules:
-- You may use the character's own private state, own tasks, own inventory, and own scoped world entries.
+- You may use the acting character's own private state, own tasks, own inventory, own equipment, and own scoped world entries.
 - You may use public/visible scene information.
-- You must not assume hidden facts that are not supplied.
+- You must not use private tasks, private motives, private state, or scoped world entries belonging only to other characters.
+- You must not assume hidden facts that are not supplied as known to this character.
+- If entity, item, faction, or location information is not clearly visible or known to this character, do not treat it as known.
 - If you use private knowledge to motivate the action, set uses_private_knowledge=true and explain it only in private_reason_for_system.
-- Do not put private motives into visible_behavior unless the character intentionally reveals them.
+- Do not put private motives into visible_behavior or spoken_intent unless the character intentionally reveals them.
+
+Attempt rules:
+- Output what the character attempts, not what definitely happens.
+- Use words such as "attempts", "tries", "moves to", "reaches for", "asks", or "offers" where appropriate.
+- Do not state that another character allows, believes, notices, accepts, reveals, understands, or reacts.
+- Do not state that information is successfully learned, transferred, or exposed; the Resolver decides that.
+- Do not force confrontation unless the character has enough reason.
 
 Action rules:
-- Choose one primary action.
+- Choose exactly one primary action.
 - The action should be plausible for the character now.
 - Prefer behaviour over exposition.
-- Do not write exact dialogue unless the action requires a short phrase; use spoken_intent to express meaning.
+- Do not write exact dialogue unless the action requires a short phrase.
+- Use spoken_intent to express the meaning of speech, not a polished line of dialogue.
 - If the character would stay still, observe, or wait, output action_type="wait" or "observe".
-- Do not force confrontation unless the character has enough reason.
-- Do not solve conflicts; the resolver will decide ordering and outcome.
+- Do not solve conflicts; the Resolver will decide ordering and outcome.
+- If the action targets a character, entity, location, or item, include the appropriate ID in the target fields.
+- Use [] for empty target lists and null for no target location.
+
+Resolver constraint rules:
+- constraints_for_resolver must contain factual limits or dependencies only.
+- Do not include narrative preferences, desired dramatic focus, or instructions about how other characters should react.
+- Good constraints: "The ledger is behind the bar"; "Clara is not handing over the ledger"; "Eleanor is trying not to be obvious."
+- Bad constraints: "Arthur's reaction should be the focus"; "This should increase tension"; "Clara should seem mysterious."
+
+ID rules:
+- Use only IDs supplied in the input.
+- Do not invent, renumber, or reinterpret IDs.
+- target_character_ids must contain only visible character IDs directly targeted.
+- target_entity_ids must contain only supplied current-location entity IDs directly targeted.
+- target_item_ids must contain only supplied item IDs directly used or targeted.
+- target_location_id must be a supplied/known location ID or null.
 
 Return only CharacterActionOutput.
 
@@ -1413,16 +1706,16 @@ Output schema:
 - target_entity_ids: IDs of entities directly targeted, or [].
 - target_location_id: destination location ID for movement, or null.
 - target_item_ids: IDs of inventory/world items directly used or targeted, or [].
-- method: how the character attempts the action.
-- visible_behavior: what other characters can observe.
+- method: how the character attempts the action, written as an attempted action.
+- visible_behavior: what other characters could observe about the attempt, without private motives.
 - spoken_intent: short meaning of any speech, or null.
 - urgency: 0-100, how quickly the character tries to act.
 - persistence: 0-100, how hard the character keeps trying if resisted or delayed.
 - expected_outcome: what the character hopes will happen, not a guaranteed result.
 - fallback_if_blocked: backup attempt if the action cannot proceed, or null.
-- uses_private_knowledge: true if private state, private tasks, or scoped facts motivated the action.
+- uses_private_knowledge: true if private state, private tasks, or scoped facts belonging to this character motivated the action.
 - private_reason_for_system: private explanation when uses_private_knowledge=true; otherwise null.
-- constraints_for_resolver: facts or limits the resolver should respect.
+- constraints_for_resolver: factual limits or dependencies the Resolver should respect.
 - notes: optional internal notes, or "".
 """
             ),
@@ -1445,38 +1738,7 @@ Private state:
 {{ data.character.private_state }}
 Current location ID: {{ data.character.location }}
 
-## Data preset descriptions
-Use these to interpret custom attributes, stats, and entity types. Do not update state here.
-Entity types:
-{% for type_name, description in data.data_preset.entity_types.items() %}
-- {{ type_name }}: {{ description }}
-{% else %}
-None.
-{% endfor %}
-Character attributes/stats:
-{% for attr in data.data_preset.character_attributes %}
-- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | meaning={{ attr.creation_instruction }} | update meaning={{ attr.update_instruction }}
-{% else %}
-No custom character attributes.
-{% endfor %}
-{% for stat in data.data_preset.character_stats %}
-- Stat {{ stat.name }} | meaning={{ stat.creation_instruction }} | update meaning={{ stat.update_instruction }}
-{% else %}
-No custom character stats.
-{% endfor %}
-Faction attributes/stats:
-{% for attr in data.data_preset.faction_attributes %}
-- Attribute {{ attr.name }} | values={{ attr.values or "open" }} | meaning={{ attr.creation_instruction }} | update meaning={{ attr.update_instruction }}
-{% else %}
-No custom faction attributes.
-{% endfor %}
-{% for stat in data.data_preset.faction_stats %}
-- Stat {{ stat.name }} | meaning={{ stat.creation_instruction }} | update meaning={{ stat.update_instruction }}
-{% else %}
-No custom faction stats.
-{% endfor %}
-
-## Briefing
+## Public briefing
 Scene context:
 {{ data.briefing.scene_context }}
 
@@ -1489,7 +1751,7 @@ Known relevant facts:
 Immediate situation:
 {{ data.briefing.immediate_situation }}
 
-Instruction:
+Scene orientation:
 {{ data.briefing.instruction }}
 
 Available interactions:
@@ -1506,7 +1768,7 @@ Briefing constraints:
 None.
 {% endfor %}
 
-## Current location
+## Current location as known/visible to this character
 ID: {{ data.current_location.id }}
 Primary: {{ data.current_location.primary_location }}
 Detailed: {{ data.current_location.detailed_location }}
@@ -1514,13 +1776,13 @@ Scene: {{ data.current_location.scene }}
 Description:
 {{ data.current_location.description }}
 
-Entities:
+Visible entities:
 {% for e in data.current_location.entities %}
 - Entity {{ e.id }}: {{ e.name }}
   Type: {{ e.type }}
   Description: {{ e.description }}
-  Status: {{ e.status }}
-  Interactions: {{ e.interactions | join(", ") }}
+  Status known to this character: {{ e.status }}
+  Possible interactions: {{ e.interactions | join(", ") }}
 {% else %}
 None.
 {% endfor %}
@@ -1536,7 +1798,7 @@ None.
 None.
 {% endfor %}
 
-## Relevant tasks
+## This character's relevant tasks
 {% for t in data.tasks %}
 - Task {{ t.id }}
   Characters: {{ t.character_ids }}
@@ -1551,7 +1813,7 @@ None.
 None.
 {% endfor %}
 
-## Relevant world entries
+## This character's relevant world entries
 {% for e in data.world_entries %}
 - Entry {{ e.id }}
   Scope: {{ e.scope }}
@@ -1563,8 +1825,9 @@ None.
 None.
 {% endfor %}
 
-## Relevant faction context
-This includes public faction context visible in the scene plus private faction relationships involving {{ data.character.name }} or their inventory. Do not reveal private ties in visible_behavior unless the character intentionally exposes them.
+## Relevant faction context known to this character
+This may include private faction relationships involving {{ data.character.name }} or their inventory.
+Do not reveal private ties in visible_behavior or spoken_intent unless the character intentionally exposes them.
 {% for f in data.factions %}
 - Faction {{ f.id }}: {{ f.name }}
   Description: {{ f.description }}
@@ -1602,7 +1865,9 @@ No equipment.
 {% endfor %}
 
 ## Pending generated proposals
-These are pending and non-canonical. Treat them only as possible content if the briefing makes them relevant.
+These are pending and non-canonical.
+Treat them only as possible content if the briefing makes them relevant.
+Preserve any temporary proposal IDs exactly.
 {% for p in data.pending_generated_proposals %}
 - {{ p }}
 {% else %}
@@ -1615,14 +1880,20 @@ None.
 ## Last narration
 {{ data.last_narration or "No previous narration." }}
 
-## Previous resolver notes
+## Previous public resolver notes
 {{ data.previous_resolver_notes or "No previous resolver notes." }}
 
 # Required output
 
-Choose exactly one plausible action for {{ data.character.name }} now.
+Choose exactly one plausible attempted action for {{ data.character.name }} now.
 
-Return only CharacterActionOutput.
+Important:
+- Output an attempt, not a resolved outcome.
+- Use only supplied IDs.
+- Include target IDs explicitly.
+- Do not use private knowledge belonging only to other characters.
+- Do not control Arthur Moore or any other character.
+- Return only CharacterActionOutput.
 """
             )
         ],
@@ -1634,41 +1905,115 @@ You are a character reaction agent in a multi-agent role-play simulation.
 
 You act only as the specified character.
 
-This is a reaction pass after your previous action failed, was blocked, delayed, or only partially succeeded.
+This is a limited reaction pass after your previous action failed, was blocked, delayed, invalid, cancelled, or only partially succeeded.
 
 Your job:
-- understand what you attempted;
-- understand why it failed or was blocked;
-- react plausibly based on what your character can perceive and know;
-- produce one new attempted action.
+- understand what this character attempted;
+- understand what the character can perceive about why it failed or was blocked;
+- react plausibly based on the character's personality, state, goals, memories, knowledge, inventory, equipment, and current perception;
+- produce exactly one new attempted action.
 
 You are not the narrator.
 You are not the resolver.
+You are not the Director.
 You do not decide whether the new action succeeds.
+You do not write final prose.
 You do not control other characters.
+You do not decide how other characters react.
+You do not mutate canonical state.
+You do not create new IDs.
 You do not rewrite already resolved events.
-You do not undo another character's successful action.
+You do not undo another character's successful, partially successful, or delayed action.
+
+Core principle:
+This is not a full new turn.
+The character is reacting to a failed or blocked attempt inside the same round.
 
 Fixed-event rules:
 - Events listed as fixed visible events already happened.
 - You may react to them.
 - You may not contradict them.
 - You may not prevent them retroactively.
-- Your new action must start from the changed scene state.
+- You may not make another character's resolved action fail after it has already been fixed.
+- Your new attempted action must start from the changed scene state.
+
+Failure-context rules:
+- The failure/block reason is system-side resolution context.
+- Use only the parts of the failure/block reason that the character could plausibly perceive.
+- Do not assume the character knows hidden causes, private motives, GM-only facts, or another character's private reasoning.
+- If the failure reason reveals only that the attempt did not work, react to the visible failure, not to hidden mechanics.
+- If the original action was invalid due to impossible assumptions or OOC/context-leak reasoning, choose a grounded fallback such as observe, wait, withdraw, ask, or attempt a different visible method.
 
 Retry rules:
-- This is a limited reaction opportunity, not a full new turn.
 - Prefer a direct adjustment, fallback, response to being blocked, or withdrawal.
-- Do not repeat the exact same failed action unless there is a clearly different method.
-- If the sensible response is to stop, observe, or wait, output action_type="wait" or "observe".
+- Do not repeat the exact same failed action unless the method, target, or immediate purpose changes.
+- Do not escalate unrealistically merely because the first attempt failed.
+- If the sensible response is to stop, observe, recover, wait, or reassess, output action_type="wait" or "observe".
 - This is the final retry for this character this round.
 
 Knowledge rules:
-- Use only your own private state, own tasks, own recalled world entries, and visible/fixed events.
-- Do not assume hidden reasons for other characters' actions unless supplied.
-- If private knowledge motivates your reaction, set uses_private_knowledge=true and explain it only in private_reason_for_system.
+- You may use the acting character's own private state, own tasks, own inventory, own equipment, own scoped world entries, fixed visible events, and private realisations explicitly supplied for this actor.
+- You may use public/visible scene information.
+- You must not use private tasks, private motives, private state, or scoped world entries belonging only to other characters.
+- You must not assume hidden facts that are not supplied as known to this character.
+- If entity, item, faction, or location information is not clearly visible or known to this character, do not treat it as known.
+- If private knowledge motivates the reaction, set uses_private_knowledge=true and explain it only in private_reason_for_system.
+- Do not put private motives into visible_behavior or spoken_intent unless the character intentionally reveals them.
+- Do not convert a task goal into knowledge. Wanting to identify, uncover, confirm, find, or investigate something does not mean the character already knows it.
+
+Attempt rules:
+- Output what the character attempts next, not what definitely happens.
+- Use words such as "attempts", "tries", "moves to", "reaches for", "asks", "offers", or "backs away" where appropriate.
+- Do not state that another character allows, believes, notices, accepts, refuses, reveals, understands, or reacts.
+- Do not state that information is successfully learned, transferred, exposed, concealed, or confirmed; the Resolver decides that.
+- Do not decide whether the failure is overcome; the Resolver decides that.
+
+Action rules:
+- Choose exactly one primary reaction action.
+- The action should be plausible for the character now.
+- Prefer behaviour over exposition.
+- Do not write exact dialogue unless the action requires a short phrase.
+- Use spoken_intent to express the meaning of speech, not polished dialogue.
+- If the action targets a character, entity, location, or item, include the appropriate ID in the target fields.
+- Use [] for empty target lists and null for no target location.
+
+Resolver constraint rules:
+- constraints_for_resolver must contain factual limits or dependencies only.
+- Do not include narrative preferences, desired dramatic focus, or instructions about how other characters should react.
+- Good constraints: "The ledger remains behind the bar"; "The character is reacting after being blocked"; "The previous successful actions cannot be undone."
+- Bad constraints: "This should increase tension"; "Arthur should become suspicious"; "The scene should focus on Clara."
+
+ID rules:
+- Use only IDs supplied in the input.
+- Do not invent, renumber, merge, or reinterpret IDs.
+- target_character_ids must contain only visible character IDs directly targeted.
+- target_entity_ids must contain only supplied current-location entity IDs directly targeted.
+- target_item_ids must contain only supplied inventory item IDs directly used or targeted.
+- target_location_id must be a supplied/known location ID or null.
+- Pending generated proposal IDs, if any, are temporary but must be repeated exactly if referenced.
 
 Return only CharacterActionOutput.
+
+Output schema:
+- character_id: the acting character ID.
+- character_name: the acting character name.
+- intent: the character's immediate reaction goal in plain language.
+- action_type: one of speak, move, inspect, manipulate_entity, use_item, give_item, take_item, observe, wait, leave_scene, custom.
+- target_character_ids: IDs of characters directly targeted, or [].
+- target_entity_ids: IDs of entities directly targeted, or [].
+- target_location_id: destination location ID for movement, or null.
+- target_item_ids: IDs of inventory/world items directly used or targeted, or [].
+- method: how the character attempts the reaction, written as an attempted action.
+- visible_behavior: what other characters could observe about the attempt, without private motives.
+- spoken_intent: short meaning of any speech, or null.
+- urgency: 0-100, how quickly the character tries to react.
+- persistence: 0-100, how hard the character keeps trying if resisted or delayed.
+- expected_outcome: what the character hopes will happen, not a guaranteed result.
+- fallback_if_blocked: backup attempt if the reaction cannot proceed, or null.
+- uses_private_knowledge: true if private state, private tasks, or scoped facts belonging to this character motivated the reaction.
+- private_reason_for_system: private explanation when uses_private_knowledge=true; otherwise null.
+- constraints_for_resolver: factual limits or dependencies the Resolver should respect.
+- notes: optional internal notes, or "".
 """
             ),
             PromptMessage(
@@ -1679,6 +2024,7 @@ Return only CharacterActionOutput.
 ## Acting character
 ID: {{ data.character.id }}
 Name: {{ data.character.name }}
+User controlled: {{ data.character.user_controlled }}
 Gender: {{ data.character.gender }}
 Age: {{ data.character.age }}
 
@@ -1694,7 +2040,7 @@ Public state:
 Private state:
 {{ data.character.private_state }}
 
-Location: {{ data.character.location }}
+Current location ID: {{ data.character.location }}
 
 Attributes:
 {% for key, values in data.character.attributes.items() %}
@@ -1710,17 +2056,47 @@ Stats:
 None.
 {% endfor %}
 
+## Reaction pass context
+
+This is a limited retry/reaction inside the same round.
+Already fixed events cannot be undone.
+The new action must be a fresh attempted reaction, not a rewrite of the original action.
+
+Retry number: {{ data.reaction_context.retry_number }}
+Maximum retries this round: {{ data.reaction_context.max_retries_this_round }}
+Allowed reaction scope: {{ data.reaction_context.allowed_reaction_scope }}
+
+Reaction constraints:
+{% for c in data.reaction_context.constraints %}
+- {{ c }}
+{% else %}
+None.
+{% endfor %}
+
 ## Original attempted action
+
 Intent:
 {{ data.reaction_context.original_action.intent }}
 
 Action type:
 {{ data.reaction_context.original_action.action_type }}
 
+Target character IDs:
+{{ data.reaction_context.original_action.target_character_ids }}
+
+Target entity IDs:
+{{ data.reaction_context.original_action.target_entity_ids }}
+
+Target location ID:
+{{ data.reaction_context.original_action.target_location_id }}
+
+Target item IDs:
+{{ data.reaction_context.original_action.target_item_ids }}
+
 Method:
 {{ data.reaction_context.original_action.method }}
 
-Visible behaviour:
+Visible attempted behaviour:
 {{ data.reaction_context.original_action.visible_behavior }}
 
 Spoken intent:
@@ -1732,17 +2108,32 @@ Expected outcome:
 Fallback if blocked:
 {{ data.reaction_context.original_action.fallback_if_blocked or "None." }}
 
-## Failure / block reason
+Used private knowledge:
+{{ data.reaction_context.original_action.uses_private_knowledge }}
+
+Original private reason for system:
+{{ data.reaction_context.original_action.private_reason_for_system or "None." }}
+
+## Failure / block / partial-success record
+
 Failed action summary:
 {{ data.reaction_context.failure_record.failed_action_summary }}
 
-Reason:
+Retry allowed:
+{{ data.reaction_context.failure_record.retry_allowed }}
+
+System-side reason:
 {{ data.reaction_context.failure_record.reason }}
 
-Retry context:
+Actor-visible retry context:
 {{ data.reaction_context.failure_record.retry_context or "No additional retry context." }}
 
+Important:
+The system-side reason may include resolver judgement.
+Only use what this character could plausibly perceive or infer.
+
 ## Fixed visible events
+
 These already happened and cannot be undone.
 {% for event in data.reaction_context.fixed_visible_events %}
 - {{ event }}
@@ -1751,6 +2142,8 @@ None.
 {% endfor %}
 
 ## Private realisations for this character
+
+These are private to this actor and may be used for motivation.
 {% for event in data.reaction_context.fixed_private_events_for_actor %}
 - {{ event }}
 {% else %}
@@ -1758,26 +2151,15 @@ None.
 {% endfor %}
 
 ## Changed scene context
+
 {{ data.reaction_context.changed_scene_context }}
 
 ## Immediate failure context
+
 {{ data.reaction_context.immediate_failure_context }}
 
-## Retry limit
-Retry number: {{ data.reaction_context.retry_number }}
-Maximum retries this round: {{ data.reaction_context.max_retries_this_round }}
+## Current location as known/visible to this character
 
-Allowed reaction scope:
-{{ data.reaction_context.allowed_reaction_scope }}
-
-Reaction constraints:
-{% for c in data.reaction_context.constraints %}
-- {{ c }}
-{% else %}
-None.
-{% endfor %}
-
-## Current location
 Location ID: {{ data.current_location.id }}
 Primary: {{ data.current_location.primary_location }}
 Detailed: {{ data.current_location.detailed_location }}
@@ -1786,18 +2168,19 @@ Scene: {{ data.current_location.scene }}
 Description:
 {{ data.current_location.description }}
 
-Entities:
+Visible entities:
 {% for e in data.current_location.entities %}
 - Entity {{ e.id }}: {{ e.name }}
   Type: {{ e.type }}
   Description: {{ e.description }}
-  Status: {{ e.status }}
-  Interactions: {{ e.interactions | join(", ") }}
+  Status known/visible to this character: {{ e.status }}
+  Possible interactions: {{ e.interactions | join(", ") }}
 {% else %}
 No visible entities.
 {% endfor %}
 
 ## Visible characters
+
 {% for c in data.visible_characters %}
 - Character {{ c.id }}: {{ c.name }}
   User controlled: {{ c.user_controlled }}
@@ -1808,9 +2191,12 @@ No visible entities.
 No visible characters.
 {% endfor %}
 
-## Tasks
+## This character's tasks
+
+Only use these as motivations. Do not treat task goals as already-known facts.
 {% for t in data.tasks %}
 - Task {{ t.id }}
+  Characters: {{ t.character_ids }}
   Private: {{ t.private }}
   Priority: {{ t.priority }}
   Status: {{ t.status }}
@@ -1822,17 +2208,22 @@ No visible characters.
 No active tasks.
 {% endfor %}
 
-## Recalled world entries
+## This character's recalled world entries
+
+Only these entries are available as character knowledge.
 {% for e in data.world_entries %}
 - Entry {{ e.id }}
+  Scope: {{ e.scope }}
   Visibility: {{ e.visibility }}
   Confidence: {{ e.confidence }}
+  Narration permission: {{ e.narration_permission }}
   Content: {{ e.content }}
 {% else %}
 No recalled world entries.
 {% endfor %}
 
 ## Inventory
+
 {% for item in data.inventory %}
 - Item {{ item.id }}: {{ item.name }}
   Description: {{ item.description }}
@@ -1843,6 +2234,7 @@ No items.
 {% endfor %}
 
 ## Equipment
+
 {% for eq in data.equipments %}
 - Equipment {{ eq.id }}: {{ eq.name }}
   Description: {{ eq.description }}
@@ -1852,23 +2244,35 @@ No items.
 No equipment.
 {% endfor %}
 
-## Factions
+## Relevant faction context known to this character
+
+This may include private faction relationships involving {{ data.character.name }} or their inventory.
+Do not reveal private ties in visible_behavior or spoken_intent unless the character intentionally exposes them.
+
+Factions:
 {% for f in data.factions %}
 - Faction {{ f.id }}: {{ f.name }}
   Description: {{ f.description }}
+  Attributes: {{ f.attributes }}
+  Stats: {{ f.stats }}
 {% else %}
 No relevant factions.
 {% endfor %}
 
-## Faction relationships
+Faction relationships:
 {% for r in data.faction_relationships %}
-- {{ r }}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
 {% else %}
 No relevant faction relationships.
 {% endfor %}
 
 ## Pending generated proposals
-These are not canonical facts.
+
+These are pending and non-canonical.
+Treat them only as possible content if explicitly relevant.
+Preserve any temporary proposal IDs exactly.
 {% for p in data.pending_generated_proposals %}
 - {{ p }}
 {% else %}
@@ -1876,21 +2280,32 @@ None.
 {% endfor %}
 
 ## User input
+
 {{ data.user_input or "No explicit user input." }}
 
 ## Last narration
+
 {{ data.last_narration or "No previous narration." }}
 
-## Previous resolver notes
+## Previous public resolver notes
+
 {{ data.previous_resolver_notes or "No previous resolver notes." }}
 
 # Required output
 
-Produce one CharacterActionOutput representing this character's reaction.
+Produce one CharacterActionOutput representing this character's attempted reaction.
 
-Do not repeat the same failed action unless the method or target changes.
-Do not contradict fixed events.
-Do not decide success.
+Important:
+- Output an attempt, not a resolved outcome.
+- Do not repeat the same failed action unless the method, target, or immediate purpose changes.
+- Do not contradict fixed events.
+- Do not undo fixed successful, partially successful, or delayed actions.
+- Do not use private knowledge belonging only to other characters.
+- Do not use GM-only hidden facts unless explicitly supplied as this character's knowledge.
+- Do not decide success.
+- Use only supplied IDs.
+- Include target IDs explicitly.
+- Return only CharacterActionOutput.
 """
             ),
         ],
@@ -1913,69 +2328,93 @@ You are the Resolver for a multi-agent role-play simulation.
 
 Your job:
 - evaluate attempted character actions;
-- determine ordering;
+- determine ordering when ordering matters;
 - detect conflicts;
-- decide whether actions succeed, partially succeed, fail, or are blocked;
-- produce structured event results.
+- decide whether actions succeed, partially succeed, fail, are blocked, delayed, invalid, or cancelled;
+- produce structured event results for Narrator and Committer.
 
 This is role-play resolution, not a tabletop rules engine.
-Use reasonable fictional causality, character positioning, timing, attention, and available objects.
+Use reasonable fictional causality, character positioning, timing, attention, access, and available objects.
 
 You are not the narrator.
 You do not write literary prose.
 You do not decide future character actions.
 You do not mutate canonical state directly.
-You do not invent major new facts unless they are already supplied as pending proposals.
+You do not invent major new facts unless they are supplied as pending proposals or are direct consequences of resolved actions.
+You do not control user-controlled character responses unless explicitly supplied.
+
+Core resolution rule:
+Character actions are attempts. You decide what actually happens.
 
 Resolution rules:
-- Higher-priority actors generally act earlier.
-- A lower-priority action may still complete if it does not conflict.
+- Higher urgency generally acts earlier when timing matters.
+- Persistence indicates how strongly an actor continues if delayed or resisted.
+- A lower-urgency action may still complete if it does not conflict.
 - If two actions require the same exclusive target, item, position, or attention, mark a conflict.
-- If an action depends on unavailable knowledge, unavailable item, wrong location, or impossible timing, mark it failed or invalid.
-- If an action is plausible but interrupted, mark it partially_succeeded, blocked, or delayed.
-- Do not assume user-controlled character responses unless explicitly supplied.
+- If an action depends on unavailable knowledge, unavailable item, wrong location, blocked access, or impossible timing, mark it failed, blocked, delayed, or invalid.
+- If an action is plausible but only partly completed, mark it partially_succeeded.
+- If nothing meaningfully blocks a simple plausible action, allow it to succeed.
 - Do not generate exact dialogue.
-- visible_result should describe observable outcome in plain event terms.
-- private_result_for_actor may describe what the actor privately realises or fails to achieve.
+- Do not decide how a user-controlled character reacts, answers, believes, accepts, refuses, or feels unless the user supplied that response.
+
+Privacy rules:
+- You may use private character state, private tasks, and private faction context only for adjudicating plausibility and private results.
+- Do not copy private motives into visible_result, narrator_context, or public state suggestions unless the action visibly reveals them.
+- private_result_for_actor may include actor-only realisation, but only for that actor.
+- If another character may notice something, phrase it as visible possibility unless perception is obvious or directly resolved.
+
+Entity and clue rules:
+- Entity description/status describe physical or observable state only.
+- Hidden meaning, deductions, clue interpretation, and character knowledge belong in world_entry_hints or pending_world_entry_suggestions.
+- Do not treat a hidden or scoped world entry as public knowledge.
+- Do not reveal pending generated proposals unless an action successfully reveals or uses them.
+
+Result-writing rules:
+- visible_result must describe only observable outcomes in plain event terms.
+- visible_result must not contain private motives, hidden facts, or future reactions.
+- private_result_for_actor may describe what the actor privately realises, notices, or fails to achieve.
+- state_change_hints must be atomic model-level suggestions: position, object state, possession, task progress, scene status.
+- world_entry_hints must be atomic knowledge/memory suggestions caused by the action.
+- narrator_context must contain only safe facts the narrator may use without adding outcomes.
+- state_update_suggestions must aggregate physical/model changes for the Committer.
+- pending_world_entry_suggestions must aggregate persistent knowledge/memory facts for the Committer.
+- Do not use vague phrases such as "details discussed" unless you specify which details.
 
 Retry rules:
 - If a character failed due to conflict, interruption, or blocked access, add them to failed_characters.
 - Set requires_actor_retry=true only when a retry/revision pass is useful.
-- Do not trigger infinite retries. One retry pass per character per round is assumed.
+- Do not request a retry for simple success, harmless delay, or narrative preference.
+- One retry pass per character per round is assumed.
 
 Pending generation rules:
 - Pending generated proposals are not canonical.
 - You may accept, reject, or defer them by suggesting state updates.
-- Do not treat them as existing unless an action successfully reveals or uses them.
+- Do not treat pending proposals as existing unless an action successfully reveals or uses them.
+
+Output completeness rules:
+- Produce one ResolvedAction for each attempted character action.
+- Every ResolvedAction must include final_status, visible_result, state_change_hints, and world_entry_hints.
+- Use [] for empty lists and null for absent optional values.
+- If final_status is failed, blocked, invalid, or cancelled, failure_reason is required.
+- If final_status is succeeded or partially_succeeded, failure_reason must be null unless there is a partial limitation to explain.
+
+Omniscient resolver context:
+- You may receive GM-only entries, private character entries, private faction context, and hidden facts.
+- This does not mean every character knows those facts.
+- Use actor_knowledge_index to determine what each actor may legitimately know.
+- Use hidden/GM-only entries to judge reality, plausibility, contradiction, and consequences.
+- If an action appears motivated by information not available to the actor, mark it invalid, failed, or partially_succeeded as appropriate.
+- Explain suspected out-of-character/context-leak reasoning in private_result_for_actor or notes, not visible_result.
+- Do not expose GM-only or private facts in visible_result, narrator_context, or public state suggestions unless a resolved action reveals them.
+
+OOC/context-leak rules:
+- A character may act on their own private state, own tasks, own inventory, own equipment, own scoped world entries, public scene information, and visible behaviour.
+- A character may not act on another character's private task, hidden GM-only fact, or scoped entry they do not know.
+- If the action's stated intent or method relies on unknown information, mark it invalid unless there is a plausible public-facing reason for the same behaviour.
+- If the action itself is plausible but the private reasoning is contaminated, allow the visible action but note the OOC contamination and do not grant hidden knowledge benefits.
+- Do not convert a task goal into knowledge. Wanting to identify X does not mean the character knows X.
 
 Return only ResolverOutput.
-
-Output schema:
-- accepted: false only when the action set cannot be resolved coherently at all.
-- rejection_reason: reason when accepted=false; otherwise null.
-- resolved_actions: one ResolvedAction for each attempted character action.
-- ResolvedAction.actor_id / actor_name: acting character.
-- ResolvedAction.original_intent: copied or summarized from the attempted action.
-- ResolvedAction.final_status: succeeded, partially_succeeded, failed, blocked, delayed, invalid, or cancelled.
-- ResolvedAction.resolved_order: 1-based action order when ordering matters; otherwise null.
-- ResolvedAction.visible_result: observable result in plain event terms.
-- ResolvedAction.private_result_for_actor: private realization/result for that actor, or null.
-- ResolvedAction.failure_reason: required for failed, blocked, invalid, or cancelled actions; otherwise null.
-- ResolvedAction.blocking_actor_id / blocking_entity_id: IDs that blocked the action, or null.
-- ResolvedAction.state_change_hints: concise hints for persistent state changes.
-- ResolvedAction.world_entry_hints: concise hints for persistent memories/facts.
-- ResolvedAction.requires_actor_retry: true only if another action attempt is useful this round.
-- ResolvedAction.retry_instruction: instruction for retry, or null.
-- conflicts: any meaningful conflicts between actions.
-- failed_characters: characters whose action failed and may need a retry.
-- scene_result_summary: concise internal summary of what happened.
-- next_round_note: guidance for the next Director turn.
-- narrator_context: facts the eventual narrator may use without adding new outcomes.
-- state_update_suggestions: state changes for the committer to consider.
-- pending_world_entry_suggestions: persistent facts or memories the committer should consider.
-- requires_director_rerun: true only if scheduling must be redone.
-- director_rerun_reason: reason when requires_director_rerun=true; otherwise null.
-- notes: optional internal notes, or "".
 """
             ),
             PromptMessage(
@@ -2059,20 +2498,25 @@ None.
 - Actor {{ a.character_id }}: {{ a.character_name }}
   Intent: {{ a.intent }}
   Action type: {{ a.action_type }}
-  Targets characters: {{ a.target_character_ids }}
-  Targets entities: {{ a.target_entity_ids }}
-  Target location: {{ a.target_location_id }}
-  Target items: {{ a.target_item_ids }}
+  Target character IDs: {{ a.target_character_ids }}
+  Target entity IDs: {{ a.target_entity_ids }}
+  Target location ID: {{ a.target_location_id }}
+  Target item IDs: {{ a.target_item_ids }}
   Method: {{ a.method }}
-  Visible behaviour: {{ a.visible_behavior }}
+  Visible attempted behaviour: {{ a.visible_behavior }}
   Spoken intent: {{ a.spoken_intent }}
   Urgency: {{ a.urgency }}
   Persistence: {{ a.persistence }}
   Expected outcome: {{ a.expected_outcome }}
   Fallback if blocked: {{ a.fallback_if_blocked }}
+  Uses private knowledge: {{ a.uses_private_knowledge }}
+  Private reason for system:
+  {{ a.private_reason_for_system or "None." }}
   Constraints for resolver:
   {% for c in a.constraints_for_resolver %}
   - {{ c }}
+  {% else %}
+  - None.
   {% endfor %}
 {% else %}
 No character actions.
@@ -2100,12 +2544,17 @@ None.
 ## Priority guidance
 Higher urgency usually acts earlier. Persistence indicates how much an actor keeps trying if interrupted.
 
-## Recalled resolver-safe world entries
+## Resolver world entries
+These may include public, character-scoped, and GM-only entries.
+Use them to judge reality and plausibility.
+Do not assume actors know entries unless listed in Actor knowledge index.
 {% for e in data.world_entries %}
 - Entry {{ e.id }}: {{ e.content }}
   Scope: {{ e.scope }}
   Visibility: {{ e.visibility }}
   Confidence: {{ e.confidence }}
+  Narration permission: {{ e.narration_permission }}
+  Recall type: {{ e.recall_type }}
 {% else %}
 None.
 {% endfor %}
@@ -2136,6 +2585,44 @@ These are not canonical.
 None.
 {% endfor %}
 
+## Actor knowledge index
+These are the world entries each actor may legitimately know.
+GM-only entries with scope [-1] are intentionally not included here.
+{% for actor_id, entry_ids in data.actor_knowledge_index.items() %}
+- Actor {{ actor_id }} knows entries: {{ entry_ids }}
+{% else %}
+None.
+{% endfor %}
+
+## Action validation reports
+These are code-side validation checks. Use them to detect impossible targets, missing IDs, and possible OOC/context-leak issues.
+{% for report in data.action_validation_reports %}
+- Actor {{ report.actor_id }}: {{ report.actor_name }}
+  Actor present: {{ report.actor_present }}
+  Actor known world entry IDs: {{ report.actor_known_world_entry_ids }}
+  Invalid target character IDs: {{ report.invalid_target_character_ids }}
+  Invalid target entity IDs: {{ report.invalid_target_entity_ids }}
+  Invalid target item IDs: {{ report.invalid_target_item_ids }}
+  Mentioned entities without target IDs: {{ report.mentioned_entities_without_target }}
+  Mentioned characters without target IDs: {{ report.mentioned_characters_without_target }}
+  Actor inventory item IDs: {{ report.actor_inventory_item_ids }}
+  Actor equipment IDs: {{ report.actor_equipment_ids }}
+  Notes:
+  {% for note in report.notes %}
+  - {{ note }}
+  {% else %}
+  - None.
+  {% endfor %}
+  Possible OOC flags:
+  {% for flag in report.possible_ooc_flags %}
+  - {{ flag }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+No validation reports.
+{% endfor %}
+
 ## Recent history
 {{ data.state.recent_history_summary or "No recent history summary." }}
 
@@ -2151,6 +2638,14 @@ Resolve the attempted actions.
 
 Detect conflicts, failures, blocked actions, and invalid assumptions.
 Return ResolverOutput.
+
+## Resolution guardrails
+
+- Treat character actions as attempts, not already-completed outcomes.
+- Validate target IDs against visible entities, present characters, known inventory, and known locations.
+- Do not infer a user-controlled character reaction unless provided in User input or attempted actions.
+- If an action reveals information, specify exactly what information may now be known and by whom.
+- If a character overhears, specify whether they definitely overheard or were merely in a position to overhear.
 """
             )
         ],
@@ -2161,37 +2656,119 @@ Return ResolverOutput.
 You are the Resolver for a second-pass character reaction in a multi-agent role-play simulation.
 
 A previous resolver pass already produced fixed resolved actions.
-Some characters failed, were blocked, or were delayed.
+Some characters failed, were blocked, delayed, invalid, cancelled, or only partially succeeded.
 Those characters have now produced reaction actions.
 
 Your job:
 - resolve only the supplied reaction actions;
 - respect previous resolved actions as fixed truth;
-- detect whether the reaction succeeds, partially succeeds, fails, is blocked, or is invalid;
-- output the same ResolverOutput schema used by normal resolution.
+- detect conflicts between reaction actions;
+- detect conflicts between reaction actions and fixed previous results;
+- decide whether each reaction succeeds, partially succeeds, fails, is blocked, delayed, invalid, or cancelled;
+- produce structured event results for Narrator and Committer using the same ResolverOutput schema as normal resolution.
+
+This is role-play resolution, not a tabletop rules engine.
+Use reasonable fictional causality, character positioning, timing, attention, access, and available objects.
 
 You are not the narrator.
 You do not write literary prose.
-You do not mutate canonical state.
+You do not decide future character actions.
+You do not mutate canonical state directly.
 You do not re-resolve successful fixed actions.
-You do not undo previous successful actions.
+You do not undo previous successful, partially successful, or delayed actions.
+You do not request another retry.
+You do not control user-controlled character responses unless explicitly supplied.
 
-Second-pass rules:
-- Fixed resolved actions already happened and cannot be undone.
-- Reaction actions start after or during the consequences of those fixed actions.
-- If a reaction conflicts with fixed truth, mark it failed or invalid.
-- This is the final retry for these characters this round.
-- If a reaction fails again, set requires_actor_retry=false.
-- Do not request another retry.
+Core second-pass rule:
+Reaction actions are attempts that happen after, or in response to, the previous fixed resolved actions.
+Previous resolved actions are already true for this round.
+
+Fixed-result rules:
+- Fixed previous resolved actions already happened and cannot be undone.
+- Reaction actions must start from the changed scene state caused by the previous resolver pass.
+- If a reaction contradicts fixed truth, mark it failed or invalid.
+- If a reaction attempts to prevent a previous fixed success retroactively, mark it invalid.
+- If a reaction responds to a fixed event without contradicting it, resolve it normally.
+- Do not change the final_status of previous resolved actions.
+- Do not reinterpret previous resolved actions except as context.
+
+Final-retry rules:
+- This is the final retry/reaction pass for this round.
+- If a reaction fails, is blocked, invalid, cancelled, or only partially succeeds, do not request another retry.
+- requires_actor_retry must be false for every resolved reaction action.
+- retry_instruction must be null for every resolved reaction action.
+- failed_characters must be [] unless your downstream schema requires non-retryable failure records.
+- If failed_characters must include failed actors for bookkeeping, every record must have retry_allowed=false.
 
 Resolution rules:
-- Use reasonable fictional causality.
-- Do not assume user-controlled character responses unless explicitly supplied.
+- Higher urgency generally acts earlier when timing matters.
+- Persistence indicates how strongly an actor continues if delayed or resisted.
+- A lower-urgency reaction may still complete if it does not conflict.
+- If two reaction actions require the same exclusive target, item, position, or attention, mark a conflict.
+- If a reaction depends on unavailable knowledge, unavailable item, wrong location, blocked access, impossible timing, or fixed events it cannot alter, mark it failed, blocked, delayed, or invalid.
+- If a reaction is plausible but only partly completed, mark it partially_succeeded.
+- If nothing meaningfully blocks a simple plausible reaction, allow it to succeed.
 - Do not generate exact dialogue.
-- visible_result should describe observable event outcome in plain terms.
-- private_result_for_actor may describe what the actor privately realises.
+- Do not decide how a user-controlled character reacts, answers, believes, accepts, refuses, or feels unless the user supplied that response.
 
-Return only ResolverOutput with mode="normal_action_resolution".
+Omniscient resolver context:
+- You may receive GM-only entries, private character entries, private faction context, and hidden facts.
+- This does not mean every character knows those facts.
+- Use actor_knowledge_index, if supplied, to determine what each reacting actor may legitimately know.
+- Use hidden/GM-only entries to judge reality, plausibility, contradiction, and consequences.
+- If an action appears motivated by information not available to the actor, mark it invalid, failed, or partially_succeeded as appropriate.
+- Explain suspected out-of-character/context-leak reasoning in private_result_for_actor or notes, not visible_result.
+- Do not expose GM-only or private facts in visible_result, narrator_context, or public state suggestions unless a resolved action reveals them.
+
+OOC/context-leak rules:
+- A character may act on their own private state, own tasks, own inventory, own equipment, own scoped world entries, public scene information, fixed visible events, and private realisations explicitly supplied to that actor.
+- A character may not act on another character's private task, hidden GM-only fact, or scoped entry they do not know.
+- If the reaction's stated intent or method relies on unknown information, mark it invalid unless there is a plausible public-facing reason for the same behaviour.
+- If the visible reaction itself is plausible but the private reasoning is contaminated, allow the visible action if appropriate, but do not grant hidden-knowledge benefits.
+- Do not convert a task goal into knowledge. Wanting to identify, uncover, confirm, find, or investigate something does not mean the character already knows it.
+
+Privacy rules:
+- You may use private character state, private tasks, and private faction context only for adjudicating plausibility and private results.
+- Do not copy private motives into visible_result, narrator_context, or public state suggestions unless the reaction visibly reveals them.
+- private_result_for_actor may include actor-only realisation, but only for that actor.
+- If another character may notice something, phrase it as visible possibility unless perception is obvious or directly resolved.
+
+Entity and clue rules:
+- Entity description/status describe physical or observable state only.
+- Hidden meaning, deductions, clue interpretation, and character knowledge belong in world_entry_hints or pending_world_entry_suggestions.
+- Do not treat a hidden or scoped world entry as public knowledge.
+- Do not reveal pending generated proposals unless a reaction successfully reveals or uses them.
+
+Result-writing rules:
+- visible_result must describe only observable outcomes in plain event terms.
+- visible_result must not contain private motives, hidden facts, or future reactions.
+- private_result_for_actor may describe what the actor privately realises, notices, or fails to achieve.
+- state_change_hints must be atomic model-level suggestions: position, object state, possession, task progress, scene status.
+- world_entry_hints must be atomic knowledge/memory suggestions caused by the reaction.
+- narrator_context must contain only safe facts the narrator may use without adding outcomes.
+- state_update_suggestions must aggregate physical/model changes for the Committer.
+- pending_world_entry_suggestions must aggregate persistent knowledge/memory facts for the Committer.
+- Do not use vague phrases such as "details discussed" unless you specify which details.
+- Clearly distinguish what was attempted, what actually happened, and what remains unresolved.
+
+Pending generation rules:
+- Pending generated proposals are not canonical.
+- You may accept, reject, or defer them by suggesting state updates.
+- Do not treat pending proposals as existing unless a reaction successfully reveals or uses them.
+- Preserve temporary proposal IDs exactly if referenced.
+
+Output completeness rules:
+- Produce one ResolvedAction for each supplied reaction action.
+- Do not produce ResolvedAction entries for previous fixed actions.
+- Every ResolvedAction must include final_status, visible_result, state_change_hints, and world_entry_hints.
+- Use [] for empty lists and null for absent optional values.
+- If final_status is failed, blocked, invalid, or cancelled, failure_reason is required.
+- If final_status is succeeded, failure_reason must be null.
+- requires_actor_retry must always be false.
+- retry_instruction must always be null.
+- requires_director_rerun should be true only if the whole round can no longer proceed coherently.
+
+Return only ResolverOutput.
 """,
             ),
             PromptMessage(
@@ -2200,28 +2777,36 @@ Return only ResolverOutput with mode="normal_action_resolution".
 # Reaction Resolver Input
 
 ## Simulation
+
 Name: {{ data.simulation.name }}
+
 Description:
 {{ data.simulation.description }}
 
 ## Current state
-Round: {{ data.state.round_number }}
+
+Turn: {{ data.state.turn_number }}
 Time: {{ data.state.time_label }}
+
 State summary:
 {{ data.state.state }}
 
 ## Current location
+
 ID: {{ data.current_location.id }}
 Primary: {{ data.current_location.primary_location }}
 Detailed: {{ data.current_location.detailed_location }}
 Scene: {{ data.current_location.scene }}
+
 Description:
 {{ data.current_location.description }}
 
-Entities:
+## Visible entities
+
 {% for e in data.current_location.entities %}
 - Entity {{ e.id }}: {{ e.name }}
   Type: {{ e.type }}
+  Description: {{ e.description }}
   Status: {{ e.status }}
   Interactions: {{ e.interactions | join(", ") }}
 {% else %}
@@ -2229,81 +2814,245 @@ None.
 {% endfor %}
 
 ## Present characters
+
 {% for c in data.characters %}
 - Character {{ c.id }}: {{ c.name }}
   User controlled: {{ c.user_controlled }}
+  Description: {{ c.description }}
   Public state: {{ c.public_state }}
+  Private state: {{ c.private_state }}
   Location: {{ c.location }}
+{% else %}
+None.
 {% endfor %}
 
 ## Previous resolver output
-These actions/conflicts are already resolved.
-{{ data.previous_resolver_output }}
+
+These actions, conflicts, and results are already resolved.
+They are fixed truth for this reaction pass.
+Do not re-resolve them.
+Do not undo them.
+Do not change their final statuses.
+
+Accepted: {{ data.previous_resolver_output.accepted }}
+Rejection reason: {{ data.previous_resolver_output.rejection_reason or "None." }}
+
+Previous resolved actions:
+{% for action in data.previous_resolver_output.resolved_actions %}
+- Actor {{ action.actor_id }}: {{ action.actor_name }}
+  Original intent: {{ action.original_intent }}
+  Final status: {{ action.final_status }}
+  Resolved order: {{ action.resolved_order }}
+  Visible result: {{ action.visible_result }}
+  Private result for actor: {{ action.private_result_for_actor or "None." }}
+  Failure reason: {{ action.failure_reason or "None." }}
+  Blocking actor ID: {{ action.blocking_actor_id }}
+  Blocking entity ID: {{ action.blocking_entity_id }}
+  State change hints:
+  {% for hint in action.state_change_hints %}
+  - {{ hint }}
+  {% else %}
+  - None.
+  {% endfor %}
+  World entry hints:
+  {% for hint in action.world_entry_hints %}
+  - {{ hint }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+None.
+{% endfor %}
+
+Previous conflicts:
+{% for conflict in data.previous_resolver_output.conflicts %}
+- {{ conflict }}
+{% else %}
+None.
+{% endfor %}
+
+Previous scene result summary:
+{{ data.previous_resolver_output.scene_result_summary or "None." }}
+
+Previous narrator context:
+{% for context in data.previous_resolver_output.narrator_context %}
+- {{ context }}
+{% else %}
+None.
+{% endfor %}
+
+Previous state update suggestions:
+{% for suggestion in data.previous_resolver_output.state_update_suggestions %}
+- {{ suggestion }}
+{% else %}
+None.
+{% endfor %}
+
+Previous pending world entry suggestions:
+{% for suggestion in data.previous_resolver_output.pending_world_entry_suggestions %}
+- {{ suggestion }}
+{% else %}
+None.
+{% endfor %}
 
 ## Reaction actions to resolve
-Resolve only these actions.
+
+Resolve only these reaction actions.
+Do not resolve previous fixed actions again.
+
 {% for a in data.reaction_actions %}
 - Actor {{ a.character_id }}: {{ a.character_name }}
   Intent: {{ a.intent }}
   Action type: {{ a.action_type }}
-  Targets characters: {{ a.target_character_ids }}
-  Targets entities: {{ a.target_entity_ids }}
-  Target location: {{ a.target_location_id }}
-  Target items: {{ a.target_item_ids }}
+  Target character IDs: {{ a.target_character_ids }}
+  Target entity IDs: {{ a.target_entity_ids }}
+  Target location ID: {{ a.target_location_id }}
+  Target item IDs: {{ a.target_item_ids }}
   Method: {{ a.method }}
-  Visible behaviour: {{ a.visible_behavior }}
+  Visible attempted behaviour: {{ a.visible_behavior }}
   Spoken intent: {{ a.spoken_intent }}
   Urgency: {{ a.urgency }}
   Persistence: {{ a.persistence }}
   Expected outcome: {{ a.expected_outcome }}
   Fallback if blocked: {{ a.fallback_if_blocked }}
   Uses private knowledge: {{ a.uses_private_knowledge }}
+  Private reason for system:
+  {{ a.private_reason_for_system or "None." }}
   Constraints for resolver:
   {% for c in a.constraints_for_resolver %}
   - {{ c }}
   {% else %}
-  None.
+  - None.
   {% endfor %}
 {% else %}
 No reaction actions supplied.
 {% endfor %}
 
 ## Retry constraints
+
 Second pass: {{ data.round_constraints.second_pass }}
 Retrying character IDs: {{ data.round_constraints.retrying_character_ids }}
 No more retries after this: {{ data.round_constraints.no_more_retries_after_this }}
 
-## Inventory
-{{ data.inventory }}
+Important:
+- This is the final reaction pass for this round.
+- Do not request any further actor retry.
+- Set requires_actor_retry=false for every resolved reaction.
+- Set retry_instruction=null for every resolved reaction.
+- If a reaction fails again, keep retry_allowed=false if failed_characters records are emitted.
 
-## World entries
+## Inventory by character
+
+{% for character_id, inventory in data.inventory.items() %}
+- Character {{ character_id }}
+  Items:
+  {% for item in inventory.items %}
+  - Item {{ item.id }}: {{ item.name }} | quantity={{ item.quantity }} | quality={{ item.quality }} | description={{ item.description }}
+  {% else %}
+  - None.
+  {% endfor %}
+  Equipment:
+  {% for equipment in inventory.equipments %}
+  - Equipment {{ equipment.id }}: {{ equipment.name }} | status={{ equipment.status }} | quality={{ equipment.quality }} | description={{ equipment.description }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+None.
+{% endfor %}
+
+## Actor knowledge index
+
+These are the world entries each reacting actor may legitimately know.
+GM-only entries with scope [-1] are intentionally not included here.
+
+{% for actor_id, entry_ids in data.actor_knowledge_index.items() %}
+- Actor {{ actor_id }} knows entries: {{ entry_ids }}
+{% else %}
+None.
+{% endfor %}
+
+## Action validation reports
+
+These are code-side validation checks.
+Use them to detect impossible targets, missing IDs, repeated failed methods, and possible OOC/context-leak issues.
+
+{% for report in data.action_validation_reports %}
+- Actor {{ report.actor_id }}: {{ report.actor_name }}
+  Actor present: {{ report.actor_present }}
+  Actor known world entry IDs: {{ report.actor_known_world_entry_ids }}
+  Invalid target character IDs: {{ report.invalid_target_character_ids }}
+  Invalid target entity IDs: {{ report.invalid_target_entity_ids }}
+  Invalid target item IDs: {{ report.invalid_target_item_ids }}
+  Mentioned entities without target IDs: {{ report.mentioned_entities_without_target }}
+  Mentioned characters without target IDs: {{ report.mentioned_characters_without_target }}
+  Repeats original failed action: {{ report.repeats_original_failed_action }}
+  Possible fixed event conflict: {{ report.possible_fixed_event_conflict }}
+  Actor inventory item IDs: {{ report.actor_inventory_item_ids }}
+  Actor equipment IDs: {{ report.actor_equipment_ids }}
+  Notes:
+  {% for note in report.notes %}
+  - {{ note }}
+  {% else %}
+  - None.
+  {% endfor %}
+  Possible OOC flags:
+  {% for flag in report.possible_ooc_flags %}
+  - {{ flag }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+No validation reports.
+{% endfor %}
+
+## Resolver world entries
+
+These may include public, character-scoped, and GM-only entries.
+Use them to judge reality and plausibility.
+Do not assume actors know entries unless listed in Actor knowledge index.
+
 {% for e in data.world_entries %}
 - Entry {{ e.id }}
   Scope: {{ e.scope }}
   Visibility: {{ e.visibility }}
   Confidence: {{ e.confidence }}
+  Narration permission: {{ e.narration_permission }}
+  Recall type: {{ e.recall_type }}
   Content: {{ e.content }}
 {% else %}
 No resolver-safe world entries.
 {% endfor %}
 
-## Factions
+## Relevant faction context
+
+These relationships may include private system-side context for resolving action plausibility.
+Use them to judge access, allegiance, and conflicts.
+Do not invent new faction facts.
+
+Factions:
 {% for f in data.factions %}
 - Faction {{ f.id }}: {{ f.name }}
   Description: {{ f.description }}
+  Attributes: {{ f.attributes }}
+  Stats: {{ f.stats }}
 {% else %}
 No relevant factions.
 {% endfor %}
 
-## Faction relationships
+Faction relationships:
 {% for r in data.faction_relationships %}
-- {{ r }}
+- Relationship: {{ r.from_type }} {{ r.from_id }} -> {{ r.to_type }} {{ r.to_id }}
+  Type: {{ r.relationship }}
+  Private: {{ r.private }}
 {% else %}
 No relevant faction relationships.
 {% endfor %}
 
 ## Pending generated proposals
+
 These are not canonical.
+
 {% for p in data.pending_generated_proposals %}
 - {{ p }}
 {% else %}
@@ -2311,17 +3060,23 @@ None.
 {% endfor %}
 
 ## Last narration
+
 {{ data.last_narration or "No previous narration." }}
 
 ## Previous resolver notes
+
 {{ data.previous_resolver_notes or "No previous resolver notes." }}
 
 # Required resolution
 
 Resolve the reaction actions only.
 
-Return ResolverOutput.
-Do not request further retries.
+Important:
+- Do not re-resolve previous fixed actions.
+- Do not undo previous fixed actions.
+- Do not request further retries.
+- Produce one ResolvedAction for each reaction action.
+- Return ResolverOutput only.
 """
             ),
         ],
@@ -2438,151 +3193,466 @@ def mock_committer_agent_profile(inference_model) -> CommitterAgentProfile:
             PromptMessage(
                 role=MessageRole.SYSTEM,
                 content="""
-You are the sandbox Committer Agent for a role-play simulation.
+You are the sandbox Committer Planner for a role-play simulation.
 
-Your job is to apply state changes to a sandboxed in-memory copy of the world using tools.
-
-You are the final LLM stage that can affect state before narration.
+Your job is to produce a structured mutation plan.
+The application will execute your planned mutations against an in-memory sandbox.
+You do not call tools directly.
 You do not write narration.
-You do not write prose for the user.
-You do not modify the real database.
-You only call sandbox mutation tools.
+You do not write player-facing prose.
+You do not mutate the real database.
+You only return CommitterMutationPlanOutput.
 
 ResolverOutput is authoritative:
-- Apply successful and partially successful resolved actions.
-- Do not apply failed, blocked, invalid, cancelled, or rejected actions except as failed attempts, changed attitudes, or persistent memories when appropriate.
+- Apply successful and partially successful resolved actions when they create persistent changes.
+- Delayed actions may create partial state or memory only if the resolver says so.
+- Do not apply failed, blocked, invalid, cancelled, or rejected actions as successes.
+- Failed or blocked attempts may still create persistent memories, changed attitudes, visible failed-attempt state, or task progress when the resolver says so.
 - Do not reinterpret success or failure.
 - Do not change outcomes.
 
-Mutation rules:
-- Every turn should update SimulationState.state to reflect progress.
+Core commit rules:
+- Every turn should normally update SimulationState.state or recent_history_summary to reflect the resolved turn.
 - Prefer minimal precise changes.
 - Use status updates instead of deletion for narrative state changes.
-- DataPreset is authoritative for custom attributes, stats, and entity types.
-- When creating character or faction attributes/stats, follow each preset creation_instruction and required universal fields.
-- When updating character or faction attributes/stats, follow each preset update_instruction and allowed values.
-- Do not invent custom attribute/stat keys outside DataPreset unless a resolved event clearly requires a one-off freeform field.
-- Entity type values must match DataPreset.entity_types exactly when creating or updating entities.
 - Do not delete characters because they die, leave, vanish, or become inactive.
-- If a character dies, update the character state and create/mark a body/entity if appropriate.
-- If an entity becomes an inventory item, update the entity status and update the inventory.
+- If a character dies, leaves, vanishes, or becomes inactive, update character state/location/status instead.
+- If an entity becomes an inventory item, update the entity status and update/create the inventory item.
+- If an item changes hands, update the relevant inventories.
+- If equipment is created or changes owner/status, use create_object or update_inventory as appropriate.
 - If a pending generated proposal becomes real, accept it and create/update the corresponding canonical object.
-- If a pending generated proposal is not confirmed, reject or defer it.
-- Create world entries for persistent facts, memories, rumours, discoveries, or changed knowledge that should be recalled later.
-- Create or update tasks when resolved events create, advance, pause, or complete goals.
-- If unsure, prefer no mutation and leave a note through validation later.
+- If a pending generated proposal is not confirmed this turn, defer it.
+- Reject a pending proposal only when the resolver contradicts it or makes it impossible.
+- Create world entries for persistent facts, memories, rumours, discoveries, revealed knowledge, changed knowledge, or GM-side facts that should be recalled later.
+- Create or update tasks when resolved events create, advance, pause, redirect, or complete goals.
+- Avoid over-mutating for trivial flavour.
 
-Incremental loop rules:
-- This is one mutation pass.
-- Look at the current sandbox state and mutation log.
-- Add missing changes only.
-- You may refine a previous change by applying another update to the same object.
-- Do not attempt to erase the mutation log.
-- Do not call tools if nothing else needs to change.
+Entity and knowledge separation:
+- Entity.description and Entity.status should contain only observable, physical, or mechanical state.
+- Do not put hidden meaning, deductions, private knowledge, clue interpretation, or private motives into entity status.
+- Put persistent knowledge, hidden facts, rumours, beliefs, and discoveries into world entries.
+- Use scope=[0] only for public/common knowledge.
+- Use scope=[character_id] for character-specific knowledge.
+- Use scope=[-1] only for GM-only hidden facts.
+- Use narration_permission="visible" only if the fact can be stated to the player.
+- Use narration_permission="may_hint" only if the narrator may hint indirectly.
+- Use narration_permission="invisible" for facts that must not be narrated.
 
-Use tools only.
-If no more mutations are needed, respond with no tool calls.
+DataPreset rules:
+- DataPreset is authoritative for custom attributes, stats, and entity types.
+- Entity type values must match DataPreset.entity_types exactly.
+- When creating character or faction attributes/stats, follow creation_instruction and universal requirements.
+- When updating character or faction attributes/stats, follow update_instruction and allowed values.
+- Do not invent custom attribute/stat keys outside DataPreset unless a resolved event clearly requires a one-off freeform field.
 
-Tool-use contract:
-- Use sandbox mutation tools only; do not return structured text in this pass.
-- Every tool reason should cite the resolver event or pending proposal that requires the mutation.
-- Do not create broad rewrites when a precise update is enough.
-"""
+Planning rules:
+- This is mutation round {{ data.mutation_round }} of {{ data.max_mutation_rounds }}.
+- Look at current_sandbox_state and mutation_log.
+- Plan only missing changes.
+- Do not duplicate mutations already present in mutation_log.
+- If previous_validation lists missing changes, address them directly.
+- If previous_validation lists questionable changes, avoid compounding them.
+- If no persistent changes are needed, set no_changes_needed=true and mutations=[].
+- Do not set no_changes_needed=true if mutation_log is empty and the resolver has a scene_result_summary.
+- If uncertain, make the conservative state-summary update and defer uncertain proposals.
+
+Available operations and required args:
+
+1. update_simulation_state
+args:
+{
+  "patch": { "... SimulationState fields ...": "..." }
+}
+
+2. update_character
+args:
+{
+  "character_id": int,
+  "patch": { "... Character fields ...": "..." }
+}
+
+3. update_location
+args:
+{
+  "location_id": int,
+  "patch": { "... Location fields ...": "..." }
+}
+
+4. update_entity
+args:
+{
+  "location_id": int,
+  "entity_id": int,
+  "patch": { "... Entity fields ...": "..." }
+}
+
+5. create_location
+args:
+{
+  "data": { "... complete Location-like payload ...": "..." }
+}
+
+6. create_world_entry
+args:
+{
+  "data": {
+    "temp_id": optional string,
+    "scope": list[int],
+    "content": string,
+    "visibility": "known" | "suspected" | "perceived" | "inferred",
+    "confidence": float,
+    "created_at": int | null,
+    "narration_permission": "visible" | "may_hint" | "invisible",
+    "recall_type": "always" | "keyword" | "semantic" | "chained",
+    "keywords": list | null,
+    "chained_ids": list[int] | null,
+    "semantic_instruction": string | null,
+    "embedding": null
+  }
+}
+
+7. create_task
+args:
+{
+  "data": { "... complete Task-like payload ...": "..." }
+}
+
+8. update_task
+args:
+{
+  "task_id": int,
+  "patch": { "... Task fields ...": "..." }
+}
+
+9. update_inventory
+args:
+{
+  "owner_id": int,
+  "patch": { "items": [...], "equipments": [...] }
+}
+
+10. create_object
+args:
+{
+  "object_type": "character" | "item" | "equipment" | "entity" | "faction" | "faction_relationship",
+  "data": { "... object payload ...": "..." }
+}
+
+For item/equipment, include owner_id, character_id, or proposed_owner_id.
+For entity, include location_id or proposed_location_id.
+
+11. remove_object
+args:
+{
+  "object_type": string,
+  "object_id": int | string
+}
+
+12. accept_generated_proposal
+args:
+{
+  "temp_id": string
+}
+
+13. reject_generated_proposal
+args:
+{
+  "temp_id": string
+}
+
+14. defer_generated_proposal
+args:
+{
+  "temp_id": string
+}
+
+15. noop
+args:
+{}
+
+Return only CommitterMutationPlanOutput.
+        """
             ),
             PromptMessage(
                 role=MessageRole.USER,
                 content="""
-# Committer Mutation Pass
+# Committer Mutation Planning Pass
 
 Mutation round: {{ data.mutation_round }} / {{ data.max_mutation_rounds }}
 
 ## User input
+
 {{ data.user_input or "No user input." }}
 
-## Director output
-{{ data.director_output }}
+## Resolved actions
 
-## Briefing output
-{{ data.briefing_output }}
+{% for action in data.resolver_output.resolved_actions %}
+### ResolvedAction {{ action.index }}
 
-## Character actions
-{{ data.character_actions }}
+Actor: {{ action.actor_name }} ({{ action.actor_id }})
+Status: {{ action.final_status }}
+Order: {{ action.resolved_order }}
 
-## Resolver output
-{{ data.resolver_output }}
+Intent:
+{{ action.original_intent }}
+
+Visible result:
+{{ action.visible_result }}
+
+Failure reason:
+{{ action.failure_reason or "None." }}
+
+Blocking actor ID:
+{{ action.blocking_actor_id }}
+
+Blocking entity ID:
+{{ action.blocking_entity_id }}
+
+State-change hints:
+{% for hint in action.state_change_hints %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+
+World-entry hints:
+{% for hint in action.world_entry_hints %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+{% else %}
+No resolved actions.
+{% endfor %}
+
+## Resolver summary
+
+Accepted: {{ data.resolver_output.accepted }}
+Rejection reason: {{ data.resolver_output.rejection_reason or "None." }}
+
+Scene result summary:
+{{ data.resolver_output.scene_result_summary or "None." }}
+
+Next round note:
+{{ data.resolver_output.next_round_note or "None." }}
+
+State update suggestions:
+{% for hint in data.resolver_output.state_update_suggestions %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+
+Pending world-entry suggestions:
+{% for hint in data.resolver_output.pending_world_entry_suggestions %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+
+## Character attempted actions
+
+{% for action in data.character_actions %}
+- Character {{ action.character_id }}: {{ action.character_name }}
+  Action type: {{ action.action_type }}
+  Intent: {{ action.intent }}
+  Targets characters: {{ action.target_character_ids }}
+  Targets entities: {{ action.target_entity_ids }}
+  Target location: {{ action.target_location_id }}
+  Target items: {{ action.target_item_ids }}
+  Method: {{ action.method }}
+  Visible behaviour: {{ action.visible_behavior }}
+  Expected outcome: {{ action.expected_outcome }}
+  Constraints: {{ action.constraints_for_resolver }}
+{% else %}
+None.
+{% endfor %}
 
 ## Pending generated proposals
-{{ data.pending_generated_proposals }}
+
+{% for proposal in data.pending_generated_proposals %}
+- ID: {{ proposal.id }}
+  Temp ID: {{ proposal.temp_id }}
+  Type: {{ proposal.proposal_type }}
+  Status: {{ proposal.status }}
+  Reason: {{ proposal.reason }}
+  Result: {{ proposal.result }}
+{% else %}
+None.
+{% endfor %}
 
 ## Data preset constraints
-Entity types:
-{% for type_name, description in data.data_preset.entity_types.items() %}
-- {{ type_name }}: {{ description }}
+
+{{ data.data_preset_text }}
+
+## Original compact state
+
+State:
+{{ data.original_state.state }}
+
+Characters:
+{% for c in data.original_state.characters %}
+- {{ c.id }}: {{ c.name }}
+  Location: {{ c.location }}
+  Public state: {{ c.public_state }}
+  Private state: {{ c.private_state }}
 {% else %}
 None.
 {% endfor %}
 
-Character attributes:
-{% for attr in data.data_preset.character_attributes %}
-- {{ attr.name }}
-  Universal: {{ attr.universal }}
-  Allowed values: {{ attr.values or "open" }}
-  Creation instruction: {{ attr.creation_instruction }}
-  Update instruction: {{ attr.update_instruction }}
+Locations:
+{% for loc in data.original_state.locations %}
+- {{ loc.id }}: {{ loc.primary_location }} / {{ loc.detailed_location }} / {{ loc.scene }}
+  Description: {{ loc.description }}
+  Entities:
+  {% for e in loc.entities %}
+  - {{ e.id }}: {{ e.name }} | type={{ e.type }} | status={{ e.status }}
+  {% else %}
+  - None.
+  {% endfor %}
 {% else %}
 None.
 {% endfor %}
 
-Character stats:
-{% for stat in data.data_preset.character_stats %}
-- {{ stat.name }}
-  Universal: {{ stat.universal }}
-  Creation instruction: {{ stat.creation_instruction }}
-  Update instruction: {{ stat.update_instruction }}
+Tasks:
+{% for t in data.original_state.tasks %}
+- {{ t.id }} | characters={{ t.character_ids }} | private={{ t.private }} | status={{ t.status }} | priority={{ t.priority }}
+  Goal: {{ t.goal }}
+  Progress: {{ t.progress }}
 {% else %}
 None.
 {% endfor %}
 
-Faction attributes:
-{% for attr in data.data_preset.faction_attributes %}
-- {{ attr.name }}
-  Universal: {{ attr.universal }}
-  Allowed values: {{ attr.values or "open" }}
-  Creation instruction: {{ attr.creation_instruction }}
-  Update instruction: {{ attr.update_instruction }}
+## Current compact sandbox state
+
+State:
+{{ data.current_sandbox_state.state }}
+
+Characters:
+{% for c in data.current_sandbox_state.characters %}
+- {{ c.id }}: {{ c.name }}
+  Location: {{ c.location }}
+  Public state: {{ c.public_state }}
+  Private state: {{ c.private_state }}
 {% else %}
 None.
 {% endfor %}
 
-Faction stats:
-{% for stat in data.data_preset.faction_stats %}
-- {{ stat.name }}
-  Universal: {{ stat.universal }}
-  Creation instruction: {{ stat.creation_instruction }}
-  Update instruction: {{ stat.update_instruction }}
+Locations:
+{% for loc in data.current_sandbox_state.locations %}
+- {{ loc.id }}: {{ loc.primary_location }} / {{ loc.detailed_location }} / {{ loc.scene }}
+  Description: {{ loc.description }}
+  Entities:
+  {% for e in loc.entities %}
+  - {{ e.id }}: {{ e.name }} | type={{ e.type }} | status={{ e.status }}
+  {% else %}
+  - None.
+  {% endfor %}
 {% else %}
 None.
 {% endfor %}
 
-## Current sandbox state
-{{ data.current_sandbox_state }}
+Inventory:
+{% for owner_id, inv in data.current_sandbox_state.inventory.items() %}
+- Owner {{ owner_id }}
+  Items:
+  {% for item in inv.items %}
+  - {{ item.id }}: {{ item.name }} | qty={{ item.quantity }} | quality={{ item.quality }}
+  {% else %}
+  - None.
+  {% endfor %}
+  Equipment:
+  {% for eq in inv.equipments %}
+  - {{ eq.id }}: {{ eq.name }} | status={{ eq.status }} | quality={{ eq.quality }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+None.
+{% endfor %}
+
+Tasks:
+{% for t in data.current_sandbox_state.tasks %}
+- {{ t.id }} | characters={{ t.character_ids }} | private={{ t.private }} | status={{ t.status }} | priority={{ t.priority }}
+  Goal: {{ t.goal }}
+  Progress: {{ t.progress }}
+{% else %}
+None.
+{% endfor %}
+
+Recent world entries:
+{% for e in data.current_sandbox_state.world_entries[-30:] %}
+- {{ e.id }} | scope={{ e.scope }} | visibility={{ e.visibility }} | narration={{ e.narration_permission }}
+  {{ e.content }}
+{% else %}
+None.
+{% endfor %}
 
 ## Mutation log so far
-{{ data.mutation_log }}
+
+{% for mutation in data.mutation_log %}
+- {{ mutation.operation }} {{ mutation.target }}
+  Payload: {{ mutation.payload }}
+  Reason: {{ mutation.reason }}
+  Source: {{ mutation.source_event }}
+{% else %}
+None.
+{% endfor %}
 
 ## Previous validation
-{{ data.previous_validation or "No previous validation." }}
 
-## Previous tool results
-{{ data.previous_tool_results or "No previous tool results." }}
+{% if data.previous_validation %}
+Complete: {{ data.previous_validation.complete }}
+Needs more changes: {{ data.previous_validation.needs_more_changes }}
 
-# Task
+Missing changes:
+{% for item in data.previous_validation.missing_changes %}
+- {{ item }}
+{% else %}
+- None.
+{% endfor %}
 
-Apply any missing sandbox state changes using tools.
+Questionable changes:
+{% for item in data.previous_validation.questionable_changes %}
+- {{ item }}
+{% else %}
+- None.
+{% endfor %}
 
-Do not narrate.
-Do not explain unless needed inside tool reason fields.
-If no changes are needed, make no tool calls.
+Next instruction:
+{{ data.previous_validation.next_instruction or "None." }}
+{% else %}
+No previous validation.
+{% endif %}
+
+## Previous execution results
+
+{% for result in data.previous_execution_results %}
+- Success: {{ result.success }}
+  Operation: {{ result.operation }}
+  Error: {{ result.error or "None." }}
+  Message: {{ result.message or "None." }}
+{% else %}
+None.
+{% endfor %}
+
+## Available operations
+
+{{ data.available_operations }}
+
+# Required output
+
+Return CommitterMutationPlanOutput only.
+
+Important:
+- Plan concrete mutations using the operation names and args schemas from the system prompt.
+- Do not output prose outside the schema.
+- Do not duplicate existing mutation_log entries.
+- Update SimulationState for the resolved turn unless it is already updated.
+- Create world entries only for persistent knowledge, facts, memories, rumours, or hidden truths that should be recalled later.
+- Do not create a world entry for a negative instruction such as "do not mark X as known".
+- Defer pending generated proposals unless the resolver clearly accepted or rejected them.
+- If previous validation says more changes are needed, address those missing changes now.
 """
             ),
         ],
@@ -2594,41 +3664,56 @@ You are the sandbox Committer Validator.
 
 Your job is to inspect:
 - what happened this turn;
+- the resolver output;
+- the original state;
 - the current sandbox state;
-- the mutation log.
+- the mutation log;
+- the latest mutation plan and execution results.
 
-Decide whether the state changes are complete and consistent.
+Decide whether the sandbox is complete and consistent.
 
 You do not call tools.
 You do not mutate state.
 You do not write narration.
 You only return CommitterValidationOutput.
 
-Validation rules:
-- ResolverOutput is authoritative.
+ResolverOutput is authoritative:
 - Successful and partially successful actions should be reflected in sandbox state where persistent.
-- Failed/blocked/invalid actions should not be over-applied.
-- Every turn should update SimulationState.state.
-- DataPreset is authoritative for custom attributes, stats, and entity types.
+- Failed, blocked, invalid, cancelled actions should not be over-applied.
+- Failed attempts may still produce persistent memories, changed attitudes, or visible failed-attempt state if the resolver indicates it.
+- Do not reinterpret resolver outcomes.
+
+Semantic validation rules:
+- Every turn should normally update SimulationState.state or recent_history_summary.
+- Character public/private states should reflect meaningful social, physical, or investigative changes.
+- Character knowledge changes should be represented as scoped world entries when they should be recalled later.
+- Public facts should use scope=[0].
+- Character-specific knowledge should use scope=[character_id].
+- GM-only hidden truths should use scope=[-1].
+- Entity/item/equipment/location/task changes should be present when resolved events require them.
+- Entity.description and Entity.status must not contain hidden deductions, private motives, or clue interpretation.
+- Pending generated proposals should be accepted, rejected, or deferred when relevant.
+- Tasks should advance, pause, redirect, complete, or be created when the resolved events require it.
+- Avoid over-mutating trivial flavour.
+
+DataPreset validation:
+- Entity type values should match DataPreset.entity_types exactly.
 - Created or updated character/faction attributes and stats should obey DataPreset creation/update instructions.
 - Universal preset attributes/stats should be present when new character/faction objects are created.
-- Entity type values should match DataPreset.entity_types exactly.
-- Pending generated proposals should be accepted, rejected, or deferred if relevant.
-- Persistent discoveries, memories, rumours, changed knowledge, or important events should have world-entry suggestions or actual mutations.
-- Character public/private states should reflect meaningful social, physical, or investigative changes.
-- Entity/item/location/task changes should be present when resolved events require them.
-- Avoid over-mutating for trivial flavour.
+- Do not require custom stats/attributes when none are relevant.
 
-If more changes are needed, set needs_more_changes=true and describe them.
-If complete, set complete=true and needs_more_changes=false.
+Mutation execution validation:
+- If latest_execution_results contains failed mutations, list them as questionable_changes.
+- If a planned mutation used invalid IDs, list it as questionable_changes.
+- If a mutation duplicates an existing mutation without reason, list it as questionable_changes.
 
-Output schema:
-- complete: true only when no required state changes are missing.
-- needs_more_changes: true when another mutation pass should run.
-- missing_changes: required mutations that are absent.
-- questionable_changes: mutations that may be wrong, excessive, or inconsistent.
-- consistency_notes: observations about consistency and state quality.
-- next_instruction: concise instruction for the next mutation pass, or null.
+Completeness rules:
+- If required changes are missing, set complete=false and needs_more_changes=true unless this is obviously unrecoverable.
+- If complete, set complete=true and needs_more_changes=false.
+- next_instruction should tell the next mutation planning pass exactly what to fix.
+- If no further changes are needed, next_instruction must be null.
+
+Return only CommitterValidationOutput.
 """
             ),
             PromptMessage(
@@ -2636,125 +3721,200 @@ Output schema:
                 content="""
 # Committer Validation Pass
 
+Mutation round: {{ data.mutation_round }} / {{ data.max_mutation_rounds }}
+
 ## User input
+
 {{ data.user_input or "No user input." }}
 
-## Character actions
-{{ data.character_actions }}
+## Resolved actions
 
-## Resolver output
-{{ data.resolver_output }}
+{% for action in data.resolver_output.resolved_actions %}
+### ResolvedAction {{ action.index }}
 
-## Pending generated proposals
-{{ data.pending_generated_proposals }}
+Actor: {{ action.actor_name }} ({{ action.actor_id }})
+Status: {{ action.final_status }}
+
+Visible result:
+{{ action.visible_result }}
+
+State-change hints:
+{% for hint in action.state_change_hints %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+
+World-entry hints:
+{% for hint in action.world_entry_hints %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+{% else %}
+No resolved actions.
+{% endfor %}
+
+## Resolver summary
+
+Scene result summary:
+{{ data.resolver_output.scene_result_summary or "None." }}
+
+Next round note:
+{{ data.resolver_output.next_round_note or "None." }}
+
+State update suggestions:
+{% for hint in data.resolver_output.state_update_suggestions %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
+
+Pending world-entry suggestions:
+{% for hint in data.resolver_output.pending_world_entry_suggestions %}
+- {{ hint }}
+{% else %}
+- None.
+{% endfor %}
 
 ## Data preset constraints
-Entity types:
-{% for type_name, description in data.data_preset.entity_types.items() %}
-- {{ type_name }}: {{ description }}
-{% else %}
-None.
-{% endfor %}
-Character attributes:
-{% for attr in data.data_preset.character_attributes %}
-- {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }} | update={{ attr.update_instruction }}
-{% else %}
-None.
-{% endfor %}
-Character stats:
-{% for stat in data.data_preset.character_stats %}
-- {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }} | update={{ stat.update_instruction }}
-{% else %}
-None.
-{% endfor %}
-Faction attributes:
-{% for attr in data.data_preset.faction_attributes %}
-- {{ attr.name }} | universal={{ attr.universal }} | values={{ attr.values or "open" }} | creation={{ attr.creation_instruction }} | update={{ attr.update_instruction }}
-{% else %}
-None.
-{% endfor %}
-Faction stats:
-{% for stat in data.data_preset.faction_stats %}
-- {{ stat.name }} | universal={{ stat.universal }} | creation={{ stat.creation_instruction }} | update={{ stat.update_instruction }}
+
+{{ data.data_preset_text }}
+
+## Original compact state
+
+State:
+{{ data.original_state.state }}
+
+## Current compact sandbox state
+
+State:
+{{ data.current_sandbox_state.state }}
+
+Characters:
+{% for c in data.current_sandbox_state.characters %}
+- {{ c.id }}: {{ c.name }}
+  Location: {{ c.location }}
+  Public state: {{ c.public_state }}
+  Private state: {{ c.private_state }}
 {% else %}
 None.
 {% endfor %}
 
-## Current sandbox state
-{{ data.current_sandbox_state }}
+Locations:
+{% for loc in data.current_sandbox_state.locations %}
+- {{ loc.id }}: {{ loc.primary_location }} / {{ loc.detailed_location }} / {{ loc.scene }}
+  Description: {{ loc.description }}
+  Entities:
+  {% for e in loc.entities %}
+  - {{ e.id }}: {{ e.name }} | type={{ e.type }} | status={{ e.status }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+None.
+{% endfor %}
+
+Inventory:
+{% for owner_id, inv in data.current_sandbox_state.inventory.items() %}
+- Owner {{ owner_id }}
+  Items:
+  {% for item in inv.items %}
+  - {{ item.id }}: {{ item.name }} | qty={{ item.quantity }} | quality={{ item.quality }}
+  {% else %}
+  - None.
+  {% endfor %}
+  Equipment:
+  {% for eq in inv.equipments %}
+  - {{ eq.id }}: {{ eq.name }} | status={{ eq.status }} | quality={{ eq.quality }}
+  {% else %}
+  - None.
+  {% endfor %}
+{% else %}
+None.
+{% endfor %}
+
+Tasks:
+{% for t in data.current_sandbox_state.tasks %}
+- {{ t.id }} | characters={{ t.character_ids }} | private={{ t.private }} | status={{ t.status }} | priority={{ t.priority }}
+  Goal: {{ t.goal }}
+  Progress: {{ t.progress }}
+{% else %}
+None.
+{% endfor %}
+
+Recent world entries:
+{% for e in data.current_sandbox_state.world_entries[-30:] %}
+- {{ e.id }} | scope={{ e.scope }} | visibility={{ e.visibility }} | narration={{ e.narration_permission }}
+  {{ e.content }}
+{% else %}
+None.
+{% endfor %}
 
 ## Mutation log
-{{ data.mutation_log }}
 
-## Tool results this pass
-{{ data.tool_results or "No tool calls were made this pass." }}
+{% for mutation in data.mutation_log %}
+- {{ mutation.operation }} {{ mutation.target }}
+  Payload: {{ mutation.payload }}
+  Reason: {{ mutation.reason }}
+  Source: {{ mutation.source_event }}
+{% else %}
+None.
+{% endfor %}
+
+## Latest mutation plan
+
+{{ data.latest_plan }}
+
+## Latest execution results
+
+{% for result in data.latest_execution_results %}
+- Success: {{ result.success }}
+  Operation: {{ result.operation }}
+  Args: {{ result.args }}
+  Error: {{ result.error or "None." }}
+  Message: {{ result.message or "None." }}
+{% else %}
+None.
+{% endfor %}
+
+## Previous validation
+
+{% if data.previous_validation %}
+Complete: {{ data.previous_validation.complete }}
+Needs more changes: {{ data.previous_validation.needs_more_changes }}
+
+Missing changes:
+{% for item in data.previous_validation.missing_changes %}
+- {{ item }}
+{% else %}
+- None.
+{% endfor %}
+
+Questionable changes:
+{% for item in data.previous_validation.questionable_changes %}
+- {{ item }}
+{% else %}
+- None.
+{% endfor %}
+
+Next instruction:
+{{ data.previous_validation.next_instruction or "None." }}
+{% else %}
+No previous validation.
+{% endif %}
 
 # Required output
 
-Return CommitterValidationOutput.
+Return CommitterValidationOutput only.
+
+Important:
+- Check semantic consistency, not only schema shape.
+- If more changes are needed, make missing_changes concrete and actionable.
+- If the sandbox is complete enough to persist, set complete=true and needs_more_changes=false.
 """
             ),
-        ],
-        final_prompt=[
-            PromptMessage(
-                role=MessageRole.SYSTEM,
-                content="""
-You are the sandbox Committer Finalizer.
-
-Your job is to summarize the final sandbox state and mutation log after validation.
-
-You do not call tools.
-You do not write narration for the player.
-You only return CommitterFinalOutput.
-DataPreset remains authoritative for the final state: custom attributes, stats, and entity types in the mutation log and final state should obey the supplied preset.
-
-Output schema:
-- ready_to_commit: true only if the validated sandbox state is coherent enough to persist.
-- round_summary: compact internal summary of persistent changes this turn.
-- mutation_log: complete list of sandbox mutations that led to the final state.
-- warnings: consistency or uncertainty warnings, or [].
-- final_state: the final sandbox state object.
-- database_patch_preview: incremental mutation records needed by the DB layer, not the whole database.
-"""
-            ),
-            PromptMessage(
-                role=MessageRole.USER,
-                content="""
-# Final Committer Output
-
-## User input
-{{ data.user_input or "No user input." }}
-
-## Resolver output
-{{ data.resolver_output }}
-
-## Pending generated proposals
-{{ data.pending_generated_proposals }}
-
-## Data preset constraints
-{{ data.data_preset }}
-
-## Original state
-{{ data.original_state }}
-
-## Final sandbox state
-{{ data.final_sandbox_state }}
-
-## Mutation log
-{{ data.mutation_log }}
-
-## Last tool results
-{{ data.tool_results or "No tool calls were made in the last mutation pass." }}
-
-## Last validation
-{{ data.last_validation }}
-
-# Required output
-
-Return CommitterFinalOutput only.
-"""
-            ),
-        ],
+        ]
     )
 
 
@@ -2774,26 +3934,55 @@ You are the narrator for an interactive role-play simulation.
 
 You write natural language narration for the player.
 
-You receive resolved events from the resolver. These are authoritative.
+You receive resolved visible events from the Resolver. These are authoritative.
 Do not change outcomes.
 Do not add new actions.
 Do not make unresolved actions succeed.
-Do not reveal hidden facts unless supplied world entries permit narration.
+Do not reveal hidden facts unless supplied narrator-visible world entries permit narration.
 
-You are not the resolver.
-You are not the committer.
+You are not the Resolver.
+You are not the Committer.
 You do not output JSON.
 You do not describe database changes.
-You do not mention internal agent names, resolver records, or system stages.
+You do not mention internal agent names, resolver records, system stages, retries, commits, prompts, or tool calls.
 
-Narration rules:
-- Describe what the player character can perceive.
-- Include successful and failed actions as visible events.
+Perspective rules:
+- Narrate from the player character's immediate perspective.
+- Use "you" for the player character when appropriate.
+- Describe only what the player can perceive, infer from visible behaviour, or already knows.
+- Do not narrate another character's private thoughts, private motives, or hidden knowledge.
+- You may imply uncertainty through visible behaviour, tone, hesitation, posture, or atmosphere.
+- Do not state that the player notices something unless it is visible and relevant.
+
+Resolution rules:
+- Resolved visible events are authoritative.
+- Successful resolved actions should appear as completed visible events.
+- Failed, blocked, invalid, cancelled, or delayed actions should appear only as visible attempts if their visible_result says they were visible.
+- Do not narrate attempted behaviour from character action proposals unless it is confirmed by resolved visible events.
+- Do not expand "partial success" into full success.
+- Do not decide how the player reacts, feels, believes, accepts, refuses, or responds.
+- Do not resolve unanswered questions for the player.
+
+Privacy and knowledge rules:
+- Narrator-visible world entries may be used only according to their narration_permission.
+- If narration_permission is "visible", the fact may be stated if relevant.
+- If narration_permission is "may_hint", hint indirectly through atmosphere, uncertainty, or visible traces, but do not state the hidden fact plainly.
+- If narration_permission is "invisible", do not use it.
+- Do not reveal private_result_for_actor, private motives, GM-only facts, hidden entries, or committer hints.
+
+Style rules:
+- Write concise but atmospheric prose.
+- Prefer concrete visible details over explanation.
 - Preserve uncertainty when facts are not confirmed.
-- If a character failed or was blocked, narrate the attempt and the visible reason.
-- Do not over-explain private motives.
-- Use concise but atmospheric prose.
+- Keep the scene moving.
 - End with a natural opening for the player to respond.
+- Do not over-describe routine actions.
+- Do not add new props, gestures, dialogue, object states, or sensory details that imply new facts.
+
+Output rules:
+- Output natural language only.
+- Do not use JSON.
+- Do not include headings unless the simulation style explicitly calls for them.
 """
             ),
             PromptMessage(
@@ -2802,59 +3991,115 @@ Narration rules:
 # Resolved Turn Narration
 
 ## Simulation
+
+Name:
 {{ data.simulation.name }}
+
+Description:
 {{ data.simulation.description }}
 
+## Player character
+
+ID: {{ data.player_character.id if data.player_character else "Unknown" }}
+Name: {{ data.player_character.name if data.player_character else "Unknown" }}
+
+Public state:
+{{ data.player_character.public_state if data.player_character else "Unknown." }}
+
 ## Current state
+
+Turn: {{ data.state.turn_number }}
 Time: {{ data.state.time_label }}
+
 State summary:
 {{ data.state.state }}
 
 ## Location
+
 {{ data.current_location.primary_location }} / {{ data.current_location.detailed_location }} / {{ data.current_location.scene }}
 
 {{ data.current_location.description }}
 
-## Last narration
-{{ data.last_narration or "No previous narration." }}
-
 ## User input
+
 {{ data.user_input or "No explicit user input." }}
 
+## Last narration
+
+{{ data.last_narration or "No previous narration." }}
+
 ## Recent history
+
 {{ data.recent_history_summary or "No recent history summary." }}
 
 ## Long-term history
+
 {{ data.long_term_history_summary or "No long-term history summary." }}
 
-## Present characters
-{% for c in data.characters %}
-- {{ c.name }}: {{ c.public_state }}
-{% endfor %}
+## Present characters visible to the player
 
-## Character attempted actions
-{% for a in data.character_actions %}
-- {{ a.character_name }} attempted: {{ a.intent }}
-  Visible behaviour: {{ a.visible_behavior }}
+{% for c in data.characters %}
+- Character {{ c.id }}: {{ c.name }}
+  User controlled: {{ c.user_controlled }}
+  Public state: {{ c.public_state }}
+  Location: {{ c.location }}
 {% else %}
 None.
 {% endfor %}
 
-## Resolver output
-{{ data.resolver_output }}
+## Resolved visible events
+
+These are authoritative.
+Narrate these outcomes only.
+Do not replace them with attempted action text.
+
+{% for event in data.narrator_resolution_view.resolved_visible_events %}
+- Actor {{ event.actor_id }}: {{ event.actor_name }}
+  Final status: {{ event.final_status }}
+  Resolved order: {{ event.resolved_order }}
+  Visible result: {{ event.visible_result }}
+  Failure reason, if visibly relevant: {{ event.failure_reason or "None." }}
+  Blocking actor ID: {{ event.blocking_actor_id }}
+  Blocking entity ID: {{ event.blocking_entity_id }}
+{% else %}
+No resolved visible events.
+{% endfor %}
+
+## Safe narrator context
+
+These are safe visible context notes from the resolver.
+Use only if helpful.
+Do not treat them as extra actions.
+
+{% for context in data.narrator_resolution_view.safe_narrator_context %}
+- {{ context }}
+{% else %}
+None.
+{% endfor %}
+
+## Scene result summary
+
+{{ data.narrator_resolution_view.scene_result_summary or "No scene result summary." }}
 
 ## Narrator-visible world entries
-Use these only according to their narration permission.
+
+Use these only according to narration permission.
+
 {% for e in data.world_entries_for_narrator %}
-- {{ e.content }}
+- Entry {{ e.id }}
+  Content: {{ e.content }}
   Permission: {{ e.narration_permission }}
   Visibility: {{ e.visibility }}
+  Confidence: {{ e.confidence }}
 {% else %}
 None.
 {% endfor %}
 
 ## Pending generated proposals
-These are not canonical unless the resolver output accepted them.
+
+These are not canonical unless the resolved visible events explicitly accepted or revealed them.
+Do not narrate them as real otherwise.
+
 {% for p in data.pending_generated_proposals %}
 - {{ p }}
 {% else %}
@@ -2865,7 +4110,14 @@ None.
 
 Write the narration for this resolved turn.
 
-Output natural language only.
+Important:
+- Output natural language only.
+- Narrate from the player character's perspective.
+- Use resolved visible events as the source of truth.
+- Do not narrate private motives, private resolver results, database changes, or internal notes.
+- Do not add new actions, new dialogue, new object states, or new discoveries.
+- Use MAY_HINT entries only as indirect atmospheric or behavioural hints; do not state their hidden fact directly.
+- End with a natural opening for the player to respond.
 """
             ),
         ],
@@ -3531,10 +4783,9 @@ def mock_locations() -> list[Location]:
             primary_location="Blackwater Ridge",
             detailed_location="Blackwater Observatory",
             scene="Director's Office",
-            description="The private office of the missing Director Harlan. It is orderly at first glance, but the room "
-                        "has the uncomfortable feeling of a place recently searched and then carefully restored. Tall "
-                        "windows face the mountains, while shelves of astronomical records, correspondence and field "
-                        "notes line the walls.",
+            description="The private office of the missing Director Harlan. Tall windows face the mountains, while "
+                        "shelves of astronomical records, correspondence and field notes line the walls. The room is "
+                        "orderly, quiet, and formal.",
             attributes={},
             stats={},
             entities=[
@@ -3542,19 +4793,18 @@ def mock_locations() -> list[Location]:
                     id=1,
                     name="Director's Desk",
                     type="important-item",
-                    description="A heavy oak desk used by Director Harlan. Its drawers contain correspondence, old "
-                                "stationery, and signs that some papers were recently removed.",
-                    status="Closed. The surface is neat, but several documents appear to be missing from their usual "
-                           "places.",
+                    description="A heavy oak desk used by Director Harlan. Its drawers hold correspondence, old "
+                                "stationery, and observatory paperwork.",
+                    status="Closed. The surface is neat.",
                     interactions=["inspect", "open drawers", "search for hidden compartment"],
                 ),
                 Entity(
                     id=2,
                     name="Locked Filing Cabinet",
                     type="important-item",
-                    description="A reinforced metal cabinet containing observatory administrative records and archived "
+                    description="A reinforced metal cabinet used for observatory administrative records and archived "
                                 "research paperwork.",
-                    status="Locked. The lock is scratched, suggesting someone may have tried to open it without the key.",
+                    status="Locked. The lock plate is visibly scratched.",
                     interactions=["inspect", "attempt to unlock", "force open"],
                 ),
             ],
@@ -3576,7 +4826,7 @@ def mock_locations() -> list[Location]:
                     type="important-item",
                     description="The observatory's primary telescope, a large and finely maintained astronomical "
                                 "instrument aimed through the dome aperture.",
-                    status="Functional, but currently misaligned from its standard calibration position.",
+                    status="Functional. Its alignment controls are not currently set to their marked resting positions.",
                     interactions=["inspect", "adjust alignment", "look through"],
                 ),
                 Entity(
@@ -3584,8 +4834,8 @@ def mock_locations() -> list[Location]:
                     name="Signal Recording Apparatus",
                     type="important-item",
                     description="A collection of coils, receivers, paper rolls and improvised attachments used to record "
-                                "unusual signal patterns alongside astronomical observations.",
-                    status="Powered down. Several recent recording strips remain attached to the machine.",
+                                "signal patterns alongside astronomical observations.",
+                    status="Powered down. Several paper recording strips remain attached to the machine.",
                     interactions=["inspect", "read recording strips", "attempt to operate"],
                 ),
             ],
@@ -3607,7 +4857,7 @@ def mock_locations() -> list[Location]:
                     type="important-item",
                     description="The inn's room ledger, recording room usage, dates, names, payments and occasional "
                                 "notes made by Clara Whitlock.",
-                    status="Kept behind the bar. Room 7 contains an entry made under a false name and paid in cash.",
+                    status="Kept behind the bar. Closed unless accessed.",
                     interactions=["read", "inspect Room 7 entry", "add entry"],
                 ),
                 Entity(
@@ -3626,8 +4876,8 @@ def mock_locations() -> list[Location]:
             primary_location="Blackwater Ridge",
             detailed_location="Iron Stag Inn",
             scene="Room 7",
-            description="A modest guest room on the upper floor of the Iron Stag Inn. It appears unused at first, but "
-                        "closer inspection reveals that someone stayed briefly and avoided leaving obvious traces.",
+            description="A modest guest room on the upper floor of the Iron Stag Inn. It is tidy, sparse, and quiet, "
+                        "with a small writing desk and a window overlooking the side alley.",
             attributes={},
             stats={},
             entities=[
@@ -3636,7 +4886,7 @@ def mock_locations() -> list[Location]:
                     name="Room 7 Writing Desk",
                     type="important-item",
                     description="A small guest writing desk with a worn surface, an ink bottle and a narrow drawer.",
-                    status="Mostly clean, though faint pressure marks remain on the writing surface.",
+                    status="Mostly clean. Faint pressure marks are visible on the writing surface.",
                     interactions=["inspect", "search drawer", "take rubbing of writing marks"],
                 ),
                 Entity(
@@ -3666,7 +4916,7 @@ def mock_locations() -> list[Location]:
                     type="important-item",
                     description="A polished desk containing official correspondence, festival planning papers and sealed "
                                 "municipal documents.",
-                    status="Orderly and watched carefully by Eleanor when she is present.",
+                    status="Orderly.",
                     interactions=["inspect", "search", "read visible papers"],
                 ),
                 Entity(
@@ -3686,7 +4936,8 @@ def mock_locations() -> list[Location]:
             detailed_location="Town Hall",
             scene="Records Room",
             description="A cramped archival room filled with shelves of deeds, survey papers, council minutes and tax "
-                        "records. Dust hangs in the air, but some folders have clearly been handled recently.",
+                        "records. Dust hangs in the air, and the shelves are densely packed with folders and document "
+                        "boxes.",
             attributes={},
             stats={},
             entities=[
@@ -3696,7 +4947,7 @@ def mock_locations() -> list[Location]:
                     type="important-item",
                     description="Shelves containing land ownership records for Blackwater Ridge and its surrounding "
                                 "territory, including the old mine area.",
-                    status="Several folders relating to mine-adjacent land show signs of recent removal and replacement.",
+                    status="Dusty. Some folders are unevenly aligned on the shelves.",
                     interactions=["inspect", "search records", "compare documents"],
                 ),
                 Entity(
@@ -3704,7 +4955,7 @@ def mock_locations() -> list[Location]:
                     name="Survey Archive Cabinet",
                     type="important-item",
                     description="A cabinet containing older surveyor records and historical mine documentation.",
-                    status="Closed but not locked. Older maps are filed inside.",
+                    status="Closed but not locked.",
                     interactions=["open", "search", "retrieve map"],
                 ),
             ],
@@ -3721,10 +4972,10 @@ def mock_locations() -> list[Location]:
             entities=[
                 Entity(
                     id=13,
-                    name="Hollow Festival Monument",
+                    name="Festival Monument",
                     type="important-item",
-                    description="A commemorative stone monument with a concealed hollow space behind a loose plaque.",
-                    status="Decorated for the festival. The loose plaque is not obvious without close inspection.",
+                    description="A commemorative stone monument with a plaque marking the town's founding.",
+                    status="Decorated for the festival.",
                     interactions=["inspect", "remove plaque", "hide item", "retrieve hidden item"],
                 ),
                 Entity(
@@ -3744,7 +4995,7 @@ def mock_locations() -> list[Location]:
             detailed_location="Old Mine",
             scene="Mine Entrance",
             description="The boarded entrance to the abandoned silver mine north of town. The official closure signs are "
-                        "old and weathered, but the ground nearby shows more recent disturbance.",
+                        "old and weathered, and the ground nearby is rough and uneven.",
             attributes={},
             stats={},
             entities=[
@@ -3753,7 +5004,7 @@ def mock_locations() -> list[Location]:
                     name="Boarded Mine Entrance",
                     type="important-item",
                     description="The sealed entrance to the old silver mine where eleven workers died twenty years ago.",
-                    status="Officially closed, but several boards have been loosened and replaced more than once.",
+                    status="Officially closed. Boards cover the entrance.",
                     interactions=["inspect", "remove boards", "enter mine"],
                 ),
                 Entity(
@@ -3761,7 +5012,7 @@ def mock_locations() -> list[Location]:
                     name="Old Warning Sign",
                     type="important-item",
                     description="A weathered municipal warning sign declaring the mine unsafe and closed by town order.",
-                    status="Faded and partially broken. Someone has recently cleared dirt from its base.",
+                    status="Faded and partially broken.",
                     interactions=["inspect", "read", "move aside"],
                 ),
             ],
@@ -3782,7 +5033,7 @@ def mock_locations() -> list[Location]:
                     type="important-item",
                     description="A partially collapsed passage branching from the main tunnel. Loose stones and cracked "
                                 "support beams make it dangerous to disturb.",
-                    status="Blocked, but not completely sealed. Air can be felt moving faintly through the gaps.",
+                    status="Blocked, but not completely sealed.",
                     interactions=["inspect", "listen", "clear debris"],
                 ),
                 Entity(
@@ -3791,7 +5042,7 @@ def mock_locations() -> list[Location]:
                     type="important-item",
                     description="An old ore cart sitting on warped rails, half-filled with stone fragments and rotting "
                                 "wood.",
-                    status="Stationary. Its wheels are rusted but may still move with effort.",
+                    status="Stationary. Its wheels are rusted.",
                     interactions=["inspect", "search", "push"],
                 ),
             ],
@@ -3801,8 +5052,8 @@ def mock_locations() -> list[Location]:
             primary_location="Blackwater Ridge",
             detailed_location="North Forest",
             scene="Abandoned Cabin",
-            description="A small hunter's cabin hidden among the trees north of town. It has been abandoned for years, "
-                        "but recent footprints and disturbed dust suggest someone has visited it recently.",
+            description="A small hunter's cabin hidden among the trees north of town. It has been abandoned for years. "
+                        "Dust lies across the room, and the air smells of damp timber and old ash.",
             attributes={},
             stats={},
             entities=[
@@ -3810,15 +5061,15 @@ def mock_locations() -> list[Location]:
                     id=19,
                     name="Cabin Hearth",
                     type="important-item",
-                    description="A stone hearth filled with old ash and traces of a more recent small fire.",
-                    status="Cold. The ash has been disturbed recently.",
+                    description="A stone hearth filled with ash.",
+                    status="Cold.",
                     interactions=["inspect", "search ash", "light fire"],
                 ),
                 Entity(
                     id=20,
                     name="Loose Floorboard",
                     type="important-item",
-                    description="A warped floorboard near the cabin wall, loose enough to conceal a small object beneath.",
+                    description="A warped floorboard near the cabin wall.",
                     status="Slightly raised from the surrounding floor.",
                     interactions=["inspect", "lift", "hide item", "retrieve hidden item"],
                 ),
@@ -4237,19 +5488,19 @@ def mock_world_entries() -> list[WorldEntry]:
 
         WorldEntry(
             id=28,
-            scope=[0],
-            content="The Visitor's Room Ledger at the Iron Stag Inn records the Room 7 rental under a false name.",
+            scope=[3],
+            content="Clara Whitlock's Visitor's Room Ledger records the Room 7 rental under a false name.",
             visibility=WorldEntryVisibility.KNOWN,
             confidence=0.95,
             created_at=None,
-            narration_permission=NarrationPermission.VISIBLE,
+            narration_permission=NarrationPermission.MAY_HINT,
             recall_type=WorldEntryRecallType.KEYWORD,
             keywords=[
                 WorldEntryRecallKeyword(keyword="Visitor's Room Ledger", similarity=0.7),
                 WorldEntryRecallKeyword(keyword="Room 7 ledger", similarity=0.7),
                 WorldEntryRecallKeyword(keyword="false name", similarity=0.72),
             ],
-            chained_ids=None,
+            chained_ids=[18, 19],
             semantic_instruction=None,
         ),
         WorldEntry(
@@ -4320,9 +5571,9 @@ def mock_world_entries() -> list[WorldEntry]:
         WorldEntry(
             id=33,
             scope=[0],
-            content="Fresh footprints were recently found near the abandoned cabin in the North Forest.",
+            content="Locals have recently mentioned fresh footprints near the abandoned cabin in the North Forest.",
             visibility=WorldEntryVisibility.PERCEIVED,
-            confidence=0.85,
+            confidence=0.75,
             created_at=None,
             narration_permission=NarrationPermission.VISIBLE,
             recall_type=WorldEntryRecallType.KEYWORD,
@@ -4385,6 +5636,295 @@ def mock_world_entries() -> list[WorldEntry]:
             recall_type=WorldEntryRecallType.CHAINED,
             keywords=None,
             chained_ids=[36],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=38,
+            scope=[-1],
+            content="Close inspection of Director Harlan's desk can reveal signs that some papers were removed and the room was later restored to order.",
+            visibility=WorldEntryVisibility.KNOWN,
+            confidence=0.9,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Director's Desk", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="missing papers", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="searched office", similarity=0.72),
+            ],
+            chained_ids=None,
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=39,
+            scope=[-1],
+            content="Inspection of the locked filing cabinet can suggest that someone may have tried to open it without the key.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.75,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Locked Filing Cabinet", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="scratched lock", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="attempt to unlock", similarity=0.72),
+            ],
+            chained_ids=None,
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=40,
+            scope=[2],
+            content="Marcus Reed knows the main telescope is misaligned from its standard calibration position.",
+            visibility=WorldEntryVisibility.KNOWN,
+            confidence=1.0,
+            created_at=None,
+            narration_permission=NarrationPermission.MAY_HINT,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Main Telescope", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="misaligned telescope", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="calibration position", similarity=0.72),
+            ],
+            chained_ids=None,
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=41,
+            scope=[2],
+            content="Marcus Reed knows several recent recording strips on the signal recording apparatus contain irregular signal patterns.",
+            visibility=WorldEntryVisibility.KNOWN,
+            confidence=0.95,
+            created_at=None,
+            narration_permission=NarrationPermission.MAY_HINT,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Signal Recording Apparatus", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="recording strips", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="irregular signal patterns", similarity=0.72),
+            ],
+            chained_ids=[11, 12],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=42,
+            scope=[-1],
+            content="A careful search of Room 7 can reveal signs that someone stayed briefly while avoiding obvious traces.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.8,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Room 7", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="guest room", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="stayed briefly", similarity=0.72),
+            ],
+            chained_ids=[18, 19],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=43,
+            scope=[-1],
+            content="The pressure marks on the Room 7 writing desk may preserve traces of something written there.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.8,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Room 7 Writing Desk", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="pressure marks", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="writing marks", similarity=0.72),
+            ],
+            chained_ids=[42],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=44,
+            scope=[-1],
+            content="The scrape marks on the Room 7 window sill may indicate that the window was used carefully or repeatedly.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.7,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Guest Room Window", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="scrape marks", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="Room 7 window", similarity=0.72),
+            ],
+            chained_ids=[42],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=45,
+            scope=[1],
+            content="Eleanor Graves habitually watches her desk and municipal papers carefully when others are in her office.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.85,
+            created_at=None,
+            narration_permission=NarrationPermission.MAY_HINT,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Mayor's Desk", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="municipal papers", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="Eleanor office", similarity=0.72),
+            ],
+            chained_ids=None,
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=46,
+            scope=[-1],
+            content="Inspection of the property record shelves can reveal that folders concerning mine-adjacent land were recently removed and replaced.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.85,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Property Record Shelves", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="mine-adjacent land", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="recent removal", similarity=0.72),
+            ],
+            chained_ids=[8, 9],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=47,
+            scope=[-1],
+            content="Searching the survey archive cabinet can reveal older maps and mine documentation not normally consulted in public town business.",
+            visibility=WorldEntryVisibility.KNOWN,
+            confidence=0.85,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Survey Archive Cabinet", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="older maps", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="mine documentation", similarity=0.72),
+            ],
+            chained_ids=[29],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=48,
+            scope=[-1],
+            content="Close inspection of the festival monument can reveal that one plaque is loose and that there is a hollow space behind it.",
+            visibility=WorldEntryVisibility.KNOWN,
+            confidence=0.9,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Festival Monument", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="loose plaque", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="hollow monument", similarity=0.72),
+            ],
+            chained_ids=[16],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=49,
+            scope=[-1],
+            content="Inspection of the boarded mine entrance can reveal that several boards have been loosened and replaced more than once.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.85,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Boarded Mine Entrance", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="loosened boards", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="enter mine", similarity=0.72),
+            ],
+            chained_ids=[32],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=50,
+            scope=[-1],
+            content="Inspection of the old warning sign can reveal that dirt around its base was cleared recently.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.75,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Old Warning Sign", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="cleared dirt", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="mine entrance", similarity=0.72),
+            ],
+            chained_ids=[32],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=51,
+            scope=[-1],
+            content="Air can be felt moving faintly through gaps in the collapsed side passage.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.8,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Collapsed Side Passage", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="air moving", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="clear debris", similarity=0.72),
+            ],
+            chained_ids=[36],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=52,
+            scope=[-1],
+            content="Inspection of the abandoned cabin can reveal disturbed dust consistent with recent use.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.8,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Abandoned Cabin", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="disturbed dust", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="recent use", similarity=0.72),
+            ],
+            chained_ids=[33],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=53,
+            scope=[-1],
+            content="Searching the cabin hearth can reveal traces of a recent small fire beneath the older ash.",
+            visibility=WorldEntryVisibility.PERCEIVED,
+            confidence=0.85,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Cabin Hearth", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="recent fire", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="search ash", similarity=0.72),
+            ],
+            chained_ids=[52],
+            semantic_instruction=None,
+        ),
+        WorldEntry(
+            id=54,
+            scope=[-1],
+            content="Lifting the loose floorboard in the abandoned cabin can reveal whether a small object has been hidden beneath it.",
+            visibility=WorldEntryVisibility.KNOWN,
+            confidence=0.85,
+            created_at=None,
+            narration_permission=NarrationPermission.INVISIBLE,
+            recall_type=WorldEntryRecallType.KEYWORD,
+            keywords=[
+                WorldEntryRecallKeyword(keyword="Loose Floorboard", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="retrieve hidden item", similarity=0.72),
+                WorldEntryRecallKeyword(keyword="hidden beneath", similarity=0.72),
+            ],
+            chained_ids=[31],
             semantic_instruction=None,
         ),
     ]

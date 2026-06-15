@@ -56,11 +56,63 @@ class ProposedItem(BaseModel):
     commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
 
 
+class ProposedEquipment(BaseModel):
+    temp_id: str
+    name: str
+    description: str
+    status: str
+    quality: Optional[str] = None
+    proposed_owner_id: Optional[int] = None
+    proposed_location_id: Optional[int] = None
+    reason: str
+    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
+
+
+class ProposedLink(BaseModel):
+    source_temp_id: str
+    target_temp_id: str
+    relationship: str
+    reason: str
+
+
+class ProposedGenerationPackage(BaseModel):
+    temp_id: str
+    title: str
+    package_type: Literal[
+        "linked_discovery",
+        "location_with_contents",
+        "entity_with_clues",
+        "item_with_knowledge",
+        "equipment_with_knowledge",
+        "mixed",
+    ]
+    summary: str
+
+    locations: list[ProposedLocation] = Field(default_factory=list)
+    entities: list[ProposedEntity] = Field(default_factory=list)
+    items: list[ProposedItem] = Field(default_factory=list)
+    equipments: list[ProposedEquipment] = Field(default_factory=list)
+    world_entries: list[ProposedWorldEntry] = Field(default_factory=list)
+    links: list[ProposedLink] = Field(default_factory=list)
+
+    reason: str
+    commit_policy: CommitPolicy = CommitPolicy.RESOLVER_DECIDES
+
+
 class PendingGeneratedProposal(BaseModel):
     tool_name: str
     trigger: str
     result: dict[str, Any]
     intended_use: str
+
+
+class ActivationSources(BaseModel):
+    public_state: bool = False
+    private_state: bool = False
+    public_task: bool = False
+    private_task: bool = False
+    scene_opportunity: bool = False
+    user_input: bool = False
 
 
 class ActivationDecision(BaseModel):
@@ -70,16 +122,14 @@ class ActivationDecision(BaseModel):
     priority: int = Field(ge=0, le=100)
     reason: str
     private_motive_used: bool = False
+    activation_sources: ActivationSources
 
 
 class DirectorOutput(BaseModel):
     scene_focus: str
-
     activations: list[ActivationDecision]
-
     wait_for_user: bool = False
     reason_to_wait: str | None = None
-
     director_notes: str = ""
 
 
@@ -256,6 +306,64 @@ class CharacterReactionContext(BaseModel):
     ] = "respond_to_failure"
 
     constraints: list[str] = Field(default_factory=list)
+
+
+class NarratorResolvedEvent(BaseModel):
+    actor_id: int
+    actor_name: str
+    final_status: Literal[
+        "succeeded",
+        "partially_succeeded",
+        "failed",
+        "blocked",
+        "delayed",
+        "invalid",
+        "cancelled",
+    ]
+    resolved_order: int | None = None
+    visible_result: str
+    failure_reason: str | None = None
+    blocking_actor_id: int | None = None
+    blocking_entity_id: int | None = None
+
+
+class NarratorResolutionView(BaseModel):
+    resolved_visible_events: list[NarratorResolvedEvent] = Field(default_factory=list)
+    safe_narrator_context: list[str] = Field(default_factory=list)
+    scene_result_summary: str = ""
+    next_round_note: str = ""
+
+
+class CommitterPlannedMutation(BaseModel):
+    operation: Literal[
+        "update_simulation_state",
+        "update_character",
+        "update_location",
+        "update_entity",
+        "create_location",
+        "create_world_entry",
+        "create_task",
+        "update_task",
+        "update_inventory",
+        "create_object",
+        "remove_object",
+        "accept_generated_proposal",
+        "reject_generated_proposal",
+        "defer_generated_proposal",
+        "noop",
+    ]
+
+    args: dict[str, Any] = Field(default_factory=dict)
+    reason: str
+    source_event: str | None = None
+
+
+class CommitterMutationPlanOutput(BaseModel):
+    plan_summary: str
+    mutations: list[CommitterPlannedMutation] = Field(default_factory=list)
+    no_changes_needed: bool = False
+    confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class SandboxObjectRef(BaseModel):

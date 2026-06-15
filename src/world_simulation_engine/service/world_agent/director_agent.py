@@ -31,7 +31,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                         previous_resolver_notes: str | None = None,
                         config: RunnableConfig | None = None,
                         ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
-        base_data = {
+        generation_data = {
             "simulation": simulation,
             "data_preset": simulation.data_preset,
             "state": state,
@@ -49,7 +49,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
         }
         generation_messages = self._compose_messages(
             prompts=self.profile.generation_prompt,
-            data=base_data,
+            data=generation_data,
         )
         tool_results: list[dict[str, Any]] = []
         working = list(generation_messages)
@@ -58,7 +58,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             model_with_tools = self.model.bind_tools(generation_tools)
             tools_by_name = {tool.name: tool for tool in generation_tools}
 
-            for i in range(self.profile.max_tool_rounds):
+            for _ in range(self.profile.max_tool_rounds):
                 ai_msg = await model_with_tools.ainvoke(
                     working,
                     config=patch_config(
@@ -125,17 +125,26 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                         )
                     )
 
-        final_data = {
-            **base_data,
+        scheduling_data = {
+            "simulation": simulation,
+            "state": state,
+            "last_narration": last_narration,
+            "user_input": user_input,
+            "previous_resolver_notes": previous_resolver_notes,
+            "location": current_location,
+            "present_characters": present_characters,
+            "relevant_tasks": relevant_tasks,
+            "recalled_world_entries": recalled_world_entries,
             "pending_generated_proposals": tool_results,
         }
 
         final_messages = self._compose_messages(
             prompts=self.profile.planning_prompt,
-            data=final_data,
+            data=scheduling_data,
         )
 
         structured_model = self.model.with_structured_output(DirectorOutput)
+
         return (
             cast(
                 DirectorOutput,
@@ -147,5 +156,5 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                     ) if config else None,
                 )
             ),
-            [PendingGeneratedProposal.model_validate(p) for p in tool_results]
+            [PendingGeneratedProposal.model_validate(p) for p in tool_results],
         )

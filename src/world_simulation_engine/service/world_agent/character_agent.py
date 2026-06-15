@@ -25,7 +25,7 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
                               last_narration: str | None = None,
                               previous_resolver_notes: str | None = None,
                               config: RunnableConfig | None = None,
-                              ):
+                              ) -> CharacterActionOutput:
         data = {
             "character": character,
             "briefing": briefing,
@@ -50,6 +50,7 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
         )
 
         structured_model = self.model.with_structured_output(CharacterActionOutput)
+
         return cast(
             CharacterActionOutput,
             await structured_model.ainvoke(
@@ -58,26 +59,28 @@ class CharacterAgent(WorldAgent[CharacterAgentProfile]):
                     config,
                     run_name="character_acting",
                 ) if config else None,
-            ))
+            ),
+        )
 
-    async def generate_reaction(self,
-                                character: Character,
-                                reaction_context: CharacterReactionContext,
-                                current_location: Location,
-                                visible_characters: list[Character],
-                                tasks: list[Task],
-                                world_entries: list[WorldEntry],
-                                inventory: list[Item],
-                                equipments: list[Equipment],
-                                factions: list[Faction],
-                                faction_relationships: list[FactionRelationship],
-                                proposals: list[PendingGeneratedProposal],
-                                data_preset: DataPreset | None = None,
-                                user_input: str | None = None,
-                                last_narration: str | None = None,
-                                previous_resolver_notes: str | None = None,
-                                config: RunnableConfig | None = None,
-                                ) -> CharacterActionOutput:
+    async def generate_reaction(
+            self,
+            character: Character,
+            reaction_context: CharacterReactionContext,
+            current_location: Location,
+            visible_characters: list[Character],
+            tasks: list[Task],
+            world_entries: list[WorldEntry],
+            inventory: list[Item],
+            equipments: list[Equipment],
+            factions: list[Faction],
+            faction_relationships: list[FactionRelationship],
+            proposals: list[PendingGeneratedProposal],
+            data_preset: DataPreset | None = None,
+            user_input: str | None = None,
+            last_narration: str | None = None,
+            previous_resolver_notes: str | None = None,
+            config: RunnableConfig | None = None,
+    ) -> CharacterActionOutput:
         data = {
             "character": character,
             "reaction_context": reaction_context,

@@ -1,5 +1,4 @@
-from typing import Any, cast
-from pydantic import TypeAdapter
+from typing import cast
 from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.model import Location, Character, WorldEntry, Simulation, SimulationState, \
@@ -9,21 +8,24 @@ from .world_agent import WorldAgent
 
 
 class ResolverAgent(WorldAgent[ResolverAgentProfile]):
-    async def resolve_character_actions(self,
-                                        simulation: Simulation,
-                                        state: SimulationState,
-                                        current_location: Location,
-                                        characters: list[Character],
-                                        character_actions: list[CharacterActionOutput],
-                                        proposals: list[PendingGeneratedProposal],
-                                        inventory: dict[int, CharacterInventory],
-                                        world_entries: list[WorldEntry],
-                                        factions: list[Faction] | None = None,
-                                        faction_relationships: list[FactionRelationship] | None = None,
-                                        last_narration: str | None = None,
-                                        previous_resolver_notes: str | None = None,
-                                        config: RunnableConfig | None = None,
-                                        ) -> ResolverOutput:
+    async def resolve_character_actions(
+            self,
+            simulation: Simulation,
+            state: SimulationState,
+            current_location: Location,
+            characters: list[Character],
+            character_actions: list[CharacterActionOutput],
+            proposals: list[PendingGeneratedProposal],
+            inventory: dict[int, CharacterInventory],
+            world_entries: list[WorldEntry],
+            actor_knowledge_index: dict[int, list[int]],
+            action_validation_reports: list[dict],
+            factions: list[Faction] | None = None,
+            faction_relationships: list[FactionRelationship] | None = None,
+            last_narration: str | None = None,
+            previous_resolver_notes: str | None = None,
+            config: RunnableConfig | None = None,
+    ) -> ResolverOutput:
         data = {
             "simulation": simulation,
             "data_preset": simulation.data_preset,
@@ -34,6 +36,8 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             "pending_generated_proposals": proposals,
             "inventory": inventory,
             "world_entries": world_entries,
+            "actor_knowledge_index": actor_knowledge_index,
+            "action_validation_reports": action_validation_reports,
             "factions": factions or [],
             "faction_relationships": faction_relationships or [],
             "last_narration": last_narration,
@@ -46,6 +50,7 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
         )
 
         structured_model = self.model.with_structured_output(ResolverOutput)
+
         return cast(
             ResolverOutput,
             await structured_model.ainvoke(
@@ -54,25 +59,28 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
                     config,
                     run_name="resolve_character_action",
                 ) if config else None,
-            )
+            ),
         )
 
-    async def resolve_character_reactions(self,
-                                          simulation: Simulation,
-                                          state: SimulationState,
-                                          current_location: Location,
-                                          characters: list[Character],
-                                          character_reactions: list[CharacterActionOutput],
-                                          previous_resolver_output: ResolverOutput,
-                                          proposals: list[PendingGeneratedProposal],
-                                          inventory: dict[int, CharacterInventory],
-                                          world_entries: list[WorldEntry],
-                                          factions: list[Faction] | None = None,
-                                          faction_relationships: list[FactionRelationship] | None = None,
-                                          last_narration: str | None = None,
-                                          previous_resolver_notes: str | None = None,
-                                          config: RunnableConfig | None = None,
-                                          ) -> ResolverOutput:
+    async def resolve_character_reactions(
+            self,
+            simulation: Simulation,
+            state: SimulationState,
+            current_location: Location,
+            characters: list[Character],
+            character_reactions: list[CharacterActionOutput],
+            previous_resolver_output: ResolverOutput,
+            proposals: list[PendingGeneratedProposal],
+            inventory: dict[int, CharacterInventory],
+            world_entries: list[WorldEntry],
+            actor_knowledge_index: dict[int, list[int]],
+            action_validation_reports: list[dict],
+            factions: list[Faction] | None = None,
+            faction_relationships: list[FactionRelationship] | None = None,
+            last_narration: str | None = None,
+            previous_resolver_notes: str | None = None,
+            config: RunnableConfig | None = None,
+    ) -> ResolverOutput:
         data = {
             "simulation": simulation,
             "data_preset": simulation.data_preset,
@@ -84,13 +92,15 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             "pending_generated_proposals": proposals,
             "inventory": inventory,
             "world_entries": world_entries,
+            "actor_knowledge_index": actor_knowledge_index,
+            "action_validation_reports": action_validation_reports,
             "factions": factions or [],
             "faction_relationships": faction_relationships or [],
             "last_narration": last_narration,
             "previous_resolver_notes": previous_resolver_notes,
             "round_constraints": {
                 "second_pass": True,
-                "retrying_character_ids": [a.character_id for a in character_reactions],
+                "retrying_character_ids": [action.character_id for action in character_reactions],
                 "no_more_retries_after_this": True,
             },
         }

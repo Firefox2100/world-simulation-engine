@@ -2,36 +2,35 @@ from typing import cast
 from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, ResolverOutput, \
-    CharacterActionOutput, DirectorOutput, WorldEntry, PendingGeneratedProposal, NarratorAgentProfile
+    NarratorResolutionView, DirectorOutput, WorldEntry, PendingGeneratedProposal, NarratorAgentProfile
 from .world_agent import WorldAgent
 
 
 class NarratorAgent(WorldAgent[NarratorAgentProfile]):
-    async def narrate_resolved_turn(self,
-                                    simulation: Simulation,
-                                    state: SimulationState,
-                                    current_location: Location,
-                                    characters: list[Character],
-                                    resolver_output: ResolverOutput,
-                                    user_input: str | None = None,
-                                    character_actions: list[CharacterActionOutput] | None = None,
-                                    director_output: DirectorOutput | None = None,
-                                    last_narration: str | None = None,
-                                    recent_history_summary: str | None = None,
-                                    long_term_history_summary: str | None = None,
-                                    world_entries_for_narrator: list[WorldEntry] | None = None,
-                                    pending_generated_proposals: list[PendingGeneratedProposal] | None = None,
-                                    config: RunnableConfig | None = None,
-                                    ) -> str:
+    async def narrate_resolved_turn(
+            self,
+            simulation: Simulation,
+            state: SimulationState,
+            current_location: Location,
+            characters: list[Character],
+            narrator_resolution_view: NarratorResolutionView,
+            user_input: str | None = None,
+            player_character: Character | None = None,
+            last_narration: str | None = None,
+            recent_history_summary: str | None = None,
+            long_term_history_summary: str | None = None,
+            world_entries_for_narrator: list[WorldEntry] | None = None,
+            pending_generated_proposals: list[PendingGeneratedProposal] | None = None,
+            config: RunnableConfig | None = None,
+    ) -> str:
         data = {
             "simulation": simulation,
             "state": state,
             "current_location": current_location,
             "characters": characters,
-            "resolver_output": resolver_output,
+            "player_character": player_character,
+            "narrator_resolution_view": narrator_resolution_view,
             "user_input": user_input,
-            "character_actions": character_actions or [],
-            "director_output": director_output,
             "last_narration": last_narration,
             "recent_history_summary": recent_history_summary,
             "long_term_history_summary": long_term_history_summary,
@@ -48,7 +47,7 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
             messages,
             config=patch_config(
                 config,
-                run_name="narrate_resolved_turn"
+                run_name="narrate_resolved_turn",
             ) if config else None,
         )
 

@@ -1,9 +1,10 @@
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.misc.enums import FactionRelationshipEntity
 from world_simulation_engine.model import Faction, FactionRelationship
-from .tables import FactionOrm, FactionRelationshipOrm
+from .tables import CharacterOrm, FactionOrm, FactionRelationshipOrm, ItemOrm
 
 
 class FactionRepository:
@@ -79,9 +80,95 @@ class FactionRelationshipRepository:
 
     async def list(self,
                    entity_refs: list[tuple[FactionRelationshipEntity, int]] | None = None,
+                   simulation_id: int | None = None,
                    private: bool | None = None,
                    ) -> list[FactionRelationship]:
         stmt = select(FactionRelationshipOrm)
+
+        if simulation_id is not None:
+            from_faction = aliased(FactionOrm)
+            from_item = aliased(ItemOrm)
+            from_character = aliased(CharacterOrm)
+            to_faction = aliased(FactionOrm)
+            to_item = aliased(ItemOrm)
+            to_character = aliased(CharacterOrm)
+
+            stmt = (
+                stmt
+                .outerjoin(
+                    from_faction,
+                    and_(
+                        FactionRelationshipOrm.from_type == FactionRelationshipEntity.FACTION.value,
+                        FactionRelationshipOrm.from_id == from_faction.id,
+                    ),
+                )
+                .outerjoin(
+                    from_item,
+                    and_(
+                        FactionRelationshipOrm.from_type == FactionRelationshipEntity.ITEM.value,
+                        FactionRelationshipOrm.from_id == from_item.id,
+                    ),
+                )
+                .outerjoin(
+                    from_character,
+                    and_(
+                        FactionRelationshipOrm.from_type == FactionRelationshipEntity.CHARACTER.value,
+                        FactionRelationshipOrm.from_id == from_character.id,
+                    ),
+                )
+                .outerjoin(
+                    to_faction,
+                    and_(
+                        FactionRelationshipOrm.to_type == FactionRelationshipEntity.FACTION.value,
+                        FactionRelationshipOrm.to_id == to_faction.id,
+                    ),
+                )
+                .outerjoin(
+                    to_item,
+                    and_(
+                        FactionRelationshipOrm.to_type == FactionRelationshipEntity.ITEM.value,
+                        FactionRelationshipOrm.to_id == to_item.id,
+                    ),
+                )
+                .outerjoin(
+                    to_character,
+                    and_(
+                        FactionRelationshipOrm.to_type == FactionRelationshipEntity.CHARACTER.value,
+                        FactionRelationshipOrm.to_id == to_character.id,
+                    ),
+                )
+            )
+
+            stmt = stmt.where(
+                or_(
+                    and_(
+                        FactionRelationshipOrm.from_type == FactionRelationshipEntity.FACTION.value,
+                        from_faction.simulation_id == simulation_id,
+                    ),
+                    and_(
+                        FactionRelationshipOrm.from_type == FactionRelationshipEntity.ITEM.value,
+                        from_item.simulation_id == simulation_id,
+                    ),
+                    and_(
+                        FactionRelationshipOrm.from_type == FactionRelationshipEntity.CHARACTER.value,
+                        from_character.simulation_id == simulation_id,
+                    ),
+                ),
+                or_(
+                    and_(
+                        FactionRelationshipOrm.to_type == FactionRelationshipEntity.FACTION.value,
+                        to_faction.simulation_id == simulation_id,
+                    ),
+                    and_(
+                        FactionRelationshipOrm.to_type == FactionRelationshipEntity.ITEM.value,
+                        to_item.simulation_id == simulation_id,
+                    ),
+                    and_(
+                        FactionRelationshipOrm.to_type == FactionRelationshipEntity.CHARACTER.value,
+                        to_character.simulation_id == simulation_id,
+                    ),
+                ),
+            )
 
         if entity_refs:
             clauses = []

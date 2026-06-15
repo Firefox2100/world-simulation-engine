@@ -142,6 +142,10 @@ class WorldGeneratorAgentProfile(AgentProfile):
         ...,
         description="The prompts to use when asking it to generate an item."
     )
+    equipment_generation_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate an equipment."
+    )
     entity_generation_prompt: list[PromptMessage] = Field(
         ...,
         description="The prompts to use when asking it to generate an entity."
@@ -149,6 +153,10 @@ class WorldGeneratorAgentProfile(AgentProfile):
     world_entry_generation_prompt: list[PromptMessage] = Field(
         ...,
         description="The prompts to use when asking it to generate a world entry."
+    )
+    generation_package_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a generation package."
     )
 
 
@@ -193,10 +201,6 @@ class CommitterAgentProfile(AgentProfile):
     validation_prompt: list[PromptMessage] = Field(
         ...,
         description="The prompts to use when asking it to validate the mutations."
-    )
-    final_prompt: list[PromptMessage] = Field(
-        ...,
-        description="The prompts to use when asking it to finalise the output."
     )
 
 
