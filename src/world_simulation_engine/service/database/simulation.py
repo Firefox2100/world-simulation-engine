@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.model import Simulation, SimulationState
@@ -124,3 +124,17 @@ class SimulationStateRepository:
             await session.commit()
 
             return self._to_model(new_state)
+
+    async def update(self, state_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(SimulationStateOrm).where(SimulationStateOrm.id == state_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, state_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(SimulationStateOrm).where(SimulationStateOrm.id == state_id)
+            )
+            await session.commit()

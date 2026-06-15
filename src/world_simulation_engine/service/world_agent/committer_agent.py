@@ -786,6 +786,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         ]
 
         return CommitterFinalOutput(
+            simulation_id=self._sandbox["simulation"].id,
             ready_to_commit=bool(mutation_log) and validation.complete,
             round_summary=round_summary,
             mutation_log=mutation_log,
@@ -1192,13 +1193,10 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
     async def commit_changes(
         self,
         user_input: str | None,
-        director_output: Any | None,
-        briefing_output: Any | None,
         character_actions: list[Any],
         resolver_output: Any,
         pending_generated_proposals: list[Any] | None = None,
         max_mutation_rounds: int | None = None,
-        config: RunnableConfig | None = None,
     ) -> CommitterFinalOutput:
         max_rounds = max_mutation_rounds or getattr(
             self.profile,

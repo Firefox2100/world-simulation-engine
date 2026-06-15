@@ -414,6 +414,7 @@ class CommitterValidationOutput(BaseModel):
 
 
 class CommitterFinalOutput(BaseModel):
+    simulation_id: int
     ready_to_commit: bool
     round_summary: str
     mutation_log: list[SandboxMutationRecord]

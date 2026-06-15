@@ -1,4 +1,4 @@
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update, delete
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -61,6 +61,20 @@ class FactionRepository:
             await session.commit()
 
             return self._to_model(new_faction)
+
+    async def update(self, faction_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(FactionOrm).where(FactionOrm.id == faction_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, faction_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(FactionOrm).where(FactionOrm.id == faction_id)
+            )
+            await session.commit()
 
 
 class FactionRelationshipRepository:
@@ -200,3 +214,17 @@ class FactionRelationshipRepository:
             await session.commit()
 
             return self._to_model(new_relationship)
+
+    async def update(self, relationship_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(FactionRelationshipOrm).where(FactionRelationshipOrm.id == relationship_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, relationship_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(FactionRelationshipOrm).where(FactionRelationshipOrm.id == relationship_id)
+            )
+            await session.commit()

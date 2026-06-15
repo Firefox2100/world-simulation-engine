@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.model import Item, Equipment
@@ -64,6 +64,20 @@ class ItemRepository:
 
             return self._to_model(new_item)
 
+    async def update(self, item_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ItemOrm).where(ItemOrm.id == item_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, item_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(ItemOrm).where(ItemOrm.id == item_id)
+            )
+            await session.commit()
+
 
 class EquipmentRepository:
     def __init__(self,
@@ -123,3 +137,17 @@ class EquipmentRepository:
             await session.commit()
 
             return self._to_model(new_equipment)
+
+    async def update(self, equipment_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(EquipmentOrm).where(EquipmentOrm.id == equipment_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, equipment_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(EquipmentOrm).where(EquipmentOrm.id == equipment_id)
+            )
+            await session.commit()

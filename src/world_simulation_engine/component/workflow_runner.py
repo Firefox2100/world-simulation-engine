@@ -1,6 +1,7 @@
 import asyncio
 import json
 import operator
+from copy import deepcopy
 from uuid import uuid4
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Annotated, Callable, Awaitable
@@ -1543,6 +1544,602 @@ class TurnGenerator:
 
         return "\n".join(part for part in parts if part)
 
+    async def _persist_entity_update(
+            self,
+            *,
+            simulation_id: int,
+            entity_id: int | str,
+            payload: dict[str, Any],
+    ) -> None:
+        location_id = payload.pop("location_id")
+
+        # If you have a real entity repository, prefer it.
+        entity_repo = getattr(self._db, "entity", None)
+        if entity_repo is not None and hasattr(entity_repo, "update"):
+            await entity_repo.update(
+                entity_id,
+                payload,
+            )
+            return
+
+        if location_id is None:
+            raise ValueError(
+                f"Entity update for entity_id={entity_id} requires location_id "
+                "when no self._db.entity.update repository exists."
+            )
+
+        location = await self._db.location.get(location_id)
+        if not location:
+            raise ValueError(
+                f"Location id={location_id} not found for entity update of entity_id={entity_id}"
+            )
+        location_data = location.model_dump(mode="json")
+
+        entities = list(location_data.get("entities") or [])
+        updated = False
+
+        for index, entity in enumerate(entities):
+            if entity.get("id") == entity_id or entity.get("temp_id") == entity_id:
+                entities[index] = {
+                    **entity,
+                    **payload,
+                }
+                updated = True
+                break
+
+        if not updated:
+            raise ValueError(
+                f"Entity id={entity_id} not found in location id={location_id}"
+            )
+
+        await self._db.location.update(
+            location_id,
+            {
+                "entities": entities,
+            },
+        )
+
+    async def _persist_inventory_update(
+            self,
+            *,
+            simulation_id: int,
+            owner_id: int | str,
+            payload: dict[str, Any],
+    ) -> None:
+        owner_id = int(owner_id)
+
+        if "items" in payload:
+            await self._replace_inventory_items(
+                simulation_id=simulation_id,
+                owner_id=owner_id,
+                items=payload["items"],
+            )
+
+        if "equipments" in payload:
+            await self._replace_inventory_equipments(
+                simulation_id=simulation_id,
+                owner_id=owner_id,
+                equipments=payload["equipments"],
+            )
+
+    async def _replace_inventory_items(
+            self,
+            *,
+            simulation_id: int,
+            owner_id: int,
+            items: list[dict[str, Any]],
+    ) -> None:
+        # owner_id=0 means world inventory.
+        if owner_id == 0:
+            existing = await self._db.item.list(
+                simulation_id=simulation_id,
+            )
+        else:
+            existing = await self._db.item.list(
+                character_id=owner_id,
+            )
+
+        existing_by_id = {
+            item.id: item
+            for item in existing
+            if getattr(item, "id", None) is not None
+        }
+
+        incoming_ids = {
+            item.get("id")
+            for item in items
+            if item.get("id") is not None
+        }
+
+        for existing_id in set(existing_by_id) - incoming_ids:
+            await self._db.item.delete(existing_id)
+
+        for item in items:
+            item_data = dict(item)
+            item_id = item_data.pop("id", None)
+            item_data.pop("temp_id", None)
+
+            if owner_id == 0:
+                item_data["simulation_id"] = simulation_id
+                item_data["character_id"] = None
+            else:
+                item_data["simulation_id"] = simulation_id
+                item_data["character_id"] = owner_id
+
+            if item_id is None:
+                await self._db.item.create(item_data)
+            else:
+                await self._db.item.update(item_id, item_data)
+
+    async def _replace_inventory_equipments(
+            self,
+            *,
+            simulation_id: int,
+            owner_id: int,
+            equipments: list[dict[str, Any]],
+    ) -> None:
+        if owner_id == 0:
+            existing = await self._db.equipment.list(
+                simulation_id=simulation_id,
+            )
+        else:
+            existing = await self._db.equipment.list(
+                character_id=owner_id,
+            )
+
+        existing_by_id = {
+            equipment.id: equipment
+            for equipment in existing
+            if getattr(equipment, "id", None) is not None
+        }
+
+        incoming_ids = {
+            equipment.get("id")
+            for equipment in equipments
+            if equipment.get("id") is not None
+        }
+
+        for existing_id in set(existing_by_id) - incoming_ids:
+            await self._db.equipment.delete(existing_id)
+
+        for equipment in equipments:
+            equipment_data = dict(equipment)
+            equipment_id = equipment_data.pop("id", None)
+            equipment_data.pop("temp_id", None)
+
+            if owner_id == 0:
+                equipment_data["simulation_id"] = simulation_id
+                equipment_data["character_id"] = None
+            else:
+                equipment_data["simulation_id"] = simulation_id
+                equipment_data["character_id"] = owner_id
+
+            if equipment_id is None:
+                await self._db.equipment.create(equipment_data)
+            else:
+                await self._db.equipment.update(equipment_id, equipment_data)
+
+    async def _persist_update_mutation(
+            self,
+            *,
+            simulation_id: int,
+            object_type: str,
+            object_id: int | str,
+            payload: dict[str, Any],
+            mutation: dict[str, Any],
+    ) -> dict[str, Any]:
+        if object_type == "state":
+            await self._db.state.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "character":
+            await self._db.character.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "location":
+            await self._db.location.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "task":
+            await self._db.task.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "world_entry":
+            await self._db.entry.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "faction":
+            await self._db.faction.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "faction_relationship":
+            await self._db.faction_relationship.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "inventory":
+            await self._persist_inventory_update(
+                simulation_id=simulation_id,
+                owner_id=object_id,
+                payload=payload,
+            )
+
+        elif object_type == "item":
+            await self._db.item.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "equipment":
+            await self._db.equipment.update(
+                int(object_id),
+                payload,
+            )
+
+        elif object_type == "entity":
+            await self._persist_entity_update(
+                simulation_id=simulation_id,
+                entity_id=object_id,
+                payload=payload,
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported update target object_type={object_type!r}"
+            )
+
+        return {
+            "mutation_id": mutation.get("mutation_id"),
+            "operation": "update",
+            "object_type": object_type,
+            "object_id": object_id,
+        }
+
+    def _normalise_world_entry_payload(
+            self,
+            data: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = dict(data)
+
+        keywords = data.get("keywords")
+
+        if keywords and all(isinstance(item, str) for item in keywords):
+            data["keywords"] = [
+                {
+                    "keyword": item,
+                    "similarity": 0.72,
+                    "embedding": None,
+                }
+                for item in keywords
+            ]
+
+        data.setdefault("embedding", None)
+
+        return data
+
+    async def _persist_entity_create(
+            self,
+            *,
+            simulation_id: int,
+            payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        data = dict(payload)
+
+        location_id = data.pop("location_id", None) or data.pop("proposed_location_id", None)
+        if location_id is None:
+            raise ValueError(
+                "Creating an entity requires location_id or proposed_location_id."
+            )
+
+        entity_repo = getattr(self._db, "entity", None)
+        if entity_repo is not None and hasattr(entity_repo, "create"):
+            data["simulation_id"] = simulation_id
+            data["location_id"] = location_id
+            return await entity_repo.create(data)
+
+        location = await self._db.location.get(location_id)
+        location_data = location.model_dump(mode="json") if location else {}
+
+        entities = list(location_data.get("entities") or [])
+
+        # If entities are embedded, DB may not assign an entity ID here.
+        # Use temp_id until a later normalisation/migration gives it a real ID.
+        if data.get("id") is None and not data.get("temp_id"):
+            data["temp_id"] = f"entity_{uuid4().hex[:12]}"
+
+        entities.append(data)
+
+        await self._db.location.update(
+            location_id,
+            {
+                "entities": entities,
+            },
+        )
+
+        return data
+
+    async def _persist_create_mutation(
+            self,
+            *,
+            simulation_id: int,
+            object_type: str,
+            object_id: int | str | None,
+            payload: dict[str, Any],
+            mutation: dict[str, Any],
+            temp_id_map: dict[str, int],
+    ) -> dict[str, Any]:
+        data = dict(payload)
+        temp_id = data.pop("temp_id", None)
+        data.pop("id", None)
+
+        created: Any
+
+        if object_type == "location":
+            data["simulation_id"] = simulation_id
+            created = await self._db.location.create(data)
+
+        elif object_type == "character":
+            data["simulation_id"] = simulation_id
+            created = await self._db.character.create(data)
+
+        elif object_type == "world_entry":
+            data["simulation_id"] = simulation_id
+            data = self._normalise_world_entry_payload(data)
+            created = await self._db.entry.create(data)
+
+        elif object_type == "task":
+            data["simulation_id"] = simulation_id
+            created = await self._db.task.create(data)
+
+        elif object_type == "faction":
+            data["simulation_id"] = simulation_id
+            created = await self._db.faction.create(data)
+
+        elif object_type == "faction_relationship":
+            created = await self._db.faction_relationship.create(data)
+
+        elif object_type == "item":
+            data["simulation_id"] = simulation_id
+            created = await self._db.item.create(data)
+
+        elif object_type == "equipment":
+            data["simulation_id"] = simulation_id
+            created = await self._db.equipment.create(data)
+
+        elif object_type == "entity":
+            created = await self._persist_entity_create(
+                simulation_id=simulation_id,
+                payload=data,
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported create object_type={object_type!r}"
+            )
+
+        created_id = getattr(created, "id", None)
+        if created_id is None and isinstance(created, dict):
+            created_id = created.get("id")
+
+        if temp_id and created_id is not None:
+            temp_id_map[str(temp_id)] = int(created_id)
+
+        return {
+            "mutation_id": mutation.get("mutation_id"),
+            "operation": "create",
+            "object_type": object_type,
+            "object_id": created_id,
+            "temp_id": temp_id,
+        }
+
+    async def _persist_remove_mutation(
+            self,
+            *,
+            simulation_id: int,
+            object_type: str,
+            object_id: int | str,
+            payload: dict[str, Any],
+            mutation: dict[str, Any],
+    ) -> dict[str, Any]:
+        if object_type == "character":
+            # Usually prefer soft update over delete for characters.
+            await self._db.character.delete(int(object_id))
+
+        elif object_type == "location":
+            await self._db.location.delete(int(object_id))
+
+        elif object_type == "task":
+            await self._db.task.delete(int(object_id))
+
+        elif object_type == "world_entry":
+            await self._db.entry.delete(int(object_id))
+
+        elif object_type == "faction":
+            await self._db.faction.delete(int(object_id))
+
+        elif object_type == "faction_relationship":
+            await self._db.faction_relationship.delete(int(object_id))
+
+        elif object_type == "item":
+            await self._db.item.delete(int(object_id))
+
+        elif object_type == "equipment":
+            await self._db.equipment.delete(int(object_id))
+
+        elif object_type == "entity":
+            await self._persist_entity_remove(
+                simulation_id=simulation_id,
+                entity_id=object_id,
+                payload=payload,
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported remove object_type={object_type!r}"
+            )
+
+        return {
+            "mutation_id": mutation.get("mutation_id"),
+            "operation": "remove",
+            "object_type": object_type,
+            "object_id": object_id,
+        }
+
+    async def _persist_entity_remove(
+            self,
+            *,
+            simulation_id: int,
+            entity_id: int | str,
+            payload: dict[str, Any],
+    ) -> None:
+        entity_repo = getattr(self._db, "entity", None)
+        if entity_repo is not None and hasattr(entity_repo, "delete"):
+            await entity_repo.delete(entity_id)
+            return
+
+        location_id = payload.get("location_id")
+        if location_id is None:
+            raise ValueError(
+                "Removing embedded entity requires location_id in payload."
+            )
+
+        location = await self._db.location.get(location_id)
+        location_data = location.model_dump(mode="json") if location else {}
+
+        entities = [
+            entity
+            for entity in location_data.get("entities", [])
+            if entity.get("id") != entity_id
+               and entity.get("temp_id") != entity_id
+        ]
+
+        await self._db.location.update(
+            int(location_id),
+            {
+                "entities": entities,
+            },
+        )
+
+    async def _persist_proposal_mutation(
+            self,
+            *,
+            operation: str,
+            object_id: int | str,
+            payload: dict[str, Any],
+            mutation: dict[str, Any],
+    ) -> dict[str, Any]:
+        status_by_operation = {
+            "accept_proposal": "accepted",
+            "reject_proposal": "rejected",
+            "defer_proposal": "deferred",
+        }
+
+        status = status_by_operation[operation]
+
+        proposal_repo = getattr(self._db, "generated_proposal", None)
+
+        if proposal_repo is not None:
+            if hasattr(proposal_repo, "update_by_temp_id"):
+                await proposal_repo.update_by_temp_id(
+                    object_id,
+                    {
+                        "status": status,
+                    },
+                )
+            elif hasattr(proposal_repo, "update"):
+                await proposal_repo.update(
+                    object_id,
+                    {
+                        "status": status,
+                    },
+                )
+            else:
+                # Repository exists but does not expose a known update method.
+                raise ValueError(
+                    "generated_proposal repository has no supported update method."
+                )
+
+        return {
+            "mutation_id": mutation.get("mutation_id"),
+            "operation": operation,
+            "proposal_id": object_id,
+            "status": status,
+        }
+
+    async def _persist_single_committer_mutation(
+            self,
+            *,
+            simulation_id: int,
+            mutation: dict[str, Any],
+            temp_id_map: dict[str, int],
+    ) -> dict[str, Any]:
+        operation = mutation["operation"]
+        target = mutation.get("target") or {}
+        payload = deepcopy(mutation.get("payload") or {})
+
+        object_type = target.get("object_type")
+        object_id = target.get("object_id")
+
+        if isinstance(object_id, str) and object_id in temp_id_map:
+            object_id = temp_id_map[object_id]
+
+        if operation == "update":
+            return await self._persist_update_mutation(
+                simulation_id=simulation_id,
+                object_type=object_type,
+                object_id=object_id,
+                payload=payload,
+                mutation=mutation,
+            )
+
+        if operation == "create":
+            return await self._persist_create_mutation(
+                simulation_id=simulation_id,
+                object_type=object_type,
+                object_id=object_id,
+                payload=payload,
+                mutation=mutation,
+                temp_id_map=temp_id_map,
+            )
+
+        if operation == "remove":
+            return await self._persist_remove_mutation(
+                simulation_id=simulation_id,
+                object_type=object_type,
+                object_id=object_id,
+                payload=payload,
+                mutation=mutation,
+            )
+
+        if operation in {
+            "accept_proposal",
+            "reject_proposal",
+            "defer_proposal",
+        }:
+            return await self._persist_proposal_mutation(
+                operation=operation,
+                object_id=object_id,
+                payload=payload,
+                mutation=mutation,
+            )
+
+        raise ValueError(
+            f"Unsupported committer mutation operation: {operation!r}"
+        )
+
     async def load_simulation(self, state: TurnGeneratorState) -> dict:
         simulation = await self._db.simulation.get(state.simulation_id)
         simulation_state = await self._db.state.get(state.simulation_id)
@@ -2664,8 +3261,6 @@ class TurnGenerator:
 
         result = await committer_agent.commit_changes(
             user_input=state.user_input,
-            director_output=state.director_output,
-            briefing_output=state.briefing_output,
             character_actions=effective_character_actions,
             resolver_output=effective_resolver_output,
             pending_generated_proposals=state.generated_proposals or [],
@@ -3160,7 +3755,53 @@ class TurnGenerator:
         return graph.compile()
 
     async def write_commits_to_database(self, payload: dict):
-        pass
+        output = payload["committer_output"]
+
+        if not output.get("ready_to_commit"):
+            raise RuntimeError(
+                f"Committer output is not ready to commit. warnings={output.get('warnings')}"
+            )
+
+        mutations = output.get("database_patch_preview") or output.get("mutation_log") or []
+
+        if not mutations:
+            return {
+                "committed": False,
+                "applied": [],
+                "temp_id_map": {},
+                "reason": "No mutations to persist.",
+            }
+
+        applied: list[dict[str, Any]] = []
+        temp_id_map: dict[str, int] = {}
+
+        # Prefer a real transaction if your DB layer supports it.
+        transaction = getattr(self._db, "transaction", None)
+
+        if transaction is not None:
+            async with transaction():
+                for mutation in mutations:
+                    result = await self._persist_single_committer_mutation(
+                        simulation_id=output["simulation_id"],
+                        mutation=mutation,
+                        temp_id_map=temp_id_map,
+                    )
+                    applied.append(result)
+        else:
+            # Non-transactional fallback. Good for early testing, but use a transaction long-term.
+            for mutation in mutations:
+                result = await self._persist_single_committer_mutation(
+                    simulation_id=output["simulation_id"],
+                    mutation=mutation,
+                    temp_id_map=temp_id_map,
+                )
+                applied.append(result)
+
+        return {
+            "committed": True,
+            "applied": applied,
+            "temp_id_map": temp_id_map,
+        }
 
 
 class WorkflowRunner:

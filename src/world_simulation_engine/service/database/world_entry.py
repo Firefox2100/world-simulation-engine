@@ -1,5 +1,5 @@
 import numpy as np
-from sqlalchemy import select, func, exists
+from sqlalchemy import select, func, exists, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.misc.enums import NarrationPermission
@@ -79,3 +79,17 @@ class WorldEntryRepository:
             await session.commit()
 
             return self._to_model(new_entry)
+
+    async def update(self, entry_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(WorldEntryOrm).where(WorldEntryOrm.id == entry_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, entry_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(WorldEntryOrm).where(WorldEntryOrm.id == entry_id)
+            )
+            await session.commit()

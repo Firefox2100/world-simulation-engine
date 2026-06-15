@@ -1,4 +1,4 @@
-from sqlalchemy import select, func, exists
+from sqlalchemy import select, func, exists, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.model import Task
@@ -88,3 +88,17 @@ class TaskRepository:
             await session.commit()
 
             return self._to_model(new_task)
+
+    async def update(self, task_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(TaskOrm).where(TaskOrm.id == task_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, task_id: int) -> None:
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(TaskOrm).where(TaskOrm.id == task_id)
+            )
+            await session.commit()
