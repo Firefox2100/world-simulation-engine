@@ -1261,8 +1261,6 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                 data=data,
             )
 
-            plan_model = self.model.with_structured_output(CommitterMutationPlanOutput)
-
             try:
                 plan = cast(
                     CommitterMutationPlanOutput,
@@ -1347,8 +1345,6 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                 prompts=self.profile.validation_prompt,
                 data=validation_data,
             )
-
-            validation_model = self.model.with_structured_output(CommitterValidationOutput)
 
             try:
                 previous_validation = cast(

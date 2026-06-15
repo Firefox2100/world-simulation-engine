@@ -1623,6 +1623,10 @@ class TurnGenerator:
             simulation_id=state.simulation_id,
             location=state.state.scene,
         )
+        user_characters = await self._db.character.list(
+            simulation_id=state.simulation_id,
+            controlled_by_user=True,
+        )
 
         current_location = await self._db.location.get(state.state.scene)
         if not current_location:
@@ -1694,6 +1698,7 @@ class TurnGenerator:
             simulation=state.simulation,
             state=state.state,
             current_location=current_location,
+            user_characters=user_characters,
             present_characters=present_characters,
             relevant_tasks=tasks,
             recalled_world_entries=recalled_entries,

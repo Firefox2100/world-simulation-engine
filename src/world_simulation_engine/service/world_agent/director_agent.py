@@ -12,11 +12,46 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
     Schedules the turn and decides which agents to activate.
     Does not build per-character briefings.
     """
+    def _normalise_director_output(
+            self,
+            output: DirectorOutput,
+    ) -> DirectorOutput:
+        any_active = any(
+            activation.activate
+            for activation in output.activations
+        )
+
+        # Hard invariant:
+        # If anyone is active, the graph must not wait for user.
+        if any_active:
+            output.wait_for_user = False
+            output.reason_to_wait = None
+
+        # Hard invariant:
+        # If waiting for user, nobody acts.
+        if output.wait_for_user:
+            for activation in output.activations:
+                activation.activate = False
+                activation.priority = 0
+
+            if not output.reason_to_wait:
+                output.reason_to_wait = (
+                    "The scene has reached a player decision point."
+                )
+
+        # Hard invariant:
+        # Inactive characters cannot have priority.
+        for activation in output.activations:
+            if not activation.activate:
+                activation.priority = 0
+
+        return output
 
     async def plan_turn(self,
                         simulation: Simulation,
                         state: SimulationState,
                         current_location: Location,
+                        user_characters: list[Character],
                         present_characters: list[Character],
                         relevant_tasks: list[Task],
                         recalled_world_entries: list[WorldEntry],
@@ -127,6 +162,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             "user_input": user_input,
             "previous_resolver_notes": previous_resolver_notes,
             "location": current_location,
+            "user_characters": user_characters,
             "present_characters": present_characters,
             "relevant_tasks": relevant_tasks,
             "recalled_world_entries": recalled_world_entries,
@@ -138,15 +174,20 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             data=scheduling_data,
         )
 
-        structured_model = self.model.with_structured_output(DirectorOutput)
+        result = cast(
+            DirectorOutput,
+            await self._invoke_structured_with_repair(
+                output_model=DirectorOutput,
+                messages=final_messages,
+                repair_instruction=(
+                    "You must return a valid DirectorOutput. "
+                ),
+                run_name="director_planning",
+                max_attempts=2,
+            ),
+        )
 
         return (
-            cast(
-                DirectorOutput,
-                await structured_model.ainvoke(
-                    final_messages,
-                    config={"run_name": "director_planning"},
-                )
-            ),
+            self._normalise_director_output(result),
             [PendingGeneratedProposal.model_validate(p) for p in tool_results],
         )

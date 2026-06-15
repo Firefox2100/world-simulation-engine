@@ -37,6 +37,7 @@ class CharacterRepository:
     async def list(self,
                    simulation_id: int | None = None,
                    location: int | None = None,
+                   controlled_by_user: bool | None = None,
                    character_ids: list[int] | None = None,
                    ) -> list[Character]:
         async with self._session_factory() as session:
@@ -45,6 +46,8 @@ class CharacterRepository:
                 stmt = stmt.where(CharacterOrm.simulation_id == simulation_id)
             if location:
                 stmt = stmt.where(CharacterOrm.location == location)
+            if controlled_by_user is not None:
+                stmt = stmt.where(CharacterOrm.user_controlled == controlled_by_user)
             if character_ids:
                 stmt = stmt.where(CharacterOrm.id.in_(character_ids))
 

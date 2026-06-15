@@ -1224,12 +1224,12 @@ Privacy rules:
 
 Scheduling rules:
 - Do not activate every character by default.
-- Do not activate user-controlled characters unless explicitly delegated by user input.
-- If a character is absent from the current scene, do not activate them.
-- If wait_for_user=true, every activation must have activate=false and priority=0.
-- If user input says passive continuation is requested, do not wait for user unless the scene genuinely cannot continue.
-- If an NPC has just asked the user-controlled character a direct question or the scene clearly awaits player choice, prefer wait_for_user=true.
-- Otherwise, continue the scene by activating appropriate present non-user characters.
+- If a character is absent from the current scene, and is clearly irrelevant for this turn, do not activate them.
+
+Passive observation rule:
+If a character merely remains present and does not meaningfully change position, speak, inspect, manipulate,
+or pursue a goal, do not activate them. If a character actively repositions, eavesdrops, shadows, blocks,
+signals, hides, searches, or otherwise changes the scene, activate them even if the action is quiet.
 
 Priority scale:
 - 100: immediate and scene-dominating need to act.
@@ -1239,14 +1239,49 @@ Priority scale:
 - 20-39: mainly observing or waiting; usually do not activate unless needed.
 - 0: inactive.
 
-Priority measures scheduling importance, not guaranteed action order.
-The resolver determines how actions interact.
-The character agent decides the actual action.
+Priority rule:
+- If activate=false, priority must be 0.
+- Non-zero priority is allowed only for activated characters.
+- Priority measures scheduling importance, not guaranteed action order.
 
 Pending proposal rules:
 - Pending generated proposals are not canonical.
 - They may be referenced only as pending content for the resolver.
 - Do not treat pending proposals as facts.
+
+wait_for_user rules:
+
+wait_for_user=true means the simulation should pause before any NPC action is generated.
+
+Set wait_for_user=true only when:
+- the player character must choose between materially different next actions before NPCs can proceed;
+- the last resolved/narrated events directly addressed the player and require a player response;
+- the scene has reached a natural decision point for the player;
+- continuing NPC action would decide or skip the player character's agency.
+
+Do not set wait_for_user=true merely because:
+- the player asked an NPC a question;
+- an NPC needs to answer the player's question;
+- another NPC can observe, react, answer, move, or continue naturally;
+- the scene will require the player's reaction after the NPC response.
+- If user input says passive continuation is requested, do not wait for user unless the scene genuinely
+  cannot continue.
+
+If the user input directly asks or addresses an NPC, usually activate that NPC instead of waiting.
+
+If wait_for_user=true:
+- all activations must have activate=false;
+- all activation priorities must be 0;
+- reason_to_wait must describe the exact player decision needed now.
+
+If any activation has activate=true:
+- wait_for_user must be false;
+- reason_to_wait must be null.
+
+Important timing rule:
+Do not wait for the player's reaction to an NPC response before the NPC response has happened.
+First activate the NPC so the response can be resolved and narrated.
+The next Director pass may wait for the player after that response.
 
 Return only valid DirectorOutput.
 
@@ -1289,6 +1324,11 @@ State summary:
 {{ data.state.state }}
 
 ## User input
+
+The user controls these characters:
+{{ data.user_characters | map(attribute='name') | join(', ') }}
+
+And the user sent:
 {{ data.user_input or "No explicit user input. Passive continuation requested." }}
 
 ## Last narration
@@ -1630,6 +1670,7 @@ def mock_character_agent_profile(inference_model) -> CharacterAgentProfile:
             connection=1,
             model=inference_model,
             temperature=0.4,
+            context_window=65536,
         ),
         action_prompt=[
             PromptMessage(
@@ -2319,6 +2360,7 @@ def mock_resolver_agent_profile(inference_model) -> ResolverAgentProfile:
             connection=1,
             model=inference_model,
             temperature=0.4,
+            context_window=65536,
         ),
         resolve_character_prompt=[
             PromptMessage(
@@ -3198,6 +3240,7 @@ def mock_committer_agent_profile(inference_model) -> CommitterAgentProfile:
             connection=1,
             model=inference_model,
             temperature=0.4,
+            context_window=65536,
         ),
         mutation_prompt=[
             PromptMessage(
@@ -3935,6 +3978,7 @@ def mock_narrator_agent_profile(inference_model) -> NarratorAgentProfile:
             connection=1,
             model=inference_model,
             temperature=0.4,
+            context_window=65536,
         ),
         narrate_resolved_turn_prompt=[
             PromptMessage(
