@@ -1,5 +1,4 @@
 from typing import cast
-from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.model import Location, Character, WorldEntry, Simulation, SimulationState, \
     CharacterInventory, Faction, FactionRelationship, ResolverAgentProfile, CharacterActionOutput, \
@@ -24,7 +23,6 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             faction_relationships: list[FactionRelationship] | None = None,
             last_narration: str | None = None,
             previous_resolver_notes: str | None = None,
-            config: RunnableConfig | None = None,
     ) -> ResolverOutput:
         data = {
             "simulation": simulation,
@@ -40,6 +38,17 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             "action_validation_reports": action_validation_reports,
             "factions": factions or [],
             "faction_relationships": faction_relationships or [],
+            "round_constraints": {
+                "priority_order": [
+                    {
+                        "character_id": action.character_id,
+                        "character_name": action.character_name,
+                        "urgency": action.urgency,
+                        "persistence": action.persistence,
+                    }
+                    for action in sorted(character_actions, key=lambda a: a.urgency, reverse=True)
+                ],
+            },
             "last_narration": last_narration,
             "previous_resolver_notes": previous_resolver_notes,
         }
@@ -55,10 +64,7 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             ResolverOutput,
             await structured_model.ainvoke(
                 messages,
-                config=patch_config(
-                    config,
-                    run_name="resolve_character_action",
-                ) if config else None,
+                config={"run_name": "resolve_character_action"},
             ),
         )
 
@@ -79,7 +85,6 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             faction_relationships: list[FactionRelationship] | None = None,
             last_narration: str | None = None,
             previous_resolver_notes: str | None = None,
-            config: RunnableConfig | None = None,
     ) -> ResolverOutput:
         data = {
             "simulation": simulation,
@@ -116,10 +121,7 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
             ResolverOutput,
             await structured_model.ainvoke(
                 messages,
-                config=patch_config(
-                    config,
-                    run_name="resolve_reaction",
-                ) if config else None,
+                config={"run_name": "resolve_reaction"},
             ),
         )
 

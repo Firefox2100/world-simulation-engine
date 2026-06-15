@@ -365,6 +365,22 @@ class CommitterMutationPlanOutput(BaseModel):
     confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     warnings: list[str] = Field(default_factory=list)
 
+    # @model_validator(mode="after")
+    # def validate_non_empty_plan(self):
+    #     if not self.no_changes_needed and not self.mutations:
+    #         raise ValueError(
+    #             "CommitterMutationPlanOutput must contain at least one mutation "
+    #             "unless no_changes_needed=true."
+    #         )
+    #
+    #     if self.no_changes_needed and self.mutations:
+    #         raise ValueError(
+    #             "CommitterMutationPlanOutput cannot set no_changes_needed=true "
+    #             "while also returning mutations."
+    #         )
+    #
+    #     return self
+
 
 class SandboxObjectRef(BaseModel):
     object_type: SandboxObjectType

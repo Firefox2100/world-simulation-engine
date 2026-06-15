@@ -3,7 +3,6 @@ from enum import StrEnum
 from uuid import uuid4
 from typing import cast, Any
 from langchain.tools import tool
-from langchain_core.runnables import RunnableConfig, patch_config
 from pydantic import BaseModel
 
 from world_simulation_engine.model import WorldGeneratorAgentProfile, Simulation, SimulationState, Location, \
@@ -164,7 +163,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
         existing_equipments: list[Equipment] | None = None,
         factions: list[Faction] | None = None,
         faction_relationships: list[FactionRelationship] | None = None,
-        config: RunnableConfig | None = None,
     ) -> ProposedLocation:
         data = self._build_base_data(
             simulation=simulation,
@@ -193,7 +191,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             ProposedLocation,
             await model.ainvoke(
                 messages,
-                config=patch_config(config, run_name="generate_location") if config else None,
+                config={"run_name": "generate_location"},
             ),
         )
 
@@ -214,7 +212,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
         existing_equipments: list[Equipment] | None = None,
         factions: list[Faction] | None = None,
         faction_relationships: list[FactionRelationship] | None = None,
-        config: RunnableConfig | None = None,
     ) -> ProposedItem:
         data = self._build_base_data(
             simulation=simulation,
@@ -243,7 +240,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             ProposedItem,
             await model.ainvoke(
                 messages,
-                config=patch_config(config, run_name="generate_item") if config else None,
+                config={"run_name": "generate_item"},
             ),
         )
 
@@ -264,7 +261,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
         existing_equipments: list[Equipment] | None = None,
         factions: list[Faction] | None = None,
         faction_relationships: list[FactionRelationship] | None = None,
-        config: RunnableConfig | None = None,
     ) -> ProposedEquipment:
         data = self._build_base_data(
             simulation=simulation,
@@ -293,7 +289,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             ProposedEquipment,
             await model.ainvoke(
                 messages,
-                config=patch_config(config, run_name="generate_equipment") if config else None,
+                config={"run_name": "generate_equipment"},
             ),
         )
 
@@ -315,7 +311,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
         existing_equipments: list[Equipment] | None = None,
         factions: list[Faction] | None = None,
         faction_relationships: list[FactionRelationship] | None = None,
-        config: RunnableConfig | None = None,
     ) -> ProposedEntity:
         data = self._build_base_data(
             simulation=simulation,
@@ -344,7 +339,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             ProposedEntity,
             await model.ainvoke(
                 messages,
-                config=patch_config(config, run_name="generate_entity") if config else None,
+                config={"run_name": "generate_entity"},
             ),
         )
 
@@ -365,7 +360,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
         existing_equipments: list[Equipment] | None = None,
         factions: list[Faction] | None = None,
         faction_relationships: list[FactionRelationship] | None = None,
-        config: RunnableConfig | None = None,
     ) -> ProposedWorldEntry:
         data = self._build_base_data(
             simulation=simulation,
@@ -394,7 +388,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             ProposedWorldEntry,
             await model.ainvoke(
                 messages,
-                config=patch_config(config, run_name="generate_world_entry") if config else None,
+                config={"run_name": "generate_world_entry"},
             ),
         )
 
@@ -416,7 +410,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
         existing_equipments: list[Equipment] | None = None,
         factions: list[Faction] | None = None,
         faction_relationships: list[FactionRelationship] | None = None,
-        config: RunnableConfig | None = None,
     ) -> ProposedGenerationPackage:
         data = self._build_base_data(
             simulation=simulation,
@@ -445,7 +438,7 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             ProposedGenerationPackage,
             await model.ainvoke(
                 messages,
-                config=patch_config(config, run_name="generate_generation_package") if config else None,
+                config={"run_name": "generate_generation_package"},
             ),
         )
 
@@ -464,7 +457,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             existing_equipments: list[Equipment] | None = None,
             factions: list[Faction] | None = None,
             faction_relationships: list[FactionRelationship] | None = None,
-            config: RunnableConfig | None = None,
     ):
         @tool(parse_docstring=True)
         async def generate_location(goal: str, trigger: str, constraints: list[str]) -> ProposedLocation:
@@ -509,7 +501,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
-                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -553,7 +544,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
-                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -597,7 +587,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
-                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -644,7 +633,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 trigger=trigger,
                 constraints=constraints,
                 entity_types=entity_types,
-                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -691,7 +679,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 goal=goal,
                 trigger=trigger,
                 constraints=constraints,
-                config=config,
             )
 
         @tool(parse_docstring=True)
@@ -738,7 +725,6 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
                 trigger=trigger,
                 constraints=constraints,
                 entity_types=entity_types,
-                config=config,
             )
 
         return [

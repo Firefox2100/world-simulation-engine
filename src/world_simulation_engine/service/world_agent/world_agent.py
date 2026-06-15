@@ -1,7 +1,8 @@
 from copy import deepcopy
-from typing import Union, Any, TypeVar, Generic, TYPE_CHECKING
+from typing import Union, Any, TypeVar, Generic, TYPE_CHECKING, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from jinja2.sandbox import SandboxedEnvironment
+from pydantic import BaseModel
 
 from world_simulation_engine.misc.enums import LlmProvider, MessageRole, SystemMessagePolicy
 from world_simulation_engine.model import AgentProfile, OllamaAgentBackendConfiguration, \
@@ -204,3 +205,70 @@ class WorldAgent(Generic[AgentProfileT]):
                 raise ValueError(f"Unsupported message role: {prompt.role}")
 
         return messages
+
+    async def _invoke_structured_with_repair(
+            self,
+            *,
+            output_model: type[BaseModel],
+            messages: list[Any],
+            repair_instruction: str,
+            run_name: str,
+            max_attempts: int = 2,
+    ) -> BaseModel:
+        last_error: Exception | None = None
+        last_raw: Any = None
+
+        current_messages = list(messages)
+
+        for attempt in range(max_attempts):
+            structured_model = self.model.with_structured_output(
+                output_model,
+                include_raw=True,
+            )
+
+            try:
+                response = await structured_model.ainvoke(
+                    current_messages,
+                    config={"run_name": f"{run_name}_attempt_{attempt + 1}"},
+                )
+
+                raw = response.get("raw")
+                parsed = response.get("parsed")
+                parsing_error = response.get("parsing_error")
+
+                last_raw = raw
+
+                if parsing_error is not None:
+                    raise parsing_error
+
+                if parsed is None:
+                    raw_content = getattr(raw, "content", None)
+                    raise ValueError(
+                        f"Structured output parsed=None. Raw content: {raw_content!r}"
+                    )
+
+                return cast(BaseModel, parsed)
+
+            except Exception as exc:
+                last_error = exc
+
+                current_messages = [
+                    *messages,
+                    HumanMessage(
+                        content=(
+                            f"{repair_instruction}\n\n"
+                            f"The previous structured-output attempt failed.\n"
+                            f"Error type: {type(exc).__name__}\n"
+                            f"Error message: {exc}\n\n"
+                            "Return the required structured output only. "
+                            "Do not return prose. Do not return an empty response."
+                        )
+                    ),
+                ]
+
+        raw_content = getattr(last_raw, "content", None)
+        raise RuntimeError(
+            f"{run_name} failed after {max_attempts} attempts. "
+            f"Last error: {type(last_error).__name__ if last_error else None}: {last_error}. "
+            f"Last raw content: {raw_content!r}"
+        )

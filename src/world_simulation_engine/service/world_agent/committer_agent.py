@@ -1,5 +1,6 @@
 from uuid import uuid4
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, cast
 from langchain_core.runnables import RunnableConfig, patch_config
 from .world_agent import WorldAgent
@@ -8,6 +9,12 @@ from world_simulation_engine.model import CommitterAgentProfile, Simulation, Sim
     Location, CharacterInventory, Task, WorldEntry, LlmConnectionProfile, SandboxMutationRecord, SandboxObjectRef, \
     CommitterValidationOutput, CommitterFinalOutput, Faction, FactionRelationship, CommitterMutationPlanOutput, \
     CommitterPlannedMutation
+
+
+@dataclass
+class _InventoryTemplateView:
+    items: list[Any]
+    equipments: list[Any]
 
 
 class CommitterAgent(WorldAgent[CommitterAgentProfile]):
@@ -71,6 +78,17 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
     def _new_temp_id(self, prefix: str) -> str:
         return f"{prefix}_{uuid4().hex[:12]}"
 
+    @staticmethod
+    def _inventory_values(inventory: Any, field_name: str) -> list[Any]:
+        if isinstance(inventory, dict):
+            return inventory.get(field_name, []) or []
+
+        values = getattr(inventory, "__dict__", {}).get(field_name)
+        if values is not None:
+            return values
+
+        return getattr(inventory, field_name, []) or []
+
     def _record(
         self,
         *,
@@ -110,18 +128,27 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
         return obj
 
-    def _append_collection_object(
-        self,
-        collection_name: str,
-        object_type: str,
-        data: dict[str, Any],
-        reason: str,
-        source_event: str | None = None,
-    ) -> SandboxMutationRecord:
+    def _ensure_temp_id(self, data: dict[str, Any], prefix: str) -> dict[str, Any]:
         data = dict(data)
 
-        if "id" not in data and "temp_id" not in data:
-            data["temp_id"] = self._new_temp_id(object_type)
+        if data.get("id") is None and not data.get("temp_id"):
+            data.pop("id", None)
+            data["temp_id"] = self._new_temp_id(prefix)
+
+        if data.get("temp_id") is None:
+            data["temp_id"] = self._new_temp_id(prefix)
+
+        return data
+
+    def _append_collection_object(
+            self,
+            collection_name: str,
+            object_type: str,
+            data: dict[str, Any],
+            reason: str,
+            source_event: str | None = None,
+    ) -> SandboxMutationRecord:
+        data = self._ensure_temp_id(data, object_type)
 
         self._sandbox[collection_name].append(data)
 
@@ -137,22 +164,19 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         )
 
     def _create_inventory_object(
-        self,
-        object_type: str,
-        data: dict[str, Any],
-        reason: str,
-        source_event: str | None = None,
+            self,
+            object_type: str,
+            data: dict[str, Any],
+            reason: str,
+            source_event: str | None = None,
     ) -> SandboxMutationRecord:
-        data = dict(data)
-
-        if "id" not in data and "temp_id" not in data:
-            data["temp_id"] = self._new_temp_id(object_type)
+        data = self._ensure_temp_id(data, object_type)
 
         owner_id = (
-            data.get("owner_id")
-            or data.get("character_id")
-            or data.get("proposed_owner_id")
-            or 0
+                data.get("owner_id")
+                or data.get("character_id")
+                or data.get("proposed_owner_id")
+                or 0
         )
 
         if owner_id not in self._sandbox["inventory"]:
@@ -189,15 +213,12 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         )
 
     def _create_entity_object(
-        self,
-        data: dict[str, Any],
-        reason: str,
-        source_event: str | None = None,
+            self,
+            data: dict[str, Any],
+            reason: str,
+            source_event: str | None = None,
     ) -> SandboxMutationRecord:
-        data = dict(data)
-
-        if "id" not in data and "temp_id" not in data:
-            data["temp_id"] = self._new_temp_id("entity")
+        data = self._ensure_temp_id(data, "entity")
 
         location_id = data.get("location_id", data.get("proposed_location_id"))
         if location_id is None:
@@ -256,11 +277,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
         field_name = "equipments" if object_type == "equipment" else "items"
 
         for owner_id, inventory in self._sandbox["inventory"].items():
-            current_values = (
-                inventory[field_name]
-                if isinstance(inventory, dict)
-                else getattr(inventory, field_name)
-            )
+            current_values = self._inventory_values(inventory, field_name)
 
             for index, obj in enumerate(current_values):
                 if self._object_id(obj) == object_id:
@@ -888,6 +905,14 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             ],
         }
 
+    def _compact_inventory_template_view(self, inventory: Any) -> _InventoryTemplateView:
+        compact = self._compact_inventory(inventory)
+
+        return _InventoryTemplateView(
+            items=compact["items"],
+            equipments=compact["equipments"],
+        )
+
     def _compact_task(self, task: Any) -> dict[str, Any]:
         data = self._dump_obj(task)
 
@@ -943,7 +968,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             "private": data.get("private"),
         }
 
-    def _compact_sandbox_state(self) -> dict[str, Any]:
+    def _compact_sandbox_state(self, template_view: bool = False) -> dict[str, Any]:
         return {
             "simulation": self._compact_simulation(),
             "state": self._compact_state(),
@@ -956,7 +981,11 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                 for location in self._sandbox["locations"]
             ],
             "inventory": {
-                owner_id: self._compact_inventory(inventory)
+                owner_id: (
+                    self._compact_inventory_template_view(inventory)
+                    if template_view
+                    else self._compact_inventory(inventory)
+                )
                 for owner_id, inventory in self._sandbox["inventory"].items()
             },
             "factions": [
@@ -984,6 +1013,29 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             return self._compact_sandbox_state()
         finally:
             self._sandbox = original_sandbox
+
+    def _render_safe_snapshot(self) -> dict[str, Any]:
+        snapshot = self.snapshot()
+        inventory = snapshot.get("inventory")
+
+        if isinstance(inventory, dict):
+            snapshot["inventory"] = {
+                owner_id: _InventoryTemplateView(
+                    items=(
+                        inv.get("items", [])
+                        if isinstance(inv, dict)
+                        else self._inventory_values(inv, "items")
+                    ),
+                    equipments=(
+                        inv.get("equipments", [])
+                        if isinstance(inv, dict)
+                        else self._inventory_values(inv, "equipments")
+                    ),
+                )
+                for owner_id, inv in inventory.items()
+            }
+
+        return snapshot
 
     def _data_preset_text(self) -> str:
         preset = self._sandbox["data_preset"]
@@ -1177,7 +1229,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
                 "pending_generated_proposals": compact_pending_proposals,
                 "data_preset_text": self._data_preset_text(),
                 "original_state": self._compact_original_state(),
-                "current_sandbox_state": self._compact_sandbox_state(),
+                "current_sandbox_state": self._compact_sandbox_state(template_view=True),
                 "mutation_log": self.mutation_log(),
                 "previous_validation": (
                     previous_validation.model_dump()
@@ -1214,12 +1266,17 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             try:
                 plan = cast(
                     CommitterMutationPlanOutput,
-                    await plan_model.ainvoke(
-                        plan_messages,
-                        config=patch_config(
-                            config,
-                            run_name="committer_mutation_plan",
-                        ) if config else None,
+                    await self._invoke_structured_with_repair(
+                        output_model=CommitterMutationPlanOutput,
+                        messages=plan_messages,
+                        repair_instruction=(
+                            "You must return a valid CommitterMutationPlanOutput. "
+                            "If changes are needed, mutations must contain at least one concrete mutation. "
+                            "If no changes are needed, set no_changes_needed=true and mutations=[]. "
+                            "Never return mutations=[] with no_changes_needed=false."
+                        ),
+                        run_name="committer_mutation_plan",
+                        max_attempts=2,
                     ),
                 )
                 plan = self._normalise_plan(plan)
@@ -1280,7 +1337,7 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
 
             validation_data = {
                 **data,
-                "current_sandbox_state": self.snapshot(),
+                "current_sandbox_state": self._render_safe_snapshot(),
                 "mutation_log": self.mutation_log(),
                 "latest_plan": plan.model_dump(),
                 "latest_execution_results": execution_results,
@@ -1296,12 +1353,17 @@ class CommitterAgent(WorldAgent[CommitterAgentProfile]):
             try:
                 previous_validation = cast(
                     CommitterValidationOutput,
-                    await validation_model.ainvoke(
-                        validation_messages,
-                        config=patch_config(
-                            config,
-                            run_name="committer_validation",
-                        ) if config else None,
+                    await self._invoke_structured_with_repair(
+                        output_model=CommitterValidationOutput,
+                        messages=validation_messages,
+                        repair_instruction=(
+                            "You must return a valid CommitterValidationOutput. "
+                            "If the sandbox is complete, set complete=true and needs_more_changes=false. "
+                            "If changes are still missing, set complete=false and needs_more_changes=true "
+                            "with concrete missing_changes and next_instruction."
+                        ),
+                        run_name="committer_validation",
+                        max_attempts=2,
                     ),
                 )
                 previous_validation = self._normalise_validation(previous_validation)

@@ -92,6 +92,20 @@ class TurnGenerator:
         self._db = database_service
 
     @staticmethod
+    def _inventory_values(
+            inventory: CharacterInventory | dict,
+            field_name: str,
+    ) -> list[Any]:
+        if isinstance(inventory, dict):
+            return inventory.get(field_name, []) or []
+
+        values = getattr(inventory, "__dict__", {}).get(field_name)
+        if values is not None:
+            return values
+
+        return getattr(inventory, field_name, []) or []
+
+    @staticmethod
     def _dedupe_relationships(relationships: list[FactionRelationship]) -> list[FactionRelationship]:
         seen = set()
         result = []
@@ -426,12 +440,12 @@ class TurnGenerator:
             actor_inventory = inventory.get(action.character_id)
             actor_item_ids = {
                 item.id
-                for item in actor_inventory.items
+                for item in self._inventory_values(actor_inventory, "items")
             } if actor_inventory else set()
 
             actor_equipment_ids = {
                 equipment.id
-                for equipment in actor_inventory.equipments
+                for equipment in self._inventory_values(actor_inventory, "equipments")
             } if actor_inventory else set()
 
             invalid_target_character_ids = [
@@ -627,8 +641,51 @@ class TurnGenerator:
         }
 
         # Preserve model-provided failed_characters if present, but ensure consistency.
-        existing_failed = set(result.failed_characters or [])
-        result.failed_characters = sorted(existing_failed | failed_actor_ids)
+        failed_by_actor_id: dict[int, FailedCharacterRecord] = {
+            failed.character_id: failed
+            for failed in result.failed_characters or []
+        }
+
+        for actor_id in failed_actor_ids:
+            if actor_id in failed_by_actor_id:
+                continue
+
+            action = action_by_actor_id.get(actor_id)
+            resolved = next(
+                (
+                    resolved_action
+                    for resolved_action in result.resolved_actions
+                    if resolved_action.actor_id == actor_id
+                ),
+                None,
+            )
+
+            failed_by_actor_id[actor_id] = FailedCharacterRecord(
+                character_id=actor_id,
+                character_name=(
+                    resolved.actor_name
+                    if resolved is not None
+                    else action.character_name if action is not None else "Unknown character"
+                ),
+                failed_action_summary=(
+                    resolved.original_intent
+                    if resolved is not None
+                    else action.intent if action is not None else "Unknown action"
+                ),
+                reason=(
+                    resolved.failure_reason
+                    if resolved is not None and resolved.failure_reason
+                    else "Action did not complete."
+                ),
+                retry_allowed=True,
+                retry_context=(
+                    resolved.retry_instruction
+                    if resolved is not None
+                    else None
+                ),
+            )
+
+        result.failed_characters = list(failed_by_actor_id.values())
 
         if result.conflicts is None:
             result.conflicts = []
@@ -964,12 +1021,12 @@ class TurnGenerator:
             actor_inventory = inventory.get(action.character_id)
             actor_item_ids = {
                 item.id
-                for item in actor_inventory.items
+                for item in self._inventory_values(actor_inventory, "items")
             } if actor_inventory else set()
 
             actor_equipment_ids = {
                 equipment.id
-                for equipment in actor_inventory.equipments
+                for equipment in self._inventory_values(actor_inventory, "equipments")
             } if actor_inventory else set()
 
             invalid_target_character_ids = [
@@ -1631,7 +1688,6 @@ class TurnGenerator:
             factions=factions,
             faction_relationships=faction_relationships,
             entity_types=state.simulation.data_preset.entity_types.keys(),
-            config=config,
         )
 
         output, proposals = await director_agent.plan_turn(
@@ -1649,7 +1705,6 @@ class TurnGenerator:
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
-            config=config,
         )
 
         if not state.simulation.act_for_user:
@@ -1814,7 +1869,6 @@ class TurnGenerator:
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
-            config=config,
         )
 
         return {
@@ -2006,7 +2060,6 @@ class TurnGenerator:
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
-            config=config,
         )
 
         result = self._normalise_character_action_output(
@@ -2180,7 +2233,6 @@ class TurnGenerator:
             user_input=state.user_input,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
-            config=config,
         )
 
         result = self._normalise_character_reaction_output(
@@ -2348,7 +2400,6 @@ class TurnGenerator:
             faction_relationships=faction_relationships,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
-            config=config,
         )
 
         result = self._normalise_resolver_output(
@@ -2505,7 +2556,6 @@ class TurnGenerator:
             faction_relationships=faction_relationships,
             last_narration=last_record.narration if last_record else None,
             previous_resolver_notes="",
-            config=config,
         )
 
         result = self._normalise_reaction_resolver_output(
@@ -2614,7 +2664,6 @@ class TurnGenerator:
             character_actions=effective_character_actions,
             resolver_output=effective_resolver_output,
             pending_generated_proposals=state.generated_proposals or [],
-            config=config,
         )
 
         return {
@@ -2740,7 +2789,6 @@ class TurnGenerator:
             long_term_history_summary=state.state.long_term_history_summary,
             world_entries_for_narrator=recalled_entries,
             pending_generated_proposals=state.generated_proposals,
-            config=config,
         )
 
         return {
@@ -2807,7 +2855,6 @@ class TurnGenerator:
             recent_history_summary=state.state.recent_history_summary,
             long_term_history_summary=state.state.long_term_history_summary,
             world_entries_for_narrator=recalled_entries,
-            config=config,
         )
 
         return {

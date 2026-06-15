@@ -2543,6 +2543,16 @@ None.
 
 ## Priority guidance
 Higher urgency usually acts earlier. Persistence indicates how much an actor keeps trying if interrupted.
+{% if data.round_constraints is defined and data.round_constraints.priority_order is defined %}
+Suggested priority order:
+{% for p in data.round_constraints.priority_order %}
+- {{ p.character_id }}: {{ p.character_name }} | urgency={{ p.urgency }} | persistence={{ p.persistence }}
+{% else %}
+No priority entries.
+{% endfor %}
+{% else %}
+Priority order is derived directly from CharacterActionOutput.urgency.
+{% endif %}
 
 ## Resolver world entries
 These may include public, character-scoped, and GM-only entries.

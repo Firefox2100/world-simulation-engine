@@ -1,5 +1,4 @@
 from typing import cast
-from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
     Faction, FactionRelationship, MemoryAgentProfile, BriefingOutput, PendingGeneratedProposal, DirectorOutput
@@ -27,7 +26,6 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
             user_input: str | None = None,
             last_narration: str | None = None,
             previous_resolver_notes: str | None = None,
-            config: RunnableConfig | None = None,
     ) -> BriefingOutput:
         data = {
             "simulation": simulation,
@@ -56,9 +54,6 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
             BriefingOutput,
             await structured_model.ainvoke(
                 messages,
-                config=patch_config(
-                    config,
-                    run_name="memory_briefing",
-                ) if config else None,
+                config={"run_name": "memory_briefing"},
             ),
         )

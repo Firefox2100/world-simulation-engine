@@ -1,5 +1,4 @@
 from typing import cast
-from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, ResolverOutput, \
     NarratorResolutionView, DirectorOutput, WorldEntry, PendingGeneratedProposal, NarratorAgentProfile
@@ -21,7 +20,6 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
             long_term_history_summary: str | None = None,
             world_entries_for_narrator: list[WorldEntry] | None = None,
             pending_generated_proposals: list[PendingGeneratedProposal] | None = None,
-            config: RunnableConfig | None = None,
     ) -> str:
         data = {
             "simulation": simulation,
@@ -45,10 +43,7 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
 
         result = await self.model.ainvoke(
             messages,
-            config=patch_config(
-                config,
-                run_name="narrate_resolved_turn",
-            ) if config else None,
+            config={"run_name": "narrate_resolved_turn"},
         )
 
         return cast(str, result.content).strip()
@@ -64,7 +59,6 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
                                          recent_history_summary: str | None = None,
                                          long_term_history_summary: str | None = None,
                                          world_entries_for_narrator: list[WorldEntry] | None = None,
-                                         config: RunnableConfig | None = None,
                                          ) -> str:
         data = {
             "simulation": simulation,
@@ -86,10 +80,7 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
 
         result = await self.model.ainvoke(
             messages,
-            config=patch_config(
-                config,
-                run_name="narrate_user_input_failure"
-            ) if config else None,
+            config={"run_name": "narrate_user_input_failure"},
         )
 
         return cast(str, result.content).strip()
@@ -105,7 +96,6 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
                                     recent_history_summary: str | None = None,
                                     long_term_history_summary: str | None = None,
                                     world_entries_for_narrator: list[WorldEntry] | None = None,
-                                    config: RunnableConfig | None = None,
                                     ) -> str:
         data = {
             "simulation": simulation,
@@ -127,10 +117,7 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
 
         result = await self.model.ainvoke(
             messages,
-            config=patch_config(
-                config,
-                run_name="narrate_wait_for_user"
-            ) if config else None,
+            config={"run_name": "narrate_wait_for_user"},
         )
 
         return cast(str, result.content).strip()

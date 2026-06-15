@@ -1,7 +1,6 @@
 import json
 from typing import Any, cast
 from langchain.messages import ToolMessage
-from langchain_core.runnables import RunnableConfig, patch_config
 
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
     Item, Equipment, Faction, FactionRelationship, DirectorAgentProfile, DirectorOutput, PendingGeneratedProposal
@@ -29,7 +28,6 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                         user_input: str | None = None,
                         last_narration: str | None = None,
                         previous_resolver_notes: str | None = None,
-                        config: RunnableConfig | None = None,
                         ) -> tuple[DirectorOutput, list[PendingGeneratedProposal]]:
         generation_data = {
             "simulation": simulation,
@@ -61,10 +59,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
             for _ in range(self.profile.max_tool_rounds):
                 ai_msg = await model_with_tools.ainvoke(
                     working,
-                    config=patch_config(
-                        config,
-                        run_name="director_tool_calling",
-                    ) if config else None,
+                    config={"run_name": "director_tool_calling"},
                 )
                 working.append(ai_msg)
 
@@ -150,10 +145,7 @@ class DirectorAgent(WorldAgent[DirectorAgentProfile]):
                 DirectorOutput,
                 await structured_model.ainvoke(
                     final_messages,
-                    config=patch_config(
-                        config,
-                        run_name="director_planning",
-                    ) if config else None,
+                    config={"run_name": "director_planning"},
                 )
             ),
             [PendingGeneratedProposal.model_validate(p) for p in tool_results],
