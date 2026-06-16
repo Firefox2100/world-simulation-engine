@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.model.world import World, WorldCreate
@@ -25,9 +25,17 @@ class WorldRepository:
 
             return self._to_model(world)
 
-    async def list(self) -> list[World]:
+    async def list(self,
+                   limit: int | None = None,
+                   offset: int = 0,
+                   ) -> list[World]:
         async with self._session_factory() as session:
-            stmt = select(WorldOrm)
+            stmt = select(WorldOrm).order_by(WorldOrm.id)
+            if offset:
+                stmt = stmt.offset(offset)
+            if limit is not None:
+                stmt = stmt.limit(limit)
+
             result = await session.scalars(stmt)
             records = result.all()
 
@@ -43,3 +51,15 @@ class WorldRepository:
             result_dict = world.model_dump(mode="json")
             result_dict["id"] = new_world.id
             return World.model_validate(result_dict)
+
+    async def update(self, world_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(WorldOrm).where(WorldOrm.id == world_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, world_id: int):
+        async with self._session_factory() as session:
+            await session.execute(delete(WorldOrm).where(WorldOrm.id == world_id))
+            await session.commit()

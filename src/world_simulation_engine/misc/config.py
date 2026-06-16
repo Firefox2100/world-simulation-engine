@@ -27,6 +27,8 @@ class Settings(BaseSettings):
         "data/database.db",
         description='Path to the SQLite database file.'
     )
-
+    data_folder: str = Field(
+        "data/storage"
+    )
 
 CONFIG = Settings(_env_file=os.getenv('WSE_ENV_FILE', '.env'))      # type: ignore

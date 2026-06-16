@@ -1,10 +1,11 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File, status
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.model import Simulation
-from .utils import db_dep, turn_runner_dep
+from world_simulation_engine.service import FormatNormaliser
+from .utils import db_dep, turn_runner_dep, storage_dep
 
 
 simulation_router = APIRouter(
@@ -76,6 +77,13 @@ async def get_simulation(simulation_id: int,
     return simulation
 
 
+@simulation_router.delete("/{simulation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_simulation(simulation_id: int,
+                            db: db_dep,
+                            ):
+    await db.simulation.delete(simulation_id)
+
+
 @simulation_router.post("/{simulation_id}/input", response_model=RunSimulationResponse)
 async def run_simulation(simulation_id: int,
                          run_request: RunSimulationRequest,
@@ -96,3 +104,61 @@ async def run_simulation(simulation_id: int,
     return RunSimulationResponse(
         run_id=run_id,
     )
+
+
+@simulation_router.get("/{simulation_id}/images/cover")
+async def get_simulation_cover_image(simulation_id: int,
+                                     db: db_dep,
+                                     storage: storage_dep,
+                                     ):
+    simulation = await db.simulation.get(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation with ID {simulation_id} not found",
+        )
+
+    image_path = storage.simulation(simulation_id).image.get_path("cover.png")
+    if not image_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} has no cover image",
+        )
+
+    return FileResponse(
+        path=image_path,
+        media_type="image/png",
+        filename=f"simulation-{simulation_id}-cover.png",
+    )
+
+
+@simulation_router.post("/{simulation_id}/images/cover", status_code=status.HTTP_201_CREATED)
+async def upload_simulation_cover_image(simulation_id: int,
+                                        db: db_dep,
+                                        storage: storage_dep,
+                                        file: UploadFile = File(...),
+                                        ):
+    simulation = await db.simulation.get(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation with ID {simulation_id} not found",
+        )
+
+    normaliser = FormatNormaliser()
+    try:
+        normalised_bytes = normaliser.normalise_image(await file.read())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Error while normalising image: {e}",
+        ) from e
+
+    await storage.simulation(simulation_id).image.save(
+        file_name="cover.png",
+        data=normalised_bytes,
+    )
+
+    return {
+        "file_name": f"simulation-{simulation_id}-cover.png",
+    }

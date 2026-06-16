@@ -90,3 +90,16 @@ async def test_list_worlds(db,
 
     assert isinstance(fetched, list)
     assert len(fetched) == 1
+
+
+async def test_list_worlds_with_pagination(db,
+                                           mock_world_create,
+                                           ):
+    first = await db.world.create(world=mock_world_create.model_copy(update={"name": "First World"}))
+    second = await db.world.create(world=mock_world_create.model_copy(update={"name": "Second World"}))
+    third = await db.world.create(world=mock_world_create.model_copy(update={"name": "Third World"}))
+
+    fetched = await db.world.list(limit=2, offset=1)
+
+    assert [world.id for world in fetched] == [second.id, third.id]
+    assert first.id not in [world.id for world in fetched]

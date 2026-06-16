@@ -23,16 +23,17 @@ license-files = ["LICENSE"]
 dependencies = [
     "aiofiles~=25.1.0",
     "aiosqlite~=0.22.1",
-    "fastapi~=0.136.3",
+    "fastapi~=0.137.1",
     "jinja2~=3.1.2",
     "langchain~=1.3.7",
-    "langfuse~=4.7.1",
-    "langgraph~=1.2.4",
+    "langfuse~=4.9.0",
+    "langgraph~=1.2.5",
     "numpy~=2.4.6",
+    "pillow~=12.2.0",
     "pydantic~=2.13.4",
     "pydantic-settings~=2.14.1",
     "pyicu~=2.16.2",
-    "sqlalchemy~=2.0.50",
+    "sqlalchemy~=2.0.51",
     "uvicorn~=0.49.0",
 ]
 dynamic = [
@@ -41,10 +42,10 @@ dynamic = [
 
 [project.optional-dependencies]
 test = [
-    "pytest~=9.0.3",
+    "pytest~=9.1.0",
     "pytest-asyncio~=1.4.0",
     "pytest-cov~=7.1.0",
-    "pylint~=4.0.5",
+    "pylint~=4.0.6",
 ]
 
 # LLM backend dependencies
@@ -52,11 +53,11 @@ ollama = [
     "langchain-ollama~=1.1.0",
 ]
 openai = [
-    "langchain-openai~=1.3.0",
+    "langchain-openai~=1.3.2",
 ]
 all-llm = [
     "langchain-ollama~=1.1.0",
-    "langchain-openai~=1.3.0",
+    "langchain-openai~=1.3.2",
 ]
 
 [project.urls]

@@ -4,7 +4,7 @@ from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
 from world_simulation_engine.misc.config import CONFIG
-from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service import DatabaseService, StorageService
 from world_simulation_engine.component import TurnGenerator, WorkflowRunner
 from world_simulation_engine.router import connection_router, simulation_router, world_router
 
@@ -13,6 +13,9 @@ from world_simulation_engine.router import connection_router, simulation_router,
 async def lifespan(app: FastAPI):
     database_service = DatabaseService(
         database_path=CONFIG.database_path,
+    )
+    storage_service = StorageService(
+        base_path=CONFIG.data_folder,
     )
 
     turn_generator = TurnGenerator(
@@ -30,6 +33,7 @@ async def lifespan(app: FastAPI):
     )
 
     app.state.database_service = database_service
+    app.state.storage_service = storage_service
     app.state.turn_runner = turn_runner
 
     try:

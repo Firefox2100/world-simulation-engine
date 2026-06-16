@@ -62,16 +62,16 @@ class SimulationRepository:
             await session.commit()
             return self._to_model(new_simulation)
 
-    async def update(self, simulation: Simulation) -> None:
+    async def update(self, simulation_id: int, patched_data: dict) -> None:
         """
         Update an existing simulation.
-        :param simulation: The new simulation data.
+        :param simulation_id: The ID of the simulation to update.
+        :param patched_data: The data to patch.
         """
-        payload = simulation.model_dump(mode="json")
-
         async with self._session_factory() as session:
-            await session.merge(SimulationOrm(**payload))
-
+            await session.execute(
+                update(SimulationOrm).where(SimulationOrm.id == simulation_id).values(patched_data)
+            )
             await session.commit()
 
     async def delete(self, simulation_id: int) -> None:
@@ -80,11 +80,10 @@ class SimulationRepository:
         :param simulation_id: The simulation ID to delete
         """
         async with self._session_factory() as session:
-            simulation = await session.get(SimulationOrm, simulation_id)
-
-            if simulation:
-                await session.delete(simulation)
-                await session.commit()
+            await session.execute(
+                delete(SimulationOrm).where(SimulationOrm.id == simulation_id)
+            )
+            await session.commit()
 
 
 class SimulationStateRepository:
