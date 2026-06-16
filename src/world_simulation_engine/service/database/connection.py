@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.model.connection_profile import LlmConnectionProfile, LlmConnectionCreate
@@ -51,6 +51,20 @@ class LlmConnectionRepository:
             await session.commit()
 
         return self._to_model(connection_orm)
+
+    async def update(self, connection_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(LlmConnectionProfileOrm).where(LlmConnectionProfileOrm.id == connection_id).values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, connection_id: int):
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(LlmConnectionProfileOrm).where(LlmConnectionProfileOrm.id == connection_id)
+            )
+            await session.commit()
 
 
 class ConnectionRepository:

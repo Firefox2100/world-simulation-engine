@@ -41,8 +41,7 @@ async def list_simulations(db: db_dep):
 
 
 @simulation_router.post("/runs/{run_id}/events")
-async def stream_run_events(simulation_id: int,
-                            run_id: str,
+async def stream_run_events(run_id: str,
                             turn_runner: turn_runner_dep,
                             ):
     if not turn_runner.has_run(run_id):
