@@ -1,7 +1,8 @@
 from typing import cast
 
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, WorldEntry, Task, \
-    Faction, FactionRelationship, MemoryAgentProfile, BriefingOutput, PendingGeneratedProposal, DirectorOutput
+    Faction, FactionRelationship, MemoryAgentProfile, BriefingOutput, PendingGeneratedProposal, DirectorOutput, \
+    SummaryOutput, TurnRecord
 from .world_agent import WorldAgent
 
 
@@ -48,12 +49,45 @@ class MemoryAgent(WorldAgent[MemoryAgentProfile]):
             data=data,
         )
 
-        structured_model = self.model.with_structured_output(BriefingOutput)
-
         return cast(
             BriefingOutput,
-            await structured_model.ainvoke(
-                messages,
-                config={"run_name": "memory_briefing"},
+            await self._invoke_structured_with_repair(
+                output_model=BriefingOutput,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid BriefingOutput."
+                ),
+                run_name="memory_briefing",
+                max_attempts=2,
             ),
+        )
+
+    async def build_summary(self,
+                            last_turns: list[TurnRecord],
+                            state: SimulationState,
+                            narration: str,
+                            ) -> SummaryOutput:
+        data = {
+            "narration": narration,
+            "last_turns_narrations": [f"Turn: {t.turn_number} {t.narration}" for t in last_turns],
+            "previous_short_term_memory": state.recent_history_summary,
+            "previous_long_term_memory": state.long_term_history_summary,
+        }
+
+        messages = self._compose_messages(
+            prompts=self.profile.summary_prompt,
+            data=data,
+        )
+
+        return cast(
+            SummaryOutput,
+            await self._invoke_structured_with_repair(
+                output_model=SummaryOutput,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid SummaryOutput."
+                ),
+                run_name="memory_summary",
+                max_attempts=2,
+            )
         )

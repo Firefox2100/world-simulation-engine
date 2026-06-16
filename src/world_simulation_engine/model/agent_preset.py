@@ -165,6 +165,10 @@ class MemoryAgentProfile(AgentProfile):
         ...,
         description="The prompts to use when asking it to generate a briefing for character actions."
     )
+    summary_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a summary for turns."
+    )
 
 
 class CharacterAgentProfile(AgentProfile):

@@ -26,8 +26,7 @@ async def lifespan(app: FastAPI):
     turn_runner = WorkflowRunner(
         graph=turn_generator_graph,
         langfuse_handler=langfuse_handler,
-        preserve_updates=["commit_changes"],
-        callback=turn_generator.write_commits_to_database,
+        callback=turn_generator.persist_state_to_database,
     )
 
     app.state.database_service = database_service

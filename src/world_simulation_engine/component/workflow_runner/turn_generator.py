@@ -1,15 +1,12 @@
 import asyncio
-import json
 import operator
 from copy import deepcopy
 from uuid import uuid4
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Annotated, Callable, Awaitable
-from langchain_core.runnables import RunnableConfig
+from typing import Any, Annotated
 from langgraph.constants import START, END
-from langgraph.graph.state import StateGraph, CompiledStateGraph
+from langgraph.graph.state import StateGraph
 from langgraph.types import Send
-from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import FactionRelationshipEntity
@@ -17,10 +14,10 @@ from world_simulation_engine.model import Simulation, SimulationState, LlmConnec
     PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
     ResolverOutput, Faction, FactionRelationship, CommitterFinalOutput, CharacterReactionContext, \
     FailedCharacterRecord, Character, WorldEntry, Location, Item, ResolvedAction, Task, Equipment, \
-    NarratorResolvedEvent, NarratorResolutionView
+    NarratorResolvedEvent, NarratorResolutionView, SummaryOutput
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
     MemoryAgent, CharacterAgent, ResolverAgent, CommitterAgent, NarratorAgent
-from .world_entry_recaller import WorldEntryRecaller
+from ..world_entry_recaller import WorldEntryRecaller
 
 
 class ConnectionProfileCache(BaseModel):
@@ -59,6 +56,7 @@ class TurnGeneratorState(BaseModel):
     reaction_resolver_output: ResolverOutput | None = None
     committer_output: CommitterFinalOutput | None = None
     narration: str | None = None
+    summary_output: SummaryOutput | None = None
 
 
 class CharacterActionState(BaseModel):
@@ -77,13 +75,6 @@ class CharacterReactionState(BaseModel):
     connection_profiles: ConnectionProfileCache
     generated_proposals: list[PendingGeneratedProposal] | None = None
     reaction_context: CharacterReactionContext
-
-
-@dataclass
-class WorkflowRunHandle:
-    queue: asyncio.Queue[dict[str, Any]] = field(default_factory=asyncio.Queue)
-    done: asyncio.Event = field(default_factory=asyncio.Event)
-    task: asyncio.Task | None = None
 
 
 class TurnGenerator:
@@ -2184,7 +2175,7 @@ class TurnGenerator:
             ),
         }
 
-    async def director_planning(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def director_planning(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -2229,7 +2220,7 @@ class TurnGenerator:
         if not current_location:
             raise ValueError("Current location does not exist")
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation_id,
         )
 
@@ -2244,8 +2235,8 @@ class TurnGenerator:
 
         if state.user_input:
             recall_query = state.user_input
-        elif last_record:
-            recall_query = last_record.narration
+        elif last_records:
+            recall_query = last_records[0].narration
         else:
             recall_query = None
 
@@ -2305,7 +2296,7 @@ class TurnGenerator:
             factions=factions,
             faction_relationships=faction_relationships,
             user_input=state.user_input,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes="",
         )
 
@@ -2327,7 +2318,7 @@ class TurnGenerator:
             "generated_proposals": proposals,
         }
 
-    async def memory_briefing(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def memory_briefing(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -2390,7 +2381,7 @@ class TurnGenerator:
             private=False,
         )
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation_id,
         )
 
@@ -2446,8 +2437,8 @@ class TurnGenerator:
 
         if state.user_input:
             recall_query = f"{state.director_output.scene_focus}\n{state.user_input}"
-        elif last_record:
-            recall_query = f"{state.director_output.scene_focus}\n{last_record.narration}"
+        elif last_records:
+            recall_query = f"{state.director_output.scene_focus}\n{last_records[0].narration}"
         else:
             recall_query = state.director_output.scene_focus
 
@@ -2469,7 +2460,7 @@ class TurnGenerator:
             faction_relationships=public_faction_relationships,
             pending_generated_proposals=state.generated_proposals,
             user_input=state.user_input,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes="",
         )
 
@@ -2477,7 +2468,36 @@ class TurnGenerator:
             "briefing_output": result,
         }
 
-    async def character_action(self, state: CharacterActionState, config: RunnableConfig) -> dict:
+    async def memory_summary(self, state: TurnGeneratorState):
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
+        if state.narration is None:
+            raise RuntimeError("Narration is not generated")
+
+        if state.connection_profiles.memory is None:
+            raise RuntimeError("Memory connection profile not loaded")
+
+        memory_agent = MemoryAgent(
+            profile=state.simulation.agent_preset.memory,
+            connection=state.connection_profiles.memory,
+        )
+
+        last_records = await self._db.record.get_last_records(
+            simulation_id=state.simulation_id,
+            last_n=10,
+        )
+
+        result = await memory_agent.build_summary(
+            last_turns=last_records,
+            narration=state.narration,
+            state=state.state,
+        )
+
+        return {
+            "summary_output": result,
+        }
+
+    async def character_action(self, state: CharacterActionState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -2642,7 +2662,7 @@ class TurnGenerator:
             item_ids=[item.id for item in inventory],
         )
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation.id,
         )
 
@@ -2660,7 +2680,7 @@ class TurnGenerator:
             proposals=state.generated_proposals or [],
             data_preset=state.simulation.data_preset,
             user_input=state.user_input,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes="",
         )
 
@@ -2676,7 +2696,7 @@ class TurnGenerator:
             "character_action_outputs": [result],
         }
 
-    async def character_reaction(self, state: CharacterReactionState, config: RunnableConfig) -> dict:
+    async def character_reaction(self, state: CharacterReactionState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -2815,7 +2835,7 @@ class TurnGenerator:
             item_ids=[item.id for item in inventory],
         )
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation.id,
         )
 
@@ -2833,7 +2853,7 @@ class TurnGenerator:
             proposals=state.generated_proposals or [],
             data_preset=state.simulation.data_preset,
             user_input=state.user_input,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes="",
         )
 
@@ -2851,7 +2871,7 @@ class TurnGenerator:
             "character_reaction_outputs": [result]
         }
 
-    async def resolve_character_actions(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def resolve_character_actions(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -2983,7 +3003,7 @@ class TurnGenerator:
             include_private=True,
         )
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation.id,
         )
 
@@ -3000,7 +3020,7 @@ class TurnGenerator:
             action_validation_reports=action_validation_reports,
             factions=factions,
             faction_relationships=faction_relationships,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes="",
         )
 
@@ -3014,7 +3034,7 @@ class TurnGenerator:
             "resolver_output": result,
         }
 
-    async def resolve_character_reactions(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def resolve_character_reactions(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -3138,7 +3158,7 @@ class TurnGenerator:
             include_private=True,
         )
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation.id,
         )
 
@@ -3156,7 +3176,7 @@ class TurnGenerator:
             action_validation_reports=action_validation_reports,
             factions=factions,
             faction_relationships=faction_relationships,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes="",
         )
 
@@ -3170,7 +3190,7 @@ class TurnGenerator:
             "reaction_resolver_output": result,
         }
 
-    async def commit_changes(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def commit_changes(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -3270,7 +3290,7 @@ class TurnGenerator:
             "committer_output": result,
         }
 
-    async def narrate_resolved_turn(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def narrate_resolved_turn(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -3351,7 +3371,7 @@ class TurnGenerator:
             None,
         )
 
-        last_record = await self._db.record.get_last_record(
+        last_records = await self._db.record.get_last_records(
             simulation_id=state.simulation.id,
         )
 
@@ -3384,7 +3404,7 @@ class TurnGenerator:
             player_character=player_character,
             narrator_resolution_view=narrator_resolution_view,
             user_input=state.user_input,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             recent_history_summary=state.state.recent_history_summary,
             long_term_history_summary=state.state.long_term_history_summary,
             world_entries_for_narrator=recalled_entries,
@@ -3395,7 +3415,7 @@ class TurnGenerator:
             "narration": result,
         }
 
-    async def narrate_wait_for_user(self, state: TurnGeneratorState, config: RunnableConfig) -> dict:
+    async def narrate_wait_for_user(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
         if not state.director_output:
@@ -3425,7 +3445,7 @@ class TurnGenerator:
             simulation_id=state.simulation_id,
             location=state.state.scene,
         )
-        last_record = await self._db.record.get_last_record(simulation_id=state.simulation.id)
+        last_records = await self._db.record.get_last_records(simulation_id=state.simulation.id)
         world_entries = await self._db.entry.list(
             simulation_id=state.simulation_id,
             search_scope=[0] + [c.id for c in present_characters],
@@ -3451,7 +3471,7 @@ class TurnGenerator:
             characters=present_characters,
             director_output=state.director_output,
             user_input=state.user_input,
-            last_narration=last_record.narration if last_record else None,
+            last_narration=last_records[0].narration if last_records else None,
             recent_history_summary=state.state.recent_history_summary,
             long_term_history_summary=state.state.long_term_history_summary,
             world_entries_for_narrator=recalled_entries,
@@ -3712,12 +3732,17 @@ class TurnGenerator:
             for failed_character in retryable_failed_characters
         ]
 
+    @staticmethod
+    def route_after_narration(state: TurnGeneratorState):
+        return ["memory_summary"]
+
     def build_graph(self):
         graph = StateGraph(TurnGeneratorState)
 
         graph.add_node("load_simulation", self.load_simulation)
         graph.add_node("director_planning", self.director_planning)
         graph.add_node("memory_briefing", self.memory_briefing)
+        graph.add_node("memory_summary", self.memory_summary)
         graph.add_node("character_action", self.character_action)
         graph.add_node("character_reaction", self.character_reaction)
         graph.add_node("resolve_character_actions", self.resolve_character_actions)
@@ -3749,20 +3774,28 @@ class TurnGenerator:
         graph.add_edge("resolve_character_reactions", "commit_changes")
         graph.add_edge("resolve_character_reactions", "narrate_resolved_turn")
         graph.add_edge("commit_changes", END)
-        graph.add_edge("narrate_resolved_turn", END)
-        graph.add_edge("narrate_wait_for_user", END)
+        graph.add_conditional_edges(
+            "narrate_resolved_turn",
+            self.route_after_narration,
+        )
+        graph.add_conditional_edges(
+            "narrate_wait_for_user",
+            self.route_after_narration,
+        )
+        graph.add_edge("memory_summary", END)
 
         return graph.compile()
 
-    async def write_commits_to_database(self, payload: dict):
-        output = payload["committer_output"]
+    async def persist_state_to_database(self, payload: dict):
+        # Persist the commits
+        committer_output = payload["committer_output"]
 
-        if not output.get("ready_to_commit"):
+        if not committer_output.get("ready_to_commit"):
             raise RuntimeError(
-                f"Committer output is not ready to commit. warnings={output.get('warnings')}"
+                f"Committer output is not ready to commit. warnings={committer_output.get('warnings')}"
             )
 
-        mutations = output.get("database_patch_preview") or output.get("mutation_log") or []
+        mutations = committer_output.get("database_patch_preview") or committer_output.get("mutation_log") or []
 
         if not mutations:
             return {
@@ -3782,7 +3815,7 @@ class TurnGenerator:
             async with transaction():
                 for mutation in mutations:
                     result = await self._persist_single_committer_mutation(
-                        simulation_id=output["simulation_id"],
+                        simulation_id=committer_output["simulation_id"],
                         mutation=mutation,
                         temp_id_map=temp_id_map,
                     )
@@ -3791,164 +3824,16 @@ class TurnGenerator:
             # Non-transactional fallback. Good for early testing, but use a transaction long-term.
             for mutation in mutations:
                 result = await self._persist_single_committer_mutation(
-                    simulation_id=output["simulation_id"],
+                    simulation_id=committer_output["simulation_id"],
                     mutation=mutation,
                     temp_id_map=temp_id_map,
                 )
                 applied.append(result)
+
+        # Persist the summaries
 
         return {
             "committed": True,
             "applied": applied,
             "temp_id_map": temp_id_map,
         }
-
-
-class WorkflowRunner:
-    def __init__(self,
-                 graph: CompiledStateGraph,
-                 langfuse_handler: CallbackHandler,
-                 preserve_updates: list[str] | None = None,
-                 callback: Callable[[dict], Awaitable] | None = None,
-                 ):
-        self._graph = graph
-        self._langfuse_handler = langfuse_handler
-        self._preserve_updates = preserve_updates or []
-        self._callback = callback
-
-        self._runs: dict[str, WorkflowRunHandle] = {}
-
-    @staticmethod
-    def _format_sse(event: str, data: Any):
-        return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
-
-    async def _run_graph(self,
-                         run_id: str,
-                         input_data: dict[str, Any],
-                         handle: WorkflowRunHandle,
-                         run_name: str | None = None,
-                         metadata: dict | None = None,
-                         tags: list[str] | None = None,
-                         ):
-        payload = {}
-
-        try:
-            config: RunnableConfig = {
-                "callbacks": [self._langfuse_handler],
-                "configurable": {
-                    "thread_id": run_id,
-                },
-            }
-            if run_name:
-                config["run_name"] = run_name
-            if metadata:
-                config["metadata"] = metadata
-            if tags:
-                config["tags"] = tags
-
-            async for mode, chunk in self._graph.astream(
-                input_data,
-                config=config,
-                stream_mode=["updates", "messages"],
-            ):
-                if mode == "updates":
-                    for node_name, update in chunk.items():
-                        if node_name in self._preserve_updates:
-                            payload.update(update)
-
-                    await handle.queue.put({
-                        "event": "stage_update",
-                        "data": chunk,
-                    })
-
-                elif mode == "messages":
-                    await handle.queue.put({
-                        "event": "token",
-                        "data": chunk,
-                    })
-
-            await handle.queue.put({
-                "event": "done",
-                "data": {"run_id": run_id},
-            })
-        except asyncio.CancelledError:
-            await handle.queue.put({
-                "event": "cancelled",
-                "data": {"run_id": run_id},
-            })
-        except Exception as e:
-            await handle.queue.put({
-                "event": "error",
-                "data": {"message": str(e)},
-            })
-        finally:
-            if self._callback:
-                await self._callback(payload)
-
-            handle.done.set()
-
-    def has_run(self, run_id: str) -> bool:
-        if run_id in self._runs:
-            return True
-
-        return False
-
-    async def start(self,
-                    input_data: dict[str, Any],
-                    run_name: str | None = None,
-                    metadata: dict | None = None,
-                    tags: list[str] | None = None,
-                    ) -> str:
-        run_id = str(uuid4())
-        handle = WorkflowRunHandle()
-        self._runs[run_id] = handle
-
-        input_data["run_id"] = run_id
-
-        handle.task = asyncio.create_task(
-            self._run_graph(
-                run_id=run_id,
-                input_data=input_data,
-                handle=handle,
-                run_name=run_name,
-                metadata=metadata,
-                tags=tags,
-            )
-        )
-
-        return run_id
-
-    async def events(self, run_id: str) -> AsyncIterator[str]:
-        handle = self._runs.get(run_id)
-        if handle is None:
-            yield self._format_sse(
-                event="error",
-                data={"message": f"Run {run_id} not found"},
-            )
-            return
-
-        try:
-            while True:
-                # Exit once producer finished and all buffered events were consumed.
-                if handle.done.is_set() and handle.queue.empty():
-                    break
-
-                try:
-                    event = await asyncio.wait_for(handle.queue.get(), timeout=55)
-                except asyncio.TimeoutError:
-                    yield self._format_sse(
-                        event="ping",
-                        data={"message": "ping"},
-                    )
-                    continue
-
-                yield self._format_sse(
-                    event=event["event"],
-                    data=event["data"],
-                )
-
-                if event["event"] in {"done", "error", "cancelled"}:
-                    break
-        finally:
-            if handle.done.is_set() and handle.queue.empty():
-                self._runs.pop(run_id, None)

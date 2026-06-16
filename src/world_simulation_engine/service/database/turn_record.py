@@ -1,3 +1,4 @@
+from typing import List
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -42,17 +43,23 @@ class TurnRecordRepository:
 
             return [self._to_model(record) for record in records]
 
-    async def get_last_record(self, simulation_id: int) -> TurnRecord | None:
+    async def get_last_records(self,
+                               simulation_id: int,
+                               last_n: int = 1,
+                               ) -> List[TurnRecord]:
+        if last_n < 1:
+            raise ValueError(f"Requested last {last_n} messages for simulation id {simulation_id}")
+
         async with self._session_factory() as session:
             result = await session.scalars(
                 select(TurnRecordOrm)
                 .where(TurnRecordOrm.simulation_id == simulation_id)
                 .order_by(desc(TurnRecordOrm.turn_number))
-                .limit(1)
+                .limit(last_n)
             )
-            record = result.one_or_none()
+            records = list(reversed(result.all()))
 
-            if not record:
-                return None
+            if not records:
+                return []
 
-            return self._to_model(record)
+            return [self._to_model(record) for record in records]

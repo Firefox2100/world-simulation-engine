@@ -425,6 +425,15 @@ class CommitterFinalOutput(BaseModel):
     database_patch_preview: list[SandboxMutationRecord]
 
 
+class SummaryOutput(BaseModel):
+    scene_summary: str
+    short_term_memory: str
+    long_term_memory: str
+    active_scene: str | None = None
+    open_threads: list[str] = Field(default_factory=list)
+    continuity_notes: list[str] = Field(default_factory=list)
+
+
 class TurnRecord(BaseModel):
     id: int = Field(
         ...,
@@ -446,6 +455,10 @@ class TurnRecord(BaseModel):
     director_output: Optional[DirectorOutput] = Field(
         None,
         description="Director output for this turn record."
+    )
+    proposals: Optional[list[PendingGeneratedProposal]] = Field(
+        None,
+        description="Generation proposals for this turn record."
     )
     briefing_output: Optional[BriefingOutput] = Field(
         None,

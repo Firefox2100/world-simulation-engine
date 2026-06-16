@@ -2360,4 +2360,4 @@ async def test_write_to_database(db,
                                  ):
     turn_generator = TurnGenerator(db)
 
-    result = await turn_generator.write_commits_to_database(mock_committer_output_payload)
+    result = await turn_generator.persist_state_to_database(mock_committer_output_payload)
