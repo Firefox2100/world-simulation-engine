@@ -17,6 +17,6 @@ from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, Propo
     CharacterBriefing, BriefingOutput, CharacterActionOutput, ResolvedAction, ConflictRecord, \
     FailedCharacterRecord, ResolverOutput, CharacterReactionContext, NarratorResolvedEvent, NarratorResolutionView, \
     CommitterPlannedMutation, CommitterMutationPlanOutput, SandboxObjectRef, SandboxMutationRecord, \
-    CommitterValidationOutput, CommitterFinalOutput, SummaryOutput, TurnRecord
+    CommitterValidationOutput, CommitterFinalOutput, SummaryOutput, TurnRecordCreate, TurnRecord
 from .world import World
 from .world_entry import WorldEntry, WorldEntryRecallKeyword

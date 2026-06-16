@@ -1,20 +1,18 @@
-import asyncio
 import operator
 from copy import deepcopy
 from uuid import uuid4
-from dataclasses import dataclass, field
 from typing import Any, Annotated
 from langgraph.constants import START, END
 from langgraph.graph.state import StateGraph
 from langgraph.types import Send
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import FactionRelationshipEntity
+from world_simulation_engine.misc.enums import FactionRelationshipEntity, TurnType
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
     PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
     ResolverOutput, Faction, FactionRelationship, CommitterFinalOutput, CharacterReactionContext, \
     FailedCharacterRecord, Character, WorldEntry, Location, Item, ResolvedAction, Task, Equipment, \
-    NarratorResolvedEvent, NarratorResolutionView, SummaryOutput
+    NarratorResolvedEvent, NarratorResolutionView, SummaryOutput, TurnRecordCreate
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
     MemoryAgent, CharacterAgent, ResolverAgent, CommitterAgent, NarratorAgent
 from ..world_entry_recaller import WorldEntryRecaller
@@ -28,7 +26,6 @@ class ConnectionProfileCache(BaseModel):
     committer: LlmConnectionProfile | None = None
     narrator: LlmConnectionProfile | None = None
     world_generator: LlmConnectionProfile | None = None
-
     embedding: LlmConnectionProfile | None = None
 
 
@@ -3787,53 +3784,136 @@ class TurnGenerator:
         return graph.compile()
 
     async def persist_state_to_database(self, payload: dict):
-        # Persist the commits
-        committer_output = payload["committer_output"]
+        previous_turn_number = payload["state"]["turn_number"]
+        if not payload.get("narration"):
+            # Narration not generated, this run is not completed
+            raise ValueError(f"Graph run {payload['run_id']} failed, nothing to persist.")
 
-        if not committer_output.get("ready_to_commit"):
-            raise RuntimeError(
-                f"Committer output is not ready to commit. warnings={committer_output.get('warnings')}"
+        new_turns = [
+            TurnRecordCreate(
+                simulation_id=payload["simulation_id"],
+                turn_number=previous_turn_number + 1,
+                type=TurnType.USER_INPUT,
+                director_output=None,
+                proposals=None,
+                briefing_output=None,
+                character_actions=[],
+                character_reactions=[],
+                resolver_output=None,
+                reaction_resolving=None,
+                committer_output=None,
+                narration=payload.get("user_input", ""),
+                summary_output=None,
+            ),
+        ]
+
+        if not payload.get("director_output"):
+            # TODO: Director is not run or not succeeded
+            raise NotImplementedError
+        elif not payload.get("committer_output"):
+            # Committer not run, waiting for user input
+            if not payload.get("summary_output"):
+                # Summary not generated, running of workflow didn't complete
+                raise ValueError(f"Summary output is not generated in run {payload['run_id']}")
+            new_turns.append(
+                TurnRecordCreate(
+                    simulation_id=payload["simulation_id"],
+                    turn_number=previous_turn_number + 2,
+                    type=TurnType.AI_WAIT,
+                    director_output=DirectorOutput.model_validate(payload["director_output"]),
+                    proposals=[
+                        PendingGeneratedProposal.model_validate(p)
+                        for p in payload.get("generated_proposals", [])
+                    ],
+                    briefing_output=None,
+                    character_actions=[],
+                    character_reactions=[],
+                    resolver_output=None,
+                    reaction_resolving=None,
+                    committer_output=None,
+                    narration=payload["narration"],
+                    summary_output=SummaryOutput.model_validate(payload["summary_output"]),
+                )
+            )
+        else:
+            # Normal run through, persist the commits
+            committer_output = payload["committer_output"]
+
+            if not committer_output.get("ready_to_commit"):
+                # Cannot continue with state inconsistency
+                raise RuntimeError(
+                    f"Committer output is not ready to commit. warnings={committer_output.get('warnings')}"
+                )
+
+            mutations = committer_output.get("database_patch_preview") or committer_output.get("mutation_log") or []
+
+            if mutations:
+                applied: list[dict[str, Any]] = []
+                temp_id_map: dict[str, int] = {}
+
+                # Prefer a real transaction if your DB layer supports it.
+                transaction = getattr(self._db, "transaction", None)
+
+                if transaction is not None:
+                    async with transaction():
+                        for mutation in mutations:
+                            result = await self._persist_single_committer_mutation(
+                                simulation_id=committer_output["simulation_id"],
+                                mutation=mutation,
+                                temp_id_map=temp_id_map,
+                            )
+                            applied.append(result)
+                else:
+                    # Non-transactional fallback. Good for early testing, but use a transaction long-term.
+                    for mutation in mutations:
+                        result = await self._persist_single_committer_mutation(
+                            simulation_id=committer_output["simulation_id"],
+                            mutation=mutation,
+                            temp_id_map=temp_id_map,
+                        )
+                        applied.append(result)
+
+            # Persist the summaries
+            summary_output = payload["summary_output"]
+            await self._db.state.update(
+                state_id=payload["simulation_id"],
+                patched_data={
+                    "turn_number": previous_turn_number + 2,
+                    "state": summary_output["scene_summary"],
+                    "recent_history_summary": summary_output["short_term_memory"],
+                    "long_term_history_summary": summary_output["long_term_memory"],
+                },
             )
 
-        mutations = committer_output.get("database_patch_preview") or committer_output.get("mutation_log") or []
-
-        if not mutations:
-            return {
-                "committed": False,
-                "applied": [],
-                "temp_id_map": {},
-                "reason": "No mutations to persist.",
-            }
-
-        applied: list[dict[str, Any]] = []
-        temp_id_map: dict[str, int] = {}
-
-        # Prefer a real transaction if your DB layer supports it.
-        transaction = getattr(self._db, "transaction", None)
-
-        if transaction is not None:
-            async with transaction():
-                for mutation in mutations:
-                    result = await self._persist_single_committer_mutation(
-                        simulation_id=committer_output["simulation_id"],
-                        mutation=mutation,
-                        temp_id_map=temp_id_map,
-                    )
-                    applied.append(result)
-        else:
-            # Non-transactional fallback. Good for early testing, but use a transaction long-term.
-            for mutation in mutations:
-                result = await self._persist_single_committer_mutation(
-                    simulation_id=committer_output["simulation_id"],
-                    mutation=mutation,
-                    temp_id_map=temp_id_map,
+            # Add the complete record
+            new_turns.append(
+                TurnRecordCreate(
+                    simulation_id=payload["simulation_id"],
+                    turn_number=previous_turn_number + 2,
+                    type=TurnType.AI_RESPONSE if payload.get("user_input") else TurnType.AI_CONTINUE,
+                    director_output=DirectorOutput.model_validate(payload["director_output"]),
+                    proposals=[
+                        PendingGeneratedProposal.model_validate(p)
+                        for p in payload.get("generated_proposals", [])
+                    ],
+                    briefing_output=BriefingOutput.model_validate(payload["briefing_output"]),
+                    character_actions=[
+                        CharacterActionOutput.model_validate(a)
+                        for a in payload.get("character_action_outputs", [])
+                    ],
+                    character_reactions=[
+                        CharacterActionOutput.model_validate(r)
+                        for r in payload.get("character_reaction_outputs", [])
+                    ],
+                    resolver_output=ResolverOutput.model_validate(payload["resolver_output"]),
+                    reaction_resolving=ResolverOutput.model_validate(payload["reaction_resolver_output"])
+                        if payload.get("reaction_resolver_output") else None,
+                    committer_output=CommitterFinalOutput.model_validate(payload["committer_output"]),
+                    narration=payload["narration"],
+                    summary_output=SummaryOutput.model_validate(payload["summary_output"]),
                 )
-                applied.append(result)
+            )
 
-        # Persist the summaries
-
-        return {
-            "committed": True,
-            "applied": applied,
-            "temp_id_map": temp_id_map,
-        }
+        # Write the turn records
+        for t in new_turns:
+            await self._db.record.create(t)

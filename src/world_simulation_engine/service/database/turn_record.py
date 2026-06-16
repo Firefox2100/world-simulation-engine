@@ -3,7 +3,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from world_simulation_engine.misc.enums import TurnType
-from world_simulation_engine.model import TurnRecord
+from world_simulation_engine.model import TurnRecord, TurnRecordCreate
 from .tables import TurnRecordOrm
 
 
@@ -63,3 +63,13 @@ class TurnRecordRepository:
                 return []
 
             return [self._to_model(record) for record in records]
+
+    async def create(self, record: TurnRecordCreate) -> TurnRecord:
+        payload = record.model_dump(mode="json")
+
+        async with self._session_factory() as session:
+            new_record = TurnRecordOrm(**payload)
+            session.add(new_record)
+
+            await session.commit()
+            return self._to_model(new_record)

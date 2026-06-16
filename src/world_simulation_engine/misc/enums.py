@@ -78,6 +78,7 @@ class TurnType(StrEnum):
     USER_INPUT = "user_input"
     AI_RESPONSE = "ai_response"
     AI_CONTINUE = "ai_continue"
+    AI_WAIT = "ai_wait"
 
 
 class TaskType(StrEnum):
