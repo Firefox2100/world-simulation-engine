@@ -12,7 +12,8 @@ from world_simulation_engine.model import Simulation, SimulationState, LlmConnec
     PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
     ResolverOutput, Faction, FactionRelationship, CommitterFinalOutput, CharacterReactionContext, \
     FailedCharacterRecord, Character, WorldEntry, Location, Item, ResolvedAction, Task, Equipment, \
-    NarratorResolvedEvent, NarratorResolutionView, SummaryOutput, TurnRecordCreate
+    NarratorResolvedEvent, NarratorResolutionView, SummaryOutput, TurnRecordCreate, WaitForUserNarrationContext, \
+    UserInputResolverContext, UserInputResolutionOutput, UserInputFailureNarrationContext
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
     MemoryAgent, CharacterAgent, ResolverAgent, CommitterAgent, NarratorAgent
 from ..world_entry_recaller import WorldEntryRecaller
@@ -38,6 +39,7 @@ class TurnGeneratorState(BaseModel):
     state: SimulationState | None = None
     connection_profiles: ConnectionProfileCache = Field(default_factory=ConnectionProfileCache)
 
+    user_input_resolution: UserInputResolutionOutput | None = None
     director_output: DirectorOutput | None = None
     generated_proposals: list[PendingGeneratedProposal] | None = None
     briefing_output: BriefingOutput | None = None
@@ -1323,6 +1325,32 @@ class TurnGenerator:
 
         return result
 
+    def _user_input_resolution_to_resolver_output(
+            self,
+            output: UserInputResolutionOutput,
+    ) -> ResolverOutput:
+        return ResolverOutput(
+            accepted=output.accepted,
+            rejection_reason=output.rejection_reason,
+            resolved_actions=[
+                ResolvedAction.model_validate(action.model_dump())
+                for action in output.resolved_actions
+            ],
+            conflicts=[
+                conflict.model_dump()
+                for conflict in output.conflicts
+            ],
+            failed_characters=[],
+            scene_result_summary=output.scene_result_summary,
+            next_round_note=output.next_round_note,
+            narrator_context=output.narrator_context,
+            state_update_suggestions=output.state_update_suggestions,
+            pending_world_entry_suggestions=output.pending_world_entry_suggestions,
+            requires_director_rerun=output.requires_director_rerun,
+            director_rerun_reason=output.director_rerun_reason,
+            notes=output.notes,
+        )
+
     def _merge_resolver_outputs_for_downstream(
             self,
             primary: ResolverOutput,
@@ -2128,6 +2156,225 @@ class TurnGenerator:
             f"Unsupported committer mutation operation: {operation!r}"
         )
 
+    def _build_wait_for_user_narration_context(
+            self,
+            *,
+            simulation: Simulation,
+            state: SimulationState,
+            current_location: Location,
+            present_characters: list[Character],
+            director_output: DirectorOutput,
+            user_input: str | None,
+            last_narration: str | None,
+            recalled_entries: list[WorldEntry],
+    ) -> WaitForUserNarrationContext:
+        return WaitForUserNarrationContext(
+            simulation_name=simulation.name,
+            simulation_description=simulation.description,
+            time_label=state.time_label,
+            scene_state=state.state,
+            recent_history_summary=getattr(state, "recent_history_summary", None),
+            long_term_history_summary=getattr(state, "long_term_history_summary", None),
+            short_term_memory=getattr(state, "short_term_memory", None),
+            long_term_memory=getattr(state, "long_term_memory", None),
+            location_label=self._location_label(current_location),
+            location_description=current_location.description,
+            user_input=user_input,
+            last_narration=last_narration,
+            scene_focus=director_output.scene_focus,
+            reason_to_wait=director_output.reason_to_wait,
+            present_characters=[
+                {
+                    "id": character.id,
+                    "name": character.name,
+                    "public_state": character.public_state,
+                    "user_controlled": character.user_controlled,
+                }
+                for character in present_characters
+            ],
+            visible_world_entries=[
+                {
+                    "id": entry.id,
+                    "content": entry.content,
+                    "visibility": entry.visibility,
+                    "narration_permission": entry.narration_permission,
+                }
+                for entry in recalled_entries
+                if -1 not in (entry.scope or [])
+            ],
+        )
+
+    def _location_label(self, location: Location) -> str:
+        parts = [
+            getattr(location, "primary_location", None),
+            getattr(location, "detailed_location", None),
+            getattr(location, "scene", None),
+        ]
+
+        return " / ".join(part for part in parts if part) or f"Location {location.id}"
+
+    def _compact_entity_for_user_input_resolver(self, entity: Any) -> dict[str, Any]:
+        data = entity.model_dump() if hasattr(entity, "model_dump") else dict(entity)
+
+        return {
+            "id": data.get("id", data.get("temp_id")),
+            "name": data.get("name"),
+            "type": data.get("type"),
+            "description": data.get("description"),
+            "status": data.get("status"),
+            "interactions": data.get("interactions", []),
+        }
+
+    def _compact_location_for_user_input_resolver(self, location: Location) -> dict[str, Any]:
+        return {
+            "id": location.id,
+            "label": self._location_label(location),
+            "description": location.description,
+            "entities": [
+                self._compact_entity_for_user_input_resolver(entity)
+                for entity in (location.entities or [])
+            ],
+        }
+
+    def _compact_character_for_user_input_resolver(
+            self,
+            character: Character,
+            inventory: CharacterInventory | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "id": character.id,
+            "name": character.name,
+            "user_controlled": character.user_controlled,
+            "location": character.location,
+            "public_state": character.public_state,
+            "private_state": character.private_state,
+            "attributes": character.attributes,
+            "stats": character.stats,
+            "inventory": self._compact_inventory_for_user_input_resolver(inventory),
+        }
+
+    def _compact_inventory_for_user_input_resolver(
+            self,
+            inventory: CharacterInventory | None,
+    ) -> dict[str, Any]:
+        if inventory is None:
+            return {
+                "items": [],
+                "equipments": [],
+            }
+
+        return {
+            "items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "description": item.description,
+                    "quantity": item.quantity,
+                    "quality": item.quality,
+                }
+                for item in (inventory.items or [])
+            ],
+            "equipments": [
+                {
+                    "id": equipment.id,
+                    "name": equipment.name,
+                    "description": equipment.description,
+                    "status": equipment.status,
+                    "quality": equipment.quality,
+                }
+                for equipment in (inventory.equipments or [])
+            ],
+        }
+
+    def _compact_task_for_user_input_resolver(self, task: Task) -> dict[str, Any]:
+        return {
+            "id": task.id,
+            "character_ids": task.character_ids,
+            "private": task.private,
+            "priority": task.priority,
+            "status": task.status,
+            "goal": task.goal,
+            "progress": task.progress,
+            "source": task.source,
+        }
+
+    def _compact_world_entry_for_user_input_resolver(self, entry: WorldEntry) -> dict[str, Any]:
+        return {
+            "id": entry.id,
+            "scope": entry.scope,
+            "content": entry.content,
+            "visibility": entry.visibility,
+            "confidence": entry.confidence,
+            "narration_permission": entry.narration_permission,
+            "recall_type": entry.recall_type,
+        }
+
+    def _build_user_input_failure_narration_context(
+            self,
+            *,
+            simulation: Simulation,
+            state: SimulationState,
+            current_location: Location,
+            player_character: Character | None,
+            user_input: str,
+            user_input_resolution: UserInputResolutionOutput,
+            last_narration: str | None,
+            recalled_entries: list[WorldEntry],
+    ) -> UserInputFailureNarrationContext:
+        return UserInputFailureNarrationContext(
+            simulation_name=simulation.name,
+            simulation_description=simulation.description,
+            time_label=state.time_label,
+            state_summary=state.state,
+            short_term_memory=getattr(state, "short_term_memory", None),
+            long_term_memory=getattr(state, "long_term_memory", None),
+            recent_history_summary=getattr(state, "recent_history_summary", None),
+            long_term_history_summary=getattr(state, "long_term_history_summary", None),
+            location_label=self._location_label(current_location),
+            location_description=current_location.description,
+            player_character=(
+                {
+                    "id": player_character.id,
+                    "name": player_character.name,
+                    "public_state": player_character.public_state,
+                    "location": player_character.location,
+                    "user_controlled": player_character.user_controlled,
+                }
+                if player_character is not None
+                else None
+            ),
+            user_input=user_input,
+            input_kind=user_input_resolution.input_kind,
+            legality=user_input_resolution.legality,
+            rejection_reason=user_input_resolution.rejection_reason,
+            user_retry_instruction=user_input_resolution.user_retry_instruction,
+            conflicts=[
+                conflict.model_dump()
+                if hasattr(conflict, "model_dump")
+                else dict(conflict)
+                for conflict in user_input_resolution.conflicts
+            ],
+            blocked_actions=[
+                action.model_dump()
+                if hasattr(action, "model_dump")
+                else dict(action)
+                for action in user_input_resolution.resolved_actions
+                if getattr(action, "final_status", None)
+                   in {"failed", "blocked", "invalid", "cancelled"}
+            ],
+            last_narration=last_narration,
+            visible_world_entries=[
+                {
+                    "id": entry.id,
+                    "content": entry.content,
+                    "visibility": entry.visibility,
+                    "narration_permission": entry.narration_permission,
+                }
+                for entry in recalled_entries
+                if -1 not in (entry.scope or [])
+            ],
+        )
+
     async def load_simulation(self, state: TurnGeneratorState) -> dict:
         simulation = await self._db.simulation.get(state.simulation_id)
         simulation_state = await self._db.state.get(state.simulation_id)
@@ -2294,7 +2541,7 @@ class TurnGenerator:
             faction_relationships=faction_relationships,
             user_input=state.user_input,
             last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes="",
+            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
 
         if not state.simulation.act_for_user:
@@ -2458,7 +2705,7 @@ class TurnGenerator:
             pending_generated_proposals=state.generated_proposals,
             user_input=state.user_input,
             last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes="",
+            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
 
         return {
@@ -2678,7 +2925,7 @@ class TurnGenerator:
             data_preset=state.simulation.data_preset,
             user_input=state.user_input,
             last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes="",
+            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
 
         result = self._normalise_character_action_output(
@@ -2851,7 +3098,7 @@ class TurnGenerator:
             data_preset=state.simulation.data_preset,
             user_input=state.user_input,
             last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes="",
+            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
 
         result = self._normalise_character_reaction_output(
@@ -3018,7 +3265,7 @@ class TurnGenerator:
             factions=factions,
             faction_relationships=faction_relationships,
             last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes="",
+            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
 
         result = self._normalise_resolver_output(
@@ -3174,7 +3421,7 @@ class TurnGenerator:
             factions=factions,
             faction_relationships=faction_relationships,
             last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes="",
+            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
 
         result = self._normalise_reaction_resolver_output(
@@ -3185,6 +3432,165 @@ class TurnGenerator:
 
         return {
             "reaction_resolver_output": result,
+        }
+
+    async def resolve_user_input(self, state: TurnGeneratorState) -> dict:
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
+
+        if not state.user_input or not state.user_input.strip():
+            return {
+                "user_input_resolution": UserInputResolutionOutput(
+                    accepted=True,
+                    input_kind="no_action",
+                    legality="legal",
+                    scene_result_summary="No explicit user action was provided.",
+                    next_round_note="Director should decide whether the scene needs player input or can continue.",
+                )
+            }
+
+        if state.connection_profiles.resolver is None:
+            raise RuntimeError("Resolver connection profile not loaded")
+
+        simulation_id = state.simulation_id
+
+        current_location = await self._db.location.get(state.state.scene)
+        if current_location is None:
+            raise RuntimeError(f"Current location {state.state.scene} not found")
+
+        all_characters = await self._db.character.list(
+            simulation_id=simulation_id,
+        )
+
+        present_characters = await self._db.character.list(
+            simulation_id=simulation_id,
+            location=state.state.scene,
+        )
+
+        player_character = next(
+            (character for character in all_characters if character.user_controlled),
+            None,
+        )
+
+        locations = await self._db.location.list(
+            simulation_id=simulation_id,
+        )
+
+        tasks = await self._db.task.list(
+            simulation_id=simulation_id,
+        )
+
+        inventory_by_character_id: dict[int, CharacterInventory] = {}
+
+        for character in all_characters:
+            items = await self._db.item.list(character_id=character.id)
+            equipments = await self._db.equipment.list(character_id=character.id)
+            inventory_by_character_id[character.id] = CharacterInventory(
+                items=items,
+                equipments=equipments,
+            )
+
+        # World inventory, owner 0, useful for checking if an item exists somewhere in the world.
+        world_items = await self._db.item.list(simulation_id=simulation_id)
+        world_equipments = await self._db.equipment.list(simulation_id=simulation_id)
+        world_inventory = CharacterInventory(
+            items=world_items,
+            equipments=world_equipments,
+        )
+
+        # Visible entries: public + player-specific only.
+        visible_scope = [0]
+        if player_character is not None:
+            visible_scope.append(player_character.id)
+
+        visible_world_entries = await self._db.entry.list(
+            simulation_id=simulation_id,
+            search_scope=visible_scope,
+            narration_only=True,
+        )
+
+        # Resolver entries: can include hidden [-1] plus all present characters and player.
+        resolver_scope = [-1, 0]
+        resolver_scope.extend(character.id for character in present_characters)
+        if player_character is not None and player_character.id not in resolver_scope:
+            resolver_scope.append(player_character.id)
+
+        resolver_world_entries = await self._db.entry.list(
+            simulation_id=simulation_id,
+            search_scope=resolver_scope,
+        )
+
+        context = UserInputResolverContext(
+            simulation_name=state.simulation.name,
+            simulation_description=state.simulation.description,
+            language=state.simulation.language,
+            user_input=state.user_input,
+            time_label=state.state.time_label,
+            state_summary=state.state.state,
+            recent_history_summary=state.state.recent_history_summary,
+            long_term_history_summary=state.state.long_term_history_summary,
+            short_term_memory=getattr(state.state, "short_term_memory", None),
+            long_term_memory=getattr(state.state, "long_term_memory", None),
+            current_location=self._compact_location_for_user_input_resolver(current_location),
+            player_character=(
+                self._compact_character_for_user_input_resolver(
+                    player_character,
+                    inventory_by_character_id.get(player_character.id),
+                )
+                if player_character is not None
+                else None
+            ),
+            present_characters=[
+                self._compact_character_for_user_input_resolver(
+                    character,
+                    inventory_by_character_id.get(character.id),
+                )
+                for character in present_characters
+            ],
+            all_characters=[
+                self._compact_character_for_user_input_resolver(
+                    character,
+                    inventory_by_character_id.get(character.id),
+                )
+                for character in all_characters
+            ],
+            locations=[
+                self._compact_location_for_user_input_resolver(location)
+                for location in locations
+            ],
+            inventory={
+                "world": self._compact_inventory_for_user_input_resolver(world_inventory),
+                "characters": {
+                    str(character_id): self._compact_inventory_for_user_input_resolver(inventory)
+                    for character_id, inventory in inventory_by_character_id.items()
+                },
+            },
+            tasks=[
+                self._compact_task_for_user_input_resolver(task)
+                for task in tasks
+            ],
+            visible_world_entries=[
+                self._compact_world_entry_for_user_input_resolver(entry)
+                for entry in visible_world_entries
+                if -1 not in (entry.scope or [])
+            ],
+            resolver_world_entries=[
+                self._compact_world_entry_for_user_input_resolver(entry)
+                for entry in resolver_world_entries
+            ],
+        )
+
+        resolver_agent = UserInputResolverAgent(
+            profile=state.simulation.agent_preset.resolver,
+            connection=state.connection_profiles.resolver,
+        )
+
+        result = await resolver_agent.resolve_user_input(
+            context=context,
+        )
+
+        return {
+            "user_input_resolution": result,
         }
 
     async def commit_changes(self, state: TurnGeneratorState) -> dict:
@@ -3415,22 +3821,26 @@ class TurnGenerator:
     async def narrate_wait_for_user(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
+
         if not state.director_output:
             raise RuntimeError("Director output not generated")
 
         if state.connection_profiles.narrator is None:
             raise RuntimeError("Narrator connection profile not loaded")
+
+        if state.connection_profiles.embedding is None:
+            raise RuntimeError("Embedding service connection profile not loaded")
+
         narrator_agent = NarratorAgent(
             profile=state.simulation.agent_preset.narrator,
             connection=state.connection_profiles.narrator,
         )
 
-        if state.connection_profiles.embedding is None:
-            raise RuntimeError("Embedding service connection profile not loaded")
         embedding_service = EmbeddingService(
             profile=state.simulation.embedding_profile,
             connection=state.connection_profiles.embedding,
         )
+
         recaller = WorldEntryRecaller(
             embedding_service=embedding_service,
         )
@@ -3438,45 +3848,167 @@ class TurnGenerator:
         current_location = await self._db.location.get(state.state.scene)
         if not current_location:
             raise ValueError(f"Current location {state.state.scene} does not exist")
+
         present_characters = await self._db.character.list(
             simulation_id=state.simulation_id,
             location=state.state.scene,
         )
-        last_records = await self._db.record.get_last_records(simulation_id=state.simulation.id)
+
+        player_character = (await self._db.character.list(
+            simulation_id=state.simulation.id,
+            controlled_by_user=True,
+        ))[0]
+
+        last_records = await self._db.record.get_last_records(
+            simulation_id=state.simulation.id,
+        )
+
+        # Player-facing narration should not see all NPC-private entries.
+        narrator_scope = [0]
+        if player_character is not None:
+            narrator_scope.append(player_character.id)
+
         world_entries = await self._db.entry.list(
             simulation_id=state.simulation_id,
-            search_scope=[0] + [c.id for c in present_characters],
+            search_scope=narrator_scope,
             narration_only=True,
         )
-        if state.user_input:
-            recalled_entries = await recaller.recall(
-                query=state.user_input,
-                entries=world_entries,
-                language=state.simulation.language,
-            )
-        else:
-            recalled_entries = await recaller.recall(
-                query=state.director_output.scene_focus,
-                entries=world_entries,
-                language=state.simulation.language,
-            )
 
-        result = await narrator_agent.narrate_wait_for_user(
+        recall_query = (
+                state.user_input
+                or state.director_output.scene_focus
+                or state.director_output.reason_to_wait
+                or current_location.description
+                or ""
+        )
+
+        recalled_entries = await recaller.recall(
+            query=recall_query,
+            entries=world_entries,
+            language=state.simulation.language,
+        )
+
+        context = self._build_wait_for_user_narration_context(
             simulation=state.simulation,
             state=state.state,
             current_location=current_location,
-            characters=present_characters,
+            present_characters=present_characters,
             director_output=state.director_output,
             user_input=state.user_input,
             last_narration=last_records[0].narration if last_records else None,
-            recent_history_summary=state.state.recent_history_summary,
-            long_term_history_summary=state.state.long_term_history_summary,
-            world_entries_for_narrator=recalled_entries,
+            recalled_entries=recalled_entries,
+        )
+
+        result = await narrator_agent.narrate_wait_for_user(
+            context=context,
         )
 
         return {
-            "narration": result
+            "narration": result,
         }
+
+    async def narrate_user_failure(self, state: TurnGeneratorState) -> dict:
+        if state.simulation is None or state.state is None:
+            raise RuntimeError("Simulation is not loaded")
+
+        if not state.user_input:
+            raise RuntimeError("User input is missing")
+
+        if state.user_input_resolution is None:
+            raise RuntimeError("User input resolution is missing")
+
+        if state.connection_profiles.narrator is None:
+            raise RuntimeError("Narrator connection profile not loaded")
+
+        if state.connection_profiles.embedding is None:
+            raise RuntimeError("Embedding service connection profile not loaded")
+
+        narrator_agent = NarratorAgent(
+            profile=state.simulation.agent_preset.narrator,
+            connection=state.connection_profiles.narrator,
+        )
+
+        embedding_service = EmbeddingService(
+            profile=state.simulation.embedding_profile,
+            connection=state.connection_profiles.embedding,
+        )
+
+        recaller = WorldEntryRecaller(
+            embedding_service=embedding_service,
+        )
+
+        current_location = await self._db.location.get(state.state.scene)
+        if current_location is None:
+            raise ValueError(f"Current location {state.state.scene} does not exist")
+
+        player_character = (await self._db.character.list(
+            simulation_id=state.simulation_id,
+            controlled_by_user=True
+        ))[0]
+
+        last_records = await self._db.record.get_last_records(
+            simulation_id=state.simulation.id,
+        )
+
+        # Failure narration must be player-facing.
+        # Do not include every NPC private scope.
+        search_scope = [0]
+        if player_character is not None:
+            search_scope.append(player_character.id)
+
+        world_entries = await self._db.entry.list(
+            simulation_id=state.simulation_id,
+            search_scope=search_scope,
+            narration_only=True,
+        )
+
+        recall_query = " ".join(
+            part
+            for part in [
+                state.user_input,
+                state.user_input_resolution.rejection_reason,
+                state.user_input_resolution.user_retry_instruction,
+                current_location.description,
+            ]
+            if part
+        )
+
+        recalled_entries = await recaller.recall(
+            query=recall_query,
+            entries=world_entries,
+            language=state.simulation.language,
+        )
+
+        context = self._build_user_input_failure_narration_context(
+            simulation=state.simulation,
+            state=state.state,
+            current_location=current_location,
+            player_character=player_character,
+            user_input=state.user_input,
+            user_input_resolution=state.user_input_resolution,
+            last_narration=last_records[0].narration if last_records else None,
+            recalled_entries=recalled_entries,
+        )
+
+        result = await narrator_agent.narrate_user_input_failure(
+            context=context,
+        )
+
+        return {
+            "narration": result,
+        }
+
+    @staticmethod
+    def route_after_input_resolution(state: TurnGeneratorState):
+        output = state.user_input_resolution
+
+        if output is None:
+            raise RuntimeError("User input resolution missing")
+
+        if not output.accepted:
+            return "narrate"
+
+        return "director"
 
     @staticmethod
     def route_after_director(state: TurnGeneratorState):
@@ -3744,12 +4276,23 @@ class TurnGenerator:
         graph.add_node("character_reaction", self.character_reaction)
         graph.add_node("resolve_character_actions", self.resolve_character_actions)
         graph.add_node("resolve_character_reactions", self.resolve_character_reactions)
+        graph.add_node("resolve_user_input", self.resolve_user_input)
         graph.add_node("commit_changes", self.commit_changes)
         graph.add_node("narrate_resolved_turn", self.narrate_resolved_turn)
         graph.add_node("narrate_wait_for_user", self.narrate_wait_for_user)
+        graph.add_node("narrate_user_failure", self.narrate_user_failure)
 
         graph.add_edge(START, "load_simulation")
-        graph.add_edge("load_simulation", "director_planning")
+        graph.add_edge("load_simulation", "resolve_user_input")
+        graph.add_conditional_edges(
+            "resolve_user_input",
+            self.route_after_input_resolution,
+            {
+                "director": "director_planning",
+                "narrate": "narrate_user_failure",
+            }
+        )
+        graph.add_edge("narrate_user_failure", "memory_summary")
         graph.add_conditional_edges(
             "director_planning",
             self.route_after_director,

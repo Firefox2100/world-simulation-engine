@@ -195,7 +195,16 @@ class TurnRecordOrm(Base):
     simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation.id"), nullable=False)
     turn_number: Mapped[int] = mapped_column(Integer, nullable=False)
     type: Mapped[str] = mapped_column(String(16), nullable=False)
+    director_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    proposals: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    briefing_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    character_actions: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    character_reactions: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    resolver_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    reaction_resolving: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    committer_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     narration: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_output: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class WorldOrm(Base):

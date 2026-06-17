@@ -1,7 +1,8 @@
 from typing import cast
 
 from world_simulation_engine.model import Simulation, SimulationState, Location, Character, ResolverOutput, \
-    NarratorResolutionView, DirectorOutput, WorldEntry, PendingGeneratedProposal, NarratorAgentProfile
+    NarratorResolutionView, WaitForUserNarrationContext, WorldEntry, PendingGeneratedProposal, \
+    NarratorAgentProfile, UserInputFailureNarrationContext
 from .world_agent import WorldAgent
 
 
@@ -49,28 +50,10 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
         return cast(str, result.content).strip()
 
     async def narrate_user_input_failure(self,
-                                         simulation: Simulation,
-                                         state: SimulationState,
-                                         current_location: Location,
-                                         player_character: Character,
-                                         user_input: str,
-                                         user_input_resolver_output: ResolverOutput,
-                                         last_narration: str | None = None,
-                                         recent_history_summary: str | None = None,
-                                         long_term_history_summary: str | None = None,
-                                         world_entries_for_narrator: list[WorldEntry] | None = None,
+                                         context: UserInputFailureNarrationContext,
                                          ) -> str:
         data = {
-            "simulation": simulation,
-            "state": state,
-            "current_location": current_location,
-            "player_character": player_character,
-            "user_input": user_input,
-            "resolver_output": user_input_resolver_output,
-            "last_narration": last_narration,
-            "recent_history_summary": recent_history_summary,
-            "long_term_history_summary": long_term_history_summary,
-            "world_entries_for_narrator": world_entries_for_narrator or [],
+            "context": context.model_dump(),
         }
 
         messages = self._compose_messages(
@@ -80,34 +63,21 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
 
         result = await self.model.ainvoke(
             messages,
-            config={"run_name": "narrate_user_input_failure"},
+            config=patch_config(
+                config,
+                run_name="narrate_user_input_failure",
+            ) if config else None,
         )
 
         return cast(str, result.content).strip()
 
-    async def narrate_wait_for_user(self,
-                                    simulation: Simulation,
-                                    state: SimulationState,
-                                    current_location: Location,
-                                    characters: list[Character],
-                                    director_output: DirectorOutput,
-                                    user_input: str | None = None,
-                                    last_narration: str | None = None,
-                                    recent_history_summary: str | None = None,
-                                    long_term_history_summary: str | None = None,
-                                    world_entries_for_narrator: list[WorldEntry] | None = None,
-                                    ) -> str:
+    async def narrate_wait_for_user(
+        self,
+        *,
+        context: WaitForUserNarrationContext,
+    ) -> str:
         data = {
-            "simulation": simulation,
-            "state": state,
-            "current_location": current_location,
-            "characters": characters,
-            "director_output": director_output,
-            "user_input": user_input,
-            "last_narration": last_narration,
-            "recent_history_summary": recent_history_summary,
-            "long_term_history_summary": long_term_history_summary,
-            "world_entries_for_narrator": world_entries_for_narrator or [],
+            "context": context.model_dump(),
         }
 
         messages = self._compose_messages(

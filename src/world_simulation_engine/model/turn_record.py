@@ -334,6 +334,30 @@ class NarratorResolutionView(BaseModel):
     next_round_note: str = ""
 
 
+class WaitForUserNarrationContext(BaseModel):
+    simulation_name: str
+    simulation_description: str | None = None
+
+    time_label: str | None = None
+    scene_state: str | None = None
+    recent_history_summary: str | None = None
+    long_term_history_summary: str | None = None
+    short_term_memory: str | None = None
+    long_term_memory: str | None = None
+
+    location_label: str
+    location_description: str | None = None
+
+    user_input: str | None = None
+    last_narration: str | None = None
+
+    scene_focus: str | None = None
+    reason_to_wait: str | None = None
+
+    present_characters: list[dict[str, Any]] = Field(default_factory=list)
+    visible_world_entries: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class CommitterPlannedMutation(BaseModel):
     operation: Literal[
         "update_simulation_state",
@@ -432,6 +456,155 @@ class SummaryOutput(BaseModel):
     active_scene: str | None = None
     open_threads: list[str] = Field(default_factory=list)
     continuity_notes: list[str] = Field(default_factory=list)
+
+
+class UserInputResolverContext(BaseModel):
+    simulation_name: str
+    simulation_description: str | None = None
+    language: str | None = None
+
+    user_input: str
+
+    time_label: str | None = None
+    state_summary: str | None = None
+    recent_history_summary: str | None = None
+    long_term_history_summary: str | None = None
+    short_term_memory: str | None = None
+    long_term_memory: str | None = None
+
+    current_location: dict[str, Any]
+    player_character: dict[str, Any] | None = None
+    present_characters: list[dict[str, Any]] = Field(default_factory=list)
+    all_characters: list[dict[str, Any]] = Field(default_factory=list)
+
+    locations: list[dict[str, Any]] = Field(default_factory=list)
+    inventory: dict[str, Any] = Field(default_factory=dict)
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    visible_world_entries: list[dict[str, Any]] = Field(default_factory=list)
+    resolver_world_entries: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class UserAuthoredResolvedAction(BaseModel):
+    actor_id: int
+    actor_name: str
+
+    original_intent: str
+
+    final_status: Literal[
+        "succeeded",
+        "partially_succeeded",
+        "failed",
+        "blocked",
+        "delayed",
+        "invalid",
+        "cancelled",
+    ]
+
+    resolved_order: int | None = None
+
+    visible_result: str
+
+    private_result_for_actor: str | None = None
+
+    failure_reason: str | None = None
+    blocking_actor_id: int | None = None
+    blocking_entity_id: int | None = None
+
+    state_change_hints: list[str] = Field(default_factory=list)
+    world_entry_hints: list[str] = Field(default_factory=list)
+
+    requires_actor_retry: bool = False
+    retry_instruction: str | None = None
+
+
+class UserInputConflict(BaseModel):
+    conflict_type: Literal[
+        "impossible",
+        "contradicts_state",
+        "unknown_target",
+        "unsafe_for_character",
+        "requires_missing_mechanism",
+        "ambiguous_actor",
+        "ambiguous_target",
+        "out_of_scope",
+        "other",
+    ]
+    description: str
+    blocking_actor_id: int | None = None
+    blocking_entity_id: int | None = None
+    blocking_location_id: int | None = None
+
+
+class UserInputResolutionOutput(BaseModel):
+    accepted: bool
+
+    input_kind: Literal[
+        "no_action",
+        "player_dialogue",
+        "player_action_attempt",
+        "player_authored_success",
+        "other_character_directive",
+        "other_character_authored_success",
+        "scene_edit",
+        "impossible_or_conflicting",
+        "ambiguous",
+    ]
+
+    legality: Literal[
+        "legal",
+        "legal_with_weak_constraints",
+        "partially_legal",
+        "ambiguous",
+        "illegal",
+    ]
+
+    rejection_reason: str | None = None
+    user_retry_instruction: str | None = None
+
+    resolved_actions: list[UserAuthoredResolvedAction] = Field(default_factory=list)
+    conflicts: list[UserInputConflict] = Field(default_factory=list)
+
+    scene_result_summary: str = ""
+    next_round_note: str = ""
+
+    narrator_context: list[str] = Field(default_factory=list)
+    state_update_suggestions: list[str] = Field(default_factory=list)
+    pending_world_entry_suggestions: list[str] = Field(default_factory=list)
+
+    requires_director_rerun: bool = False
+    director_rerun_reason: str | None = None
+
+    notes: str = ""
+
+
+class UserInputFailureNarrationContext(BaseModel):
+    simulation_name: str
+    simulation_description: str | None = None
+
+    time_label: str | None = None
+    state_summary: str | None = None
+    short_term_memory: str | None = None
+    long_term_memory: str | None = None
+    recent_history_summary: str | None = None
+    long_term_history_summary: str | None = None
+
+    location_label: str
+    location_description: str | None = None
+
+    player_character: dict[str, Any] | None = None
+
+    user_input: str
+
+    input_kind: str
+    legality: str
+    rejection_reason: str | None = None
+    user_retry_instruction: str | None = None
+
+    conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    blocked_actions: list[dict[str, Any]] = Field(default_factory=list)
+
+    last_narration: str | None = None
+    visible_world_entries: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class TurnRecordCreate(BaseModel):

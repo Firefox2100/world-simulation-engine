@@ -2,7 +2,8 @@ from .agent_preset import OllamaAgentBackendConfiguration, OpenAiAgentBackendCon
     AgentBackendConfigurations, AgentProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, \
     MemoryAgentProfile, CharacterAgentProfile, ResolverAgentProfile, CommitterAgentProfile, \
     NarratorAgentProfile, AgentPreset
-from .image_generation_preset import ComfyUiBackendConfiguration, ImageBackendConfigurations, ImageGeneratorProfile
+from .image_generation_preset import ComfyUiLora, ComfyUiBackendConfiguration, ImageBackendConfigurations, \
+    ImageGeneratorProfile
 from .character import Character
 from .connection_profile import LlmConnectionProfile, ImageGenerationConnectionProfile
 from .data_preset import DataPreset, ModelAttribute, ModelStat
@@ -17,7 +18,9 @@ from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, Propo
     ProposedLink, ProposedGenerationPackage, PendingGeneratedProposal, ActivationDecision, DirectorOutput, \
     CharacterBriefing, BriefingOutput, CharacterActionOutput, ResolvedAction, ConflictRecord, \
     FailedCharacterRecord, ResolverOutput, CharacterReactionContext, NarratorResolvedEvent, NarratorResolutionView, \
-    CommitterPlannedMutation, CommitterMutationPlanOutput, SandboxObjectRef, SandboxMutationRecord, \
-    CommitterValidationOutput, CommitterFinalOutput, SummaryOutput, TurnRecordCreate, TurnRecord
+    WaitForUserNarrationContext, CommitterPlannedMutation, CommitterMutationPlanOutput, SandboxObjectRef, \
+    SandboxMutationRecord, CommitterValidationOutput, CommitterFinalOutput, SummaryOutput, UserInputResolverContext, \
+    UserAuthoredResolvedAction, UserInputConflict, UserInputResolutionOutput, UserInputFailureNarrationContext, \
+    TurnRecordCreate, TurnRecord
 from .world import World
 from .world_entry import WorldEntry, WorldEntryRecallKeyword

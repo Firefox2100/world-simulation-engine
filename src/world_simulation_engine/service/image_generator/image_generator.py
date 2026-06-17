@@ -26,6 +26,32 @@ class ImageGenerator(Generic[ImageGeneratorProfileT]):
                 )
 
             return ComfyUiBackend(
+                workflow_json=self._profile.backend_configuration.workflow,
+                checkpoint_loader_id=self._profile.backend_configuration.checkpoint_loader_id,
+                positive_prompt_id=self._profile.backend_configuration.positive_prompt_id,
+                checkpoint=self._profile.backend_configuration.checkpoint,
+                loras=self._profile.backend_configuration.loras,
+                negative_prompt_id=self._profile.backend_configuration.negative_prompt_id,
+                k_sampler_id=self._profile.backend_configuration.k_sampler_id,
+                latent_image_id=self._profile.backend_configuration.latent_image_id,
+                seed=self._profile.backend_configuration.seed,
+                steps=self._profile.backend_configuration.steps,
+                width=self._profile.backend_configuration.width,
+                height=self._profile.backend_configuration.height,
                 base_url=self._connection.base_url,
                 api_key=self._connection.api_key,
             )
+
+    @property
+    def profile(self) -> ImageGeneratorProfileT:
+        return self._profile.model_copy()
+
+    @property
+    def backend(self) -> Union["ComfyUiBackend"]:
+        if self._backend is None:
+            self._backend = self.create_backend()
+
+        if self._backend is None:
+            raise ValueError("Backend is not initialized.")
+
+        return self._backend
