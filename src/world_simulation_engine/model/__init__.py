@@ -2,8 +2,9 @@ from .agent_preset import OllamaAgentBackendConfiguration, OpenAiAgentBackendCon
     AgentBackendConfigurations, AgentProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, \
     MemoryAgentProfile, CharacterAgentProfile, ResolverAgentProfile, CommitterAgentProfile, \
     NarratorAgentProfile, AgentPreset
+from .image_generation_preset import ComfyUiBackendConfiguration, ImageBackendConfigurations, ImageGeneratorProfile
 from .character import Character
-from .connection_profile import LlmConnectionProfile
+from .connection_profile import LlmConnectionProfile, ImageGenerationConnectionProfile
 from .data_preset import DataPreset, ModelAttribute, ModelStat
 from .embedding_profile import EmbeddingProfile
 from .faction import FactionRelationship, Faction

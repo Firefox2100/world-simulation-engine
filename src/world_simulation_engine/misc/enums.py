@@ -19,6 +19,10 @@ class FactionRelationshipEntity(StrEnum):
     CHARACTER = "character"
 
 
+class ImageGenerationProvider(StrEnum):
+    COMFY_UI = "comfy_ui"
+
+
 class LlmProvider(StrEnum):
     OLLAMA = "ollama"
     OPENAI = "openai"
