@@ -1,0 +1,28 @@
+{
+  "app": {
+    "title": "World Simulation Engine",
+    "navigationLabel": "Primary navigation",
+    "nav": {
+      "simulations": "Simulations",
+      "worlds": "Worlds"
+    }
+  },
+  "home": {
+    "title": "Simulations",
+    "subtitle": "Browse available simulations.",
+    "loading": "Loading simulations...",
+    "loadingMore": "Loading...",
+    "loadMore": "Load more",
+    "empty": "No simulations are available.",
+    "error": "Unable to load simulations: {{error}}"
+  },
+  "worlds": {
+    "title": "Worlds",
+    "subtitle": "Browse available worlds.",
+    "loading": "Loading worlds...",
+    "loadingMore": "Loading...",
+    "loadMore": "Load more",
+    "empty": "No worlds are available.",
+    "error": "Unable to load worlds: {{error}}"
+  }
+}

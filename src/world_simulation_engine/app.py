@@ -5,7 +5,7 @@ from langfuse.langchain import CallbackHandler
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService, StorageService
-from world_simulation_engine.component import TurnGenerator, WorkflowRunner
+from world_simulation_engine.component import TurnGenerator, WorkflowRunner, SillyTavernImporter
 from world_simulation_engine.router import connection_router, simulation_router, world_router
 
 
@@ -31,10 +31,14 @@ async def lifespan(app: FastAPI):
         langfuse_handler=langfuse_handler,
         callback=turn_generator.persist_state_to_database,
     )
+    silly_tavern_importer = SillyTavernImporter(
+        db=database_service,
+    )
 
     app.state.database_service = database_service
     app.state.storage_service = storage_service
     app.state.turn_runner = turn_runner
+    app.state.silly_tavern_importer = silly_tavern_importer
 
     try:
         await database_service.init()

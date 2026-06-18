@@ -103,3 +103,8 @@ class WorldEntryVisibility(StrEnum):
     SUSPECTED = "suspected"
     PERCEIVED = "perceived"
     INFERRED = "inferred"
+
+
+class WorldSourceType(StrEnum):
+    SILLY_TAVERN = "silly_tavern"
+    WORLD_SIMULATION_ENGINE_V1 = "world_simulation_engine_v1"

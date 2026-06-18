@@ -1,0 +1,28 @@
+{
+  "app": {
+    "title": "世界模拟引擎",
+    "navigationLabel": "主导航",
+    "nav": {
+      "simulations": "模拟项目",
+      "worlds": "世界"
+    }
+  },
+  "home": {
+    "title": "模拟项目",
+    "subtitle": "浏览可用的模拟项目。",
+    "loading": "正在加载模拟项目...",
+    "loadingMore": "正在加载...",
+    "loadMore": "加载更多",
+    "empty": "暂无可用的模拟项目。",
+    "error": "无法加载模拟项目：{{error}}"
+  },
+  "worlds": {
+    "title": "世界",
+    "subtitle": "浏览可用的世界。",
+    "loading": "正在加载世界...",
+    "loadingMore": "正在加载...",
+    "loadMore": "加载更多",
+    "empty": "暂无可用的世界。",
+    "error": "无法加载世界：{{error}}"
+  }
+}

@@ -12,6 +12,9 @@ from .faction import FactionRelationship, Faction
 from .inventory import Item, Equipment, CharacterInventory
 from .location import Location, Entity
 from .prompt_message import PromptMessage
+from .silly_tavern import SillyTavernCardV2BookEntry, SillyTavernCardV2CharacterBook, SillyTavernCardV2Data, \
+    SillyTavernCardV2, SillyTavernCardV3BookEntry, SillyTavernCardV3LoreBook, SillyTavernCardV3Asset, \
+    SillyTavernCardV3Data, SillyTavernCardV3
 from .simulation import Simulation, SimulationState
 from .task import Task
 from .turn_record import ProposedWorldEntry, ProposedItem, ProposedEntity, ProposedLocation, ProposedEquipment, \

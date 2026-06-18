@@ -34,15 +34,25 @@ class SimulationRepository:
 
             return self._to_model(simulation)
 
-    async def list(self) -> list[Simulation]:
+    async def list(self,
+                   limit: int | None = None,
+                   offset: int = 0,
+                   ) -> list[Simulation]:
         """
         List all simulations.
         :return: A list of simulations
         """
         async with self._session_factory() as session:
-            simulations = await session.scalars(select(SimulationOrm))
+            stmt = select(SimulationOrm).order_by(SimulationOrm.id)
+            if offset:
+                stmt = stmt.offset(offset)
+            if limit is not None:
+                stmt = stmt.limit(limit)
 
-            return [self._to_model(simulation) for simulation in simulations]
+            simulations = await session.scalars(stmt)
+            records = simulations.all()
+
+            return [self._to_model(simulation) for simulation in records]
 
     async def create(self,
                      simulation: Simulation,

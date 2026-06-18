@@ -33,6 +33,19 @@ async def test_list_simulations(db,
     assert len(fetched) == 1
 
 
+async def test_list_simulations_with_pagination(db,
+                                                mock_simulation,
+                                                ):
+    first = await db.simulation.create(simulation=mock_simulation.model_copy(update={"name": "First Simulation"}))
+    second = await db.simulation.create(simulation=mock_simulation.model_copy(update={"name": "Second Simulation"}))
+    third = await db.simulation.create(simulation=mock_simulation.model_copy(update={"name": "Third Simulation"}))
+
+    fetched = await db.simulation.list(limit=2, offset=1)
+
+    assert [simulation.id for simulation in fetched] == [second.id, third.id]
+    assert first.id not in [simulation.id for simulation in fetched]
+
+
 async def test_create_simulation_state(db,
                                        mock_simulation,
                                        mock_simulation_state_1,
