@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException
 from starlette import status
 
 from world_simulation_engine.model.connection_profile import LlmConnectionProfile, LlmConnectionCreate, \
-    LlmConnectionProfilePatch
+    LlmConnectionProfilePatch, ImageGenerationConnectionProfile, ImageGenerationConnectionCreate, \
+    ImageGenerationConnectionPatch
 from .utils import db_dep
 
 
@@ -97,3 +98,63 @@ async def delete_llm_connection(connection_id: int,
     :return: An updated connection details
     """
     await db.connection.llm.delete(connection_id)
+
+
+@connection_router.get("/image", response_model=list[ImageGenerationConnectionProfile])
+async def list_image_generation_connections(db: db_dep):
+    """
+    List all image generation connections
+    \f
+    :param db: The database connection
+    :return: A list of all image generation connections
+    """
+    connections = await db.connection.image.list()
+
+    return connections
+
+
+@connection_router.post("/image", response_model=ImageGenerationConnectionProfile)
+async def create_image_generation_connection(connection: ImageGenerationConnectionCreate,
+                                             db: db_dep,
+                                             ):
+    result = await db.connection.image.create(connection)
+
+    return result
+
+
+@connection_router.get("/image/{connection_id}", response_model=ImageGenerationConnectionProfile)
+async def get_image_generation_connection(connection_id: int,
+                                          db: db_dep,
+                                          ):
+    result = await db.connection.image.get(connection_id)
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection with ID {connection_id} not found"
+        )
+
+    return result
+
+
+@connection_router.patch("/image/{connection_id}", response_model=ImageGenerationConnectionProfile)
+async def patch_image_generation_connection(connection_id: int,
+                                            connection: ImageGenerationConnectionPatch,
+                                            db: db_dep,
+                                            ):
+    await db.connection.image.update(
+        connection_id=connection_id,
+        patched_data=connection.model_dump(mode="json", exclude_unset=True),
+    )
+
+    current_connection = await db.connection.image.get(connection_id)
+
+    return current_connection
+
+
+@connection_router.delete("/image/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_image_generation_connection(connection_id: int,
+                                             db: db_dep,
+                                             ):
+    await db.connection.image.delete(connection_id)
+

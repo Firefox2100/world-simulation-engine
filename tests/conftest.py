@@ -1,4 +1,5 @@
 import os
+from collections.abc import AsyncGenerator
 import pytest
 
 from world_simulation_engine.misc.consts import LOGGER
@@ -22,14 +23,17 @@ def disable_console_logger():
 
 
 @pytest.fixture
-async def db() -> DatabaseService:
+async def db() -> AsyncGenerator[DatabaseService, None]:
     service = DatabaseService(
         database_path=":memory:",
         is_static=True,
     )
 
     await service.init()
-    return service
+    try:
+        yield service
+    finally:
+        await service.close()
 
 
 @pytest.fixture

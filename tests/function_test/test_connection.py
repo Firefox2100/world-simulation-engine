@@ -114,3 +114,122 @@ def test_delete_llm_connection(mock_client):
     response_json = list_response.json()
     assert isinstance(response_json, list)
     assert len(response_json) == 0
+
+
+def test_create_image_connection(mock_client):
+    response = mock_client.post(
+        "/connections/image",
+        json={
+            "provider": "comfy_ui",
+            "name": "Test Image Connection",
+            "base_url": "http://localhost:8188",
+            "api_key": None,
+        },
+    )
+
+    assert response.status_code == 200
+    response_json = response.json()
+    assert response_json["id"] == 1
+    assert response_json["name"] == "Test Image Connection"
+    assert response_json["base_url"] == "http://localhost:8188"
+    assert response_json["api_key"] is None
+
+
+def test_list_image_connections(mock_client):
+    post_response = mock_client.post(
+        "/connections/image",
+        json={
+            "provider": "comfy_ui",
+            "name": "Test Image Connection",
+            "base_url": "http://localhost:8188",
+            "api_key": None,
+        },
+    )
+    assert post_response.status_code == 200
+
+    list_response = mock_client.get("/connections/image")
+    assert list_response.status_code == 200
+    response_json = list_response.json()
+
+    assert isinstance(response_json, list)
+    assert len(response_json) == 1
+    assert response_json[0]["id"] == 1
+    assert response_json[0]["name"] == "Test Image Connection"
+    assert response_json[0]["base_url"] == "http://localhost:8188"
+    assert response_json[0]["api_key"] is None
+
+
+def test_get_image_connection(mock_client):
+    post_response = mock_client.post(
+        "/connections/image",
+        json={
+            "provider": "comfy_ui",
+            "name": "Test Image Connection",
+            "base_url": "http://localhost:8188",
+            "api_key": None,
+        },
+    )
+    assert post_response.status_code == 200
+
+    get_response = mock_client.get("/connections/image/1")
+    assert get_response.status_code == 200
+    response_json = get_response.json()
+    assert response_json["id"] == 1
+    assert response_json["name"] == "Test Image Connection"
+    assert response_json["base_url"] == "http://localhost:8188"
+    assert response_json["api_key"] is None
+
+
+def test_get_image_connection_not_found(mock_client):
+    get_response = mock_client.get("/connections/image/1")
+
+    assert get_response.status_code == 404
+
+
+def test_update_image_connection(mock_client):
+    post_response = mock_client.post(
+        "/connections/image",
+        json={
+            "provider": "comfy_ui",
+            "name": "Test Image Connection",
+            "base_url": "http://localhost:8188",
+            "api_key": None,
+        },
+    )
+    assert post_response.status_code == 200
+
+    patch_response = mock_client.patch(
+        "/connections/image/1",
+        json={
+            "name": "Another Image Connection",
+            "api_key": "image-api-key",
+        }
+    )
+    assert patch_response.status_code == 200
+    response_json = patch_response.json()
+    assert response_json["name"] == "Another Image Connection"
+    assert response_json["base_url"] == "http://localhost:8188"
+    assert response_json["api_key"] == "image-api-key"
+
+
+def test_delete_image_connection(mock_client):
+    post_response = mock_client.post(
+        "/connections/image",
+        json={
+            "provider": "comfy_ui",
+            "name": "Test Image Connection",
+            "base_url": "http://localhost:8188",
+            "api_key": None,
+        },
+    )
+    assert post_response.status_code == 200
+
+    delete_response = mock_client.delete("/connections/image/1")
+    assert delete_response.status_code == 204
+
+    list_response = mock_client.get("/connections/image")
+    assert list_response.status_code == 200
+    response_json = list_response.json()
+    assert isinstance(response_json, list)
+    assert len(response_json) == 0
+

@@ -1,8 +1,13 @@
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from world_simulation_engine.model.connection_profile import LlmConnectionProfile, LlmConnectionCreate
-from .tables import LlmConnectionProfileOrm
+from world_simulation_engine.model.connection_profile import (
+    LlmConnectionProfile,
+    LlmConnectionCreate,
+    ImageGenerationConnectionProfile,
+    ImageGenerationConnectionCreate,
+)
+from .tables import LlmConnectionProfileOrm, ImageGenerationConnectionProfileOrm
 
 
 class LlmConnectionRepository:
@@ -67,6 +72,64 @@ class LlmConnectionRepository:
             await session.commit()
 
 
+class ImageGenerationConnectionRepository:
+    def __init__(self,
+                 session_factory: async_sessionmaker[AsyncSession],
+                 ):
+        self._session_factory = session_factory
+
+    @staticmethod
+    def _to_model(record: ImageGenerationConnectionProfileOrm) -> ImageGenerationConnectionProfile:
+        payload = {
+            column.name: getattr(record, column.name)
+            for column in ImageGenerationConnectionProfileOrm.__table__.columns
+        }
+        return ImageGenerationConnectionProfile.model_validate(payload)
+
+    async def get(self, connection_id: int) -> ImageGenerationConnectionProfile | None:
+        async with self._session_factory() as session:
+            connection = await session.get(ImageGenerationConnectionProfileOrm, connection_id)
+
+            if not connection:
+                return None
+
+            return self._to_model(connection)
+
+    async def list(self) -> list[ImageGenerationConnectionProfile]:
+        async with self._session_factory() as session:
+            result = await session.execute(select(ImageGenerationConnectionProfileOrm))
+            connections = result.scalars().all()
+
+            return [self._to_model(connection) for connection in connections]
+
+    async def create(self, connection: ImageGenerationConnectionCreate) -> ImageGenerationConnectionProfile:
+        payload = connection.model_dump(mode="json")
+
+        async with self._session_factory() as session:
+            connection_orm = ImageGenerationConnectionProfileOrm(**payload)
+            session.add(connection_orm)
+
+            await session.commit()
+
+        return self._to_model(connection_orm)
+
+    async def update(self, connection_id: int, patched_data: dict):
+        async with self._session_factory() as session:
+            await session.execute(
+                update(ImageGenerationConnectionProfileOrm)
+                .where(ImageGenerationConnectionProfileOrm.id == connection_id)
+                .values(patched_data)
+            )
+            await session.commit()
+
+    async def delete(self, connection_id: int):
+        async with self._session_factory() as session:
+            await session.execute(
+                delete(ImageGenerationConnectionProfileOrm).where(ImageGenerationConnectionProfileOrm.id == connection_id)
+            )
+            await session.commit()
+
+
 class ConnectionRepository:
     def __init__(self,
                  session_factory: async_sessionmaker[AsyncSession],
@@ -76,3 +139,8 @@ class ConnectionRepository:
     @property
     def llm(self) -> LlmConnectionRepository:
         return LlmConnectionRepository(self._session_factory)
+
+    @property
+    def image(self) -> ImageGenerationConnectionRepository:
+        return ImageGenerationConnectionRepository(self._session_factory)
+

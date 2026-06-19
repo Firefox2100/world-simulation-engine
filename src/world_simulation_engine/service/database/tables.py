@@ -128,6 +128,16 @@ class LlmConnectionProfileOrm(Base):
     api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
+class ImageGenerationConnectionProfileOrm(Base):
+    __tablename__ = "image_generation_connection_profile"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
 class LocationOrm(Base):
     __tablename__ = "location"
 
