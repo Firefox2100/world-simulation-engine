@@ -203,14 +203,16 @@ async def create_new_simulation(world_id: int,
         enable_image_generation=world.enable_image_generation,
     )
 
-    created_simulation = await db.simulation.create(simulation)
-    world.state.id = created_simulation.id
-    await db.state.create(world.state)
+    created_simulation = await db.simulation.create(
+        simulation=simulation,
+        world_id=world_id,
+    )
 
     id_mappings = {
         "characters": {},
         "locations": {},
         "factions": {},
+        "items": {},
     }
 
     if world.locations:
@@ -220,6 +222,13 @@ async def create_new_simulation(world_id: int,
                 simulation_id=created_simulation.id,
             )
             id_mappings["locations"][location.id] = result.id
+
+    if world.state:
+        world.state.id = created_simulation.id
+        if world.state.scene in id_mappings["locations"]:
+            world.state.scene = id_mappings["locations"][world.state.scene]
+        await db.state.create(world.state)
+
     if world.characters:
         for character in world.characters:
             character.location = id_mappings["locations"][character.location]
@@ -242,31 +251,38 @@ async def create_new_simulation(world_id: int,
             elif relationship.from_type == FactionRelationshipEntity.CHARACTER:
                 relationship.from_id = id_mappings["characters"][relationship.from_id]
             elif relationship.from_type == FactionRelationshipEntity.ITEM:
-                relationship.from_id = id_mappings["items"][relationship.from_id]
+                relationship.from_id = id_mappings["items"].get(
+                    relationship.from_id,
+                    relationship.from_id,
+                )
 
             if relationship.to_type == FactionRelationshipEntity.FACTION:
                 relationship.to_id = id_mappings["factions"][relationship.to_id]
             elif relationship.to_type == FactionRelationshipEntity.CHARACTER:
                 relationship.to_id = id_mappings["characters"][relationship.to_id]
             elif relationship.to_type == FactionRelationshipEntity.ITEM:
-                relationship.to_id = id_mappings["items"][relationship.to_id]
+                relationship.to_id = id_mappings["items"].get(
+                    relationship.to_id,
+                    relationship.to_id,
+                )
 
             await db.faction_relationship.create(
                 relationship=relationship,
             )
     if world.inventory:
         for original_id, inventory in world.inventory.items():
+            character_id = id_mappings["characters"].get(original_id)
             for item in inventory.items:
                 await db.item.create(
                     item=item,
                     simulation_id=created_simulation.id,
-                    character_id=id_mappings["characters"][original_id] or None,
+                    character_id=character_id,
                 )
             for equipment in inventory.equipments:
                 await db.equipment.create(
                     equipment=equipment,
                     simulation_id=created_simulation.id,
-                    character_id=id_mappings["characters"][original_id] or None,
+                    character_id=character_id,
                 )
     if world.tasks:
         for task in world.tasks:
@@ -293,7 +309,7 @@ async def create_new_simulation(world_id: int,
         simulation_id=created_simulation.id,
     )
 
-    return simulation
+    return created_simulation
 
 
 @world_router.post("/import")
