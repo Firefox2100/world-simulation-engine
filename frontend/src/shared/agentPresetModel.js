@@ -76,6 +76,86 @@ export function makeAgentPresetState() {
     return agentRoles.reduce((state, role) => ({ ...state, [role.key]: makeAgentProfile(role) }), {});
 }
 
+function backendConfigurationFormFromWorld(configuration = {}) {
+    return {
+        connection: configuration.connection == null ? "" : String(configuration.connection),
+        model: configuration.model ?? "",
+        temperature:
+            configuration.temperature == null ? "1.0" : String(configuration.temperature),
+        context_window:
+            configuration.context_window == null ? "8192" : String(configuration.context_window),
+        seed: configuration.seed == null ? "" : String(configuration.seed),
+        reasoning:
+            configuration.reasoning == null ? "" : String(configuration.reasoning),
+        stop_tokens: (configuration.stop_tokens ?? []).join("\n"),
+        mirostat: configuration.mirostat == null ? "" : String(configuration.mirostat),
+        mirostat_eta:
+            configuration.mirostat_eta == null ? "" : String(configuration.mirostat_eta),
+        mirostat_tau:
+            configuration.mirostat_tau == null ? "" : String(configuration.mirostat_tau),
+        num_predict:
+            configuration.num_predict == null ? "" : String(configuration.num_predict),
+        repeat_penalty_window:
+            configuration.repeat_penalty_window == null
+                ? ""
+                : String(configuration.repeat_penalty_window),
+        repeat_penalty:
+            configuration.repeat_penalty == null ? "" : String(configuration.repeat_penalty),
+    };
+}
+
+export function agentPresetFormFromWorld(agentPreset = null) {
+    const fallback = makeAgentPresetState();
+
+    if (!agentPreset) {
+        return fallback;
+    }
+
+    return Object.fromEntries(
+        agentRoles.map((role) => {
+            const profile = agentPreset[role.key] ?? {};
+            const fallbackProfile = fallback[role.key];
+
+            return [
+                role.key,
+                {
+                    backend_configuration: backendConfigurationFormFromWorld(
+                        profile.backend_configuration,
+                    ),
+                    remove_empty_messages:
+                        profile.remove_empty_messages ?? fallbackProfile.remove_empty_messages,
+                    merge_adjacent_user:
+                        profile.merge_adjacent_user ?? fallbackProfile.merge_adjacent_user,
+                    merge_adjacent_assistant:
+                        profile.merge_adjacent_assistant ??
+                        fallbackProfile.merge_adjacent_assistant,
+                    merge_assistant_with_tool_calls:
+                        profile.merge_assistant_with_tool_calls ??
+                        fallbackProfile.merge_assistant_with_tool_calls,
+                    system_message_policy:
+                        profile.system_message_policy ?? fallbackProfile.system_message_policy,
+                    message_merge_separator:
+                        profile.message_merge_separator ??
+                        fallbackProfile.message_merge_separator,
+                    max_tool_rounds:
+                        profile.max_tool_rounds == null
+                            ? fallbackProfile.max_tool_rounds
+                            : String(profile.max_tool_rounds),
+                    prompts: Object.fromEntries(
+                        role.prompts.map((promptKey) => [
+                            promptKey,
+                            (profile[promptKey] ?? []).map((message) => ({
+                                role: message.role ?? "system",
+                                content: message.content ?? "",
+                            })),
+                        ]),
+                    ),
+                },
+            ];
+        }),
+    );
+}
+
 function optionalNumber(value, parser) {
     const trimmed = String(value).trim();
     return trimmed.length > 0 ? parser(trimmed) : undefined;

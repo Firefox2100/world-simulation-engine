@@ -117,6 +117,7 @@ body {
 
 .simulation-card-image-frame,
 .world-card-image-frame {
+    position: relative;
     aspect-ratio: 2 / 3;
     background: #e5e7eb;
     display: flex;
@@ -135,6 +136,14 @@ body {
 .simulation-card-body,
 .world-card-body {
     padding: 14px 16px;
+}
+
+.world-actions {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
 }
 
 .simulation-card-title,
@@ -158,8 +167,8 @@ body {
     transition-delay: 650ms;
 }
 
-.simulation-card:hover .simulation-card-description,
-.world-card:hover .world-card-description {
+.simulation-card-image-frame:hover .simulation-card-description,
+.world-card-image-frame:hover .world-card-description {
     opacity: 1;
 }
 
@@ -201,6 +210,53 @@ body {
 .world-tile-title {
     margin: 0;
     font-size: 1rem;
+}
+
+.world-tile-content {
+    min-width: 0;
+    flex: 1;
+}
+
+.world-tile-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    justify-content: flex-end;
+}
+
+.card-icon-button {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: white;
+    color: #374151;
+    cursor: pointer;
+}
+
+.card-icon-button:hover {
+    background: #f9fafb;
+    color: #111827;
+}
+
+.card-icon-button.danger {
+    border-color: #fecaca;
+    color: #b91c1c;
+}
+
+.card-icon-button.danger:hover {
+    background: #fef2f2;
+}
+
+.card-icon-button svg {
+    width: 20px;
+    height: 20px;
+    fill: currentcolor;
 }
 
 .connections-layout {
@@ -907,6 +963,16 @@ body {
 
     .connection-actions {
         justify-content: flex-end;
+    }
+
+    .world-tile {
+        align-items: stretch;
+        flex-wrap: wrap;
+    }
+
+    .world-tile-actions {
+        width: 100%;
+        justify-content: flex-start;
     }
 
     .connection-column-header {

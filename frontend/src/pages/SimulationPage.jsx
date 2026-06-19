@@ -14,6 +14,7 @@ export function SimulationPage() {
     const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState(null);
 
     const limit = 24;
@@ -30,6 +31,7 @@ export function SimulationPage() {
 
             setSimulations((current) => (append ? [...current, ...data] : data));
             setOffset(nextOffset + data.length);
+            setHasMore(data.length === limit);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -75,15 +77,17 @@ export function SimulationPage() {
                 </div>
             )}
 
-            <div className="load-more-row">
-                <button
-                    className="load-more-button"
-                    disabled={loadingMore}
-                    onClick={() => loadSimulations(offset, true)}
-                >
-                    {loadingMore ? t("home.loadingMore") : t("home.loadMore")}
-                </button>
-            </div>
+            {hasMore ? (
+                <div className="load-more-row">
+                    <button
+                        className="load-more-button"
+                        disabled={loadingMore}
+                        onClick={() => loadSimulations(offset, true)}
+                    >
+                        {loadingMore ? t("home.loadingMore") : t("home.loadMore")}
+                    </button>
+                </div>
+            ) : null}
         </section>
     );
 }

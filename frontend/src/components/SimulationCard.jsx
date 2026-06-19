@@ -14,14 +14,13 @@ export function SimulationCard({ simulation }) {
                     className="simulation-card-image"
                     onError={() => setImageSrc(placeholderImage)}
                 />
+                <div className="simulation-card-description">
+                    <p>{simulation.description}</p>
+                </div>
             </div>
 
             <div className="simulation-card-body">
                 <h2 className="simulation-card-title">{simulation.name}</h2>
-            </div>
-
-            <div className="simulation-card-description">
-                <p>{simulation.description}</p>
             </div>
         </article>
     );

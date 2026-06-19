@@ -25,7 +25,14 @@
     "loadingMore": "正在加载...",
     "loadMore": "加载更多",
     "empty": "暂无可用的世界。",
-    "error": "无法加载世界：{{error}}"
+    "error": "无法加载世界：{{error}}",
+    "actionError": "无法完成世界操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "actions": {
+      "edit": "编辑",
+      "delete": "删除",
+      "createSimulation": "创建模拟"
+    }
   },
   "connections": {
     "title": "连接配置",
@@ -82,13 +89,16 @@
   },
   "worldCreate": {
     "title": "创建世界",
+    "editTitle": "编辑世界",
     "close": "关闭创建世界对话框",
     "cancel": "取消",
     "submit": "创建世界",
+    "update": "更新世界",
     "saving": "正在创建...",
     "add": "添加",
     "remove": "移除",
     "error": "无法创建世界：{{error}}",
+    "connectionLoadError": "无法加载连接配置：{{error}}",
     "tooltipLabel": "关于 {{field}}",
     "validation": {
       "nameRequired": "世界名称为必填项。"

@@ -1,7 +1,7 @@
 import { useEffect, useState, startTransition } from "react";
 import { useTranslation } from "react-i18next";
 
-import { fetchWorlds } from "@/api/worlds";
+import { createSimulationFromWorld, deleteWorld, fetchWorld, fetchWorlds } from "@/api/worlds";
 import { WorldCard } from "@/components/WorldCard";
 import { WorldCreateModal } from "@/components/WorldCreateModal";
 import { WorldListTile } from "@/components/WorldListTile";
@@ -15,8 +15,11 @@ export function WorldPage() {
     const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState(null);
     const [createModalOpen, setCreateModalOpen] = useState(false);
+    const [editingWorld, setEditingWorld] = useState(null);
+    const [actionError, setActionError] = useState(null);
 
     const limit = 24;
 
@@ -32,6 +35,7 @@ export function WorldPage() {
 
             setWorlds((current) => (append ? [...current, ...data] : data));
             setOffset(nextOffset + data.length);
+            setHasMore(data.length === limit);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -46,9 +50,43 @@ export function WorldPage() {
         });
     }, []);
 
-    async function handleWorldCreated() {
+    async function handleWorldSaved() {
         setCreateModalOpen(false);
+        setEditingWorld(null);
         await loadWorlds(0, false);
+    }
+
+    async function handleEditWorld(world) {
+        try {
+            setActionError(null);
+            const data = await fetchWorld(world.id);
+            setEditingWorld(data);
+        } catch (err) {
+            setActionError(err.message);
+        }
+    }
+
+    async function handleDeleteWorld(world) {
+        if (!window.confirm(t("worlds.confirmDelete", { name: world.name }))) {
+            return;
+        }
+
+        try {
+            setActionError(null);
+            await deleteWorld(world.id);
+            await loadWorlds(0, false);
+        } catch (err) {
+            setActionError(err.message);
+        }
+    }
+
+    async function handleCreateSimulation(world) {
+        try {
+            setActionError(null);
+            await createSimulationFromWorld(world.id);
+        } catch (err) {
+            setActionError(err.message);
+        }
     }
 
     return (
@@ -67,6 +105,10 @@ export function WorldPage() {
                 </button>
             </div>
 
+            {actionError ? (
+                <p className="status-text error-text">{t("worlds.actionError", { error: actionError })}</p>
+            ) : null}
+
             {loading ? (
                 <p className="status-text">{t("worlds.loading")}</p>
             ) : error ? (
@@ -76,18 +118,30 @@ export function WorldPage() {
             ) : isDesktop ? (
                 <div className="world-grid">
                     {worlds.map((world) => (
-                        <WorldCard key={world.id} world={world} />
+                        <WorldCard
+                            key={world.id}
+                            world={world}
+                            onEdit={handleEditWorld}
+                            onDelete={handleDeleteWorld}
+                            onCreateSimulation={handleCreateSimulation}
+                        />
                     ))}
                 </div>
             ) : (
                 <div className="world-list">
                     {worlds.map((world) => (
-                        <WorldListTile key={world.id} world={world} />
+                        <WorldListTile
+                            key={world.id}
+                            world={world}
+                            onEdit={handleEditWorld}
+                            onDelete={handleDeleteWorld}
+                            onCreateSimulation={handleCreateSimulation}
+                        />
                     ))}
                 </div>
             )}
 
-            {!loading && !error ? (
+            {!loading && !error && hasMore ? (
                 <div className="load-more-row">
                     <button
                         className="load-more-button"
@@ -102,7 +156,16 @@ export function WorldPage() {
             {createModalOpen ? (
                 <WorldCreateModal
                     onClose={() => setCreateModalOpen(false)}
-                    onCreated={handleWorldCreated}
+                    onSaved={handleWorldSaved}
+                />
+            ) : null}
+
+            {editingWorld ? (
+                <WorldCreateModal
+                    mode="edit"
+                    initialWorld={editingWorld}
+                    onClose={() => setEditingWorld(null)}
+                    onSaved={handleWorldSaved}
                 />
             ) : null}
         </section>

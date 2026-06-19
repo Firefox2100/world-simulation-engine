@@ -31,6 +31,24 @@ export function makeInitialWorldStateState() {
     };
 }
 
+function maxId(items) {
+    return items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0);
+}
+
+function attributeRows(attributes = {}) {
+    return Object.entries(attributes).map(([name, values]) => ({
+        name,
+        values: values ?? [],
+    }));
+}
+
+function statRows(stats = {}) {
+    return Object.entries(stats).map(([name, value]) => ({
+        name,
+        value: String(value),
+    }));
+}
+
 export function makeCharacter(id) {
     return {
         id,
@@ -401,4 +419,154 @@ export function buildWorldEntriesPayload(initialState) {
 
 export function buildTurnRecordsPayload(initialState) {
     return initialState.turn_records.map(buildTurnRecord);
+}
+
+export function initialWorldStateFormFromWorld(world = {}) {
+    const locations = (world.locations ?? []).map((location) => ({
+        id: location.id,
+        primary_location: location.primary_location ?? "",
+        detailed_location: location.detailed_location ?? "",
+        scene: location.scene ?? "",
+        description: location.description ?? "",
+        attributes: attributeRows(location.attributes),
+        stats: statRows(location.stats),
+        entities: (location.entities ?? []).map((entity) => ({
+            id: entity.id,
+            name: entity.name ?? "",
+            type: entity.type ?? "",
+            description: entity.description ?? "",
+            status: entity.status ?? "",
+            interactions: entity.interactions ?? [],
+        })),
+    }));
+
+    const characters = (world.characters ?? []).map((character) => ({
+        id: character.id,
+        name: character.name ?? "",
+        gender: character.gender ?? "",
+        age: character.age == null ? "" : String(character.age),
+        description: character.description ?? "",
+        appearance: character.appearance ?? "",
+        public_state: character.public_state ?? "",
+        private_state: character.private_state ?? "",
+        attributes: attributeRows(character.attributes),
+        stats: statRows(character.stats),
+        location: character.location == null ? "" : String(character.location),
+        user_controlled: character.user_controlled ?? false,
+    }));
+
+    const factions = (world.factions ?? []).map((faction) => ({
+        id: faction.id,
+        name: faction.name ?? "",
+        description: faction.description ?? "",
+        attributes: attributeRows(faction.attributes),
+        stats: statRows(faction.stats),
+    }));
+
+    const inventories = Object.entries(world.inventory ?? {}).map(([characterId, inventory]) => ({
+        character_id: String(characterId),
+        items: (inventory.items ?? []).map((item) => ({
+            id: item.id,
+            name: item.name ?? "",
+            description: item.description ?? "",
+            quality: item.quality ?? "",
+            quantity: item.quantity == null ? "1" : String(item.quantity),
+            unique: item.unique ?? false,
+        })),
+        equipments: (inventory.equipments ?? []).map((equipment) => ({
+            id: equipment.id,
+            name: equipment.name ?? "",
+            description: equipment.description ?? "",
+            quality: equipment.quality ?? "",
+            status: equipment.status ?? "idle",
+        })),
+    }));
+
+    const allItems = inventories.flatMap((inventory) => inventory.items);
+    const allEquipments = inventories.flatMap((inventory) => inventory.equipments);
+    const entities = locations.flatMap((location) => location.entities);
+
+    return {
+        state: world.state
+            ? {
+                  id: world.state.id ?? 1,
+                  scene: world.state.scene == null ? "" : String(world.state.scene),
+                  turn_number:
+                      world.state.turn_number == null ? "0" : String(world.state.turn_number),
+                  state: world.state.state ?? "",
+                  time_label: world.state.time_label ?? "",
+                  recent_history_summary: world.state.recent_history_summary ?? "",
+                  long_term_history_summary: world.state.long_term_history_summary ?? "",
+              }
+            : makeInitialWorldStateState().state,
+        characters,
+        locations,
+        factions,
+        faction_relationships: (world.faction_relationships ?? []).map((relationship) => ({
+            from_type: relationship.from_type ?? "character",
+            from_id: relationship.from_id == null ? "" : String(relationship.from_id),
+            to_type: relationship.to_type ?? "faction",
+            to_id: relationship.to_id == null ? "" : String(relationship.to_id),
+            relationship: relationship.relationship ?? "",
+            private: relationship.private ?? false,
+        })),
+        inventories,
+        tasks: (world.tasks ?? []).map((task) => ({
+            id: task.id,
+            character_ids: (task.character_ids ?? []).map(String),
+            private: task.private ?? true,
+            priority: task.priority ?? "normal",
+            status: task.status ?? "in_progress",
+            type: task.type ?? "side_quest",
+            goal: task.goal ?? "",
+            progress: task.progress == null ? "" : String(task.progress),
+            source: task.source ?? "",
+            reward: task.reward ?? "",
+        })),
+        world_entries: (world.world_entries ?? []).map((entry) => {
+            let scopeMode = "characters";
+            if ((entry.scope ?? []).includes(0)) {
+                scopeMode = "everyone";
+            } else if ((entry.scope ?? []).includes(-1)) {
+                scopeMode = "no_one";
+            }
+
+            return {
+                id: entry.id,
+                scopeMode,
+                scope: (entry.scope ?? []).filter((id) => id > 0).map(String),
+                content: entry.content ?? "",
+                visibility: entry.visibility ?? "known",
+                confidence: entry.confidence == null ? "1" : String(entry.confidence),
+                created_at: entry.created_at == null ? "" : String(entry.created_at),
+                narration_permission: entry.narration_permission ?? "visible",
+                recall_type: entry.recall_type ?? "always",
+                keywords: (entry.keywords ?? []).map((keyword) => ({
+                    keyword: keyword.keyword ?? "",
+                    similarity:
+                        keyword.similarity == null ? "0.8" : String(keyword.similarity),
+                })),
+                chained_ids: (entry.chained_ids ?? []).map(String),
+                semantic_instruction: entry.semantic_instruction ?? "",
+            };
+        }),
+        turn_records: (world.turn_records ?? []).map((record) => ({
+            id: record.id,
+            simulation_id: record.simulation_id ?? 1,
+            turn_number: record.turn_number == null ? "0" : String(record.turn_number),
+            type: record.type ?? "ai_response",
+            narration: record.narration ?? "",
+        })),
+        nextIds: {
+            character: maxId(characters) + 1,
+            location: maxId(locations) + 1,
+            entity: maxId(entities) + 1,
+            faction: maxId(factions) + 1,
+            item: maxId(allItems) + 1,
+            equipment: maxId(allEquipments) + 1,
+            task: maxId(world.tasks ?? []) + 1,
+            worldEntry: maxId(world.world_entries ?? []) + 1,
+            turnRecord: maxId(world.turn_records ?? []) + 1,
+        },
+    };
 }

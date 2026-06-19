@@ -34,6 +34,45 @@ export function makeDataPresetState() {
     };
 }
 
+export function dataPresetFormFromWorld(dataPreset = null) {
+    if (!dataPreset) {
+        return makeDataPresetState();
+    }
+
+    return {
+        character_attributes: (dataPreset.character_attributes ?? []).map((attribute) => ({
+            name: attribute.name ?? "",
+            values: attribute.values ?? [],
+            creation_instruction: attribute.creation_instruction ?? "",
+            update_instruction: attribute.update_instruction ?? "",
+            universal: attribute.universal ?? false,
+        })),
+        character_stats: (dataPreset.character_stats ?? []).map((stat) => ({
+            name: stat.name ?? "",
+            creation_instruction: stat.creation_instruction ?? "",
+            update_instruction: stat.update_instruction ?? "",
+            universal: stat.universal ?? false,
+        })),
+        faction_attributes: (dataPreset.faction_attributes ?? []).map((attribute) => ({
+            name: attribute.name ?? "",
+            values: attribute.values ?? [],
+            creation_instruction: attribute.creation_instruction ?? "",
+            update_instruction: attribute.update_instruction ?? "",
+            universal: attribute.universal ?? false,
+        })),
+        faction_stats: (dataPreset.faction_stats ?? []).map((stat) => ({
+            name: stat.name ?? "",
+            creation_instruction: stat.creation_instruction ?? "",
+            update_instruction: stat.update_instruction ?? "",
+            universal: stat.universal ?? false,
+        })),
+        entity_types: Object.entries(dataPreset.entity_types ?? {}).map(([name, description]) => ({
+            name,
+            description,
+        })),
+    };
+}
+
 function cleanText(value) {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;

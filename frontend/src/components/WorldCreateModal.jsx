@@ -1,18 +1,27 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { fetchLlmConnectionProfiles } from "@/api/connections";
-import { createWorld, uploadWorldCoverImage } from "@/api/worlds";
+import { createWorld, updateWorld, uploadWorldCoverImage } from "@/api/worlds";
 import { AgentPresetEditor } from "@/components/AgentPresetEditor";
 import { CollapsibleFormSection } from "@/components/CollapsibleFormSection";
 import { DataPresetEditor } from "@/components/DataPresetEditor";
 import { EmbeddingProfileEditor } from "@/components/EmbeddingProfileEditor";
 import { InfoTooltip } from "@/components/InfoTooltip";
 import { InitialWorldStateEditor } from "@/components/InitialWorldStateEditor";
-import { buildAgentPresetPayload, makeAgentPresetState } from "@/shared/agentPresetModel";
-import { buildDataPresetPayload, makeDataPresetState } from "@/shared/dataPresetModel";
+import {
+    agentPresetFormFromWorld,
+    buildAgentPresetPayload,
+    makeAgentPresetState,
+} from "@/shared/agentPresetModel";
+import {
+    buildDataPresetPayload,
+    dataPresetFormFromWorld,
+    makeDataPresetState,
+} from "@/shared/dataPresetModel";
 import {
     buildEmbeddingProfilePayload,
+    embeddingProfileFormFromWorld,
     makeEmbeddingProfileState,
 } from "@/shared/embeddingProfileModel";
 import {
@@ -25,6 +34,7 @@ import {
     buildTasksPayload,
     buildTurnRecordsPayload,
     buildWorldEntriesPayload,
+    initialWorldStateFormFromWorld,
     makeInitialWorldStateState,
 } from "@/shared/initialWorldStateModel";
 
@@ -57,23 +67,39 @@ function placeholderList(items) {
     return values.length > 0 ? values : null;
 }
 
-export function WorldCreateModal({ onClose, onCreated }) {
+export function WorldCreateModal({ mode = "create", initialWorld = null, onClose, onSaved }) {
     const { t } = useTranslation();
-    const [name, setName] = useState("");
-    const [language, setLanguage] = useState("");
+    const isEdit = mode === "edit";
+    const [name, setName] = useState(initialWorld?.name ?? "");
+    const [language, setLanguage] = useState(initialWorld?.language ?? "");
     const [coverImage, setCoverImage] = useState(null);
-    const [description, setDescription] = useState("");
+    const [description, setDescription] = useState(initialWorld?.description ?? "");
     const [booleans, setBooleans] = useState(
-        booleanFields.reduce((state, key) => ({ ...state, [key]: false }), {}),
+        booleanFields.reduce(
+            (state, key) => ({ ...state, [key]: initialWorld?.[key] ?? false }),
+            {},
+        ),
     );
-    const [agentPresetEnabled, setAgentPresetEnabled] = useState(false);
-    const [agentPreset, setAgentPreset] = useState(makeAgentPresetState);
-    const [dataPresetEnabled, setDataPresetEnabled] = useState(false);
-    const [dataPreset, setDataPreset] = useState(makeDataPresetState);
-    const [embeddingProfileEnabled, setEmbeddingProfileEnabled] = useState(false);
-    const [embeddingProfile, setEmbeddingProfile] = useState(makeEmbeddingProfileState);
-    const [simulationStateEnabled, setSimulationStateEnabled] = useState(false);
-    const [initialWorldState, setInitialWorldState] = useState(makeInitialWorldStateState);
+    const [agentPresetEnabled, setAgentPresetEnabled] = useState(Boolean(initialWorld?.agent_preset));
+    const [agentPreset, setAgentPreset] = useState(() =>
+        initialWorld?.agent_preset ? agentPresetFormFromWorld(initialWorld.agent_preset) : makeAgentPresetState(),
+    );
+    const [dataPresetEnabled, setDataPresetEnabled] = useState(Boolean(initialWorld?.data_preset));
+    const [dataPreset, setDataPreset] = useState(() =>
+        initialWorld?.data_preset ? dataPresetFormFromWorld(initialWorld.data_preset) : makeDataPresetState(),
+    );
+    const [embeddingProfileEnabled, setEmbeddingProfileEnabled] = useState(
+        Boolean(initialWorld?.embedding_profile),
+    );
+    const [embeddingProfile, setEmbeddingProfile] = useState(() =>
+        initialWorld?.embedding_profile
+            ? embeddingProfileFormFromWorld(initialWorld.embedding_profile)
+            : makeEmbeddingProfileState(),
+    );
+    const [simulationStateEnabled, setSimulationStateEnabled] = useState(Boolean(initialWorld?.state));
+    const [initialWorldState, setInitialWorldState] = useState(() =>
+        initialWorld ? initialWorldStateFormFromWorld(initialWorld) : makeInitialWorldStateState(),
+    );
     const [llmConnections, setLlmConnections] = useState([]);
     const [objectValues, setObjectValues] = useState(makeObjectState(objectSections));
     const [listValues, setListValues] = useState(
@@ -92,6 +118,16 @@ export function WorldCreateModal({ onClose, onCreated }) {
     );
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
+    const [connectionLoadError, setConnectionLoadError] = useState(null);
+    const mountedRef = useRef(true);
+
+    useEffect(() => {
+        mountedRef.current = true;
+
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
 
     useEffect(() => {
         function onKeyDown(event) {
@@ -104,28 +140,42 @@ export function WorldCreateModal({ onClose, onCreated }) {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [onClose]);
 
-    useEffect(() => {
-        let active = true;
-
-        async function loadLlmConnections() {
-            try {
-                const data = await fetchLlmConnectionProfiles();
-                if (active) {
-                    setLlmConnections(data);
-                }
-            } catch {
-                if (active) {
-                    setLlmConnections([]);
-                }
+    const refreshLlmConnections = useCallback(async () => {
+        try {
+            const data = await fetchLlmConnectionProfiles();
+            if (!mountedRef.current) {
+                return;
             }
+            setLlmConnections(data);
+            setConnectionLoadError(null);
+        } catch (err) {
+            if (!mountedRef.current) {
+                return;
+            }
+            setLlmConnections([]);
+            setConnectionLoadError(err.message);
+        }
+    }, []);
+
+    useEffect(() => {
+        const refreshTimer = window.setTimeout(() => {
+            refreshLlmConnections();
+        }, 0);
+
+        return () => window.clearTimeout(refreshTimer);
+    }, [refreshLlmConnections]);
+
+    useEffect(() => {
+        if (agentPresetEnabled || embeddingProfileEnabled) {
+            const refreshTimer = window.setTimeout(() => {
+                refreshLlmConnections();
+            }, 0);
+
+            return () => window.clearTimeout(refreshTimer);
         }
 
-        loadLlmConnections();
-
-        return () => {
-            active = false;
-        };
-    }, []);
+        return undefined;
+    }, [agentPresetEnabled, embeddingProfileEnabled, refreshLlmConnections]);
 
     function toggleSection(key) {
         setOpenSections((current) => ({ ...current, [key]: !current[key] }));
@@ -264,14 +314,16 @@ export function WorldCreateModal({ onClose, onCreated }) {
 
         try {
             setSaving(true);
-            const createdWorld = await createWorld(buildPayload());
+            const savedWorld = isEdit
+                ? await updateWorld(initialWorld.id, buildPayload())
+                : await createWorld(buildPayload());
 
             if (coverImage) {
-                await uploadWorldCoverImage(createdWorld.id, coverImage);
+                await uploadWorldCoverImage(savedWorld.id ?? initialWorld?.id, coverImage);
             }
 
             setSaving(false);
-            onCreated();
+            onSaved();
         } catch (err) {
             setError(err.message);
             setSaving(false);
@@ -289,7 +341,9 @@ export function WorldCreateModal({ onClose, onCreated }) {
             >
                 <form className="world-create-form" onSubmit={handleSubmit}>
                     <div className="modal-header">
-                        <h2 id="create-world-title">{t("worldCreate.title")}</h2>
+                        <h2 id="create-world-title">
+                            {isEdit ? t("worldCreate.editTitle") : t("worldCreate.title")}
+                        </h2>
                         <button
                             type="button"
                             className="icon-button"
@@ -408,6 +462,13 @@ export function WorldCreateModal({ onClose, onCreated }) {
                             open={openSections.agent_preset}
                             onToggle={() => toggleSection("agent_preset")}
                         >
+                            {connectionLoadError ? (
+                                <p className="form-error">
+                                    {t("worldCreate.connectionLoadError", {
+                                        error: connectionLoadError,
+                                    })}
+                                </p>
+                            ) : null}
                             <AgentPresetEditor
                                 enabled={agentPresetEnabled}
                                 onEnabledChange={setAgentPresetEnabled}
@@ -449,6 +510,13 @@ export function WorldCreateModal({ onClose, onCreated }) {
                             open={openSections.embedding_profile}
                             onToggle={() => toggleSection("embedding_profile")}
                         >
+                            {connectionLoadError ? (
+                                <p className="form-error">
+                                    {t("worldCreate.connectionLoadError", {
+                                        error: connectionLoadError,
+                                    })}
+                                </p>
+                            ) : null}
                             <EmbeddingProfileEditor
                                 enabled={embeddingProfileEnabled}
                                 onEnabledChange={setEmbeddingProfileEnabled}
@@ -566,7 +634,11 @@ export function WorldCreateModal({ onClose, onCreated }) {
                             {t("worldCreate.cancel")}
                         </button>
                         <button type="submit" className="primary-button" disabled={saving}>
-                            {saving ? t("worldCreate.saving") : t("worldCreate.submit")}
+                            {saving
+                                ? t("worldCreate.saving")
+                                : isEdit
+                                  ? t("worldCreate.update")
+                                  : t("worldCreate.submit")}
                         </button>
                     </div>
                 </form>

@@ -7,6 +7,19 @@ export function makeEmbeddingProfileState() {
     };
 }
 
+export function embeddingProfileFormFromWorld(profile = null) {
+    if (!profile) {
+        return makeEmbeddingProfileState();
+    }
+
+    return {
+        connection: profile.connection == null ? "" : String(profile.connection),
+        model: profile.model ?? "",
+        dimensions: profile.dimensions == null ? "" : String(profile.dimensions),
+        context_window: profile.context_window == null ? "" : String(profile.context_window),
+    };
+}
+
 function optionalInt(value) {
     const trimmed = String(value).trim();
     return trimmed.length > 0 ? Number.parseInt(trimmed, 10) : undefined;

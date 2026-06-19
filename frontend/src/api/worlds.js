@@ -32,6 +32,54 @@ export async function createWorld(world) {
     return response.json();
 }
 
+export async function fetchWorld(worldId) {
+    const response = await fetch(`/api/worlds/${worldId}`);
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch world: ${response.status}`);
+    }
+
+    return response.json();
+}
+
+export async function updateWorld(worldId, world) {
+    const response = await fetch(`/api/worlds/${worldId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(world),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to update world: ${response.status}`);
+    }
+
+    return response.json();
+}
+
+export async function deleteWorld(worldId) {
+    const response = await fetch(`/api/worlds/${worldId}`, {
+        method: "DELETE",
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to delete world: ${response.status}`);
+    }
+}
+
+export async function createSimulationFromWorld(worldId) {
+    const response = await fetch(`/api/worlds/${worldId}/new-simulation`, {
+        method: "POST",
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to create simulation from world: ${response.status}`);
+    }
+
+    return response.json();
+}
+
 export async function uploadWorldCoverImage(worldId, file) {
     const formData = new FormData();
     formData.set("file", file);

@@ -25,7 +25,14 @@
     "loadingMore": "Loading...",
     "loadMore": "Load more",
     "empty": "No worlds are available.",
-    "error": "Unable to load worlds: {{error}}"
+    "error": "Unable to load worlds: {{error}}",
+    "actionError": "Unable to complete world action: {{error}}",
+    "confirmDelete": "Delete {{name}}?",
+    "actions": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "createSimulation": "Create simulation"
+    }
   },
   "connections": {
     "title": "Connection profiles",
@@ -82,13 +89,16 @@
   },
   "worldCreate": {
     "title": "Create world",
+    "editTitle": "Edit world",
     "close": "Close create world dialog",
     "cancel": "Cancel",
     "submit": "Create world",
+    "update": "Update world",
     "saving": "Creating...",
     "add": "Add",
     "remove": "Remove",
     "error": "Unable to create world: {{error}}",
+    "connectionLoadError": "Unable to load connection profiles: {{error}}",
     "tooltipLabel": "About {{field}}",
     "validation": {
       "nameRequired": "World name is required."
