@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { fetchWorlds } from "@/api/worlds";
 import { WorldCard } from "@/components/WorldCard";
+import { WorldCreateModal } from "@/components/WorldCreateModal";
 import { WorldListTile } from "@/components/WorldListTile";
 import { useMediaQuery } from "@/shared/useMediaQuery";
 
@@ -15,6 +16,7 @@ export function WorldPage() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState(null);
+    const [createModalOpen, setCreateModalOpen] = useState(false);
 
     const limit = 24;
 
@@ -44,22 +46,32 @@ export function WorldPage() {
         });
     }, []);
 
-    if (loading) {
-        return <p className="status-text">{t("worlds.loading")}</p>;
-    }
-
-    if (error) {
-        return <p className="status-text error-text">{t("worlds.error", { error })}</p>;
+    async function handleWorldCreated() {
+        setCreateModalOpen(false);
+        await loadWorlds(0, false);
     }
 
     return (
         <section>
-            <div className="page-heading">
-                <h1>{t("worlds.title")}</h1>
-                <p>{t("worlds.subtitle")}</p>
+            <div className="page-heading page-heading-with-action">
+                <div>
+                    <h1>{t("worlds.title")}</h1>
+                    <p>{t("worlds.subtitle")}</p>
+                </div>
+                <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => setCreateModalOpen(true)}
+                >
+                    {t("worlds.create")}
+                </button>
             </div>
 
-            {worlds.length === 0 ? (
+            {loading ? (
+                <p className="status-text">{t("worlds.loading")}</p>
+            ) : error ? (
+                <p className="status-text error-text">{t("worlds.error", { error })}</p>
+            ) : worlds.length === 0 ? (
                 <p className="status-text">{t("worlds.empty")}</p>
             ) : isDesktop ? (
                 <div className="world-grid">
@@ -75,15 +87,24 @@ export function WorldPage() {
                 </div>
             )}
 
-            <div className="load-more-row">
-                <button
-                    className="load-more-button"
-                    disabled={loadingMore}
-                    onClick={() => loadWorlds(offset, true)}
-                >
-                    {loadingMore ? t("worlds.loadingMore") : t("worlds.loadMore")}
-                </button>
-            </div>
+            {!loading && !error ? (
+                <div className="load-more-row">
+                    <button
+                        className="load-more-button"
+                        disabled={loadingMore}
+                        onClick={() => loadWorlds(offset, true)}
+                    >
+                        {loadingMore ? t("worlds.loadingMore") : t("worlds.loadMore")}
+                    </button>
+                </div>
+            ) : null}
+
+            {createModalOpen ? (
+                <WorldCreateModal
+                    onClose={() => setCreateModalOpen(false)}
+                    onCreated={handleWorldCreated}
+                />
+            ) : null}
         </section>
     );
 }

@@ -4,7 +4,8 @@
     "navigationLabel": "Primary navigation",
     "nav": {
       "simulations": "Simulations",
-      "worlds": "Worlds"
+      "worlds": "Worlds",
+      "connections": "Connections"
     }
   },
   "home": {
@@ -19,10 +20,438 @@
   "worlds": {
     "title": "Worlds",
     "subtitle": "Browse available worlds.",
+    "create": "Create",
     "loading": "Loading worlds...",
     "loadingMore": "Loading...",
     "loadMore": "Load more",
     "empty": "No worlds are available.",
     "error": "Unable to load worlds: {{error}}"
+  },
+  "connections": {
+    "title": "Connection profiles",
+    "subtitle": "Manage LLM and image generation provider profiles.",
+    "llmTitle": "LLM connections",
+    "imageTitle": "Image generation connections",
+    "loading": "Loading connection profiles...",
+    "error": "Unable to load connection profiles: {{error}}",
+    "unnamedProfile": "{{provider}} profile",
+    "empty": {
+      "llm": "No LLM connection profiles are available.",
+      "image": "No image generation connection profiles are available."
+    },
+    "providers": {
+      "openai": "OpenAI",
+      "ollama": "Ollama",
+      "comfy_ui": "ComfyUI"
+    },
+    "actions": {
+      "create": "Create",
+      "edit": "Edit",
+      "delete": "Delete",
+      "editProfile": "Edit {{name}}",
+      "deleteProfile": "Delete {{name}}"
+    }
+  },
+  "connectionCreate": {
+    "close": "Close create connection dialog",
+    "cancel": "Cancel",
+    "submit": "Create connection",
+    "saving": "Creating...",
+    "error": "Unable to create connection: {{error}}",
+    "llm": {
+      "title": "Create LLM connection"
+    },
+    "image": {
+      "title": "Create image generation connection"
+    },
+    "fields": {
+      "provider": {
+        "label": "Provider"
+      },
+      "name": {
+        "label": "Name"
+      },
+      "baseUrl": {
+        "label": "Base URL",
+        "placeholder": "Use empty for official APIs"
+      },
+      "apiKey": {
+        "label": "API key"
+      }
+    }
+  },
+  "worldCreate": {
+    "title": "Create world",
+    "close": "Close create world dialog",
+    "cancel": "Cancel",
+    "submit": "Create world",
+    "saving": "Creating...",
+    "add": "Add",
+    "remove": "Remove",
+    "error": "Unable to create world: {{error}}",
+    "tooltipLabel": "About {{field}}",
+    "validation": {
+      "nameRequired": "World name is required."
+    },
+    "fields": {
+      "placeholder": {
+        "label": "Placeholder",
+        "itemLabel": "Placeholder {{number}}"
+      },
+      "name": {
+        "label": "Name",
+        "tooltip": "The name of the world."
+      },
+      "description": {
+        "label": "Description",
+        "tooltip": "The description of the world."
+      },
+      "agent_preset": {
+        "label": "Agent preset",
+        "tooltip": "The agent preset used for this world, containing model configurations and prompt templates. Scaffolded as a placeholder for now."
+      },
+      "data_preset": {
+        "label": "Data preset",
+        "tooltip": "The data preset used for this world, containing extra data types and their descriptions. Scaffolded as a placeholder for now."
+      },
+      "embedding_profile": {
+        "label": "Embedding profile",
+        "tooltip": "The embedding profile used for this world, containing configurations for embeddings."
+      },
+      "language": {
+        "label": "Language",
+        "placeholder": "en-US",
+        "tooltip": "The language of the world, as a locale string."
+      },
+      "coverImage": {
+        "label": "Cover image",
+        "tooltip": "Optional image uploaded after the world is created."
+      },
+      "act_for_user": {
+        "label": "Act for user",
+        "tooltip": "Whether the simulation should act for the user, or can only control other characters."
+      },
+      "enable_tts": {
+        "label": "Enable TTS",
+        "tooltip": "Whether the simulation should enable text-to-speech."
+      },
+      "enable_image_generation": {
+        "label": "Enable image generation",
+        "tooltip": "Whether the simulation should enable image generation."
+      },
+      "state": {
+        "label": "State",
+        "tooltip": "The current state of the world. Scaffolded as a placeholder for now."
+      },
+      "characters": {
+        "label": "Characters",
+        "tooltip": "The characters in the world. Add zero or more placeholder character objects for now."
+      },
+      "locations": {
+        "label": "Locations",
+        "tooltip": "The locations in the world. Add zero or more placeholder location objects for now."
+      },
+      "factions": {
+        "label": "Factions",
+        "tooltip": "The factions in the world. Add zero or more placeholder faction objects for now."
+      },
+      "faction_relationships": {
+        "label": "Faction relationships",
+        "tooltip": "The relationships between factions in the world. Add zero or more placeholder relationship objects for now."
+      },
+      "inventory": {
+        "label": "Inventory",
+        "characterId": "Character ID",
+        "tooltip": "The inventory of characters. Add zero or more character id to placeholder inventory mappings for now."
+      },
+      "tasks": {
+        "label": "Tasks",
+        "tooltip": "The tasks in the world. Add zero or more placeholder task objects for now."
+      },
+      "world_entries": {
+        "label": "World entries",
+        "tooltip": "The entries in the world. Add zero or more placeholder world entry objects for now."
+      },
+      "turn_records": {
+        "label": "Turn records",
+        "tooltip": "The existing turn records as a starting point. Add zero or more placeholder turn record objects for now."
+      }
+    },
+    "agentPreset": {
+      "include": "Include agent preset",
+      "noConnection": "No connection profile",
+      "roleTooltip": "Configuration for this agent role.",
+      "promptTooltip": "Prompt messages for this agent operation. Content supports Jinja2 templates.",
+      "addMessage": "Add message",
+      "roles": {
+        "director": "Director",
+        "memory": "Memory",
+        "character": "Character",
+        "resolver": "Resolver",
+        "committer": "Committer",
+        "narrator": "Narrator",
+        "world_generator": "World generator"
+      },
+      "fields": {
+        "connection": "Connection",
+        "model": "Model",
+        "temperature": "Temperature",
+        "context_window": "Context window",
+        "seed": "Seed",
+        "reasoning": "Reasoning",
+        "stop_tokens": "Stop tokens",
+        "max_tool_rounds": "Max tool rounds",
+        "mirostat": "Mirostat",
+        "mirostat_eta": "Mirostat eta",
+        "mirostat_tau": "Mirostat tau",
+        "num_predict": "Num predict",
+        "repeat_penalty_window": "Repeat penalty window",
+        "repeat_penalty": "Repeat penalty",
+        "remove_empty_messages": "Remove empty messages",
+        "merge_adjacent_user": "Merge adjacent user",
+        "merge_adjacent_assistant": "Merge adjacent assistant",
+        "merge_assistant_with_tool_calls": "Merge assistant tool calls",
+        "system_message_policy": "System message policy",
+        "message_merge_separator": "Message merge separator"
+      },
+      "reasoning": {
+        "default": "Default",
+        "true": "Enabled",
+        "false": "Disabled",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "systemMessagePolicy": {
+        "preserve": "Preserve",
+        "merge_to_top": "Merge to top",
+        "drop": "Drop"
+      },
+      "messageRoles": {
+        "system": "System",
+        "user": "User",
+        "assistant": "Assistant",
+        "tool": "Tool"
+      },
+      "prompts": {
+        "generation_prompt": "Generation prompt",
+        "planning_prompt": "Planning prompt",
+        "location_generation_prompt": "Location generation prompt",
+        "item_generation_prompt": "Item generation prompt",
+        "equipment_generation_prompt": "Equipment generation prompt",
+        "entity_generation_prompt": "Entity generation prompt",
+        "world_entry_generation_prompt": "World entry generation prompt",
+        "generation_package_prompt": "Generation package prompt",
+        "briefing_prompt": "Briefing prompt",
+        "summary_prompt": "Summary prompt",
+        "action_prompt": "Action prompt",
+        "reaction_prompt": "Reaction prompt",
+        "resolve_character_prompt": "Resolve character prompt",
+        "resolve_reaction_prompt": "Resolve reaction prompt",
+        "resolve_user_prompt": "Resolve user prompt",
+        "mutation_prompt": "Mutation prompt",
+        "validation_prompt": "Validation prompt",
+        "narrate_resolved_turn_prompt": "Narrate resolved turn prompt",
+        "narrate_user_input_failure_prompt": "Narrate user input failure prompt",
+        "narrate_wait_for_user_prompt": "Narrate wait for user prompt"
+      }
+    },
+    "dataPreset": {
+      "include": "Include data preset",
+      "itemTitle": "Field {{number}}",
+      "entityTypeTitle": "Entity type {{number}}",
+      "sections": {
+        "character_attributes": "Character attributes",
+        "character_stats": "Character stats",
+        "faction_attributes": "Faction attributes",
+        "faction_stats": "Faction stats",
+        "entity_types": "Entity types"
+      },
+      "tooltips": {
+        "character_attributes": "Extra character attributes for this preset.",
+        "character_stats": "Extra character stats for this preset.",
+        "faction_attributes": "Extra faction attributes for this preset.",
+        "faction_stats": "Extra faction stats for this preset.",
+        "entity_types": "Entity types allowed in a location and their explanations."
+      },
+      "fields": {
+        "name": "Name",
+        "values": "Allowed values",
+        "value": "Value",
+        "creation_instruction": "Creation instruction",
+        "update_instruction": "Update instruction",
+        "universal": "Universal",
+        "type": "Type",
+        "description": "Description"
+      }
+    },
+    "embeddingProfile": {
+      "include": "Include embedding profile",
+      "fields": {
+        "connection": "Connection",
+        "model": "Model",
+        "dimensions": "Dimensions",
+        "context_window": "Context window"
+      }
+    },
+    "initialState": {
+      "title": "Initial world state",
+      "tooltip": "Initial state, locations, characters, and entities available when the world starts.",
+      "state": "Simulation state",
+      "stateTooltip": "The current state summary for the simulation.",
+      "includeState": "Include simulation state",
+      "locations": "Locations",
+      "locationsTooltip": "Locations in the starting world.",
+      "characters": "Characters",
+      "charactersTooltip": "Characters in the starting world.",
+      "entities": "Entities",
+      "attributes": "Attributes",
+      "stats": "Stats",
+      "addValue": "Add value",
+      "noLocation": "No location",
+      "noEntityType": "No entity type",
+      "locationTitle": "Location {{number}}",
+      "characterTitle": "Character {{number}}",
+      "entityTitle": "Entity {{number}}",
+      "fields": {
+        "scene": "Scene",
+        "turn_number": "Turn number",
+        "state": "State",
+        "time_label": "Time label",
+        "recent_history_summary": "Recent history summary",
+        "long_term_history_summary": "Long term history summary",
+        "primary_location": "Primary location",
+        "detailed_location": "Detailed location",
+        "description": "Description",
+        "name": "Name",
+        "type": "Type",
+        "status": "Status",
+        "interactions": "Interactions",
+        "interaction": "Interaction",
+        "gender": "Gender",
+        "age": "Age",
+        "appearance": "Appearance",
+        "public_state": "Public state",
+        "private_state": "Private state",
+        "location": "Location",
+        "user_controlled": "User controlled",
+        "attribute": "Attribute",
+        "stat": "Stat",
+        "value": "Value"
+      }
+    },
+    "extraState": {
+      "title": "Factions, inventory, tasks, and knowledge",
+      "tooltip": "Additional starting data for factions, relationships, inventories, tasks, and world entries.",
+      "factions": "Factions",
+      "factionsTooltip": "Factions in the starting world.",
+      "factionRelationships": "Faction relationships",
+      "factionRelationshipsTooltip": "Relationships between factions, characters, and items.",
+      "inventory": "Inventory",
+      "inventoryTooltip": "Items and equipment owned by characters.",
+      "tasks": "Tasks",
+      "tasksTooltip": "Starting tasks assigned to characters.",
+      "worldEntries": "World entries",
+      "worldEntriesTooltip": "Starting knowledge and memory entries.",
+      "turnRecords": "Turn records",
+      "turnRecordsTooltip": "Initial narration turns. Agent output internals are intentionally omitted.",
+      "items": "Items",
+      "equipment": "Equipment",
+      "factionTitle": "Faction {{number}}",
+      "relationshipTitle": "Relationship {{number}}",
+      "itemTitle": "Item {{number}}",
+      "equipmentTitle": "Equipment {{number}}",
+      "taskTitle": "Task {{number}}",
+      "worldEntryTitle": "World entry {{number}}",
+      "turnRecordTitle": "Turn record {{number}}",
+      "scopeMode": {
+        "everyone": "Everyone",
+        "no_one": "No one",
+        "characters": "Selected characters"
+      },
+      "fields": {
+        "name": "Name",
+        "description": "Description",
+        "from": "From",
+        "to": "To",
+        "selectEntity": "Select entity",
+        "selectCharacter": "Select character",
+        "relationship": "Relationship",
+        "private": "Private",
+        "quality": "Quality",
+        "quantity": "Quantity",
+        "unique": "Unique",
+        "status": "Status",
+        "priority": "Priority",
+        "type": "Type",
+        "goal": "Goal",
+        "progress": "Progress",
+        "source": "Source",
+        "reward": "Reward",
+        "scope": "Scope",
+        "content": "Content",
+        "confidence": "Confidence",
+        "created_at": "Created at turn",
+        "semantic_instruction": "Semantic instruction",
+        "visibility": "Visibility",
+        "narration_permission": "Narration permission",
+        "recall_type": "Recall type",
+        "keywords": "Keywords",
+        "turn_number": "Turn number",
+        "narration": "Narration"
+      }
+    },
+    "enums": {
+      "relationshipEntity": {
+        "faction": "Faction",
+        "item": "Item",
+        "character": "Character"
+      },
+      "equipmentStatus": {
+        "equipped": "Equipped",
+        "idle": "Idle"
+      },
+      "priority": {
+        "urgent": "Urgent",
+        "important": "Important",
+        "normal": "Normal",
+        "background": "Background"
+      },
+      "status": {
+        "paused": "Paused",
+        "in_progress": "In progress",
+        "completed": "Completed",
+        "failed": "Failed",
+        "abandoned": "Abandoned"
+      },
+      "type": {
+        "main_quest": "Main quest",
+        "side_quest": "Side quest",
+        "daily": "Daily"
+      },
+      "visibility": {
+        "known": "Known",
+        "suspected": "Suspected",
+        "perceived": "Perceived",
+        "inferred": "Inferred"
+      },
+      "narration_permission": {
+        "visible": "Visible",
+        "may_hint": "May hint",
+        "invisible": "Invisible"
+      },
+      "recall_type": {
+        "always": "Always",
+        "keyword": "Keyword",
+        "semantic": "Semantic",
+        "chained": "Chained"
+      },
+      "turnType": {
+        "user_input": "User input",
+        "ai_response": "AI response",
+        "ai_continue": "AI continue",
+        "ai_wait": "AI wait"
+      }
+    }
   }
 }

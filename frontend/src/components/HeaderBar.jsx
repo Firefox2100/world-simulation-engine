@@ -17,6 +17,9 @@ export function HeaderBar() {
                 <NavLink to="/worlds" className="app-nav-link">
                     {t("app.nav.worlds")}
                 </NavLink>
+                <NavLink to="/connections" className="app-nav-link">
+                    {t("app.nav.connections")}
+                </NavLink>
             </nav>
 
             <LanguageSwitcher />

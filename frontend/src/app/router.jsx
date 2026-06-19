@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AppLayout } from "@/layouts/AppLayout";
+import { ConnectionsPage } from "@/pages/ConnectionsPage.jsx";
 import { SimulationPage } from "@/pages/SimulationPage.jsx";
 import { WorldPage } from "@/pages/WorldPage.jsx";
 
@@ -10,6 +11,7 @@ export const router = createBrowserRouter([
         children: [
             { index: true, element: <SimulationPage /> },
             { path: "worlds", element: <WorldPage /> },
+            { path: "connections", element: <ConnectionsPage /> },
         ],
     },
 ]);
