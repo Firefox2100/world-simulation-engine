@@ -2,7 +2,7 @@
 site_name = "World Simulation Engine"
 site_description = "A python project to experiment with world simulation with LLM"
 site_author = "Firefox2100"
-#site_url = "https://www.example.com/"
+site_url = "https://firefox2100.github.io/world-simulation-engine/"
 copyright = """
 Copyright &copy; 2026 Firefox2100. All rights reserved.
 """
@@ -272,8 +272,8 @@ toggle.name = "Switch to light mode"
 
 [project.extra]
 alternate = [
-    { name = "English", link = "/", lang = "en" },
-    { name = "中文", link = "/zh/", lang = "zh" }
+    { name = "English", link = "/world-simulation-engine/", lang = "en" },
+    { name = "中文", link = "/world-simulation-engine/zh/", lang = "zh" }
 ]
 
 # ----------------------------------------------------------------------------

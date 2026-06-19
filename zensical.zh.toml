@@ -2,7 +2,7 @@
 site_name = "世界模拟器"
 site_description = "实验性Python框架，用来测试使用LLM进行角色扮演的可能性和局限性"
 site_author = "Firefox2100"
-#site_url = "https://www.example.com/"
+site_url = "https://firefox2100.github.io/world-simulation-engine/zh/"
 copyright = """
 Copyright &copy; 2026 Firefox2100. All rights reserved.
 """
@@ -271,8 +271,8 @@ toggle.name = "Switch to light mode"
 
 [project.extra]
 alternate = [
-    { name = "English", link = "/", lang = "en" },
-    { name = "中文", link = "/zh/", lang = "zh" }
+    { name = "English", link = "/world-simulation-engine/", lang = "en" },
+    { name = "中文", link = "/world-simulation-engine/zh/", lang = "zh" }
 ]
 
 # ----------------------------------------------------------------------------
