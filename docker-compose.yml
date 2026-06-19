@@ -1,0 +1,9 @@
+name: world-simulation-engine
+
+services:
+  app:
+    build: .
+    ports:
+      - "9798:80"
+    volumes:
+      - ./data:/app/data

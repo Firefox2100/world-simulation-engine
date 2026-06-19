@@ -3,6 +3,8 @@ site_name = "世界模拟器"
 site_description = "实验性Python框架，用来测试使用LLM进行角色扮演的可能性和局限性"
 site_author = "Firefox2100"
 site_url = "https://firefox2100.github.io/world-simulation-engine/zh/"
+repo_url = "https://github.com/firefox2100/world-simulation-engine"
+repo_name = "firefox2100/world-simulation-engine"
 copyright = """
 Copyright &copy; 2026 Firefox2100. All rights reserved.
 """
@@ -230,8 +232,9 @@ features = [
 # - https://zensical.org/docs/setup/logo-and-icons
 # - https://github.com/zensical/ui/tree/master/dist/.icons
 # ----------------------------------------------------------------------------
-#[project.theme.icon]
+[project.theme.icon]
 #logo = "lucide/smile"
+repo = "fontawesome/brands/github"
 
 # ----------------------------------------------------------------------------
 # In the "font" subsection you can configure the fonts used. By default, fonts
