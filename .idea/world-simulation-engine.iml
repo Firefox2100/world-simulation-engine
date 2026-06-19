@@ -6,6 +6,7 @@
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/frontend" />
+      <excludeFolder url="file://$MODULE_DIR$/site" />
     </content>
     <orderEntry type="jdk" jdkName="world-simulation-engine" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
