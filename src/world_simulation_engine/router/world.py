@@ -225,8 +225,7 @@ async def create_new_simulation(world_id: int,
 
     if world.state:
         world.state.id = created_simulation.id
-        if world.state.scene in id_mappings["locations"]:
-            world.state.scene = id_mappings["locations"][world.state.scene]
+        world.state.scene = id_mappings["locations"][world.state.scene]
         await db.state.create(world.state)
 
     if world.characters:

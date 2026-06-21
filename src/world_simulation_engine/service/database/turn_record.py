@@ -46,17 +46,23 @@ class TurnRecordRepository:
     async def get_last_records(self,
                                simulation_id: int,
                                last_n: int = 1,
+                               start_from: int | None = None,
                                ) -> List[TurnRecord]:
         if last_n < 1:
             raise ValueError(f"Requested last {last_n} messages for simulation id {simulation_id}")
 
         async with self._session_factory() as session:
-            result = await session.scalars(
+            stmt = (
                 select(TurnRecordOrm)
                 .where(TurnRecordOrm.simulation_id == simulation_id)
                 .order_by(desc(TurnRecordOrm.turn_number))
                 .limit(last_n)
             )
+
+            if start_from is not None:
+                stmt = stmt.where(TurnRecordOrm.id < start_from)
+
+            result = await session.scalars(stmt)
             records = list(reversed(result.all()))
 
             if not records:
