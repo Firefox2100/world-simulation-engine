@@ -15,7 +15,31 @@
     "loadingMore": "Loading...",
     "loadMore": "Load more",
     "empty": "No simulations are available.",
-    "error": "Unable to load simulations: {{error}}"
+    "error": "Unable to load simulations: {{error}}",
+    "actionError": "Unable to complete simulation action: {{error}}",
+    "confirmDelete": "Delete {{name}}?",
+    "actions": {
+      "openChat": "Open chat",
+      "delete": "Delete"
+    }
+  },
+  "simulationChat": {
+    "title": "Chats",
+    "back": "All simulations",
+    "loading": "Loading chats...",
+    "error": "Unable to load chats: {{error}}",
+    "recordsLoading": "Loading messages...",
+    "recordsError": "Unable to load messages: {{error}}",
+    "emptyRecords": "No messages are available for this simulation yet.",
+    "conversationListLabel": "Simulation conversations",
+    "noPreview": "No messages yet",
+    "selectedFallback": "Simulation",
+    "selectedDescriptionFallback": "Select a simulation to view its messages.",
+    "userName": "You",
+    "inputPlaceholder": "Type a message...",
+    "send": "Send",
+    "sendError": "Unable to send message: {{error}}",
+    "cancelled": "Generation was cancelled."
   },
   "worlds": {
     "title": "Worlds",
@@ -63,13 +87,18 @@
     "close": "Close create connection dialog",
     "cancel": "Cancel",
     "submit": "Create connection",
+    "update": "Update connection",
     "saving": "Creating...",
+    "updating": "Updating...",
     "error": "Unable to create connection: {{error}}",
+    "editError": "Unable to update connection: {{error}}",
     "llm": {
-      "title": "Create LLM connection"
+      "title": "Create LLM connection",
+      "editTitle": "Edit LLM connection"
     },
     "image": {
-      "title": "Create image generation connection"
+      "title": "Create image generation connection",
+      "editTitle": "Edit image generation connection"
     },
     "fields": {
       "provider": {

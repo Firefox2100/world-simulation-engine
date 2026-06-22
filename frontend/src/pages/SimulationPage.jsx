@@ -1,13 +1,15 @@
 import { useEffect, useState, startTransition } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
-import { fetchSimulations } from "@/api/simulations";
+import { deleteSimulation, fetchSimulations } from "@/api/simulations";
 import { useMediaQuery } from "@/shared/useMediaQuery";
 import { SimulationCard } from "@/components/SimulationCard";
 import { SimulationListTile } from "@/components/SimulationListTile";
 
 export function SimulationPage() {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const isDesktop = useMediaQuery("(min-width: 768px)");
 
     const [simulations, setSimulations] = useState([]);
@@ -16,6 +18,7 @@ export function SimulationPage() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState(null);
+    const [actionError, setActionError] = useState(null);
 
     const limit = 24;
 
@@ -46,6 +49,21 @@ export function SimulationPage() {
         });
     }, []);
 
+    async function handleDelete(simulation) {
+        if (!window.confirm(t("home.confirmDelete", { name: simulation.name }))) {
+            return;
+        }
+
+        try {
+            setActionError(null);
+            await deleteSimulation(simulation.id);
+            setSimulations((current) => current.filter((item) => item.id !== simulation.id));
+            setOffset((current) => Math.max(0, current - 1));
+        } catch (err) {
+            setActionError(err.message);
+        }
+    }
+
     if (loading) {
         return <p className="status-text">{t("home.loading")}</p>;
     }
@@ -61,18 +79,32 @@ export function SimulationPage() {
                 <p>{t("home.subtitle")}</p>
             </div>
 
+            {actionError ? (
+                <p className="status-text error-text">{t("home.actionError", { error: actionError })}</p>
+            ) : null}
+
             {simulations.length === 0 ? (
                 <p className="status-text">{t("home.empty")}</p>
             ) : isDesktop ? (
                 <div className="simulation-grid">
                     {simulations.map((simulation) => (
-                        <SimulationCard key={simulation.id} simulation={simulation} />
+                        <SimulationCard
+                            key={simulation.id}
+                            simulation={simulation}
+                            onOpenChat={() => navigate(`/simulations/${simulation.id}`)}
+                            onDelete={() => handleDelete(simulation)}
+                        />
                     ))}
                 </div>
             ) : (
                 <div className="simulation-list">
                     {simulations.map((simulation) => (
-                        <SimulationListTile key={simulation.id} simulation={simulation} />
+                        <SimulationListTile
+                            key={simulation.id}
+                            simulation={simulation}
+                            onOpenChat={() => navigate(`/simulations/${simulation.id}`)}
+                            onDelete={() => handleDelete(simulation)}
+                        />
                     ))}
                 </div>
             )}

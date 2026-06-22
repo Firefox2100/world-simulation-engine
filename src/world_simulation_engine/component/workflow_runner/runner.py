@@ -161,5 +161,5 @@ class WorkflowRunner:
                 if event["event"] in {"done", "error", "cancelled"}:
                     break
         finally:
-            if handle.done.is_set() and handle.queue.empty():
+            if handle.done.is_set():
                 self._runs.pop(run_id, None)

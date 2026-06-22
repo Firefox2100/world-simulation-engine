@@ -15,7 +15,31 @@
     "loadingMore": "正在加载...",
     "loadMore": "加载更多",
     "empty": "暂无可用的模拟项目。",
-    "error": "无法加载模拟项目：{{error}}"
+    "error": "无法加载模拟项目：{{error}}",
+    "actionError": "无法完成模拟操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "actions": {
+      "openChat": "打开聊天",
+      "delete": "删除"
+    }
+  },
+  "simulationChat": {
+    "title": "聊天",
+    "back": "全部模拟",
+    "loading": "正在加载聊天...",
+    "error": "无法加载聊天：{{error}}",
+    "recordsLoading": "正在加载消息...",
+    "recordsError": "无法加载消息：{{error}}",
+    "emptyRecords": "该模拟暂无消息。",
+    "conversationListLabel": "模拟会话列表",
+    "noPreview": "暂无消息",
+    "selectedFallback": "模拟",
+    "selectedDescriptionFallback": "选择一个模拟以查看消息。",
+    "userName": "你",
+    "inputPlaceholder": "输入消息...",
+    "send": "发送",
+    "sendError": "无法发送消息：{{error}}",
+    "cancelled": "生成已取消。"
   },
   "worlds": {
     "title": "世界",
@@ -63,13 +87,18 @@
     "close": "关闭创建连接对话框",
     "cancel": "取消",
     "submit": "创建连接",
+    "update": "更新连接",
     "saving": "正在创建...",
+    "updating": "正在更新...",
     "error": "无法创建连接：{{error}}",
+    "editError": "无法更新连接：{{error}}",
     "llm": {
-      "title": "创建 LLM 连接"
+      "title": "创建 LLM 连接",
+      "editTitle": "编辑 LLM 连接"
     },
     "image": {
-      "title": "创建图像生成连接"
+      "title": "创建图像生成连接",
+      "editTitle": "编辑图像生成连接"
     },
     "fields": {
       "provider": {

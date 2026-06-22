@@ -1,6 +1,6 @@
 import { ConnectionProfileTile } from "@/components/ConnectionProfileTile";
 
-export function ConnectionProfileColumn({ title, emptyText, profiles, providerLabels, createLabel, onCreate }) {
+export function ConnectionProfileColumn({ title, emptyText, profiles, providerLabels, createLabel, onCreate, onEdit }) {
     return (
         <section className="connection-column">
             <div className="connection-column-header">
@@ -19,6 +19,7 @@ export function ConnectionProfileColumn({ title, emptyText, profiles, providerLa
                             key={profile.id}
                             profile={profile}
                             providerLabels={providerLabels}
+                            onEdit={onEdit}
                         />
                     ))}
                 </div>

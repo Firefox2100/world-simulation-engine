@@ -7,13 +7,14 @@ from langgraph.graph.state import StateGraph
 from langgraph.types import Send
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.misc.enums import FactionRelationshipEntity, TurnType
 from world_simulation_engine.model import Simulation, SimulationState, LlmConnectionProfile, DirectorOutput, \
     PendingGeneratedProposal, CharacterBriefing, BriefingOutput, CharacterActionOutput, CharacterInventory, \
     ResolverOutput, Faction, FactionRelationship, CommitterFinalOutput, CharacterReactionContext, \
     FailedCharacterRecord, Character, WorldEntry, Location, Item, ResolvedAction, Task, Equipment, \
     NarratorResolvedEvent, NarratorResolutionView, SummaryOutput, TurnRecordCreate, WaitForUserNarrationContext, \
-    UserInputResolverContext, UserInputResolutionOutput, UserInputFailureNarrationContext
+    UserInputResolverContext, UserInputResolutionOutput, UserInputFailureNarrationContext, SandboxMutationRecord
 from world_simulation_engine.service import DatabaseService, EmbeddingService, DirectorAgent, WorldGeneratorAgent, \
     MemoryAgent, CharacterAgent, ResolverAgent, CommitterAgent, NarratorAgent
 from ..world_entry_recaller import WorldEntryRecaller
@@ -1742,7 +1743,7 @@ class TurnGenerator:
             object_type: str,
             object_id: int | str,
             payload: dict[str, Any],
-            mutation: dict[str, Any],
+            mutation: SandboxMutationRecord,
     ) -> dict[str, Any]:
         if object_type == "state":
             await self._db.state.update(
@@ -1818,7 +1819,7 @@ class TurnGenerator:
             )
 
         return {
-            "mutation_id": mutation.get("mutation_id"),
+            "mutation_id": mutation.mutation_id,
             "operation": "update",
             "object_type": object_type,
             "object_id": object_id,
@@ -1894,7 +1895,7 @@ class TurnGenerator:
             object_type: str,
             object_id: int | str | None,
             payload: dict[str, Any],
-            mutation: dict[str, Any],
+            mutation: SandboxMutationRecord,
             temp_id_map: dict[str, int],
     ) -> dict[str, Any]:
         data = dict(payload)
@@ -1954,7 +1955,7 @@ class TurnGenerator:
             temp_id_map[str(temp_id)] = int(created_id)
 
         return {
-            "mutation_id": mutation.get("mutation_id"),
+            "mutation_id": mutation.mutation_id,
             "operation": "create",
             "object_type": object_type,
             "object_id": created_id,
@@ -1968,7 +1969,7 @@ class TurnGenerator:
             object_type: str,
             object_id: int | str,
             payload: dict[str, Any],
-            mutation: dict[str, Any],
+            mutation: SandboxMutationRecord,
     ) -> dict[str, Any]:
         if object_type == "character":
             # Usually prefer soft update over delete for characters.
@@ -2008,7 +2009,7 @@ class TurnGenerator:
             )
 
         return {
-            "mutation_id": mutation.get("mutation_id"),
+            "mutation_id": mutation.mutation_id,
             "operation": "remove",
             "object_type": object_type,
             "object_id": object_id,
@@ -2055,7 +2056,7 @@ class TurnGenerator:
             operation: str,
             object_id: int | str,
             payload: dict[str, Any],
-            mutation: dict[str, Any],
+            mutation: SandboxMutationRecord,
     ) -> dict[str, Any]:
         status_by_operation = {
             "accept_proposal": "accepted",
@@ -2089,7 +2090,7 @@ class TurnGenerator:
                 )
 
         return {
-            "mutation_id": mutation.get("mutation_id"),
+            "mutation_id": mutation.mutation_id,
             "operation": operation,
             "proposal_id": object_id,
             "status": status,
@@ -2099,15 +2100,20 @@ class TurnGenerator:
             self,
             *,
             simulation_id: int,
-            mutation: dict[str, Any],
+            mutation: SandboxMutationRecord,
             temp_id_map: dict[str, int],
     ) -> dict[str, Any]:
-        operation = mutation["operation"]
-        target = mutation.get("target") or {}
-        payload = deepcopy(mutation.get("payload") or {})
+        operation = mutation.operation
+        target = mutation.target
+        payload = deepcopy(mutation.payload or {})
 
-        object_type = target.get("object_type")
-        object_id = target.get("object_id")
+        if target is None:
+            raise ValueError(
+                f"Committer mutation {mutation.mutation_id} has no target."
+            )
+
+        object_type = target.object_type
+        object_id = target.object_id
 
         if isinstance(object_id, str) and object_id in temp_id_map:
             object_id = temp_id_map[object_id]
@@ -2376,191 +2382,278 @@ class TurnGenerator:
         )
 
     async def load_simulation(self, state: TurnGeneratorState) -> dict:
-        simulation = await self._db.simulation.get(state.simulation_id)
-        simulation_state = await self._db.state.get(state.simulation_id)
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting load_simulation for simulation_id={state.simulation_id}")
 
-        if simulation is None or simulation_state is None:
-            raise ValueError(f"Simulation {state.simulation_id} not found")
+            try:
+                simulation = await self._db.simulation.get(state.simulation_id)
+                LOGGER.debug(f"[{state.run_id}] Retrieved simulation data")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to retrieve simulation from database: {e}", exc_info=True)
+                raise
 
-        connection_ids = {
-            simulation.agent_preset.director.backend_configuration.connection,
-            simulation.agent_preset.memory.backend_configuration.connection,
-            simulation.agent_preset.character.backend_configuration.connection,
-            simulation.agent_preset.resolver.backend_configuration.connection,
-            simulation.agent_preset.committer.backend_configuration.connection,
-            simulation.agent_preset.narrator.backend_configuration.connection,
-            simulation.agent_preset.world_generator.backend_configuration.connection,
-            simulation.embedding_profile.connection,
-        }
+            try:
+                simulation_state = await self._db.state.get(state.simulation_id)
+                LOGGER.debug(f"[{state.run_id}] Retrieved simulation state data")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to retrieve simulation state from database: {e}", exc_info=True)
+                raise
 
-        connections = {}
-        for connection_id in connection_ids:
-            if connection_id is None:
-                raise ValueError("Not all connections are configured")
+            if simulation is None or simulation_state is None:
+                msg = f"Simulation {state.simulation_id} not found"
+                LOGGER.error(f"[{state.run_id}] {msg}")
+                raise ValueError(msg)
 
-            connection = await self._db.connection.llm.get(connection_id)
-            if not connection:
-                raise ValueError(f"Connection {connection_id} not found")
+            try:
+                connection_ids = {
+                    simulation.agent_preset.director.backend_configuration.connection,
+                    simulation.agent_preset.memory.backend_configuration.connection,
+                    simulation.agent_preset.character.backend_configuration.connection,
+                    simulation.agent_preset.resolver.backend_configuration.connection,
+                    simulation.agent_preset.committer.backend_configuration.connection,
+                    simulation.agent_preset.narrator.backend_configuration.connection,
+                    simulation.agent_preset.world_generator.backend_configuration.connection,
+                    simulation.embedding_profile.connection,
+                }
+                LOGGER.debug(f"[{state.run_id}] Extracted {len(connection_ids)} connection IDs from simulation")
+            except AttributeError as e:
+                LOGGER.error(f"[{state.run_id}] Failed to extract connection IDs from simulation config: {e}", exc_info=True)
+                raise
 
-            connections[connection_id] = connection
+            connections = {}
+            for connection_id in connection_ids:
+                try:
+                    if connection_id is None:
+                        raise ValueError("Not all connections are configured")
 
-        return {
-            "simulation": simulation,
-            "state": simulation_state,
-            "connection_profiles": ConnectionProfileCache(
-                director=connections[simulation.agent_preset.director.backend_configuration.connection],
-                memory=connections[simulation.agent_preset.memory.backend_configuration.connection],
-                character=connections[simulation.agent_preset.character.backend_configuration.connection],
-                resolver=connections[simulation.agent_preset.resolver.backend_configuration.connection],
-                committer=connections[simulation.agent_preset.committer.backend_configuration.connection],
-                narrator=connections[simulation.agent_preset.narrator.backend_configuration.connection],
-                world_generator=connections[simulation.agent_preset.world_generator.backend_configuration.connection],
-                embedding=connections[simulation.embedding_profile.connection],
-            ),
-        }
+                    connection = await self._db.connection.llm.get(connection_id)
+                    if not connection:
+                        raise ValueError(f"Connection {connection_id} not found")
+
+                    connections[connection_id] = connection
+                    LOGGER.debug(f"[{state.run_id}] Loaded connection {connection_id}")
+                except Exception as e:
+                    LOGGER.error(f"[{state.run_id}] Failed to load connection {connection_id}: {e}", exc_info=True)
+                    raise
+
+            try:
+                result = {
+                    "simulation": simulation,
+                    "state": simulation_state,
+                    "connection_profiles": ConnectionProfileCache(
+                        director=connections[simulation.agent_preset.director.backend_configuration.connection],
+                        memory=connections[simulation.agent_preset.memory.backend_configuration.connection],
+                        character=connections[simulation.agent_preset.character.backend_configuration.connection],
+                        resolver=connections[simulation.agent_preset.resolver.backend_configuration.connection],
+                        committer=connections[simulation.agent_preset.committer.backend_configuration.connection],
+                        narrator=connections[simulation.agent_preset.narrator.backend_configuration.connection],
+                        world_generator=connections[simulation.agent_preset.world_generator.backend_configuration.connection],
+                        embedding=connections[simulation.embedding_profile.connection],
+                    ),
+                }
+                LOGGER.info(f"[{state.run_id}] Successfully loaded simulation and all connection profiles")
+                return result
+            except KeyError as e:
+                LOGGER.error(f"[{state.run_id}] Connection profile mapping failed: {e}", exc_info=True)
+                raise
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] load_simulation failed: {e}", exc_info=True)
+            raise
 
     async def director_planning(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting director_planning for simulation_id={state.simulation_id}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        if state.connection_profiles.director is None:
-            raise RuntimeError("Director connection profile not loaded")
+            if state.connection_profiles.director is None:
+                raise RuntimeError("Director connection profile not loaded")
 
-        director_agent = DirectorAgent(
-            profile=state.simulation.agent_preset.director,
-            connection=state.connection_profiles.director,
-        )
+            try:
+                director_agent = DirectorAgent(
+                    profile=state.simulation.agent_preset.director,
+                    connection=state.connection_profiles.director,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized DirectorAgent")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize DirectorAgent: {e}", exc_info=True)
+                raise
 
-        if state.connection_profiles.embedding is None:
-            raise RuntimeError("Embedding service connection profile not loaded")
+            if state.connection_profiles.embedding is None:
+                raise RuntimeError("Embedding service connection profile not loaded")
 
-        embedding_service = EmbeddingService(
-            profile=state.simulation.embedding_profile,
-            connection=state.connection_profiles.embedding,
-        )
+            try:
+                embedding_service = EmbeddingService(
+                    profile=state.simulation.embedding_profile,
+                    connection=state.connection_profiles.embedding,
+                )
+                recaller = WorldEntryRecaller(
+                    embedding_service=embedding_service,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized EmbeddingService and WorldEntryRecaller")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize EmbeddingService or WorldEntryRecaller: {e}", exc_info=True)
+                raise
 
-        recaller = WorldEntryRecaller(
-            embedding_service=embedding_service,
-        )
+            if state.connection_profiles.world_generator is None:
+                raise RuntimeError("World generator connection profile not loaded")
 
-        if state.connection_profiles.world_generator is None:
-            raise RuntimeError("World generator connection profile not loaded")
+            try:
+                generator = WorldGeneratorAgent(
+                    profile=state.simulation.agent_preset.world_generator,
+                    connection=state.connection_profiles.world_generator,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized WorldGeneratorAgent")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize WorldGeneratorAgent: {e}", exc_info=True)
+                raise
 
-        generator = WorldGeneratorAgent(
-            profile=state.simulation.agent_preset.world_generator,
-            connection=state.connection_profiles.world_generator,
-        )
+            try:
+                present_characters = await self._db.character.list(
+                    simulation_id=state.simulation_id,
+                    location=state.state.scene,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(present_characters)} present characters")
 
-        present_characters = await self._db.character.list(
-            simulation_id=state.simulation_id,
-            location=state.state.scene,
-        )
-        user_characters = await self._db.character.list(
-            simulation_id=state.simulation_id,
-            controlled_by_user=True,
-        )
+                user_characters = await self._db.character.list(
+                    simulation_id=state.simulation_id,
+                    controlled_by_user=True,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(user_characters)} user-controlled characters")
 
-        current_location = await self._db.location.get(state.state.scene)
-        if not current_location:
-            raise ValueError("Current location does not exist")
+                current_location = await self._db.location.get(state.state.scene)
+                if not current_location:
+                    raise ValueError("Current location does not exist")
+                LOGGER.debug(f"[{state.run_id}] Retrieved current location: {current_location.scene}")
 
-        last_records = await self._db.record.get_last_records(
-            simulation_id=state.simulation_id,
-        )
+                last_records = await self._db.record.get_last_records(
+                    simulation_id=state.simulation_id,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(last_records) if last_records else 0} last records")
 
-        tasks = await self._db.task.list(
-            character_ids=[c.id for c in present_characters],
-        )
+                tasks = await self._db.task.list(
+                    character_ids=[c.id for c in present_characters],
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(tasks)} tasks")
 
-        world_entries = await self._db.entry.list(
-            simulation_id=state.simulation_id,
-            search_scope=[0] + [c.id for c in present_characters],
-        )
+                world_entries = await self._db.entry.list(
+                    simulation_id=state.simulation_id,
+                    search_scope=[0] + [c.id for c in present_characters],
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(world_entries)} world entries")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load director_planning context: {e}", exc_info=True)
+                raise
 
-        if state.user_input:
-            recall_query = state.user_input
-        elif last_records:
-            recall_query = last_records[0].narration
-        else:
-            recall_query = None
+            try:
+                if state.user_input:
+                    recall_query = state.user_input
+                elif last_records:
+                    recall_query = last_records[0].narration
+                else:
+                    recall_query = None
 
-        recalled_entries = await recaller.recall(
-            query=recall_query,
-            entries=world_entries,
-            language=state.simulation.language,
-        )
+                recalled_entries = await recaller.recall(
+                    query=recall_query,
+                    entries=world_entries,
+                    language=state.simulation.language,
+                )
+                LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_entries)} world entries using query")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to recall world entries: {e}", exc_info=True)
+                raise
 
-        # Full context only for generation/tool-gating.
-        all_locations = await self._db.location.list(
-            simulation_id=state.simulation_id,
-        )
-
-        existing_items = await self._db.item.list(
-            simulation_id=state.simulation_id,
-            include_character_items=True,
-        )
-
-        existing_equipments = await self._db.equipment.list(
-            simulation_id=state.simulation_id,
-            include_character_equipment=True,
-        )
-
-        factions, faction_relationships = await self._load_faction_context(
-            simulation_id=state.simulation_id,
-            character_ids=[c.id for c in present_characters],
-            item_ids=[i.id for i in existing_items],
-            include_private=True,
-        )
-
-        generator_tools = generator.get_tools(
-            simulation=state.simulation,
-            state=state.state,
-            current_location=current_location,
-            present_characters=present_characters,
-            existing_locations=all_locations,
-            existing_entities=current_location.entities,
-            existing_items=existing_items,
-            existing_equipments=existing_equipments,
-            factions=factions,
-            faction_relationships=faction_relationships,
-            entity_types=state.simulation.data_preset.entity_types.keys(),
-        )
-
-        output, proposals = await director_agent.plan_turn(
-            simulation=state.simulation,
-            state=state.state,
-            current_location=current_location,
-            user_characters=user_characters,
-            present_characters=present_characters,
-            relevant_tasks=tasks,
-            recalled_world_entries=recalled_entries,
-            generation_tools=generator_tools,
-            existing_items=existing_items,
-            existing_equipments=existing_equipments,
-            factions=factions,
-            faction_relationships=faction_relationships,
-            user_input=state.user_input,
-            last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
-        )
-
-        if not state.simulation.act_for_user:
-            for activation in output.activations:
-                character = next(
-                    (c for c in present_characters if c.id == activation.character_id),
-                    None,
+            try:
+                # Full context only for generation/tool-gating.
+                all_locations = await self._db.location.list(
+                    simulation_id=state.simulation_id,
                 )
 
-                if character and character.user_controlled:
-                    activation.activate = False
-                    activation.priority = 0
-                    activation.reason = "User-controlled character. System policy prevents autonomous activation."
-                    activation.private_motive_used = False
+                existing_items = await self._db.item.list(
+                    simulation_id=state.simulation_id,
+                    include_character_items=True,
+                )
 
-        return {
-            "director_output": output,
-            "generated_proposals": proposals,
-        }
+                existing_equipments = await self._db.equipment.list(
+                    simulation_id=state.simulation_id,
+                    include_character_equipment=True,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(all_locations)} locations, {len(existing_items)} items, {len(existing_equipments)} equipments")
+
+                factions, faction_relationships = await self._load_faction_context(
+                    simulation_id=state.simulation_id,
+                    character_ids=[c.id for c in present_characters],
+                    item_ids=[i.id for i in existing_items],
+                    include_private=True,
+                )
+                LOGGER.debug(f"[{state.run_id}] Loaded {len(factions)} factions and {len(faction_relationships)} faction relationships")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load full context for director planning: {e}", exc_info=True)
+                raise
+
+            try:
+                generator_tools = generator.get_tools(
+                    simulation=state.simulation,
+                    state=state.state,
+                    current_location=current_location,
+                    present_characters=present_characters,
+                    existing_locations=all_locations,
+                    existing_entities=current_location.entities,
+                    existing_items=existing_items,
+                    existing_equipments=existing_equipments,
+                    factions=factions,
+                    faction_relationships=faction_relationships,
+                    entity_types=state.simulation.data_preset.entity_types.keys(),
+                )
+                LOGGER.debug(f"[{state.run_id}] Generated {len(generator_tools)} generator tools")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to generate tools: {e}", exc_info=True)
+                raise
+
+            try:
+                output, proposals = await director_agent.plan_turn(
+                    simulation=state.simulation,
+                    state=state.state,
+                    current_location=current_location,
+                    user_characters=user_characters,
+                    present_characters=present_characters,
+                    relevant_tasks=tasks,
+                    recalled_world_entries=recalled_entries,
+                    generation_tools=generator_tools,
+                    existing_items=existing_items,
+                    existing_equipments=existing_equipments,
+                    factions=factions,
+                    faction_relationships=faction_relationships,
+                    user_input=state.user_input,
+                    last_narration=last_records[0].narration if last_records else None,
+                    previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
+                )
+                LOGGER.info(f"[{state.run_id}] Director planning completed with {len(output.activations)} character activations and {len(proposals)} proposals")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to plan turn with director agent: {e}", exc_info=True)
+                raise
+
+            if not state.simulation.act_for_user:
+                for activation in output.activations:
+                    character = next(
+                        (c for c in present_characters if c.id == activation.character_id),
+                        None,
+                    )
+
+                    if character and character.user_controlled:
+                        activation.activate = False
+                        activation.priority = 0
+                        activation.reason = "User-controlled character. System policy prevents autonomous activation."
+                        activation.private_motive_used = False
+
+            return {
+                "director_output": output,
+                "generated_proposals": proposals,
+            }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] director_planning failed: {e}", exc_info=True)
+            raise
 
     async def memory_briefing(self, state: TurnGeneratorState) -> dict:
         if state.simulation is None or state.state is None:
@@ -2713,33 +2806,54 @@ class TurnGenerator:
         }
 
     async def memory_summary(self, state: TurnGeneratorState):
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
-        if state.narration is None:
-            raise RuntimeError("Narration is not generated")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting memory_summary for simulation_id={state.simulation_id}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
+            if state.narration is None:
+                raise RuntimeError("Narration is not generated")
 
-        if state.connection_profiles.memory is None:
-            raise RuntimeError("Memory connection profile not loaded")
+            if state.connection_profiles.memory is None:
+                raise RuntimeError("Memory connection profile not loaded")
 
-        memory_agent = MemoryAgent(
-            profile=state.simulation.agent_preset.memory,
-            connection=state.connection_profiles.memory,
-        )
+            try:
+                memory_agent = MemoryAgent(
+                    profile=state.simulation.agent_preset.memory,
+                    connection=state.connection_profiles.memory,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized MemoryAgent")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize MemoryAgent: {e}", exc_info=True)
+                raise
 
-        last_records = await self._db.record.get_last_records(
-            simulation_id=state.simulation_id,
-            last_n=10,
-        )
+            try:
+                last_records = await self._db.record.get_last_records(
+                    simulation_id=state.simulation_id,
+                    last_n=10,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(last_records) if last_records else 0} last turn records for context")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to retrieve last records: {e}", exc_info=True)
+                raise
 
-        result = await memory_agent.build_summary(
-            last_turns=last_records,
-            narration=state.narration,
-            state=state.state,
-        )
+            try:
+                result = await memory_agent.build_summary(
+                    last_turns=last_records,
+                    narration=state.narration,
+                    state=state.state,
+                )
+                LOGGER.info(f"[{state.run_id}] Successfully generated memory summary")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to build memory summary: {e}", exc_info=True)
+                raise
 
-        return {
-            "summary_output": result,
-        }
+            return {
+                "summary_output": result,
+            }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] memory_summary failed: {e}", exc_info=True)
+            raise
 
     async def character_action(self, state: CharacterActionState) -> dict:
         if state.simulation is None or state.state is None:
@@ -3435,568 +3549,693 @@ class TurnGenerator:
         }
 
     async def resolve_user_input(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting resolve_user_input for simulation_id={state.simulation_id}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        if not state.user_input or not state.user_input.strip():
+            if not state.user_input or not state.user_input.strip():
+                LOGGER.info(f"[{state.run_id}] No user input provided, returning no_action resolution")
+                return {
+                    "user_input_resolution": UserInputResolutionOutput(
+                        accepted=True,
+                        input_kind="no_action",
+                        legality="legal",
+                        scene_result_summary="No explicit user action was provided.",
+                        next_round_note="Director should decide whether the scene needs player input or can continue.",
+                    )
+                }
+
+            if state.connection_profiles.resolver is None:
+                raise RuntimeError("Resolver connection profile not loaded")
+
+            try:
+                simulation_id = state.simulation_id
+
+                current_location = await self._db.location.get(state.state.scene)
+                if current_location is None:
+                    raise RuntimeError(f"Current location {state.state.scene} not found")
+                LOGGER.debug(f"[{state.run_id}] Retrieved current location")
+
+                all_characters = await self._db.character.list(
+                    simulation_id=simulation_id,
+                )
+                present_characters = await self._db.character.list(
+                    simulation_id=simulation_id,
+                    location=state.state.scene,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(all_characters)} total and {len(present_characters)} present characters")
+
+                player_character = next(
+                    (character for character in all_characters if character.user_controlled),
+                    None,
+                )
+
+                locations = await self._db.location.list(
+                    simulation_id=simulation_id,
+                )
+                tasks = await self._db.task.list(
+                    simulation_id=simulation_id,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(locations)} locations and {len(tasks)} tasks")
+
+                inventory_by_character_id: dict[int, CharacterInventory] = {}
+
+                for character in all_characters:
+                    items = await self._db.item.list(character_id=character.id)
+                    equipments = await self._db.equipment.list(character_id=character.id)
+                    inventory_by_character_id[character.id] = CharacterInventory(
+                        items=items,
+                        equipments=equipments,
+                    )
+                LOGGER.debug(f"[{state.run_id}] Loaded inventory for {len(inventory_by_character_id)} characters")
+
+                # World inventory, owner 0, useful for checking if an item exists somewhere in the world.
+                world_items = await self._db.item.list(simulation_id=simulation_id)
+                world_equipments = await self._db.equipment.list(simulation_id=simulation_id)
+                world_inventory = CharacterInventory(
+                    items=world_items,
+                    equipments=world_equipments,
+                )
+
+                # Visible entries: public + player-specific only.
+                visible_scope = [0]
+                if player_character is not None:
+                    visible_scope.append(player_character.id)
+
+                visible_world_entries = await self._db.entry.list(
+                    simulation_id=simulation_id,
+                    search_scope=visible_scope,
+                    narration_only=True,
+                )
+
+                # Resolver entries: can include hidden [-1] plus all present characters and player.
+                resolver_scope = [-1, 0]
+                resolver_scope.extend(character.id for character in present_characters)
+                if player_character is not None and player_character.id not in resolver_scope:
+                    resolver_scope.append(player_character.id)
+
+                resolver_world_entries = await self._db.entry.list(
+                    simulation_id=simulation_id,
+                    search_scope=resolver_scope,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(visible_world_entries)} visible and {len(resolver_world_entries)} resolver world entries")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load user input resolver context: {e}", exc_info=True)
+                raise
+
+            try:
+                context = UserInputResolverContext(
+                    simulation_name=state.simulation.name,
+                    simulation_description=state.simulation.description,
+                    language=state.simulation.language,
+                    user_input=state.user_input,
+                    time_label=state.state.time_label,
+                    state_summary=state.state.state,
+                    recent_history_summary=state.state.recent_history_summary,
+                    long_term_history_summary=state.state.long_term_history_summary,
+                    short_term_memory=getattr(state.state, "short_term_memory", None),
+                    long_term_memory=getattr(state.state, "long_term_memory", None),
+                    current_location=self._compact_location_for_user_input_resolver(current_location),
+                    player_character=(
+                        self._compact_character_for_user_input_resolver(
+                            player_character,
+                            inventory_by_character_id.get(player_character.id),
+                        )
+                        if player_character is not None
+                        else None
+                    ),
+                    present_characters=[
+                        self._compact_character_for_user_input_resolver(
+                            character,
+                            inventory_by_character_id.get(character.id),
+                        )
+                        for character in present_characters
+                    ],
+                    all_characters=[
+                        self._compact_character_for_user_input_resolver(
+                            character,
+                            inventory_by_character_id.get(character.id),
+                        )
+                        for character in all_characters
+                    ],
+                    locations=[
+                        self._compact_location_for_user_input_resolver(location)
+                        for location in locations
+                    ],
+                    inventory={
+                        "world": self._compact_inventory_for_user_input_resolver(world_inventory),
+                        "characters": {
+                            str(character_id): self._compact_inventory_for_user_input_resolver(inventory)
+                            for character_id, inventory in inventory_by_character_id.items()
+                        },
+                    },
+                    tasks=[
+                        self._compact_task_for_user_input_resolver(task)
+                        for task in tasks
+                    ],
+                    visible_world_entries=[
+                        self._compact_world_entry_for_user_input_resolver(entry)
+                        for entry in visible_world_entries
+                        if -1 not in (entry.scope or [])
+                    ],
+                    resolver_world_entries=[
+                        self._compact_world_entry_for_user_input_resolver(entry)
+                        for entry in resolver_world_entries
+                    ],
+                )
+                LOGGER.debug(f"[{state.run_id}] Built user input resolver context")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to build user input resolver context: {e}", exc_info=True)
+                raise
+
+            try:
+                resolver_agent = ResolverAgent(
+                    profile=state.simulation.agent_preset.resolver,
+                    connection=state.connection_profiles.resolver,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized ResolverAgent")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize ResolverAgent: {e}", exc_info=True)
+                raise
+
+            try:
+                result = await resolver_agent.resolve_user_input(
+                    context=context,
+                )
+                LOGGER.info(f"[{state.run_id}] User input resolved: accepted={result.accepted}, kind={result.input_kind}, legality={result.legality}")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to resolve user input: {e}", exc_info=True)
+                raise
+
             return {
-                "user_input_resolution": UserInputResolutionOutput(
-                    accepted=True,
-                    input_kind="no_action",
-                    legality="legal",
-                    scene_result_summary="No explicit user action was provided.",
-                    next_round_note="Director should decide whether the scene needs player input or can continue.",
-                )
+                "user_input_resolution": result,
             }
-
-        if state.connection_profiles.resolver is None:
-            raise RuntimeError("Resolver connection profile not loaded")
-
-        simulation_id = state.simulation_id
-
-        current_location = await self._db.location.get(state.state.scene)
-        if current_location is None:
-            raise RuntimeError(f"Current location {state.state.scene} not found")
-
-        all_characters = await self._db.character.list(
-            simulation_id=simulation_id,
-        )
-
-        present_characters = await self._db.character.list(
-            simulation_id=simulation_id,
-            location=state.state.scene,
-        )
-
-        player_character = next(
-            (character for character in all_characters if character.user_controlled),
-            None,
-        )
-
-        locations = await self._db.location.list(
-            simulation_id=simulation_id,
-        )
-
-        tasks = await self._db.task.list(
-            simulation_id=simulation_id,
-        )
-
-        inventory_by_character_id: dict[int, CharacterInventory] = {}
-
-        for character in all_characters:
-            items = await self._db.item.list(character_id=character.id)
-            equipments = await self._db.equipment.list(character_id=character.id)
-            inventory_by_character_id[character.id] = CharacterInventory(
-                items=items,
-                equipments=equipments,
-            )
-
-        # World inventory, owner 0, useful for checking if an item exists somewhere in the world.
-        world_items = await self._db.item.list(simulation_id=simulation_id)
-        world_equipments = await self._db.equipment.list(simulation_id=simulation_id)
-        world_inventory = CharacterInventory(
-            items=world_items,
-            equipments=world_equipments,
-        )
-
-        # Visible entries: public + player-specific only.
-        visible_scope = [0]
-        if player_character is not None:
-            visible_scope.append(player_character.id)
-
-        visible_world_entries = await self._db.entry.list(
-            simulation_id=simulation_id,
-            search_scope=visible_scope,
-            narration_only=True,
-        )
-
-        # Resolver entries: can include hidden [-1] plus all present characters and player.
-        resolver_scope = [-1, 0]
-        resolver_scope.extend(character.id for character in present_characters)
-        if player_character is not None and player_character.id not in resolver_scope:
-            resolver_scope.append(player_character.id)
-
-        resolver_world_entries = await self._db.entry.list(
-            simulation_id=simulation_id,
-            search_scope=resolver_scope,
-        )
-
-        context = UserInputResolverContext(
-            simulation_name=state.simulation.name,
-            simulation_description=state.simulation.description,
-            language=state.simulation.language,
-            user_input=state.user_input,
-            time_label=state.state.time_label,
-            state_summary=state.state.state,
-            recent_history_summary=state.state.recent_history_summary,
-            long_term_history_summary=state.state.long_term_history_summary,
-            short_term_memory=getattr(state.state, "short_term_memory", None),
-            long_term_memory=getattr(state.state, "long_term_memory", None),
-            current_location=self._compact_location_for_user_input_resolver(current_location),
-            player_character=(
-                self._compact_character_for_user_input_resolver(
-                    player_character,
-                    inventory_by_character_id.get(player_character.id),
-                )
-                if player_character is not None
-                else None
-            ),
-            present_characters=[
-                self._compact_character_for_user_input_resolver(
-                    character,
-                    inventory_by_character_id.get(character.id),
-                )
-                for character in present_characters
-            ],
-            all_characters=[
-                self._compact_character_for_user_input_resolver(
-                    character,
-                    inventory_by_character_id.get(character.id),
-                )
-                for character in all_characters
-            ],
-            locations=[
-                self._compact_location_for_user_input_resolver(location)
-                for location in locations
-            ],
-            inventory={
-                "world": self._compact_inventory_for_user_input_resolver(world_inventory),
-                "characters": {
-                    str(character_id): self._compact_inventory_for_user_input_resolver(inventory)
-                    for character_id, inventory in inventory_by_character_id.items()
-                },
-            },
-            tasks=[
-                self._compact_task_for_user_input_resolver(task)
-                for task in tasks
-            ],
-            visible_world_entries=[
-                self._compact_world_entry_for_user_input_resolver(entry)
-                for entry in visible_world_entries
-                if -1 not in (entry.scope or [])
-            ],
-            resolver_world_entries=[
-                self._compact_world_entry_for_user_input_resolver(entry)
-                for entry in resolver_world_entries
-            ],
-        )
-
-        resolver_agent = ResolverAgent(
-            profile=state.simulation.agent_preset.resolver,
-            connection=state.connection_profiles.resolver,
-        )
-
-        result = await resolver_agent.resolve_user_input(
-            context=context,
-        )
-
-        return {
-            "user_input_resolution": result,
-        }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] resolve_user_input failed: {e}", exc_info=True)
+            raise
 
     async def commit_changes(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting commit_changes for simulation_id={state.simulation.id if state.simulation else 'unknown'}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        if state.connection_profiles.committer is None:
-            raise RuntimeError("Committer connection profile not loaded")
+            if state.connection_profiles.committer is None:
+                raise RuntimeError("Committer connection profile not loaded")
 
-        if state.resolver_output is None:
-            raise RuntimeError("Resolver output is not generated")
+            if state.resolver_output is None:
+                raise RuntimeError("Resolver output is not generated")
 
-        simulation_id = state.simulation.id
+            try:
+                simulation_id = state.simulation.id
 
-        effective_resolver_output = self._merge_resolver_outputs_for_downstream(
-            primary=state.resolver_output,
-            reaction=state.reaction_resolver_output,
-        )
+                effective_resolver_output = self._merge_resolver_outputs_for_downstream(
+                    primary=state.resolver_output,
+                    reaction=state.reaction_resolver_output,
+                )
+                LOGGER.debug(f"[{state.run_id}] Merged resolver outputs")
 
-        effective_character_actions = [
-            *(state.character_action_outputs or []),
-            *(state.character_reaction_outputs or []),
-        ]
+                effective_character_actions = [
+                    *(state.character_action_outputs or []),
+                    *(state.character_reaction_outputs or []),
+                ]
+                LOGGER.debug(f"[{state.run_id}] Combined character actions and reactions: {len(effective_character_actions)} total")
 
-        characters = await self._db.character.list(
-            simulation_id=simulation_id,
-        )
+                characters = await self._db.character.list(
+                    simulation_id=simulation_id,
+                )
+                locations = await self._db.location.list(
+                    simulation_id=simulation_id,
+                )
+                tasks = await self._db.task.list(
+                    simulation_id=simulation_id,
+                )
+                world_entries = await self._db.entry.list(
+                    simulation_id=simulation_id,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(characters)} characters, {len(locations)} locations, {len(tasks)} tasks, {len(world_entries)} world entries")
 
-        locations = await self._db.location.list(
-            simulation_id=simulation_id,
-        )
+                factions = await self._db.faction.list(
+                    simulation_id=simulation_id,
+                )
+                faction_relationships = await self._db.faction_relationship.list(
+                    simulation_id=simulation_id,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(factions)} factions and {len(faction_relationships)} faction relationships")
 
-        tasks = await self._db.task.list(
-            simulation_id=simulation_id,
-        )
+                inventory: dict[int, CharacterInventory] = {}
 
-        world_entries = await self._db.entry.list(
-            simulation_id=simulation_id,
-        )
+                world_items = await self._db.item.list(
+                    simulation_id=simulation_id,
+                )
+                world_equipments = await self._db.equipment.list(
+                    simulation_id=simulation_id,
+                )
+                inventory[0] = CharacterInventory(
+                    items=world_items,
+                    equipments=world_equipments,
+                )
 
-        factions = await self._db.faction.list(
-            simulation_id=simulation_id,
-        )
+                for character in characters:
+                    items = await self._db.item.list(
+                        character_id=character.id,
+                    )
+                    equipments = await self._db.equipment.list(
+                        character_id=character.id,
+                    )
+                    inventory[character.id] = CharacterInventory(
+                        items=items,
+                        equipments=equipments,
+                    )
+                LOGGER.debug(f"[{state.run_id}] Loaded inventory for {len(inventory)} inventory holders")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load commit_changes context: {e}", exc_info=True)
+                raise
 
-        faction_relationships = await self._db.faction_relationship.list(
-            simulation_id=simulation_id,
-        )
+            try:
+                committer_agent = CommitterAgent(
+                    profile=state.simulation.agent_preset.committer,
+                    connection=state.connection_profiles.committer,
+                    simulation=state.simulation,
+                    state=state.state,
+                    characters=characters,
+                    locations=locations,
+                    inventory=inventory,
+                    factions=factions,
+                    faction_relationships=faction_relationships,
+                    tasks=tasks,
+                    world_entries=world_entries,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized CommitterAgent")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize CommitterAgent: {e}", exc_info=True)
+                raise
 
-        inventory: dict[int, CharacterInventory] = {}
+            try:
+                result = await committer_agent.commit_changes(
+                    user_input=state.user_input,
+                    character_actions=effective_character_actions,
+                    resolver_output=effective_resolver_output,
+                    pending_generated_proposals=state.generated_proposals or [],
+                )
+                LOGGER.info(f"[{state.run_id}] Committer completed changes processing")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to commit changes: {e}", exc_info=True)
+                raise
 
-        world_items = await self._db.item.list(
-            simulation_id=simulation_id,
-        )
-
-        world_equipments = await self._db.equipment.list(
-            simulation_id=simulation_id,
-        )
-
-        inventory[0] = CharacterInventory(
-            items=world_items,
-            equipments=world_equipments,
-        )
-
-        for character in characters:
-            items = await self._db.item.list(
-                character_id=character.id,
-            )
-
-            equipments = await self._db.equipment.list(
-                character_id=character.id,
-            )
-
-            inventory[character.id] = CharacterInventory(
-                items=items,
-                equipments=equipments,
-            )
-
-        committer_agent = CommitterAgent(
-            profile=state.simulation.agent_preset.committer,
-            connection=state.connection_profiles.committer,
-            simulation=state.simulation,
-            state=state.state,
-            characters=characters,
-            locations=locations,
-            inventory=inventory,
-            factions=factions,
-            faction_relationships=faction_relationships,
-            tasks=tasks,
-            world_entries=world_entries,
-        )
-
-        result = await committer_agent.commit_changes(
-            user_input=state.user_input,
-            character_actions=effective_character_actions,
-            resolver_output=effective_resolver_output,
-            pending_generated_proposals=state.generated_proposals or [],
-        )
-
-        return {
-            "committer_output": result,
-        }
+            return {
+                "committer_output": result,
+            }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] commit_changes failed: {e}", exc_info=True)
+            raise
 
     async def narrate_resolved_turn(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting narrate_resolved_turn for simulation_id={state.simulation.id if state.simulation else 'unknown'}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        if not state.resolver_output:
-            raise RuntimeError("Resolver output is not generated")
+            if not state.resolver_output:
+                raise RuntimeError("Resolver output is not generated")
 
-        if state.connection_profiles.narrator is None:
-            raise RuntimeError("Narrator connection profile not loaded")
+            if state.connection_profiles.narrator is None:
+                raise RuntimeError("Narrator connection profile not loaded")
 
-        if state.connection_profiles.embedding is None:
-            raise RuntimeError("Embedding service connection profile not loaded")
+            if state.connection_profiles.embedding is None:
+                raise RuntimeError("Embedding service connection profile not loaded")
 
-        narrator_agent = NarratorAgent(
-            profile=state.simulation.agent_preset.narrator,
-            connection=state.connection_profiles.narrator,
-        )
+            try:
+                narrator_agent = NarratorAgent(
+                    profile=state.simulation.agent_preset.narrator,
+                    connection=state.connection_profiles.narrator,
+                )
+                embedding_service = EmbeddingService(
+                    profile=state.simulation.embedding_profile,
+                    connection=state.connection_profiles.embedding,
+                )
+                recaller = WorldEntryRecaller(
+                    embedding_service=embedding_service,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized NarratorAgent, EmbeddingService, and WorldEntryRecaller")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize narration services: {e}", exc_info=True)
+                raise
 
-        embedding_service = EmbeddingService(
-            profile=state.simulation.embedding_profile,
-            connection=state.connection_profiles.embedding,
-        )
+            try:
+                current_location = await self._db.location.get(state.state.scene)
+                if not current_location:
+                    raise ValueError(f"Current location {state.state.scene} does not exist")
 
-        recaller = WorldEntryRecaller(
-            embedding_service=embedding_service,
-        )
+                effective_resolver_output = self._merge_resolver_outputs_for_downstream(
+                    primary=state.resolver_output,
+                    reaction=state.reaction_resolver_output,
+                )
 
-        current_location = await self._db.location.get(state.state.scene)
-        if not current_location:
-            raise ValueError(f"Current location {state.state.scene} does not exist")
+                narrator_resolution_view = self._build_narrator_resolution_view(
+                    resolver_output=effective_resolver_output,
+                )
+                LOGGER.debug(f"[{state.run_id}] Built narrator resolution view")
 
-        effective_resolver_output = self._merge_resolver_outputs_for_downstream(
-            primary=state.resolver_output,
-            reaction=state.reaction_resolver_output,
-        )
+                involved_character_ids = {
+                    event.actor_id
+                    for event in narrator_resolution_view.resolved_visible_events
+                }
 
-        narrator_resolution_view = self._build_narrator_resolution_view(
-            resolver_output=effective_resolver_output,
-        )
+                for action in state.character_action_outputs or []:
+                    involved_character_ids.add(action.character_id)
 
-        involved_character_ids = {
-            event.actor_id
-            for event in narrator_resolution_view.resolved_visible_events
-        }
+                for action in state.character_reaction_outputs or []:
+                    involved_character_ids.add(action.character_id)
 
-        for action in state.character_action_outputs or []:
-            involved_character_ids.add(action.character_id)
+                # Usually the player should be present in the scene even if they did not act
+                # as an autonomous character.
+                present_characters = await self._db.character.list(
+                    simulation_id=state.simulation.id,
+                    location=state.state.scene,
+                )
 
-        for action in state.character_reaction_outputs or []:
-            involved_character_ids.add(action.character_id)
+                present_character_ids = {
+                    character.id
+                    for character in present_characters
+                }
 
-        # Usually the player should be present in the scene even if they did not act
-        # as an autonomous character.
-        present_characters = await self._db.character.list(
-            simulation_id=state.simulation.id,
-            location=state.state.scene,
-        )
+                involved_character_ids |= present_character_ids
 
-        present_character_ids = {
-            character.id
-            for character in present_characters
-        }
+                characters = [
+                    character
+                    for character in present_characters
+                    if character.id in involved_character_ids
+                ]
+                LOGGER.debug(f"[{state.run_id}] Identified {len(characters)} involved characters for narration")
 
-        involved_character_ids |= present_character_ids
+                # Adjust this to your own way of identifying the player character.
+                player_character = next(
+                    (
+                        character
+                        for character in present_characters
+                        if character.user_controlled
+                    ),
+                    None,
+                )
 
-        characters = [
-            character
-            for character in present_characters
-            if character.id in involved_character_ids
-        ]
+                last_records = await self._db.record.get_last_records(
+                    simulation_id=state.simulation.id,
+                )
 
-        # Adjust this to your own way of identifying the player character.
-        player_character = next(
-            (
-                character
-                for character in present_characters
-                if character.user_controlled
-            ),
-            None,
-        )
+                # Narrator-safe entries only.
+                # Your narration_only=True filter is good: it excludes INVISIBLE.
+                world_entries = await self._db.entry.list(
+                    simulation_id=state.simulation.id,
+                    search_scope=[0] + list(present_character_ids),
+                    narration_only=True,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(world_entries)} narrator-safe world entries")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load narrate_resolved_turn context: {e}", exc_info=True)
+                raise
 
-        last_records = await self._db.record.get_last_records(
-            simulation_id=state.simulation.id,
-        )
+            try:
+                recall_query = self._build_narrator_recall_query(
+                    state=state,
+                    current_location=current_location,
+                    narrator_resolution_view=narrator_resolution_view,
+                    user_input=state.user_input,
+                )
 
-        # Narrator-safe entries only.
-        # Your narration_only=True filter is good: it excludes INVISIBLE.
-        world_entries = await self._db.entry.list(
-            simulation_id=state.simulation.id,
-            search_scope=[0] + list(present_character_ids),
-            narration_only=True,
-        )
+                recalled_entries = await recaller.recall(
+                    query=recall_query,
+                    entries=world_entries,
+                    language=state.simulation.language,
+                )
+                LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_entries)} world entries for narration")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to recall world entries for narration: {e}", exc_info=True)
+                raise
 
-        recall_query = self._build_narrator_recall_query(
-            state=state,
-            current_location=current_location,
-            narrator_resolution_view=narrator_resolution_view,
-            user_input=state.user_input,
-        )
+            try:
+                result = await narrator_agent.narrate_resolved_turn(
+                    simulation=state.simulation,
+                    state=state.state,
+                    current_location=current_location,
+                    characters=characters,
+                    player_character=player_character,
+                    narrator_resolution_view=narrator_resolution_view,
+                    user_input=state.user_input,
+                    last_narration=last_records[0].narration if last_records else None,
+                    recent_history_summary=state.state.recent_history_summary,
+                    long_term_history_summary=state.state.long_term_history_summary,
+                    world_entries_for_narrator=recalled_entries,
+                    pending_generated_proposals=state.generated_proposals,
+                )
+                LOGGER.info(f"[{state.run_id}] Successfully generated resolved turn narration")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to narrate resolved turn: {e}", exc_info=True)
+                raise
 
-        recalled_entries = await recaller.recall(
-            query=recall_query,
-            entries=world_entries,
-            language=state.simulation.language,
-        )
-
-        result = await narrator_agent.narrate_resolved_turn(
-            simulation=state.simulation,
-            state=state.state,
-            current_location=current_location,
-            characters=characters,
-            player_character=player_character,
-            narrator_resolution_view=narrator_resolution_view,
-            user_input=state.user_input,
-            last_narration=last_records[0].narration if last_records else None,
-            recent_history_summary=state.state.recent_history_summary,
-            long_term_history_summary=state.state.long_term_history_summary,
-            world_entries_for_narrator=recalled_entries,
-            pending_generated_proposals=state.generated_proposals,
-        )
-
-        return {
-            "narration": result,
-        }
+            return {
+                "narration": result,
+            }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] narrate_resolved_turn failed: {e}", exc_info=True)
+            raise
 
     async def narrate_wait_for_user(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting narrate_wait_for_user for simulation_id={state.simulation_id}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        if not state.director_output:
-            raise RuntimeError("Director output not generated")
+            if not state.director_output:
+                raise RuntimeError("Director output not generated")
 
-        if state.connection_profiles.narrator is None:
-            raise RuntimeError("Narrator connection profile not loaded")
+            if state.connection_profiles.narrator is None:
+                raise RuntimeError("Narrator connection profile not loaded")
 
-        if state.connection_profiles.embedding is None:
-            raise RuntimeError("Embedding service connection profile not loaded")
+            if state.connection_profiles.embedding is None:
+                raise RuntimeError("Embedding service connection profile not loaded")
 
-        narrator_agent = NarratorAgent(
-            profile=state.simulation.agent_preset.narrator,
-            connection=state.connection_profiles.narrator,
-        )
+            try:
+                narrator_agent = NarratorAgent(
+                    profile=state.simulation.agent_preset.narrator,
+                    connection=state.connection_profiles.narrator,
+                )
+                embedding_service = EmbeddingService(
+                    profile=state.simulation.embedding_profile,
+                    connection=state.connection_profiles.embedding,
+                )
+                recaller = WorldEntryRecaller(
+                    embedding_service=embedding_service,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized NarratorAgent, EmbeddingService, and WorldEntryRecaller")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize narration services: {e}", exc_info=True)
+                raise
 
-        embedding_service = EmbeddingService(
-            profile=state.simulation.embedding_profile,
-            connection=state.connection_profiles.embedding,
-        )
+            try:
+                current_location = await self._db.location.get(state.state.scene)
+                if not current_location:
+                    raise ValueError(f"Current location {state.state.scene} does not exist")
 
-        recaller = WorldEntryRecaller(
-            embedding_service=embedding_service,
-        )
+                present_characters = await self._db.character.list(
+                    simulation_id=state.simulation_id,
+                    location=state.state.scene,
+                )
 
-        current_location = await self._db.location.get(state.state.scene)
-        if not current_location:
-            raise ValueError(f"Current location {state.state.scene} does not exist")
+                player_character = (await self._db.character.list(
+                    simulation_id=state.simulation.id,
+                    controlled_by_user=True,
+                ))[0]
 
-        present_characters = await self._db.character.list(
-            simulation_id=state.simulation_id,
-            location=state.state.scene,
-        )
+                last_records = await self._db.record.get_last_records(
+                    simulation_id=state.simulation.id,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved location, characters, and records")
 
-        player_character = (await self._db.character.list(
-            simulation_id=state.simulation.id,
-            controlled_by_user=True,
-        ))[0]
+                # Player-facing narration should not see all NPC-private entries.
+                narrator_scope = [0]
+                if player_character is not None:
+                    narrator_scope.append(player_character.id)
 
-        last_records = await self._db.record.get_last_records(
-            simulation_id=state.simulation.id,
-        )
+                world_entries = await self._db.entry.list(
+                    simulation_id=state.simulation_id,
+                    search_scope=narrator_scope,
+                    narration_only=True,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(world_entries)} player-facing world entries")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load narrate_wait_for_user context: {e}", exc_info=True)
+                raise
 
-        # Player-facing narration should not see all NPC-private entries.
-        narrator_scope = [0]
-        if player_character is not None:
-            narrator_scope.append(player_character.id)
+            try:
+                recall_query = (
+                        state.user_input
+                        or state.director_output.scene_focus
+                        or state.director_output.reason_to_wait
+                        or current_location.description
+                        or ""
+                )
 
-        world_entries = await self._db.entry.list(
-            simulation_id=state.simulation_id,
-            search_scope=narrator_scope,
-            narration_only=True,
-        )
+                recalled_entries = await recaller.recall(
+                    query=recall_query,
+                    entries=world_entries,
+                    language=state.simulation.language,
+                )
+                LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_entries)} world entries for wait narration")
 
-        recall_query = (
-                state.user_input
-                or state.director_output.scene_focus
-                or state.director_output.reason_to_wait
-                or current_location.description
-                or ""
-        )
+                context = self._build_wait_for_user_narration_context(
+                    simulation=state.simulation,
+                    state=state.state,
+                    current_location=current_location,
+                    present_characters=present_characters,
+                    director_output=state.director_output,
+                    user_input=state.user_input,
+                    last_narration=last_records[0].narration if last_records else None,
+                    recalled_entries=recalled_entries,
+                )
+                LOGGER.debug(f"[{state.run_id}] Built wait for user narration context")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to build narration context: {e}", exc_info=True)
+                raise
 
-        recalled_entries = await recaller.recall(
-            query=recall_query,
-            entries=world_entries,
-            language=state.simulation.language,
-        )
+            try:
+                result = await narrator_agent.narrate_wait_for_user(
+                    context=context,
+                )
+                LOGGER.info(f"[{state.run_id}] Successfully generated wait for user narration")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to narrate wait for user: {e}", exc_info=True)
+                raise
 
-        context = self._build_wait_for_user_narration_context(
-            simulation=state.simulation,
-            state=state.state,
-            current_location=current_location,
-            present_characters=present_characters,
-            director_output=state.director_output,
-            user_input=state.user_input,
-            last_narration=last_records[0].narration if last_records else None,
-            recalled_entries=recalled_entries,
-        )
-
-        result = await narrator_agent.narrate_wait_for_user(
-            context=context,
-        )
-
-        return {
-            "narration": result,
-        }
+            return {
+                "narration": result,
+            }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] narrate_wait_for_user failed: {e}", exc_info=True)
+            raise
 
     async def narrate_user_failure(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting narrate_user_failure for simulation_id={state.simulation_id}")
+            
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        if not state.user_input:
-            raise RuntimeError("User input is missing")
+            if not state.user_input:
+                raise RuntimeError("User input is missing")
 
-        if state.user_input_resolution is None:
-            raise RuntimeError("User input resolution is missing")
+            if state.user_input_resolution is None:
+                raise RuntimeError("User input resolution is missing")
 
-        if state.connection_profiles.narrator is None:
-            raise RuntimeError("Narrator connection profile not loaded")
+            if state.connection_profiles.narrator is None:
+                raise RuntimeError("Narrator connection profile not loaded")
 
-        if state.connection_profiles.embedding is None:
-            raise RuntimeError("Embedding service connection profile not loaded")
+            if state.connection_profiles.embedding is None:
+                raise RuntimeError("Embedding service connection profile not loaded")
 
-        narrator_agent = NarratorAgent(
-            profile=state.simulation.agent_preset.narrator,
-            connection=state.connection_profiles.narrator,
-        )
+            try:
+                narrator_agent = NarratorAgent(
+                    profile=state.simulation.agent_preset.narrator,
+                    connection=state.connection_profiles.narrator,
+                )
+                embedding_service = EmbeddingService(
+                    profile=state.simulation.embedding_profile,
+                    connection=state.connection_profiles.embedding,
+                )
+                recaller = WorldEntryRecaller(
+                    embedding_service=embedding_service,
+                )
+                LOGGER.debug(f"[{state.run_id}] Initialized NarratorAgent, EmbeddingService, and WorldEntryRecaller")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to initialize narration services: {e}", exc_info=True)
+                raise
 
-        embedding_service = EmbeddingService(
-            profile=state.simulation.embedding_profile,
-            connection=state.connection_profiles.embedding,
-        )
+            try:
+                current_location = await self._db.location.get(state.state.scene)
+                if current_location is None:
+                    raise ValueError(f"Current location {state.state.scene} does not exist")
 
-        recaller = WorldEntryRecaller(
-            embedding_service=embedding_service,
-        )
+                player_character = (await self._db.character.list(
+                    simulation_id=state.simulation_id,
+                    controlled_by_user=True
+                ))[0]
 
-        current_location = await self._db.location.get(state.state.scene)
-        if current_location is None:
-            raise ValueError(f"Current location {state.state.scene} does not exist")
+                last_records = await self._db.record.get_last_records(
+                    simulation_id=state.simulation.id,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved location, player character, and records")
 
-        player_character = (await self._db.character.list(
-            simulation_id=state.simulation_id,
-            controlled_by_user=True
-        ))[0]
+                # Failure narration must be player-facing.
+                # Do not include every NPC private scope.
+                search_scope = [0]
+                if player_character is not None:
+                    search_scope.append(player_character.id)
 
-        last_records = await self._db.record.get_last_records(
-            simulation_id=state.simulation.id,
-        )
+                world_entries = await self._db.entry.list(
+                    simulation_id=state.simulation_id,
+                    search_scope=search_scope,
+                    narration_only=True,
+                )
+                LOGGER.debug(f"[{state.run_id}] Retrieved {len(world_entries)} player-facing world entries")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to load narrate_user_failure context: {e}", exc_info=True)
+                raise
 
-        # Failure narration must be player-facing.
-        # Do not include every NPC private scope.
-        search_scope = [0]
-        if player_character is not None:
-            search_scope.append(player_character.id)
+            try:
+                recall_query = " ".join(
+                    part
+                    for part in [
+                        state.user_input,
+                        state.user_input_resolution.rejection_reason,
+                        state.user_input_resolution.user_retry_instruction,
+                        current_location.description,
+                    ]
+                    if part
+                )
+                LOGGER.debug(f"[{state.run_id}] Built recall query for failure narration")
 
-        world_entries = await self._db.entry.list(
-            simulation_id=state.simulation_id,
-            search_scope=search_scope,
-            narration_only=True,
-        )
+                recalled_entries = await recaller.recall(
+                    query=recall_query,
+                    entries=world_entries,
+                    language=state.simulation.language,
+                )
+                LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_entries)} world entries for failure narration")
 
-        recall_query = " ".join(
-            part
-            for part in [
-                state.user_input,
-                state.user_input_resolution.rejection_reason,
-                state.user_input_resolution.user_retry_instruction,
-                current_location.description,
-            ]
-            if part
-        )
+                context = self._build_user_input_failure_narration_context(
+                    simulation=state.simulation,
+                    state=state.state,
+                    current_location=current_location,
+                    player_character=player_character,
+                    user_input=state.user_input,
+                    user_input_resolution=state.user_input_resolution,
+                    last_narration=last_records[0].narration if last_records else None,
+                    recalled_entries=recalled_entries,
+                )
+                LOGGER.debug(f"[{state.run_id}] Built user input failure narration context")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to build narration context: {e}", exc_info=True)
+                raise
 
-        recalled_entries = await recaller.recall(
-            query=recall_query,
-            entries=world_entries,
-            language=state.simulation.language,
-        )
+            try:
+                result = await narrator_agent.narrate_user_input_failure(
+                    context=context,
+                )
+                LOGGER.info(f"[{state.run_id}] Successfully generated user input failure narration")
+            except Exception as e:
+                LOGGER.error(f"[{state.run_id}] Failed to narrate user input failure: {e}", exc_info=True)
+                raise
 
-        context = self._build_user_input_failure_narration_context(
-            simulation=state.simulation,
-            state=state.state,
-            current_location=current_location,
-            player_character=player_character,
-            user_input=state.user_input,
-            user_input_resolution=state.user_input_resolution,
-            last_narration=last_records[0].narration if last_records else None,
-            recalled_entries=recalled_entries,
-        )
-
-        result = await narrator_agent.narrate_user_input_failure(
-            context=context,
-        )
-
-        return {
-            "narration": result,
-        }
+            return {
+                "narration": result,
+            }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] narrate_user_failure failed: {e}", exc_info=True)
+            raise
 
     @staticmethod
     def route_after_input_resolution(state: TurnGeneratorState):
@@ -4327,136 +4566,205 @@ class TurnGenerator:
         return graph.compile()
 
     async def persist_state_to_database(self, payload: dict):
-        previous_turn_number = payload["state"]["turn_number"]
-        if not payload.get("narration"):
-            # Narration not generated, this run is not completed
-            raise ValueError(f"Graph run {payload['run_id']} failed, nothing to persist.")
+        try:
+            run_id = payload.get('run_id', 'unknown')
+            LOGGER.debug(f"[{run_id}] Starting persist_state_to_database for simulation_id={payload.get('simulation_id', 'unknown')}")
+            
+            try:
+                state = SimulationState.model_validate(payload["state"])
+                previous_turn_number = state.turn_number or 0
+                if not payload.get("narration"):
+                    # Narration not generated, this run is not completed
+                    msg = f"Graph run {payload['run_id']} failed, nothing to persist."
+                    LOGGER.error(f"[{run_id}] {msg}")
+                    raise ValueError(msg)
+                LOGGER.debug(f"[{run_id}] Narration found, previous turn number: {previous_turn_number}")
+            except Exception as e:
+                LOGGER.error(f"[{run_id}] Failed to validate narration state: {e}", exc_info=True)
+                raise
 
-        new_turns = [
-            TurnRecordCreate(
-                simulation_id=payload["simulation_id"],
-                turn_number=previous_turn_number + 1,
-                type=TurnType.USER_INPUT,
-                director_output=None,
-                proposals=None,
-                briefing_output=None,
-                character_actions=[],
-                character_reactions=[],
-                resolver_output=None,
-                reaction_resolving=None,
-                committer_output=None,
-                narration=payload.get("user_input", ""),
-                summary_output=None,
-            ),
-        ]
+            try:
+                new_turns = [
+                    TurnRecordCreate(
+                        simulation_id=payload["simulation_id"],
+                        turn_number=previous_turn_number + 1,
+                        type=TurnType.USER_INPUT,
+                        director_output=None,
+                        proposals=None,
+                        briefing_output=None,
+                        character_actions=[],
+                        character_reactions=[],
+                        resolver_output=None,
+                        reaction_resolving=None,
+                        committer_output=None,
+                        narration=payload.get("user_input", ""),
+                        summary_output=None,
+                    ),
+                ]
+                LOGGER.debug(f"[{run_id}] Created initial turn record")
 
-        if not payload.get("director_output"):
-            # TODO: Director is not run or not succeeded
-            raise NotImplementedError
-        elif not payload.get("committer_output"):
-            # Committer not run, waiting for user input
-            if not payload.get("summary_output"):
-                # Summary not generated, running of workflow didn't complete
-                raise ValueError(f"Summary output is not generated in run {payload['run_id']}")
-            new_turns.append(
-                TurnRecordCreate(
-                    simulation_id=payload["simulation_id"],
-                    turn_number=previous_turn_number + 2,
-                    type=TurnType.AI_WAIT,
-                    director_output=DirectorOutput.model_validate(payload["director_output"]),
-                    proposals=[
-                        PendingGeneratedProposal.model_validate(p)
-                        for p in payload.get("generated_proposals", [])
-                    ],
-                    briefing_output=None,
-                    character_actions=[],
-                    character_reactions=[],
-                    resolver_output=None,
-                    reaction_resolving=None,
-                    committer_output=None,
-                    narration=payload["narration"],
-                    summary_output=SummaryOutput.model_validate(payload["summary_output"]),
-                )
-            )
-        else:
-            # Normal run through, persist the commits
-            committer_output = payload["committer_output"]
+                if not payload.get("director_output"):
+                    # TODO: Director is not run or not succeeded
+                    LOGGER.error(f"[{run_id}] Director output not found - not implemented")
+                    raise NotImplementedError
+                elif not payload.get("committer_output"):
+                    # Committer not run, waiting for user input
+                    LOGGER.info(f"[{run_id}] Committer not run, workflow waiting for user input")
+                    
+                    if not payload.get("summary_output"):
+                        # Summary not generated, running of workflow didn't complete
+                        msg = f"Summary output is not generated in run {payload['run_id']}"
+                        LOGGER.error(f"[{run_id}] {msg}")
+                        raise ValueError(msg)
 
-            if not committer_output.get("ready_to_commit"):
-                # Cannot continue with state inconsistency
-                raise RuntimeError(
-                    f"Committer output is not ready to commit. warnings={committer_output.get('warnings')}"
-                )
-
-            mutations = committer_output.get("database_patch_preview") or committer_output.get("mutation_log") or []
-
-            if mutations:
-                applied: list[dict[str, Any]] = []
-                temp_id_map: dict[str, int] = {}
-
-                # Prefer a real transaction if your DB layer supports it.
-                transaction = getattr(self._db, "transaction", None)
-
-                if transaction is not None:
-                    async with transaction():
-                        for mutation in mutations:
-                            result = await self._persist_single_committer_mutation(
-                                simulation_id=committer_output["simulation_id"],
-                                mutation=mutation,
-                                temp_id_map=temp_id_map,
-                            )
-                            applied.append(result)
-                else:
-                    # Non-transactional fallback. Good for early testing, but use a transaction long-term.
-                    for mutation in mutations:
-                        result = await self._persist_single_committer_mutation(
-                            simulation_id=committer_output["simulation_id"],
-                            mutation=mutation,
-                            temp_id_map=temp_id_map,
+                    summary_output = SummaryOutput.model_validate(payload["summary_output"])
+                    
+                    new_turns.append(
+                        TurnRecordCreate(
+                            simulation_id=payload["simulation_id"],
+                            turn_number=previous_turn_number + 2,
+                            type=TurnType.AI_WAIT,
+                            director_output=DirectorOutput.model_validate(payload["director_output"]),
+                            proposals=[
+                                PendingGeneratedProposal.model_validate(p)
+                                for p in payload.get("generated_proposals", [])
+                            ],
+                            briefing_output=None,
+                            character_actions=[],
+                            character_reactions=[],
+                            resolver_output=None,
+                            reaction_resolving=None,
+                            committer_output=None,
+                            narration=payload["narration"],
+                            summary_output=summary_output,
                         )
-                        applied.append(result)
+                    )
+                    LOGGER.debug(f"[{run_id}] Added wait turn record")
+                else:
+                    # Normal run through, persist the commits
+                    LOGGER.info(f"[{run_id}] Persisting completed turn with commits")
+                    
+                    try:
+                        committer_output = CommitterFinalOutput.model_validate(payload["committer_output"])
 
-            # Persist the summaries
-            summary_output = payload["summary_output"]
-            await self._db.state.update(
-                state_id=payload["simulation_id"],
-                patched_data={
-                    "turn_number": previous_turn_number + 2,
-                    "state": summary_output["scene_summary"],
-                    "recent_history_summary": summary_output["short_term_memory"],
-                    "long_term_history_summary": summary_output["long_term_memory"],
-                },
-            )
+                        if not committer_output.ready_to_commit:
+                            # Cannot continue with state inconsistency
+                            msg = f"Committer output is not ready to commit. warnings={committer_output.warnings}"
+                            LOGGER.error(f"[{run_id}] {msg}")
+                            raise RuntimeError(msg)
 
-            # Add the complete record
-            new_turns.append(
-                TurnRecordCreate(
-                    simulation_id=payload["simulation_id"],
-                    turn_number=previous_turn_number + 2,
-                    type=TurnType.AI_RESPONSE if payload.get("user_input") else TurnType.AI_CONTINUE,
-                    director_output=DirectorOutput.model_validate(payload["director_output"]),
-                    proposals=[
-                        PendingGeneratedProposal.model_validate(p)
-                        for p in payload.get("generated_proposals", [])
-                    ],
-                    briefing_output=BriefingOutput.model_validate(payload["briefing_output"]),
-                    character_actions=[
-                        CharacterActionOutput.model_validate(a)
-                        for a in payload.get("character_action_outputs", [])
-                    ],
-                    character_reactions=[
-                        CharacterActionOutput.model_validate(r)
-                        for r in payload.get("character_reaction_outputs", [])
-                    ],
-                    resolver_output=ResolverOutput.model_validate(payload["resolver_output"]),
-                    reaction_resolving=ResolverOutput.model_validate(payload["reaction_resolver_output"])
-                        if payload.get("reaction_resolver_output") else None,
-                    committer_output=CommitterFinalOutput.model_validate(payload["committer_output"]),
-                    narration=payload["narration"],
-                    summary_output=SummaryOutput.model_validate(payload["summary_output"]),
-                )
-            )
+                        mutations = committer_output.database_patch_preview or committer_output.mutation_log or []
+                        LOGGER.debug(f"[{run_id}] Found {len(mutations)} mutations to apply")
 
-        # Write the turn records
-        for t in new_turns:
-            await self._db.record.create(t)
+                        if mutations:
+                            applied: list[dict[str, Any]] = []
+                            temp_id_map: dict[str, int] = {}
+
+                            # Prefer a real transaction if your DB layer supports it.
+                            transaction = getattr(self._db, "transaction", None)
+
+                            try:
+                                if transaction is not None:
+                                    LOGGER.debug(f"[{run_id}] Using transactional mode for mutations")
+                                    async with transaction():
+                                        for idx, mutation in enumerate(mutations):
+                                            try:
+                                                result = await self._persist_single_committer_mutation(
+                                                    simulation_id=committer_output.simulation_id,
+                                                    mutation=mutation,
+                                                    temp_id_map=temp_id_map,
+                                                )
+                                                applied.append(result)
+                                                LOGGER.debug(f"[{run_id}] Applied mutation {idx + 1}/{len(mutations)}")
+                                            except Exception as e:
+                                                LOGGER.error(f"[{run_id}] Failed to apply mutation {idx + 1}: {e}", exc_info=True)
+                                                raise
+                                else:
+                                    # Non-transactional fallback. Good for early testing, but use a transaction long-term.
+                                    LOGGER.warning(f"[{run_id}] Using non-transactional mode for mutations - database may be inconsistent if error occurs")
+                                    for idx, mutation in enumerate(mutations):
+                                        try:
+                                            result = await self._persist_single_committer_mutation(
+                                                simulation_id=committer_output.simulation_id,
+                                                mutation=mutation,
+                                                temp_id_map=temp_id_map,
+                                            )
+                                            applied.append(result)
+                                            LOGGER.debug(f"[{run_id}] Applied mutation {idx + 1}/{len(mutations)}")
+                                        except Exception as e:
+                                            LOGGER.error(f"[{run_id}] Failed to apply mutation {idx + 1}: {e}", exc_info=True)
+                                            raise
+                                LOGGER.info(f"[{run_id}] Successfully applied all {len(applied)} mutations")
+                            except Exception as e:
+                                LOGGER.error(f"[{run_id}] Failed to apply mutations: {e}", exc_info=True)
+                                raise
+
+                        # Persist the summaries
+                        try:
+                            summary_output = SummaryOutput.model_validate(payload["summary_output"])
+                            await self._db.state.update(
+                                state_id=payload["simulation_id"],
+                                patched_data={
+                                    "turn_number": previous_turn_number + 2,
+                                    "state": summary_output.scene_summary,
+                                    "recent_history_summary": summary_output.short_term_memory,
+                                    "long_term_history_summary": summary_output.long_term_memory,
+                                },
+                            )
+                            LOGGER.debug(f"[{run_id}] Updated simulation state with summary output")
+                        except Exception as e:
+                            LOGGER.error(f"[{run_id}] Failed to update simulation state: {e}", exc_info=True)
+                            raise
+
+                        # Add the complete record
+                        try:
+                            new_turns.append(
+                                TurnRecordCreate(
+                                    simulation_id=payload["simulation_id"],
+                                    turn_number=previous_turn_number + 2,
+                                    type=TurnType.AI_RESPONSE if payload.get("user_input") else TurnType.AI_CONTINUE,
+                                    director_output=DirectorOutput.model_validate(payload["director_output"]),
+                                    proposals=[
+                                        PendingGeneratedProposal.model_validate(p)
+                                        for p in payload.get("generated_proposals", [])
+                                    ],
+                                    briefing_output=BriefingOutput.model_validate(payload["briefing_output"]),
+                                    character_actions=[
+                                        CharacterActionOutput.model_validate(a)
+                                        for a in payload.get("character_action_outputs", [])
+                                    ],
+                                    character_reactions=[
+                                        CharacterActionOutput.model_validate(r)
+                                        for r in payload.get("character_reaction_outputs", [])
+                                    ],
+                                    resolver_output=ResolverOutput.model_validate(payload["resolver_output"]),
+                                    reaction_resolving=ResolverOutput.model_validate(payload["reaction_resolver_output"])
+                                        if payload.get("reaction_resolver_output") else None,
+                                    committer_output=committer_output,
+                                    narration=payload["narration"],
+                                    summary_output=summary_output,
+                                )
+                            )
+                            LOGGER.debug(f"[{run_id}] Created complete turn record")
+                        except Exception as e:
+                            LOGGER.error(f"[{run_id}] Failed to create complete turn record: {e}", exc_info=True)
+                            raise
+                    except Exception as e:
+                        LOGGER.error(f"[{run_id}] Failed to process committer output: {e}", exc_info=True)
+                        raise
+            except Exception as e:
+                LOGGER.error(f"[{run_id}] Failed to build turn records: {e}", exc_info=True)
+                raise
+
+            # Write the turn records
+            try:
+                for idx, t in enumerate(new_turns):
+                    await self._db.record.create(t)
+                    LOGGER.debug(f"[{run_id}] Created turn record {idx + 1}/{len(new_turns)}")
+                LOGGER.info(f"[{run_id}] Successfully persisted {len(new_turns)} turn records to database")
+            except Exception as e:
+                LOGGER.error(f"[{run_id}] Failed to write turn records to database: {e}", exc_info=True)
+                raise
+        except Exception as e:
+            LOGGER.error(f"[{payload.get('run_id', 'unknown')}] persist_state_to_database failed: {e}", exc_info=True)
+            raise

@@ -49,3 +49,35 @@ export async function createImageConnectionProfile(profile) {
 
     return response.json();
 }
+
+export async function updateLlmConnectionProfile(profileId, profile) {
+    const response = await fetch(`/api/connections/llm/${profileId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profile),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to update LLM connection: ${response.status}`);
+    }
+
+    return response.json();
+}
+
+export async function updateImageConnectionProfile(profileId, profile) {
+    const response = await fetch(`/api/connections/image/${profileId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profile),
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to update image connection: ${response.status}`);
+    }
+
+    return response.json();
+}

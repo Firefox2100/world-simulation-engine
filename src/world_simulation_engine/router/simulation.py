@@ -3,6 +3,7 @@ from fastapi import APIRouter, Query, HTTPException, UploadFile, File, status
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.misc.enums import TurnType
 from world_simulation_engine.model import Simulation
 from world_simulation_engine.service import FormatNormaliser
 from .utils import db_dep, turn_runner_dep, storage_dep
@@ -55,6 +56,25 @@ class SimulationListEntry(BaseModel):
     enable_image_generation: bool = Field(
         False,
         description="Whether the simulation should enable image generation.",
+    )
+
+
+class RecordHistory(BaseModel):
+    id: int = Field(
+        ...,
+        description="The ID of the record entry",
+    )
+    turn_number: int = Field(
+        ...,
+        description="The turn number of the record entry",
+    )
+    type: TurnType = Field(
+        ...,
+        description="The type of this turn",
+    )
+    narration: str = Field(
+        ...,
+        description="The narration of this turn",
     )
 
 
@@ -148,6 +168,28 @@ async def run_simulation(simulation_id: int,
     return RunSimulationResponse(
         run_id=run_id,
     )
+
+
+@simulation_router.get("/{simulation_id}/records", response_model=list[RecordHistory])
+async def get_simulation_records(simulation_id: int,
+                                 db: db_dep,
+                                 limit: int = Query(20, ge=1),
+                                 start_from: int | None = Query(None),
+                                 ):
+    records = await db.record.get_last_records(
+        simulation_id=simulation_id,
+        last_n=limit,
+        start_from=start_from,
+    )
+
+    return [
+        RecordHistory(
+            id=r.id,
+            turn_number=r.turn_number,
+            type=r.type,
+            narration=r.narration,
+        ) for r in records
+    ]
 
 
 @simulation_router.get("/{simulation_id}/images/cover")

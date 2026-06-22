@@ -15,6 +15,7 @@ export function ConnectionsPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [createModalType, setCreateModalType] = useState(null);
+    const [editingConnection, setEditingConnection] = useState(null);
 
     const providerLabels = {
         openai: t("connections.providers.openai"),
@@ -49,7 +50,12 @@ export function ConnectionsPage() {
 
     async function handleCreated() {
         setCreateModalType(null);
+        setEditingConnection(null);
         await loadConnections();
+    }
+
+    function openEditModal(type, profile) {
+        setEditingConnection({ type, profile });
     }
 
     return (
@@ -72,6 +78,7 @@ export function ConnectionsPage() {
                         providerLabels={providerLabels}
                         createLabel={t("connections.actions.create")}
                         onCreate={() => setCreateModalType("llm")}
+                        onEdit={(profile) => openEditModal("llm", profile)}
                     />
                     <ConnectionProfileColumn
                         title={t("connections.imageTitle")}
@@ -80,6 +87,7 @@ export function ConnectionsPage() {
                         providerLabels={providerLabels}
                         createLabel={t("connections.actions.create")}
                         onCreate={() => setCreateModalType("image")}
+                        onEdit={(profile) => openEditModal("image", profile)}
                     />
                 </div>
             )}
@@ -89,6 +97,16 @@ export function ConnectionsPage() {
                     type={createModalType}
                     providerLabels={providerLabels}
                     onClose={() => setCreateModalType(null)}
+                    onCreated={handleCreated}
+                />
+            ) : null}
+
+            {editingConnection ? (
+                <ConnectionCreateModal
+                    type={editingConnection.type}
+                    profile={editingConnection.profile}
+                    providerLabels={providerLabels}
+                    onClose={() => setEditingConnection(null)}
                     onCreated={handleCreated}
                 />
             ) : null}

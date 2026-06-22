@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import {
     createImageConnectionProfile,
     createLlmConnectionProfile,
+    updateImageConnectionProfile,
+    updateLlmConnectionProfile,
 } from "@/api/connections";
 
 const providerOptions = {
@@ -16,13 +18,14 @@ function cleanOptionalText(value) {
     return trimmed.length > 0 ? trimmed : null;
 }
 
-export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated }) {
+export function ConnectionCreateModal({ type, profile = null, providerLabels, onClose, onCreated }) {
     const { t } = useTranslation();
     const providers = providerOptions[type];
-    const [provider, setProvider] = useState(providers[0]);
-    const [name, setName] = useState("");
-    const [baseUrl, setBaseUrl] = useState("");
-    const [apiKey, setApiKey] = useState("");
+    const editing = Boolean(profile);
+    const [provider, setProvider] = useState(profile?.provider ?? providers[0]);
+    const [name, setName] = useState(profile?.name ?? "");
+    const [baseUrl, setBaseUrl] = useState(profile?.base_url ?? "");
+    const [apiKey, setApiKey] = useState(profile?.api_key ?? "");
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
 
@@ -38,10 +41,19 @@ export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated
     }, [onClose]);
 
     function buildPayload() {
-        const payload = { provider };
         const cleanedName = cleanOptionalText(name);
         const cleanedBaseUrl = cleanOptionalText(baseUrl);
         const cleanedApiKey = cleanOptionalText(apiKey);
+
+        if (editing) {
+            return {
+                name: cleanedName,
+                base_url: cleanedBaseUrl,
+                api_key: cleanedApiKey,
+            };
+        }
+
+        const payload = { provider };
 
         if (cleanedName) {
             payload.name = cleanedName;
@@ -64,7 +76,11 @@ export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated
 
         try {
             setSaving(true);
-            if (type === "llm") {
+            if (editing && type === "llm") {
+                await updateLlmConnectionProfile(profile.id, buildPayload());
+            } else if (editing) {
+                await updateImageConnectionProfile(profile.id, buildPayload());
+            } else if (type === "llm") {
                 await createLlmConnectionProfile(buildPayload());
             } else {
                 await createImageConnectionProfile(buildPayload());
@@ -89,7 +105,7 @@ export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated
                 <form className="connection-create-form" onSubmit={handleSubmit}>
                     <div className="modal-header">
                         <h2 id="create-connection-title">
-                            {t(`connectionCreate.${type}.title`)}
+                            {editing ? t(`connectionCreate.${type}.editTitle`) : t(`connectionCreate.${type}.title`)}
                         </h2>
                         <button
                             type="button"
@@ -110,6 +126,7 @@ export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated
                                 id="connection-provider"
                                 className="single-line-input"
                                 value={provider}
+                                disabled={editing}
                                 onChange={(event) => setProvider(event.target.value)}
                             >
                                 {providers.map((providerOption) => (
@@ -161,7 +178,7 @@ export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated
 
                         {error ? (
                             <p className="form-error">
-                                {t("connectionCreate.error", { error })}
+                                {t(editing ? "connectionCreate.editError" : "connectionCreate.error", { error })}
                             </p>
                         ) : null}
                     </div>
@@ -171,7 +188,9 @@ export function ConnectionCreateModal({ type, providerLabels, onClose, onCreated
                             {t("connectionCreate.cancel")}
                         </button>
                         <button type="submit" className="primary-button" disabled={saving}>
-                            {saving ? t("connectionCreate.saving") : t("connectionCreate.submit")}
+                            {saving
+                                ? t(editing ? "connectionCreate.updating" : "connectionCreate.saving")
+                                : t(editing ? "connectionCreate.update" : "connectionCreate.submit")}
                         </button>
                     </div>
                 </form>
