@@ -53,6 +53,22 @@ class WorldAgent(Generic[AgentProfileT]):
                 base_url=self._connection.base_url,
             )
 
+        if self._connection.provider == LlmProvider.OPENAI:
+            if not isinstance(self._profile.backend_configuration, OpenAiAgentBackendConfiguration):
+                raise ValueError(
+                    f"Profile class mismatch: connection profile is OpenAI while profile is {type(self._profile)}"
+                )
+
+            from langchain_openai import ChatOpenAI
+
+            return ChatOpenAI(
+                model=self._profile.backend_configuration.model,
+                reasoning=self._profile.backend_configuration.reasoning,
+                temperature=self._profile.backend_configuration.temperature,
+                seed=self._profile.backend_configuration.seed,
+                base_url=self._connection.base_url,
+            )
+
         raise ValueError(f"Unsupported provider: {self._connection.provider}")
 
     @property

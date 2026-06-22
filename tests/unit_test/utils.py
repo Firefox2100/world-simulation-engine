@@ -1,13 +1,7 @@
 from typing import Any
-import pytest
-from unittest.mock import patch, PropertyMock
-from fastapi.testclient import TestClient
 from langchain_core.language_models import FakeMessagesListChatModel, LanguageModelInput
 from langchain_core.runnables import RunnableLambda, Runnable
 from pydantic import BaseModel
-
-from world_simulation_engine.service.world_agent.world_agent import WorldAgent
-from world_simulation_engine.app import create_app
 
 
 class FakeStructuredListChatModel(FakeMessagesListChatModel):
@@ -30,28 +24,3 @@ class FakeStructuredListChatModel(FakeMessagesListChatModel):
             return result
 
         return RunnableLambda(invoke)
-
-
-@pytest.fixture
-def fake_model():
-    fake_model = FakeStructuredListChatModel(responses=[])
-
-    with patch.object(WorldAgent, "model", new_callable=PropertyMock) as mock_model:
-        mock_model.return_value = fake_model
-
-        yield fake_model
-
-
-@pytest.fixture
-def mock_app():
-    with patch("world_simulation_engine.app.CONFIG") as mock_config:
-        mock_config.database_path = ":memory:"
-
-        app = create_app()
-        yield app
-
-
-@pytest.fixture
-def mock_client(mock_app):
-    with TestClient(mock_app) as client:
-        yield client

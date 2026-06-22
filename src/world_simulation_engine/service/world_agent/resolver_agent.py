@@ -168,7 +168,6 @@ class ResolverAgent(WorldAgent[ResolverAgentProfile]):
                     "with rejection_reason and user_retry_instruction."
                 ),
                 run_name="user_input_resolver",
-                config=config,
                 max_attempts=2,
             ),
         )

@@ -66,12 +66,17 @@ class WorkflowRunner:
                         "data": chunk,
                     })
                 elif mode == "values":
-                    payload = chunk["data"]
+                    payload = chunk
                 elif mode == "messages":
-                    await handle.queue.put({
-                        "event": "token",
-                        "data": chunk,
-                    })
+                    message_delta = "".join([b["text"] for b in chunk[0].content_blocks])
+                    if message_delta:
+                        await handle.queue.put({
+                            "event": "token",
+                            "data": {
+                                "message": message_delta,
+                                "metadata": chunk[1],
+                            },
+                        })
 
             await handle.queue.put({
                 "event": "done",
@@ -85,7 +90,7 @@ class WorkflowRunner:
         except Exception as e:
             await handle.queue.put({
                 "event": "error",
-                "data": {"message": str(e)},
+                "data": {"message": repr(e)},
             })
         finally:
             if self._callback:

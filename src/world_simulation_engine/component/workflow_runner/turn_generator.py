@@ -3580,7 +3580,7 @@ class TurnGenerator:
             ],
         )
 
-        resolver_agent = UserInputResolverAgent(
+        resolver_agent = ResolverAgent(
             profile=state.simulation.agent_preset.resolver,
             connection=state.connection_profiles.resolver,
         )
