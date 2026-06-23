@@ -1,6 +1,23 @@
 from enum import StrEnum
 
 
+class CharacterImageReferenceFormat(StrEnum):
+    FRONT_BACK_REFERENCE = "front_back_reference"
+    SINGLE_FULL_BODY_SHOWCASE = "single_full_body_showcase"
+    PORTRAIT_REFERENCE = "portrait_reference"
+
+    def to_image_prompt(self) -> str:
+        match self:
+            case CharacterImageReferenceFormat.FRONT_BACK_REFERENCE:
+                return "front view and back view, same character, same outfit, neutral pose"
+            case CharacterImageReferenceFormat.SINGLE_FULL_BODY_SHOWCASE:
+                return "single full body view, neutral pose, simple showcase composition"
+            case CharacterImageReferenceFormat.PORTRAIT_REFERENCE:
+                return "upper body portrait, neutral pose, clear face reference"
+            case _:
+                raise ValueError(f"Unknown value: {self}")
+
+
 class CommitPolicy(StrEnum):
     COMMIT_IF_DISCOVERED = "commit_if_discovered"
     COMMIT_IF_SUCCEEDED = "commit_if_succeeded"

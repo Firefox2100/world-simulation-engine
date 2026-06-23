@@ -44,6 +44,10 @@ class ComfyUiBackendConfiguration(ImageBackendConfiguration):
         None,
         description="The id of the k sampler node.",
     )
+    latent_image_id: Optional[str] = Field(
+        None,
+        description="The id of the latent image node.",
+    )
 
     checkpoint: str = Field(
         ...,
@@ -80,4 +84,29 @@ class ImageGeneratorProfile(BaseModel):
     backend_configuration: ImageBackendConfigurations = Field(
         ...,
         description="The backend configuration for the image generator.",
+    )
+
+
+class ImageGenerationPromptTemplate(BaseModel):
+    positive: str = Field(
+        ...,
+        description="The prompt template for positive prompts.",
+    )
+    negative: Optional[str] = Field(
+        None,
+        description="The prompt template for negative prompts.",
+    )
+
+
+class CharacterGeneratorProfile(ImageGeneratorProfile):
+    canonical_prompts: ImageGenerationPromptTemplate = Field(
+        ...,
+        description="The prompt templates to use when generating canonical character images.",
+    )
+
+
+class ImageGenerationPreset(BaseModel):
+    character: CharacterGeneratorProfile = Field(
+        ...,
+        description="The image generation configuration profiles for character images.",
     )

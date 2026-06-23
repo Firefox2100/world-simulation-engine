@@ -2,6 +2,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from .agent_preset import AgentPreset
+from .image_generation_preset import ImageGenerationPreset
 from .data_preset import DataPreset
 from .embedding_profile import EmbeddingProfile
 
@@ -27,6 +28,10 @@ class Simulation(BaseModel):
     agent_preset: AgentPreset = Field(
         ...,
         description="The agent preset for the simulation.",
+    )
+    image_generation_preset: Optional[ImageGenerationPreset] = Field(
+        None,
+        description="The image generation preset for the simulation. Can be None if image generation is not enabled.",
     )
     data_preset: DataPreset = Field(
         ...,

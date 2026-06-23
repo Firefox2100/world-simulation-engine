@@ -5,12 +5,14 @@ import pytest
 from world_simulation_engine.misc.consts import LOGGER
 from world_simulation_engine.misc.enums import MessageRole, LlmProvider, FactionRelationshipEntity, \
     EquipmentStatus, WorldEntryVisibility, WorldEntryRecallType, NarrationPermission, TaskType, TaskStatus, \
-    TaskPriority
+    TaskPriority, ImageGenerationProvider
 from world_simulation_engine.model import LlmConnectionProfile, EmbeddingProfile, WorldGeneratorAgentProfile, \
     OllamaAgentBackendConfiguration, PromptMessage, DirectorAgentProfile, MemoryAgentProfile, \
     CharacterAgentProfile, Simulation, AgentPreset, DataPreset, ModelAttribute, SimulationState, Character, \
     Faction, FactionRelationship, Item, Equipment, Location, Entity, WorldEntry, WorldEntryRecallKeyword, Task, \
-    ResolverAgentProfile, CommitterAgentProfile, NarratorAgentProfile, CharacterInventory
+    ResolverAgentProfile, CommitterAgentProfile, NarratorAgentProfile, ImageGenerationAgentProfile, \
+    CharacterInventory, ComfyUiBackendConfiguration, CharacterGeneratorProfile, ImageGenerationPreset, \
+    ImageGenerationConnectionProfile, ImageGenerationPromptTemplate
 from world_simulation_engine.model.world import WorldCreate
 from world_simulation_engine.model.connection_profile import LlmConnectionCreate
 from world_simulation_engine.service import DatabaseService
@@ -43,6 +45,11 @@ def ollama_base_url() -> str:
 
 
 @pytest.fixture
+def comfyui_base_url() -> str:
+    return os.environ.get("TEST_COMFYUI_BASE_URL", "http://localhost:8188")
+
+
+@pytest.fixture
 def embedding_model() -> str:
     return os.getenv("TEST_OLLAMA_MODEL_EMBED", "text-embedding-3-small")
 
@@ -50,6 +57,122 @@ def embedding_model() -> str:
 @pytest.fixture
 def inference_model() -> str:
     return os.getenv("TEST_OLLAMA_MODEL", "gpt-4")
+
+
+@pytest.fixture
+def comfyui_checkpoint() -> str:
+    return os.getenv("TEST_COMFYUI_CHECKPOINT", "sd_xl_base_1.0.safetensors")
+
+
+@pytest.fixture
+def mock_comfyui_workflow() -> dict:
+    return {
+        "3": {
+            "inputs": {
+                "seed": 0,
+                "steps": 20,
+                "cfg": 8,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+                "denoise": 1,
+                "model": [
+                    "4",
+                    0
+                ],
+                "positive": [
+                    "6",
+                    0
+                ],
+                "negative": [
+                    "7",
+                    0
+                ],
+                "latent_image": [
+                    "5",
+                    0
+                ]
+            },
+            "class_type": "KSampler",
+            "_meta": {
+                "title": "KSampler"
+            }
+        },
+        "4": {
+            "inputs": {
+                "ckpt_name": "sd_xl_base_1.0.safetensors"
+            },
+            "class_type": "CheckpointLoaderSimple",
+            "_meta": {
+                "title": "Load Checkpoint"
+            }
+        },
+        "5": {
+            "inputs": {
+                "width": 512,
+                "height": 512,
+                "batch_size": 1
+            },
+            "class_type": "EmptyLatentImage",
+            "_meta": {
+                "title": "Empty Latent Image"
+            }
+        },
+        "6": {
+            "inputs": {
+                "text": "beautiful scenery nature glass bottle landscape, purple galaxy bottle,",
+                "clip": [
+                    "4",
+                    1
+                ]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+                "title": "CLIP Text Encode (Prompt)"
+            }
+        },
+        "7": {
+            "inputs": {
+                "text": "text, watermark",
+                "clip": [
+                    "4",
+                    1
+                ]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+                "title": "CLIP Text Encode (Prompt)"
+            }
+        },
+        "8": {
+            "inputs": {
+                "samples": [
+                    "3",
+                    0
+                ],
+                "vae": [
+                    "4",
+                    2
+                ]
+            },
+            "class_type": "VAEDecode",
+            "_meta": {
+                "title": "VAE Decode"
+            }
+        },
+        "9": {
+            "inputs": {
+                "filename_prefix": "ComfyUI",
+                "images": [
+                    "8",
+                    0
+                ]
+            },
+            "class_type": "SaveImage",
+            "_meta": {
+                "title": "Save Image"
+            }
+        }
+    }
 
 
 @pytest.fixture
@@ -80,6 +203,17 @@ def mock_embedding_profile(embedding_model) -> EmbeddingProfile:
         model=embedding_model,
         dimensions=1024,
         context_window=8192,
+    )
+
+
+@pytest.fixture
+def mock_image_generation_connection(comfyui_base_url) -> ImageGenerationConnectionProfile:
+    return ImageGenerationConnectionProfile(
+        id=1,
+        name="Mock Connection",
+        provider=ImageGenerationProvider.COMFY_UI,
+        base_url=comfyui_base_url,
+        api_key=None,
     )
 
 
@@ -4740,6 +4874,155 @@ Output natural language only.
 """
             ),
         ],
+    )
+
+
+def mock_image_generation_agent_profile(inference_model) -> ImageGenerationAgentProfile:
+    return ImageGenerationAgentProfile(
+        backend_configuration=OllamaAgentBackendConfiguration(
+            connection=1,
+            model=inference_model,
+            temperature=0.4,
+            context_window=65536,
+        ),
+        character_canonical_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are a visual design extraction agent for a role-playing image generation system.
+
+Your task is to convert structured character data into a canonical visual identity specification.
+
+This is NOT a scene image.
+This is NOT the character's current temporary state.
+This is a persistent character reference image.
+
+Rules:
+- Extract only stable visual identity.
+- Do not include temporary mood, current thoughts, current political concerns, or scene-specific actions.
+- Do not include private_state unless it implies persistent visual traits. Usually it does not.
+- Do not invent fantasy elements unless supported by the data.
+- Clothing may be inferred only as a canonical/default presentation style, not current equipment.
+- Prefer concrete visual descriptors over personality abstractions.
+- Output valid JSON matching the schema exactly.
+- No markdown.
+- No comments.
+- No additional keys.
+
+Target image type:
+canonical character showcase / reference sheet
+
+Field guidance:
+- demographic_keywords: age, gender, and broad human category phrases.
+- body_keywords: stable body/build/silhouette descriptors only if known.
+- face_keywords: stable facial structure, facial age, notable features.
+- hair_keywords: stable hair traits only if explicitly known.
+- eye_keywords: stable eye traits or gaze impression only if supported.
+- posture_keywords: habitual bearing, stance, carriage, physical composure.
+- expression_keywords: default resting expression suitable for a reference image.
+- canonical_clothing_keywords: inferred default clothing suitable for the character's stable role.
+- accessory_keywords: persistent accessories only; leave empty if unknown.
+- personality_visual_cues: visualisable traits derived from stable personality.
+- social_role_visual_cues: visualisable cues from occupation, rank, class, or public role.
+- background_keywords: simple non-scene background suitable for character reference.
+- style_keywords: broad image-generation style descriptors.
+- must_include: required visual constraints for the generated image.
+- must_avoid: things that would contradict the character or image purpose.
+- uncertainty_notes: missing or ambiguous visual details that should not be invented.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Character
+
+The character you need to extract visual design from is:
+
+ID: {{ data.id }}
+Name: {{ data.name }}
+Gender: {{ data.gender }}
+Age: {{ data.age }}
+
+Description:
+{{ data.description }}
+
+Persistent appearance:
+{{ data.appearance }}
+
+Publicly known stable context:
+{{ data.public_state }}
+
+{% if include_private_state_for_visual_extraction %}
+Private state, only for persistent visual implications:
+{{ data.private_state }}
+{% endif %}
+
+{% if role_context %}
+Role / social context:
+{{ role_context }}
+{% endif %}
+
+{% if world_style %}
+World visual style:
+{{ world_style }}
+{% endif %}
+
+{% if reference_format %}
+Preferred reference format:
+{{ reference_format }}
+{% else %}
+Preferred reference format:
+front_back_reference
+{% endif %}
+"""
+            ),
+        ]
+    )
+
+
+@pytest.fixture
+def mock_character_generation_profile(mock_comfyui_workflow,
+                                      comfyui_checkpoint,
+                                      ):
+    return CharacterGeneratorProfile(
+        backend_configuration=ComfyUiBackendConfiguration(
+            connection=1,
+            workflow=mock_comfyui_workflow,
+            checkpoint_loader_id="4",
+            positive_prompt_id="6",
+            negative_prompt_id="7",
+            k_sampler_id="3",
+            latent_image_id="5",
+            checkpoint=comfyui_checkpoint,
+        ),
+        canonical_prompts=ImageGenerationPromptTemplate(
+            positive="""
+{{ data.spec.must_include | join(", ") }},
+{{ data.spec.style_keywords | join(", ") }},
+character reference sheet,
+{{ data.spec.reference_format.to_image_prompt() }},
+{{ data.spec.demographic_keywords | join(", ") }},
+{{ data.spec.body_keywords | join(", ") }},
+{{ data.spec.face_keywords | join(", ") }},
+{{ data.spec.hair_keywords | join(", ") }},
+{{ data.spec.eye_keywords | join(", ") }},
+{{ data.spec.posture_keywords | join(", ") }},
+{{ data.spec.expression_keywords | join(", ") }},
+wearing {{ data.spec.canonical_clothing_keywords | join(", ") }},
+{{ data.spec.accessory_keywords | join(", ") }},
+visual cues: {{ data.spec.personality_visual_cues | join(", ") }},
+role cues: {{ data.spec.social_role_visual_cues | join(", ") }},
+{{ data.spec.background_keywords | join(", ") }},
+clean composition, consistent character design, high detail
+""",
+            negative="""
+{{ data.spec.must_avoid | join(", ") }},
+multiple people, duplicate character, inconsistent outfit,
+different face between views, cropped body, missing feet,
+bad hands, extra fingers, extra limbs, distorted anatomy,
+text, watermark, logo, blurry, low detail, noisy image
+"""
+        )
     )
 
 

@@ -130,19 +130,19 @@ class TurnGenerator:
         return list(faction_ids)
 
     async def _load_faction_context(
-        self,
-        simulation_id: int,
-        character_ids: list[int] | None = None,
-        item_ids: list[int] | None = None,
-        include_private: bool = False,
+            self,
+            simulation_id: int,
+            character_ids: list[int] | None = None,
+            item_ids: list[int] | None = None,
+            include_private: bool = False,
     ) -> tuple[list[Faction], list[FactionRelationship]]:
         entity_refs = [
-            (FactionRelationshipEntity.CHARACTER, character_id)
-            for character_id in (character_ids or [])
-        ] + [
-            (FactionRelationshipEntity.ITEM, item_id)
-            for item_id in (item_ids or [])
-        ]
+                          (FactionRelationshipEntity.CHARACTER, character_id)
+                          for character_id in (character_ids or [])
+                      ] + [
+                          (FactionRelationshipEntity.ITEM, item_id)
+                          for item_id in (item_ids or [])
+                      ]
         if not entity_refs:
             return [], []
 
@@ -177,11 +177,11 @@ class TurnGenerator:
         return factions, relationships
 
     async def _load_character_faction_context(
-        self,
-        simulation_id: int,
-        acting_character_id: int,
-        visible_character_ids: list[int],
-        item_ids: list[int],
+            self,
+            simulation_id: int,
+            acting_character_id: int,
+            visible_character_ids: list[int],
+            item_ids: list[int],
     ) -> tuple[list[Faction], list[FactionRelationship]]:
         public_factions, public_relationships = await self._load_faction_context(
             simulation_id=simulation_id,
@@ -2478,7 +2478,8 @@ class TurnGenerator:
                 }
                 LOGGER.debug(f"[{state.run_id}] Extracted {len(connection_ids)} connection IDs from simulation")
             except AttributeError as e:
-                LOGGER.error(f"[{state.run_id}] Failed to extract connection IDs from simulation config: {e}", exc_info=True)
+                LOGGER.error(f"[{state.run_id}] Failed to extract connection IDs from simulation config: {e}",
+                             exc_info=True)
                 raise
 
             connections = {}
@@ -2508,7 +2509,8 @@ class TurnGenerator:
                         resolver=connections[simulation.agent_preset.resolver.backend_configuration.connection],
                         committer=connections[simulation.agent_preset.committer.backend_configuration.connection],
                         narrator=connections[simulation.agent_preset.narrator.backend_configuration.connection],
-                        world_generator=connections[simulation.agent_preset.world_generator.backend_configuration.connection],
+                        world_generator=connections[
+                            simulation.agent_preset.world_generator.backend_configuration.connection],
                         embedding=connections[simulation.embedding_profile.connection],
                     ),
                 }
@@ -2524,7 +2526,7 @@ class TurnGenerator:
     async def director_planning(self, state: TurnGeneratorState) -> dict:
         try:
             LOGGER.debug(f"[{state.run_id}] Starting director_planning for simulation_id={state.simulation_id}")
-            
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
 
@@ -2554,7 +2556,8 @@ class TurnGenerator:
                 )
                 LOGGER.debug(f"[{state.run_id}] Initialized EmbeddingService and WorldEntryRecaller")
             except Exception as e:
-                LOGGER.error(f"[{state.run_id}] Failed to initialize EmbeddingService or WorldEntryRecaller: {e}", exc_info=True)
+                LOGGER.error(f"[{state.run_id}] Failed to initialize EmbeddingService or WorldEntryRecaller: {e}",
+                             exc_info=True)
                 raise
 
             if state.connection_profiles.world_generator is None:
@@ -2640,7 +2643,8 @@ class TurnGenerator:
                     simulation_id=state.simulation_id,
                     include_character_equipment=True,
                 )
-                LOGGER.debug(f"[{state.run_id}] Retrieved {len(all_locations)} locations, {len(existing_items)} items, {len(existing_equipments)} equipments")
+                LOGGER.debug(
+                    f"[{state.run_id}] Retrieved {len(all_locations)} locations, {len(existing_items)} items, {len(existing_equipments)} equipments")
 
                 factions, faction_relationships = await self._load_faction_context(
                     simulation_id=state.simulation_id,
@@ -2648,7 +2652,8 @@ class TurnGenerator:
                     item_ids=[i.id for i in existing_items],
                     include_private=True,
                 )
-                LOGGER.debug(f"[{state.run_id}] Loaded {len(factions)} factions and {len(faction_relationships)} faction relationships")
+                LOGGER.debug(
+                    f"[{state.run_id}] Loaded {len(factions)} factions and {len(faction_relationships)} faction relationships")
             except Exception as e:
                 LOGGER.error(f"[{state.run_id}] Failed to load full context for director planning: {e}", exc_info=True)
                 raise
@@ -2690,7 +2695,8 @@ class TurnGenerator:
                     last_narration=last_records[0].narration if last_records else None,
                     previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
                 )
-                LOGGER.info(f"[{state.run_id}] Director planning completed with {len(output.activations)} character activations and {len(proposals)} proposals")
+                LOGGER.info(
+                    f"[{state.run_id}] Director planning completed with {len(output.activations)} character activations and {len(proposals)} proposals")
             except Exception as e:
                 LOGGER.error(f"[{state.run_id}] Failed to plan turn with director agent: {e}", exc_info=True)
                 raise
@@ -2887,7 +2893,7 @@ class TurnGenerator:
     async def memory_summary(self, state: TurnGeneratorState):
         try:
             LOGGER.debug(f"[{state.run_id}] Starting memory_summary for simulation_id={state.simulation_id}")
-            
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
             if state.narration is None:
@@ -2911,7 +2917,8 @@ class TurnGenerator:
                     simulation_id=state.simulation_id,
                     last_n=10,
                 )
-                LOGGER.debug(f"[{state.run_id}] Retrieved {len(last_records) if last_records else 0} last turn records for context")
+                LOGGER.debug(
+                    f"[{state.run_id}] Retrieved {len(last_records) if last_records else 0} last turn records for context")
             except Exception as e:
                 LOGGER.error(f"[{state.run_id}] Failed to retrieve last records: {e}", exc_info=True)
                 raise
@@ -3749,7 +3756,7 @@ class TurnGenerator:
     async def resolve_user_input(self, state: TurnGeneratorState) -> dict:
         try:
             LOGGER.debug(f"[{state.run_id}] Starting resolve_user_input for simulation_id={state.simulation_id}")
-            
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
 
@@ -3783,7 +3790,8 @@ class TurnGenerator:
                     simulation_id=simulation_id,
                     location=state.state.scene,
                 )
-                LOGGER.debug(f"[{state.run_id}] Retrieved {len(all_characters)} total and {len(present_characters)} present characters")
+                LOGGER.debug(
+                    f"[{state.run_id}] Retrieved {len(all_characters)} total and {len(present_characters)} present characters")
 
                 player_character = next(
                     (character for character in all_characters if character.user_controlled),
@@ -3838,7 +3846,8 @@ class TurnGenerator:
                     simulation_id=simulation_id,
                     search_scope=resolver_scope,
                 )
-                LOGGER.debug(f"[{state.run_id}] Retrieved {len(visible_world_entries)} visible and {len(resolver_world_entries)} resolver world entries")
+                LOGGER.debug(
+                    f"[{state.run_id}] Retrieved {len(visible_world_entries)} visible and {len(resolver_world_entries)} resolver world entries")
             except Exception as e:
                 LOGGER.error(f"[{state.run_id}] Failed to load user input resolver context: {e}", exc_info=True)
                 raise
@@ -3922,7 +3931,8 @@ class TurnGenerator:
                 result = await resolver_agent.resolve_user_input(
                     context=context,
                 )
-                LOGGER.info(f"[{state.run_id}] User input resolved: accepted={result.accepted}, kind={result.input_kind}, legality={result.legality}")
+                LOGGER.info(
+                    f"[{state.run_id}] User input resolved: accepted={result.accepted}, kind={result.input_kind}, legality={result.legality}")
             except Exception as e:
                 LOGGER.error(f"[{state.run_id}] Failed to resolve user input: {e}", exc_info=True)
                 raise
@@ -3936,8 +3946,9 @@ class TurnGenerator:
 
     async def commit_changes(self, state: TurnGeneratorState) -> dict:
         try:
-            LOGGER.debug(f"[{state.run_id}] Starting commit_changes for simulation_id={state.simulation.id if state.simulation else 'unknown'}")
-            
+            LOGGER.debug(
+                f"[{state.run_id}] Starting commit_changes for simulation_id={state.simulation.id if state.simulation else 'unknown'}")
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
 
@@ -3960,7 +3971,8 @@ class TurnGenerator:
                     *(state.character_action_outputs or []),
                     *(state.character_reaction_outputs or []),
                 ]
-                LOGGER.debug(f"[{state.run_id}] Combined character actions and reactions: {len(effective_character_actions)} total")
+                LOGGER.debug(
+                    f"[{state.run_id}] Combined character actions and reactions: {len(effective_character_actions)} total")
 
                 characters = await self._db.character.list(
                     simulation_id=simulation_id,
@@ -3974,7 +3986,8 @@ class TurnGenerator:
                 world_entries = await self._db.entry.list(
                     simulation_id=simulation_id,
                 )
-                LOGGER.debug(f"[{state.run_id}] Retrieved {len(characters)} characters, {len(locations)} locations, {len(tasks)} tasks, {len(world_entries)} world entries")
+                LOGGER.debug(
+                    f"[{state.run_id}] Retrieved {len(characters)} characters, {len(locations)} locations, {len(tasks)} tasks, {len(world_entries)} world entries")
 
                 factions = await self._db.faction.list(
                     simulation_id=simulation_id,
@@ -3982,7 +3995,8 @@ class TurnGenerator:
                 faction_relationships = await self._db.faction_relationship.list(
                     simulation_id=simulation_id,
                 )
-                LOGGER.debug(f"[{state.run_id}] Retrieved {len(factions)} factions and {len(faction_relationships)} faction relationships")
+                LOGGER.debug(
+                    f"[{state.run_id}] Retrieved {len(factions)} factions and {len(faction_relationships)} faction relationships")
 
                 inventory: dict[int, CharacterInventory] = {}
 
@@ -4053,8 +4067,9 @@ class TurnGenerator:
 
     async def narrate_resolved_turn(self, state: TurnGeneratorState) -> dict:
         try:
-            LOGGER.debug(f"[{state.run_id}] Starting narrate_resolved_turn for simulation_id={state.simulation.id if state.simulation else 'unknown'}")
-            
+            LOGGER.debug(
+                f"[{state.run_id}] Starting narrate_resolved_turn for simulation_id={state.simulation.id if state.simulation else 'unknown'}")
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
 
@@ -4205,7 +4220,7 @@ class TurnGenerator:
     async def narrate_wait_for_user(self, state: TurnGeneratorState) -> dict:
         try:
             LOGGER.debug(f"[{state.run_id}] Starting narrate_wait_for_user for simulation_id={state.simulation_id}")
-            
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
 
@@ -4320,7 +4335,7 @@ class TurnGenerator:
     async def narrate_user_failure(self, state: TurnGeneratorState) -> dict:
         try:
             LOGGER.debug(f"[{state.run_id}] Starting narrate_user_failure for simulation_id={state.simulation_id}")
-            
+
             if state.simulation is None or state.state is None:
                 raise RuntimeError("Simulation is not loaded")
 
@@ -4766,8 +4781,9 @@ class TurnGenerator:
     async def persist_state_to_database(self, payload: dict):
         try:
             run_id = payload.get('run_id', 'unknown')
-            LOGGER.debug(f"[{run_id}] Starting persist_state_to_database for simulation_id={payload.get('simulation_id', 'unknown')}")
-            
+            LOGGER.debug(
+                f"[{run_id}] Starting persist_state_to_database for simulation_id={payload.get('simulation_id', 'unknown')}")
+
             try:
                 state = SimulationState.model_validate(payload["state"])
                 previous_turn_number = state.turn_number or 0
@@ -4808,7 +4824,7 @@ class TurnGenerator:
                 elif not payload.get("committer_output"):
                     # Committer not run, waiting for user input
                     LOGGER.info(f"[{run_id}] Committer not run, workflow waiting for user input")
-                    
+
                     if not payload.get("summary_output"):
                         # Summary not generated, running of workflow didn't complete
                         msg = f"Summary output is not generated in run {payload['run_id']}"
@@ -4816,7 +4832,7 @@ class TurnGenerator:
                         raise ValueError(msg)
 
                     summary_output = SummaryOutput.model_validate(payload["summary_output"])
-                    
+
                     new_turns.append(
                         TurnRecordCreate(
                             simulation_id=payload["simulation_id"],
@@ -4841,7 +4857,7 @@ class TurnGenerator:
                 else:
                     # Normal run through, persist the commits
                     LOGGER.info(f"[{run_id}] Persisting completed turn with commits")
-                    
+
                     try:
                         committer_output = CommitterFinalOutput.model_validate(payload["committer_output"])
 
@@ -4875,11 +4891,13 @@ class TurnGenerator:
                                                 applied.append(result)
                                                 LOGGER.debug(f"[{run_id}] Applied mutation {idx + 1}/{len(mutations)}")
                                             except Exception as e:
-                                                LOGGER.error(f"[{run_id}] Failed to apply mutation {idx + 1}: {e}", exc_info=True)
+                                                LOGGER.error(f"[{run_id}] Failed to apply mutation {idx + 1}: {e}",
+                                                             exc_info=True)
                                                 raise
                                 else:
                                     # Non-transactional fallback. Good for early testing, but use a transaction long-term.
-                                    LOGGER.warning(f"[{run_id}] Using non-transactional mode for mutations - database may be inconsistent if error occurs")
+                                    LOGGER.warning(
+                                        f"[{run_id}] Using non-transactional mode for mutations - database may be inconsistent if error occurs")
                                     for idx, mutation in enumerate(mutations):
                                         try:
                                             result = await self._persist_single_committer_mutation(
@@ -4890,7 +4908,8 @@ class TurnGenerator:
                                             applied.append(result)
                                             LOGGER.debug(f"[{run_id}] Applied mutation {idx + 1}/{len(mutations)}")
                                         except Exception as e:
-                                            LOGGER.error(f"[{run_id}] Failed to apply mutation {idx + 1}: {e}", exc_info=True)
+                                            LOGGER.error(f"[{run_id}] Failed to apply mutation {idx + 1}: {e}",
+                                                         exc_info=True)
                                             raise
                                 LOGGER.info(f"[{run_id}] Successfully applied all {len(applied)} mutations")
                             except Exception as e:
@@ -4936,8 +4955,9 @@ class TurnGenerator:
                                         for r in payload.get("character_reaction_outputs", [])
                                     ],
                                     resolver_output=ResolverOutput.model_validate(payload["resolver_output"]),
-                                    reaction_resolving=ResolverOutput.model_validate(payload["reaction_resolver_output"])
-                                        if payload.get("reaction_resolver_output") else None,
+                                    reaction_resolving=ResolverOutput.model_validate(
+                                        payload["reaction_resolver_output"])
+                                    if payload.get("reaction_resolver_output") else None,
                                     committer_output=committer_output,
                                     narration=payload["narration"],
                                     summary_output=summary_output,

@@ -1,4 +1,7 @@
-from typing import TypeVar, Generic, Union
+from typing import TypeVar, Generic, Union, Any
+from pydantic import BaseModel
+from jinja2.sandbox import SandboxedEnvironment
+
 from world_simulation_engine.misc.enums import ImageGenerationProvider
 from world_simulation_engine.model import ImageGeneratorProfile, ComfyUiBackendConfiguration, \
     ImageGenerationConnectionProfile
@@ -6,6 +9,11 @@ from .image_backend import ComfyUiBackend
 
 
 ImageGeneratorProfileT = TypeVar("ImageGeneratorProfileT", bound="ImageGeneratorProfile")
+
+
+class ComposedPrompts(BaseModel):
+    positive: str
+    negative: str | None = None
 
 
 class ImageGenerator(Generic[ImageGeneratorProfileT]):
@@ -49,9 +57,32 @@ class ImageGenerator(Generic[ImageGeneratorProfileT]):
     @property
     def backend(self) -> Union["ComfyUiBackend"]:
         if self._backend is None:
-            self._backend = self.create_backend()
+            self._backend = self._create_backend()
 
         if self._backend is None:
             raise ValueError("Backend is not initialized.")
 
         return self._backend
+
+    @staticmethod
+    def _compose_prompts(positive_template: str,
+                         data: dict[str, Any],
+                         negative_template: str | None = None,
+                         ) -> ComposedPrompts:
+        sandbox = SandboxedEnvironment()
+
+        result = ComposedPrompts(
+            positive=sandbox.from_string(
+                positive_template,
+            ).render(
+                data=data,
+            ).strip()
+        )
+        if negative_template is not None:
+            result.negative = sandbox.from_string(
+                negative_template,
+            ).render(
+                data=data,
+            ).strip()
+
+        return result

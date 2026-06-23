@@ -5,3 +5,4 @@ from .resolver_agent import ResolverAgent
 from .committer_agent import CommitterAgent
 from .narrator_agent import NarratorAgent
 from .world_generator_agent import WorldGeneratorAgent
+from .image_generation_agent import ImageGenerationAgent

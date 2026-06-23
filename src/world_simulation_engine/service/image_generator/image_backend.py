@@ -46,7 +46,7 @@ class ComfyUiBackend(ImageBackend):
                  client: AsyncClient | None = None,
                  ):
         super().__init__(
-            base_url=base_url.strip("/") or "http://localhost:8188",
+            base_url=base_url.strip("/") if base_url else "http://localhost:8188",
             api_key=api_key,
             client=client,
         )
@@ -65,7 +65,8 @@ class ComfyUiBackend(ImageBackend):
         self._width = width
         self._height = height
 
-    def _next_node_id(self, workflow: dict) -> str:
+    @staticmethod
+    def _next_node_id(workflow: dict) -> str:
         numeric_ids = [
             int(node_id)
             for node_id in workflow.keys()
@@ -99,8 +100,8 @@ class ComfyUiBackend(ImageBackend):
                     "model": current_model_ref,
                     "clip": current_clip_ref,
                     "lora_name": lora.name,
-                    "strength_model": lora.strength_model,
-                    "strength_clip": lora.strength_clip,
+                    "strength_model": lora.strength,
+                    "strength_clip": lora.strength,
                 },
             }
 
@@ -180,7 +181,7 @@ class ComfyUiBackend(ImageBackend):
 
             data = result.json()
 
-            if prompt_id in data:
+            if prompt_id in data and "outputs" in data[prompt_id]:
                 return data[prompt_id]
 
             await asyncio.sleep(interval)
@@ -221,11 +222,12 @@ class ComfyUiBackend(ImageBackend):
 
         for node_output in history.get("outputs", {}).values():
             for image in node_output.get("images", []):
-                image_data = await self._download_image(
-                    file_name=image["filename"],
-                    sub_folder=image["subfolder"],
-                    folder_type=image["type"],
-                )
-                images.append(image_data)
+                if image["type"] == "output":
+                    image_data = await self._download_image(
+                        file_name=image["filename"],
+                        sub_folder=image["subfolder"],
+                        folder_type=image["type"],
+                    )
+                    images.append(image_data)
 
         return images

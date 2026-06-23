@@ -1,7 +1,7 @@
 from .agent_preset import OllamaAgentBackendConfiguration, OpenAiAgentBackendConfiguration, \
     AgentBackendConfigurations, AgentProfile, DirectorAgentProfile, WorldGeneratorAgentProfile, \
     MemoryAgentProfile, CharacterAgentProfile, ResolverAgentProfile, CommitterAgentProfile, \
-    NarratorAgentProfile, AgentPreset
+    NarratorAgentProfile, ImageGenerationAgentProfile, AgentPreset
 from .image_generation_preset import ComfyUiLora, ComfyUiBackendConfiguration, ImageBackendConfigurations, \
     ImageGeneratorProfile
 from .character import Character
@@ -9,6 +9,9 @@ from .connection_profile import LlmConnectionProfile, ImageGenerationConnectionP
 from .data_preset import DataPreset, ModelAttribute, ModelStat
 from .embedding_profile import EmbeddingProfile
 from .faction import FactionRelationship, Faction
+from .image_generation import CanonicalCharacterVisualSpec
+from .image_generation_preset import ComfyUiBackendConfiguration, ImageBackendConfigurations, ImageGeneratorProfile, \
+    ImageGenerationPromptTemplate, CharacterGeneratorProfile, ImageGenerationPreset
 from .inventory import Item, Equipment, CharacterInventory
 from .location import Location, Entity
 from .prompt_message import PromptMessage

@@ -163,6 +163,7 @@ class SimulationOrm(Base):
         nullable=True
     )
     agent_preset: Mapped[dict] = mapped_column(JSON, nullable=False)
+    image_generation_preset: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     data_preset: Mapped[dict] = mapped_column(JSON, nullable=False)
     embedding_profile: Mapped[dict] = mapped_column(JSON, nullable=False)
     language: Mapped[str] = mapped_column(String(8), nullable=False)

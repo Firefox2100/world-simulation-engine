@@ -1,10 +1,10 @@
 from typing import Optional
-from fastapi import APIRouter, Query, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Query, HTTPException, UploadFile, File, Request, status
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import TurnType
-from world_simulation_engine.model import Simulation
+from world_simulation_engine.model import Simulation, Character, Location, Faction, WorldEntry
 from world_simulation_engine.service import FormatNormaliser
 from .utils import db_dep, turn_runner_dep, storage_dep
 
@@ -75,6 +75,13 @@ class RecordHistory(BaseModel):
     narration: str = Field(
         ...,
         description="The narration of this turn",
+    )
+
+
+class FileUploadResponse(BaseModel):
+    access_url: str = Field(
+        ...,
+        description="The URL that can be used to download the file again."
     )
 
 
@@ -192,7 +199,7 @@ async def get_simulation_records(simulation_id: int,
     ]
 
 
-@simulation_router.get("/{simulation_id}/images/cover")
+@simulation_router.get("/{simulation_id}/cover-image", response_class=FileResponse)
 async def get_simulation_cover_image(simulation_id: int,
                                      db: db_dep,
                                      storage: storage_dep,
@@ -218,8 +225,13 @@ async def get_simulation_cover_image(simulation_id: int,
     )
 
 
-@simulation_router.post("/{simulation_id}/images/cover", status_code=status.HTTP_201_CREATED)
+@simulation_router.post(
+    "/{simulation_id}/cover-image",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FileUploadResponse,
+)
 async def upload_simulation_cover_image(simulation_id: int,
+                                        request: Request,
                                         db: db_dep,
                                         storage: storage_dep,
                                         file: UploadFile = File(...),
@@ -245,6 +257,133 @@ async def upload_simulation_cover_image(simulation_id: int,
         data=normalised_bytes,
     )
 
-    return {
-        "file_name": f"simulation-{simulation_id}-cover.png",
-    }
+    return FileUploadResponse(
+        access_url=str(request.url_for("get_simulation_cover_image", simulation_id=simulation_id)),
+    )
+
+
+@simulation_router.get("/{simulation_id}/characters", response_model=list[Character])
+async def list_simulation_characters(simulation_id: int,
+                                     db: db_dep,
+                                     user_controlled: Optional[bool] = Query(None),
+                                     location: Optional[int] = Query(None),
+                                     ):
+    simulation = await db.simulation.get(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation with ID {simulation_id} not found",
+        )
+
+    characters = await db.character.list(
+        simulation_id=simulation_id,
+        controlled_by_user=user_controlled,
+        location=location,
+    )
+
+    return characters
+
+
+@simulation_router.get("/{simulation_id}/characters/{character_id}", response_model=Character)
+async def get_simulation_character(simulation_id: int,
+                                   character_id: int,
+                                   db: db_dep,
+                                   ):
+    simulation = await db.simulation.get(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation with ID {simulation_id} not found",
+        )
+
+    character = await db.character.get(character_id)
+    if not character:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character with ID {character_id} not found",
+        )
+
+    return character
+
+
+@simulation_router.get("/{simulation_id}/characters/{character_id}/image", response_class=FileResponse)
+async def get_simulation_character_image(simulation_id: int,
+                                         character_id: int,
+                                         db: db_dep,
+                                         storage: storage_dep,
+                                         ):
+    simulation = await db.simulation.get(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation with ID {simulation_id} not found",
+        )
+
+    character = await db.character.get(character_id)
+    if not character:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character with ID {character_id} not found",
+        )
+
+    image_path = storage.simulation(simulation_id).image.get_path(f"character-{character_id}.png")
+    if not image_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} has no image",
+        )
+
+    return FileResponse(
+        path=image_path,
+        media_type="image/png",
+        filename=f"simulation-{simulation_id}-cover.png",
+    )
+
+
+@simulation_router.post(
+    "/{simulation_id}/characters/{character_id}/image",
+    status_code=status.HTTP_201_CREATED,
+    response_model=FileUploadResponse,
+)
+async def upload_simulation_character_image(simulation_id: int,
+                                            character_id: int,
+                                            request: Request,
+                                            db: db_dep,
+                                            storage: storage_dep,
+                                            file: UploadFile = File(...),
+                                            ):
+    simulation = await db.simulation.get(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation with ID {simulation_id} not found",
+        )
+
+    character = await db.character.get(character_id)
+    if not character:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+
+    normaliser = FormatNormaliser()
+    try:
+        normalised_bytes = normaliser.normalise_image(await file.read())
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Error while normalising image: {e}",
+        ) from e
+
+    await storage.simulation(simulation_id).image.save(
+        file_name=f"character-{character_id}.png",
+        data=normalised_bytes,
+    )
+
+    return FileUploadResponse(
+        access_url=str(request.url_for(
+            "get_simulation_character_image",
+            simulation_id=simulation_id,
+            character_id=character_id
+        )),
+    )

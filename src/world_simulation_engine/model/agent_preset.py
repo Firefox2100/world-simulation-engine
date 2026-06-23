@@ -223,6 +223,13 @@ class NarratorAgentProfile(AgentProfile):
     )
 
 
+class ImageGenerationAgentProfile(AgentProfile):
+    character_canonical_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a canonical character image."
+    )
+
+
 class AgentPreset(BaseModel):
     """
     An agent preset is a set of user-supplied agent configurations for each agent, persisted in the database
@@ -251,6 +258,11 @@ class AgentPreset(BaseModel):
     narrator: NarratorAgentProfile = Field(
         ...,
         description="The agent configuration profiles for the narrator agent.",
+    )
+    image_generation: Optional[ImageGenerationAgentProfile] = Field(
+        None,
+        description="The agent configuration profiles for image generation tasks. Can be None if image "
+                    "generation is not enabled."
     )
 
     world_generator: WorldGeneratorAgentProfile = Field(
