@@ -1,6 +1,5 @@
 import numpy as np
 from icu import BreakIterator, Locale
-from langchain_ollama import embeddings
 
 from world_simulation_engine.misc.enums import WorldEntryRecallType
 from world_simulation_engine.model import WorldEntry
@@ -45,6 +44,89 @@ class WorldEntryRecaller:
 
         # Recommended for semantic search
         return max(0.0, min(1.0, c))
+
+    @staticmethod
+    def entry_needs_embeddings(entry: WorldEntry) -> bool:
+        return entry.recall_type in {
+            WorldEntryRecallType.SEMANTIC,
+            WorldEntryRecallType.KEYWORD,
+        }
+
+    @classmethod
+    def entries_need_embeddings(cls, entries: list[WorldEntry]) -> bool:
+        return any(cls.entry_needs_embeddings(entry) for entry in entries)
+
+    @staticmethod
+    def clear_unused_embeddings(entry: WorldEntry) -> WorldEntry:
+        payload = entry.model_dump(mode="json")
+
+        if entry.recall_type != WorldEntryRecallType.SEMANTIC:
+            payload["embedding"] = None
+
+        if entry.recall_type != WorldEntryRecallType.KEYWORD and payload.get("keywords"):
+            payload["keywords"] = [
+                {
+                    **keyword,
+                    "embedding": None,
+                }
+                for keyword in payload["keywords"]
+            ]
+
+        return WorldEntry.model_validate(payload)
+
+    async def generate_entry_embeddings(self, entry: WorldEntry) -> WorldEntry:
+        entry = self.clear_unused_embeddings(entry)
+        payload = entry.model_dump(mode="json")
+
+        if entry.recall_type == WorldEntryRecallType.SEMANTIC:
+            payload["embedding"] = (
+                await self._embedding_service.embed_texts([entry.content])
+            )[0]
+            return WorldEntry.model_validate(payload)
+
+        if entry.recall_type == WorldEntryRecallType.KEYWORD:
+            payload["embedding"] = None
+
+            if not entry.keywords:
+                payload["keywords"] = None
+                return WorldEntry.model_validate(payload)
+
+            keyword_texts = [
+                keyword.keyword
+                for keyword in entry.keywords
+            ]
+            keyword_embeddings = await self._embedding_service.embed_texts(keyword_texts)
+
+            payload["keywords"] = [
+                {
+                    **keyword.model_dump(mode="json"),
+                    "embedding": keyword_embedding,
+                }
+                for keyword, keyword_embedding in zip(entry.keywords, keyword_embeddings)
+            ]
+
+            return WorldEntry.model_validate(payload)
+
+        payload["embedding"] = None
+        if payload.get("keywords"):
+            payload["keywords"] = [
+                {
+                    **keyword,
+                    "embedding": None,
+                }
+                for keyword in payload["keywords"]
+            ]
+
+        return WorldEntry.model_validate(payload)
+
+    async def generate_entries_embeddings(
+            self,
+            entries: list[WorldEntry],
+    ) -> list[WorldEntry]:
+        return [
+            await self.generate_entry_embeddings(entry)
+            for entry in entries
+        ]
 
     async def recall(self,
                      query: str | None,

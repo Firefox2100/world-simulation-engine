@@ -1736,6 +1736,43 @@ class TurnGenerator:
             else:
                 await self._db.equipment.update(equipment_id, equipment_data)
 
+    async def _world_entry_recaller_for_simulation(
+            self,
+            simulation_id: int,
+    ) -> WorldEntryRecaller:
+        simulation = await self._db.simulation.get(simulation_id)
+        if simulation is None:
+            raise ValueError(f"Simulation {simulation_id} not found")
+
+        connection_id = simulation.embedding_profile.connection
+        if connection_id is None:
+            raise ValueError(
+                f"Simulation {simulation_id} has no embedding connection configured."
+            )
+
+        connection = await self._db.connection.llm.get(connection_id)
+        if connection is None:
+            raise ValueError(f"Embedding connection {connection_id} not found")
+
+        return WorldEntryRecaller(
+            embedding_service=EmbeddingService(
+                profile=simulation.embedding_profile,
+                connection=connection,
+            ),
+        )
+
+    async def _generate_world_entry_embeddings(
+            self,
+            *,
+            simulation_id: int,
+            world_entry: WorldEntry,
+    ) -> WorldEntry:
+        if not WorldEntryRecaller.entry_needs_embeddings(world_entry):
+            return WorldEntryRecaller.clear_unused_embeddings(world_entry)
+
+        recaller = await self._world_entry_recaller_for_simulation(simulation_id)
+        return await recaller.generate_entry_embeddings(world_entry)
+
     async def _persist_update_mutation(
             self,
             *,
@@ -1770,9 +1807,20 @@ class TurnGenerator:
             )
 
         elif object_type == "world_entry":
+            current_entry = await self._db.entry.get(int(object_id))
+            if current_entry is None:
+                raise ValueError(f"World entry {object_id} not found")
+
+            entry_data = current_entry.model_dump(mode="json")
+            entry_data.update(payload)
+            world_entry = await self._generate_world_entry_embeddings(
+                simulation_id=simulation_id,
+                world_entry=WorldEntry.model_validate(entry_data),
+            )
+
             await self._db.entry.update(
                 int(object_id),
-                payload,
+                world_entry.model_dump(mode="json", exclude={"id"}),
             )
 
         elif object_type == "faction":
@@ -1915,7 +1963,20 @@ class TurnGenerator:
         elif object_type == "world_entry":
             data["simulation_id"] = simulation_id
             data = self._normalise_world_entry_payload(data)
-            created = await self._db.entry.create(data)
+            data.pop("simulation_id", None)
+            world_entry = await self._generate_world_entry_embeddings(
+                simulation_id=simulation_id,
+                world_entry=WorldEntry.model_validate(
+                    {
+                        **data,
+                        "id": -1,
+                    }
+                ),
+            )
+            created = await self._db.entry.create(
+                world_entry=world_entry,
+                simulation_id=simulation_id,
+            )
 
         elif object_type == "task":
             data["simulation_id"] = simulation_id
@@ -2656,154 +2717,172 @@ class TurnGenerator:
             raise
 
     async def memory_briefing(self, state: TurnGeneratorState) -> dict:
-        if state.simulation is None or state.state is None:
-            raise RuntimeError("Simulation is not loaded")
+        try:
+            LOGGER.debug(f"[{state.run_id}] Starting memory_briefing for simulation_id={state.simulation_id}")
 
-        if state.connection_profiles.memory is None:
-            raise RuntimeError("Memory connection profile not loaded")
+            if state.simulation is None or state.state is None:
+                raise RuntimeError("Simulation is not loaded")
 
-        memory_agent = MemoryAgent(
-            profile=state.simulation.agent_preset.memory,
-            connection=state.connection_profiles.memory,
-        )
+            if state.connection_profiles.memory is None:
+                raise RuntimeError("Memory connection profile not loaded")
 
-        if state.connection_profiles.embedding is None:
-            raise RuntimeError("Embedding service connection profile not loaded")
+            if state.connection_profiles.embedding is None:
+                raise RuntimeError("Embedding service connection profile not loaded")
 
-        embedding_service = EmbeddingService(
-            profile=state.simulation.embedding_profile,
-            connection=state.connection_profiles.embedding,
-        )
+            if state.director_output is None:
+                raise RuntimeError("Director output not generated")
 
-        recaller = WorldEntryRecaller(
-            embedding_service=embedding_service,
-        )
-
-        if state.director_output is None:
-            raise RuntimeError("Director output not generated")
-
-        current_location = await self._db.location.get(state.state.scene)
-        if not current_location:
-            raise ValueError("Current location does not exist")
-
-        active_character_ids = [
-            activation.character_id
-            for activation in state.director_output.activations
-            if activation.activate
-        ]
-
-        active_characters: list[Character] = []
-        if active_character_ids:
-            active_characters = await self._db.character.list(
-                simulation_id=state.simulation_id,
-                character_ids=active_character_ids,
+            memory_agent = MemoryAgent(
+                profile=state.simulation.agent_preset.memory,
+                connection=state.connection_profiles.memory,
             )
 
-        if not active_characters:
+            embedding_service = EmbeddingService(
+                profile=state.simulation.embedding_profile,
+                connection=state.connection_profiles.embedding,
+            )
+
+            recaller = WorldEntryRecaller(
+                embedding_service=embedding_service,
+            )
+            LOGGER.debug(f"[{state.run_id}] Initialized MemoryAgent, EmbeddingService, and WorldEntryRecaller")
+
+            current_location = await self._db.location.get(state.state.scene)
+            if not current_location:
+                raise ValueError("Current location does not exist")
+
+            active_character_ids = [
+                activation.character_id
+                for activation in state.director_output.activations
+                if activation.activate
+            ]
+            LOGGER.debug(f"[{state.run_id}] Director selected {len(active_character_ids)} active characters")
+
+            active_characters: list[Character] = []
+            if active_character_ids:
+                active_characters = await self._db.character.list(
+                    simulation_id=state.simulation_id,
+                    character_ids=active_character_ids,
+                )
+            LOGGER.debug(f"[{state.run_id}] Loaded {len(active_characters)} active characters for briefing")
+
+            if not active_characters:
+                LOGGER.info(f"[{state.run_id}] No active characters selected by Director")
+                return {
+                    "briefing_output": BriefingOutput(
+                        briefings=[],
+                        notes="No active characters selected by Director.",
+                    ),
+                }
+
+            public_factions, public_faction_relationships = await self._load_faction_context(
+                simulation_id=state.simulation_id,
+                character_ids=active_character_ids,
+                include_private=False,
+            )
+
+            public_tasks = await self._db.task.list(
+                character_ids=[character.id for character in active_characters],
+                private=False,
+            )
+
+            last_records = await self._db.record.get_last_records(
+                simulation_id=state.simulation_id,
+            )
+
+            candidate_world_entries = await self._db.entry.list(
+                simulation_id=state.simulation_id,
+                search_scope=[0] + [character.id for character in active_characters],
+            )
+            LOGGER.debug(
+                f"[{state.run_id}] Loaded briefing context: "
+                f"{len(public_tasks)} tasks, {len(candidate_world_entries)} candidate world entries, "
+                f"{len(public_factions)} factions, {len(public_faction_relationships)} faction relationships"
+            )
+
+            def is_safe_public_entry(entry: WorldEntry) -> bool:
+                """
+                Defensive local filter for the public briefing layer.
+
+                This does not replace your database visibility model; it prevents accidental
+                leakage if entry.list returns scoped private entries together with public ones.
+                Adjust allowed visibility/narration values to match your exact enum names.
+                """
+                visibility = getattr(entry, "visibility", None)
+                narration_permission = getattr(entry, "narration_permission", None)
+                private = getattr(entry, "private", False)
+
+                if private:
+                    return False
+
+                if visibility is not None:
+                    visibility_value = str(visibility).lower()
+                    if visibility_value in {
+                        "hidden",
+                        "secret",
+                        "private",
+                        "unknown",
+                        "director_only",
+                    }:
+                        return False
+
+                if narration_permission is not None:
+                    narration_value = str(narration_permission).lower()
+                    if narration_value in {
+                        "hidden",
+                        "forbidden",
+                        "never",
+                        "private",
+                        "director_only",
+                    }:
+                        return False
+
+                return True
+
+            safe_world_entries = [
+                entry
+                for entry in candidate_world_entries
+                if is_safe_public_entry(entry)
+            ]
+            LOGGER.debug(f"[{state.run_id}] Filtered {len(safe_world_entries)} public-safe world entries")
+
+            if state.user_input:
+                recall_query = f"{state.director_output.scene_focus}\n{state.user_input}"
+            elif last_records:
+                recall_query = f"{state.director_output.scene_focus}\n{last_records[0].narration}"
+            else:
+                recall_query = state.director_output.scene_focus
+
+            recalled_entries = await recaller.recall(
+                query=recall_query,
+                entries=safe_world_entries,
+                language=state.simulation.language,
+            )
+            LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_entries)} world entries for briefing")
+
+            result = await memory_agent.build_briefings(
+                simulation=state.simulation,
+                state=state.state,
+                current_location=current_location,
+                characters=active_characters,
+                tasks=public_tasks,
+                world_entries=recalled_entries,
+                director_output=state.director_output,
+                factions=public_factions,
+                faction_relationships=public_faction_relationships,
+                pending_generated_proposals=state.generated_proposals,
+                user_input=state.user_input,
+                last_narration=last_records[0].narration if last_records else None,
+                previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
+            )
+            LOGGER.info(f"[{state.run_id}] Built {len(result.briefings)} character briefings")
+
             return {
-                "briefing_output": BriefingOutput(
-                    briefings=[],
-                    notes="No active characters selected by Director.",
-                ),
+                "briefing_output": result,
             }
-
-        public_factions, public_faction_relationships = await self._load_faction_context(
-            simulation_id=state.simulation_id,
-            character_ids=active_character_ids,
-            include_private=False,
-        )
-
-        public_tasks = await self._db.task.list(
-            character_ids=[character.id for character in active_characters],
-            private=False,
-        )
-
-        last_records = await self._db.record.get_last_records(
-            simulation_id=state.simulation_id,
-        )
-
-        candidate_world_entries = await self._db.entry.list(
-            simulation_id=state.simulation_id,
-            search_scope=[0] + [character.id for character in active_characters],
-        )
-
-        def is_safe_public_entry(entry: WorldEntry) -> bool:
-            """
-            Defensive local filter for the public briefing layer.
-
-            This does not replace your database visibility model; it prevents accidental
-            leakage if entry.list returns scoped private entries together with public ones.
-            Adjust allowed visibility/narration values to match your exact enum names.
-            """
-            visibility = getattr(entry, "visibility", None)
-            narration_permission = getattr(entry, "narration_permission", None)
-            private = getattr(entry, "private", False)
-
-            if private:
-                return False
-
-            if visibility is not None:
-                visibility_value = str(visibility).lower()
-                if visibility_value in {
-                    "hidden",
-                    "secret",
-                    "private",
-                    "unknown",
-                    "director_only",
-                }:
-                    return False
-
-            if narration_permission is not None:
-                narration_value = str(narration_permission).lower()
-                if narration_value in {
-                    "hidden",
-                    "forbidden",
-                    "never",
-                    "private",
-                    "director_only",
-                }:
-                    return False
-
-            return True
-
-        safe_world_entries = [
-            entry
-            for entry in candidate_world_entries
-            if is_safe_public_entry(entry)
-        ]
-
-        if state.user_input:
-            recall_query = f"{state.director_output.scene_focus}\n{state.user_input}"
-        elif last_records:
-            recall_query = f"{state.director_output.scene_focus}\n{last_records[0].narration}"
-        else:
-            recall_query = state.director_output.scene_focus
-
-        recalled_entries = await recaller.recall(
-            query=recall_query,
-            entries=safe_world_entries,
-            language=state.simulation.language,
-        )
-
-        result = await memory_agent.build_briefings(
-            simulation=state.simulation,
-            state=state.state,
-            current_location=current_location,
-            characters=active_characters,
-            tasks=public_tasks,
-            world_entries=recalled_entries,
-            director_output=state.director_output,
-            factions=public_factions,
-            faction_relationships=public_faction_relationships,
-            pending_generated_proposals=state.generated_proposals,
-            user_input=state.user_input,
-            last_narration=last_records[0].narration if last_records else None,
-            previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
-        )
-
-        return {
-            "briefing_output": result,
-        }
+        except Exception as e:
+            LOGGER.error(f"[{state.run_id}] memory_briefing failed: {e}", exc_info=True)
+            raise
 
     async def memory_summary(self, state: TurnGeneratorState):
         try:
@@ -2856,6 +2935,14 @@ class TurnGenerator:
             raise
 
     async def character_action(self, state: CharacterActionState) -> dict:
+        briefing = getattr(state, "briefing", None)
+        briefing_character_id = getattr(briefing, "character_id", "unknown")
+        simulation_id = getattr(getattr(state, "simulation", None), "id", "unknown")
+        LOGGER.debug(
+            f"[character_action:{briefing_character_id}] Starting character_action "
+            f"for simulation_id={simulation_id}"
+        )
+
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -2866,6 +2953,7 @@ class TurnGenerator:
             profile=state.simulation.agent_preset.character,
             connection=state.connection_profiles.character,
         )
+        LOGGER.debug(f"[character_action:{briefing_character_id}] Initialized CharacterAgent")
 
         if state.connection_profiles.embedding is None:
             raise RuntimeError("Embedding service connection profile not loaded")
@@ -2878,10 +2966,12 @@ class TurnGenerator:
         recaller = WorldEntryRecaller(
             embedding_service=embedding_service,
         )
+        LOGGER.debug(f"[character_action:{briefing_character_id}] Initialized EmbeddingService and WorldEntryRecaller")
 
         character = await self._db.character.get(state.briefing.character_id)
         if not character:
             raise ValueError(f"Character {state.briefing.character_id} not found")
+        LOGGER.debug(f"[character_action:{character.id}] Loaded character {character.name!r}")
 
         if character.user_controlled and not state.simulation.act_for_user:
             raise RuntimeError(
@@ -2895,6 +2985,10 @@ class TurnGenerator:
         present_characters = await self._db.character.list(
             simulation_id=state.simulation.id,
             location=character.location,
+        )
+        LOGGER.debug(
+            f"[character_action:{character.id}] Loaded current location and "
+            f"{len(present_characters)} present characters"
         )
 
         visible_characters = [
@@ -2919,6 +3013,7 @@ class TurnGenerator:
             for task in candidate_tasks
             if character.id in task.character_ids
         ]
+        LOGGER.debug(f"[character_action:{character.id}] Loaded {len(tasks)} character tasks")
 
         # Character agents may receive:
         # - public/global entries, scope [0];
@@ -2949,6 +3044,10 @@ class TurnGenerator:
             for entry in candidate_world_entries
             if entry_visible_to_character(entry, character.id)
         ]
+        LOGGER.debug(
+            f"[character_action:{character.id}] Loaded {len(candidate_world_entries)} candidate "
+            f"world entries, {len(safe_candidate_world_entries)} visible"
+        )
 
         recall_parts = [
             state.briefing.scene_context,
@@ -2986,6 +3085,7 @@ class TurnGenerator:
             entries=safe_candidate_world_entries,
             language=state.simulation.language,
         )
+        LOGGER.debug(f"[character_action:{character.id}] Recalled {len(recalled_world_entries)} world entries")
 
         # Preserve any public world entries already selected by Memory, but only
         # if they are still visible to this character. This avoids losing useful
@@ -3003,6 +3103,7 @@ class TurnGenerator:
                 merged_world_entries_by_id[entry.id] = entry
 
         world_entries = list(merged_world_entries_by_id.values())
+        LOGGER.debug(f"[character_action:{character.id}] Using {len(world_entries)} merged world entries")
 
         # Inventory/equipment are scoped to the acting character only.
         inventory = await self._db.item.list(
@@ -3012,12 +3113,20 @@ class TurnGenerator:
         equipments = await self._db.equipment.list(
             character_id=character.id,
         )
+        LOGGER.debug(
+            f"[character_action:{character.id}] Loaded {len(inventory)} inventory items "
+            f"and {len(equipments)} equipment entries"
+        )
 
         factions, faction_relationships = await self._load_character_faction_context(
             simulation_id=state.simulation.id,
             acting_character_id=character.id,
             visible_character_ids=visible_character_ids,
             item_ids=[item.id for item in inventory],
+        )
+        LOGGER.debug(
+            f"[character_action:{character.id}] Loaded {len(factions)} factions and "
+            f"{len(faction_relationships)} faction relationships"
         )
 
         last_records = await self._db.record.get_last_records(
@@ -3041,6 +3150,7 @@ class TurnGenerator:
             last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
+        LOGGER.debug(f"[character_action:{character.id}] CharacterAgent generated action output")
 
         result = self._normalise_character_action_output(
             result=result,
@@ -3049,12 +3159,24 @@ class TurnGenerator:
             current_location=current_location,
             inventory=inventory,
         )
+        LOGGER.info(
+            f"[character_action:{character.id}] Generated normalised action "
+            f"type={result.action_type!r}"
+        )
 
         return {
             "character_action_outputs": [result],
         }
 
     async def character_reaction(self, state: CharacterReactionState) -> dict:
+        reaction_context = getattr(state, "reaction_context", None)
+        reaction_character_id = getattr(reaction_context, "character_id", "unknown")
+        simulation_id = getattr(getattr(state, "simulation", None), "id", "unknown")
+        LOGGER.debug(
+            f"[character_reaction:{reaction_character_id}] Starting character_reaction "
+            f"for simulation_id={simulation_id}"
+        )
+
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -3065,6 +3187,7 @@ class TurnGenerator:
             raise RuntimeError("Embedding service connection profile not loaded")
 
         if not state.reaction_context.failure_record.retry_allowed:
+            LOGGER.info(f"[character_reaction:{reaction_character_id}] Reaction retry is not allowed")
             return {
                 "character_reaction_outputs": []
             }
@@ -3073,6 +3196,7 @@ class TurnGenerator:
             profile=state.simulation.agent_preset.character,
             connection=state.connection_profiles.character,
         )
+        LOGGER.debug(f"[character_reaction:{reaction_character_id}] Initialized CharacterAgent")
 
         embedding_service = EmbeddingService(
             profile=state.simulation.embedding_profile,
@@ -3082,10 +3206,12 @@ class TurnGenerator:
         recaller = WorldEntryRecaller(
             embedding_service=embedding_service,
         )
+        LOGGER.debug(f"[character_reaction:{reaction_character_id}] Initialized EmbeddingService and WorldEntryRecaller")
 
         character = await self._db.character.get(state.reaction_context.character_id)
         if not character:
             raise ValueError(f"Character {state.reaction_context.character_id} not found")
+        LOGGER.debug(f"[character_reaction:{character.id}] Loaded character {character.name!r}")
 
         if character.user_controlled and not state.simulation.act_for_user:
             raise RuntimeError(
@@ -3099,6 +3225,10 @@ class TurnGenerator:
         present_characters = await self._db.character.list(
             simulation_id=state.simulation.id,
             location=character.location,
+        )
+        LOGGER.debug(
+            f"[character_reaction:{character.id}] Loaded current location and "
+            f"{len(present_characters)} present characters"
         )
 
         visible_characters = [
@@ -3123,6 +3253,7 @@ class TurnGenerator:
             for task in candidate_tasks
             if character.id in task.character_ids
         ]
+        LOGGER.debug(f"[character_reaction:{character.id}] Loaded {len(tasks)} character tasks")
 
         # Character reaction must not see GM-only entries or other-character-only entries.
         candidate_world_entries = await self._db.entry.list(
@@ -3149,6 +3280,10 @@ class TurnGenerator:
             for entry in candidate_world_entries
             if entry_visible_to_character(entry, character.id)
         ]
+        LOGGER.debug(
+            f"[character_reaction:{character.id}] Loaded {len(candidate_world_entries)} candidate "
+            f"world entries, {len(safe_candidate_world_entries)} visible"
+        )
 
         recall_query = self._build_character_reaction_recall_query(
             state=state,
@@ -3162,6 +3297,7 @@ class TurnGenerator:
             entries=safe_candidate_world_entries,
             language=state.simulation.language,
         )
+        LOGGER.debug(f"[character_reaction:{character.id}] Recalled {len(recalled_world_entries)} world entries")
 
         # Preserve any explicitly referenced briefing/reaction entries, but only if visible to this character.
         context_world_entries: list[WorldEntry] = []
@@ -3177,6 +3313,7 @@ class TurnGenerator:
                 world_entries_by_id[entry.id] = entry
 
         world_entries = list(world_entries_by_id.values())
+        LOGGER.debug(f"[character_reaction:{character.id}] Using {len(world_entries)} merged world entries")
 
         inventory = await self._db.item.list(
             character_id=character.id,
@@ -3185,12 +3322,20 @@ class TurnGenerator:
         equipments = await self._db.equipment.list(
             character_id=character.id,
         )
+        LOGGER.debug(
+            f"[character_reaction:{character.id}] Loaded {len(inventory)} inventory items "
+            f"and {len(equipments)} equipment entries"
+        )
 
         factions, faction_relationships = await self._load_character_faction_context(
             simulation_id=state.simulation.id,
             acting_character_id=character.id,
             visible_character_ids=visible_character_ids,
             item_ids=[item.id for item in inventory],
+        )
+        LOGGER.debug(
+            f"[character_reaction:{character.id}] Loaded {len(factions)} factions and "
+            f"{len(faction_relationships)} faction relationships"
         )
 
         last_records = await self._db.record.get_last_records(
@@ -3214,6 +3359,7 @@ class TurnGenerator:
             last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
+        LOGGER.debug(f"[character_reaction:{character.id}] CharacterAgent generated reaction output")
 
         result = self._normalise_character_reaction_output(
             result=result,
@@ -3224,12 +3370,18 @@ class TurnGenerator:
             equipments=equipments,
             reaction_context=state.reaction_context,
         )
+        LOGGER.info(
+            f"[character_reaction:{character.id}] Generated normalised reaction "
+            f"type={result.action_type!r}"
+        )
 
         return {
             "character_reaction_outputs": [result]
         }
 
     async def resolve_character_actions(self, state: TurnGeneratorState) -> dict:
+        LOGGER.debug(f"[{state.run_id}] Starting resolve_character_actions for simulation_id={state.simulation_id}")
+
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -3246,6 +3398,7 @@ class TurnGenerator:
             profile=state.simulation.agent_preset.resolver,
             connection=state.connection_profiles.resolver,
         )
+        LOGGER.debug(f"[{state.run_id}] Initialized ResolverAgent")
 
         if state.connection_profiles.embedding is None:
             raise RuntimeError("Embedding service connection profile not loaded")
@@ -3258,6 +3411,7 @@ class TurnGenerator:
         recaller = WorldEntryRecaller(
             embedding_service=embedding_service,
         )
+        LOGGER.debug(f"[{state.run_id}] Initialized EmbeddingService and WorldEntryRecaller")
 
         current_location = await self._db.location.get(state.state.scene)
         if not current_location:
@@ -3268,9 +3422,11 @@ class TurnGenerator:
             simulation_id=state.simulation.id,
             location=state.state.scene,
         )
+        LOGGER.debug(f"[{state.run_id}] Loaded {len(present_characters)} present characters for action resolving")
 
         present_character_ids = [character.id for character in present_characters]
         acting_character_ids = [action.character_id for action in state.character_action_outputs]
+        LOGGER.debug(f"[{state.run_id}] Resolving {len(acting_character_ids)} character actions")
 
         acting_character_id_set = set(acting_character_ids)
         present_character_id_set = set(present_character_ids)
@@ -3283,6 +3439,7 @@ class TurnGenerator:
             )
             for action in state.character_action_outputs
         ]
+        LOGGER.debug(f"[{state.run_id}] Normalised {len(character_actions)} character actions for resolver input")
 
         # Inventory/equipment for all present characters, because:
         # - actions may target non-acting characters;
@@ -3301,6 +3458,10 @@ class TurnGenerator:
                 items=items,
                 equipments=equipments,
             )
+        LOGGER.debug(
+            f"[{state.run_id}] Loaded resolver inventory for {len(inventory)} characters "
+            f"with {len(all_item_ids)} item ids"
+        )
 
         # Resolver is system-side / rule-engine-side, so it may see private and GM-only context.
         # Use recall to keep the prompt bounded, but include [-1] so hidden truth can be recalled.
@@ -3308,6 +3469,7 @@ class TurnGenerator:
             simulation_id=state.simulation.id,
             search_scope=[-1, 0] + present_character_ids,
         )
+        LOGGER.debug(f"[{state.run_id}] Loaded {len(candidate_world_entries)} candidate resolver world entries")
 
         resolver_recall_query = self._build_resolver_recall_query(
             state=state,
@@ -3320,6 +3482,7 @@ class TurnGenerator:
             entries=candidate_world_entries,
             language=state.simulation.language,
         )
+        LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_world_entries)} world entries for action resolving")
 
         # Add briefing entries back in if they are available; these are usually public-safe,
         # but Resolver can receive them anyway.
@@ -3339,6 +3502,7 @@ class TurnGenerator:
             world_entries_by_id[entry.id] = entry
 
         resolver_world_entries = list(world_entries_by_id.values())
+        LOGGER.debug(f"[{state.run_id}] Using {len(resolver_world_entries)} resolver world entries")
 
         # For OOC/context-leak detection: what each actor could legitimately know.
         actor_knowledge_index = self._build_actor_knowledge_index(
@@ -3353,12 +3517,17 @@ class TurnGenerator:
             inventory=inventory,
             actor_knowledge_index=actor_knowledge_index,
         )
+        LOGGER.debug(f"[{state.run_id}] Built {len(action_validation_reports)} action validation reports")
 
         factions, faction_relationships = await self._load_faction_context(
             simulation_id=state.simulation.id,
             character_ids=present_character_ids,
             item_ids=all_item_ids,
             include_private=True,
+        )
+        LOGGER.debug(
+            f"[{state.run_id}] Loaded {len(factions)} factions and "
+            f"{len(faction_relationships)} faction relationships for action resolving"
         )
 
         last_records = await self._db.record.get_last_records(
@@ -3381,11 +3550,16 @@ class TurnGenerator:
             last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
+        LOGGER.debug(f"[{state.run_id}] ResolverAgent returned character action resolution")
 
         result = self._normalise_resolver_output(
             result=result,
             character_actions=character_actions,
             present_character_ids=present_character_id_set,
+        )
+        LOGGER.info(
+            f"[{state.run_id}] Resolved {len(result.resolved_actions)} character actions; "
+            f"accepted={result.accepted}"
         )
 
         return {
@@ -3393,6 +3567,8 @@ class TurnGenerator:
         }
 
     async def resolve_character_reactions(self, state: TurnGeneratorState) -> dict:
+        LOGGER.debug(f"[{state.run_id}] Starting resolve_character_reactions for simulation_id={state.simulation_id}")
+
         if state.simulation is None or state.state is None:
             raise RuntimeError("Simulation is not loaded")
 
@@ -3412,6 +3588,7 @@ class TurnGenerator:
             profile=state.simulation.agent_preset.resolver,
             connection=state.connection_profiles.resolver,
         )
+        LOGGER.debug(f"[{state.run_id}] Initialized ResolverAgent")
 
         embedding_service = EmbeddingService(
             profile=state.simulation.embedding_profile,
@@ -3421,6 +3598,7 @@ class TurnGenerator:
         recaller = WorldEntryRecaller(
             embedding_service=embedding_service,
         )
+        LOGGER.debug(f"[{state.run_id}] Initialized EmbeddingService and WorldEntryRecaller")
 
         current_location = await self._db.location.get(state.state.scene)
         if not current_location:
@@ -3432,6 +3610,7 @@ class TurnGenerator:
             simulation_id=state.simulation.id,
             location=state.state.scene,
         )
+        LOGGER.debug(f"[{state.run_id}] Loaded {len(present_characters)} present characters for reaction resolving")
 
         present_character_ids = [character.id for character in present_characters]
         present_character_id_set = set(present_character_ids)
@@ -3440,8 +3619,10 @@ class TurnGenerator:
             self._normalise_action_for_resolver_input(action)
             for action in state.character_reaction_outputs
         ]
+        LOGGER.debug(f"[{state.run_id}] Normalised {len(reaction_actions)} character reactions for resolver input")
 
         reaction_actor_ids = [action.character_id for action in reaction_actions]
+        LOGGER.debug(f"[{state.run_id}] Resolving reactions for {len(reaction_actor_ids)} actors")
 
         inventory: dict[int, CharacterInventory] = {}
         all_item_ids: list[int] = []
@@ -3456,12 +3637,17 @@ class TurnGenerator:
                 items=items,
                 equipments=equipments,
             )
+        LOGGER.debug(
+            f"[{state.run_id}] Loaded reaction resolver inventory for {len(inventory)} characters "
+            f"with {len(all_item_ids)} item ids"
+        )
 
         # Second-pass resolver is system-side, so it may see hidden GM-only entries.
         candidate_world_entries = await self._db.entry.list(
             simulation_id=state.simulation.id,
             search_scope=[-1, 0] + present_character_ids,
         )
+        LOGGER.debug(f"[{state.run_id}] Loaded {len(candidate_world_entries)} candidate reaction world entries")
 
         resolver_recall_query = self._build_reaction_resolver_recall_query(
             state=state,
@@ -3474,6 +3660,7 @@ class TurnGenerator:
             entries=candidate_world_entries,
             language=state.simulation.language,
         )
+        LOGGER.debug(f"[{state.run_id}] Recalled {len(recalled_world_entries)} world entries for reaction resolving")
 
         # Add entries referenced by the previous normal resolver's originating briefings if available.
         # These are not enough by themselves, but useful to preserve context.
@@ -3494,6 +3681,7 @@ class TurnGenerator:
             world_entries_by_id[entry.id] = entry
 
         resolver_world_entries = list(world_entries_by_id.values())
+        LOGGER.debug(f"[{state.run_id}] Using {len(resolver_world_entries)} reaction resolver world entries")
 
         actor_knowledge_index = self._build_actor_knowledge_index(
             acting_character_ids=reaction_actor_ids,
@@ -3508,12 +3696,17 @@ class TurnGenerator:
             actor_knowledge_index=actor_knowledge_index,
             previous_resolver_output=state.resolver_output,
         )
+        LOGGER.debug(f"[{state.run_id}] Built {len(action_validation_reports)} reaction validation reports")
 
         factions, faction_relationships = await self._load_faction_context(
             simulation_id=state.simulation.id,
             character_ids=present_character_ids,
             item_ids=all_item_ids,
             include_private=True,
+        )
+        LOGGER.debug(
+            f"[{state.run_id}] Loaded {len(factions)} factions and "
+            f"{len(faction_relationships)} faction relationships for reaction resolving"
         )
 
         last_records = await self._db.record.get_last_records(
@@ -3537,11 +3730,16 @@ class TurnGenerator:
             last_narration=last_records[0].narration if last_records else None,
             previous_resolver_notes=last_records[0].resolver_output.next_round_note if last_records else None,
         )
+        LOGGER.debug(f"[{state.run_id}] ResolverAgent returned character reaction resolution")
 
         result = self._normalise_reaction_resolver_output(
             result=result,
             reaction_actions=reaction_actions,
             present_character_ids=present_character_id_set,
+        )
+        LOGGER.info(
+            f"[{state.run_id}] Resolved {len(result.resolved_actions)} character reactions; "
+            f"accepted={result.accepted}"
         )
 
         return {

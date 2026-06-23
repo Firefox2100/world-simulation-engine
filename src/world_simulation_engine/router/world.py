@@ -4,9 +4,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import FactionRelationshipEntity, WorldSourceType
+from world_simulation_engine.component import WorldEntryRecaller
 from world_simulation_engine.model import Simulation
 from world_simulation_engine.model.world import World, WorldCreate
-from world_simulation_engine.service import FormatNormaliser
+from world_simulation_engine.service import EmbeddingService, FormatNormaliser
 from .utils import db_dep, storage_dep, st_importer_dep
 
 
@@ -47,6 +48,50 @@ class WorldListEntry(BaseModel):
     )
 
 
+async def _generate_world_entry_embeddings(
+        world: World | WorldCreate,
+        db: db_dep,
+) -> World | WorldCreate:
+    if not world.world_entries:
+        return world
+
+    if not WorldEntryRecaller.entries_need_embeddings(world.world_entries):
+        return world.model_copy(
+            update={
+                "world_entries": [
+                    WorldEntryRecaller.clear_unused_embeddings(entry)
+                    for entry in world.world_entries
+                ],
+            },
+        )
+
+    if world.embedding_profile is None or world.embedding_profile.connection is None:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            detail="World entries using semantic or keyword recall require an embedding profile connection.",
+        )
+
+    connection = await db.connection.llm.get(world.embedding_profile.connection)
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Embedding connection {world.embedding_profile.connection} not found.",
+        )
+
+    recaller = WorldEntryRecaller(
+        embedding_service=EmbeddingService(
+            profile=world.embedding_profile,
+            connection=connection,
+        ),
+    )
+
+    return world.model_copy(
+        update={
+            "world_entries": await recaller.generate_entries_embeddings(world.world_entries),
+        },
+    )
+
+
 @world_router.get("", response_model=list[WorldListEntry])
 async def list_worlds(db: db_dep,
                       limit: int | None = Query(None, ge=1),
@@ -70,6 +115,7 @@ async def list_worlds(db: db_dep,
 async def create_world(world_create: WorldCreate,
                        db: db_dep,
                        ):
+    world_create = await _generate_world_entry_embeddings(world_create, db)
     result = await db.world.create(world_create)
 
     return result
@@ -95,6 +141,22 @@ async def update_world(world_id: int,
                        body: dict,
                        db: db_dep,
                        ):
+    current_world = await db.world.get(world_id)
+    if not current_world:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World with ID {world_id} not found",
+        )
+
+    merged_world = World.model_validate(
+        {
+            **current_world.model_dump(mode="json"),
+            **body,
+        }
+    )
+    merged_world = await _generate_world_entry_embeddings(merged_world, db)
+    body = merged_world.model_dump(mode="json", exclude={"id"})
+
     await db.world.update(world_id, body)
 
     current_world = await db.world.get(world_id)
