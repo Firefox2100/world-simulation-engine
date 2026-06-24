@@ -14,13 +14,17 @@ class FakeStructuredListChatModel(FakeMessagesListChatModel):
     ) -> Runnable[LanguageModelInput, dict[str, Any] | BaseModel]:
         def invoke(_input):
             result = self.invoke(_input)
-
             if isinstance(result, schema):
-                return result
+                output = result
+            else:
+                output = schema.model_validate_json(result.content)
 
-            if hasattr(schema, "model_validate_json"):  # Pydantic v2
-                return schema.model_validate_json(result.content)
+            if include_raw:
+                return {
+                    "raw": output.model_dump_json(),
+                    "parsed": output,
+                }
 
-            return result
+            return output
 
         return RunnableLambda(invoke)

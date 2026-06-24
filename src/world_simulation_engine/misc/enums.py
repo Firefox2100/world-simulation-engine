@@ -97,6 +97,7 @@ class TaskStatus(StrEnum):
 
 class TurnType(StrEnum):
     USER_INPUT = "user_input"
+    USER_INPUT_REJECTED = "user_input_rejected"
     AI_RESPONSE = "ai_response"
     AI_CONTINUE = "ai_continue"
     AI_WAIT = "ai_wait"

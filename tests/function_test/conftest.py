@@ -1,35 +1,12 @@
-from typing import Any
 import pytest
 from unittest.mock import patch, PropertyMock
 from fastapi.testclient import TestClient
-from langchain_core.language_models import FakeMessagesListChatModel, LanguageModelInput
-from langchain_core.runnables import RunnableLambda, Runnable
-from pydantic import BaseModel
+from langchain_core.embeddings import DeterministicFakeEmbedding
 
 from world_simulation_engine.service.world_agent.world_agent import WorldAgent
+from world_simulation_engine.service.embedding import EmbeddingService
 from world_simulation_engine.app import create_app
-
-
-class FakeStructuredListChatModel(FakeMessagesListChatModel):
-    def with_structured_output(
-        self,
-        schema: dict[str, Any] | type,
-        *,
-        include_raw: bool = False,
-        **kwargs: Any,
-    ) -> Runnable[LanguageModelInput, dict[str, Any] | BaseModel]:
-        def invoke(_input):
-            result = self.invoke(_input)
-
-            if isinstance(result, schema):
-                return result
-
-            if hasattr(schema, "model_validate_json"):  # Pydantic v2
-                return schema.model_validate_json(result.content)
-
-            return result
-
-        return RunnableLambda(invoke)
+from .utils import FakeStructuredListChatModel
 
 
 @pytest.fixture
@@ -45,10 +22,14 @@ def fake_model():
 @pytest.fixture
 def mock_app():
     with patch("world_simulation_engine.app.CONFIG") as mock_config:
-        mock_config.database_path = ":memory:"
+        fake_embed = DeterministicFakeEmbedding(size=1024)
 
-        app = create_app()
-        yield app
+        with patch.object(EmbeddingService, "model", new_callable=PropertyMock) as mock_embed:
+            mock_embed.return_value = fake_embed
+            mock_config.database_path = ":memory:"
+
+            app = create_app()
+            yield app
 
 
 @pytest.fixture

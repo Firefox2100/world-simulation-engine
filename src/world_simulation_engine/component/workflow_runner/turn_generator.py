@@ -4818,9 +4818,31 @@ class TurnGenerator:
                 LOGGER.debug(f"[{run_id}] Created initial turn record")
 
                 if not payload.get("director_output"):
-                    # TODO: Director is not run or not succeeded
-                    LOGGER.error(f"[{run_id}] Director output not found - not implemented")
-                    raise NotImplementedError
+                    # User action resolution failed
+                    LOGGER.info(f"[{run_id}] Director not run, user inputted invalid actions")
+                    if not payload.get("narration"):
+                        msg = f"Narration is not generated in run {payload['run_id']}"
+                        LOGGER.error(f"[{run_id}] {msg}")
+                        raise ValueError(msg)
+
+                    new_turns.append(
+                        TurnRecordCreate(
+                            simulation_id=payload["simulation_id"],
+                            turn_number=previous_turn_number + 2,
+                            type=TurnType.USER_INPUT_REJECTED,
+                            director_output=None,
+                            proposals=None,
+                            briefing_output=None,
+                            character_actions=[],
+                            character_reactions=[],
+                            resolver_output=None,
+                            reaction_resolving=None,
+                            committer_output=None,
+                            narration=payload["narration"],
+                            summary_output=None,
+                        )
+                    )
+                    LOGGER.debug(f"[{run_id}] Added rejected turn record")
                 elif not payload.get("committer_output"):
                     # Committer not run, waiting for user input
                     LOGGER.info(f"[{run_id}] Committer not run, workflow waiting for user input")

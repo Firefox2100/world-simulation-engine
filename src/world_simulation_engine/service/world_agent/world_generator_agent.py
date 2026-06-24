@@ -185,13 +185,16 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             data=data,
         )
 
-        model = self.model.with_structured_output(ProposedLocation)
-
         result = cast(
             ProposedLocation,
-            await model.ainvoke(
-                messages,
-                config={"run_name": "generate_location"},
+            await self._invoke_structured_with_repair(
+                output_model=ProposedLocation,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid ProposedLocation. "
+                ),
+                run_name="generate_location",
+                max_attempts=2,
             ),
         )
 
@@ -234,13 +237,16 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             data=data,
         )
 
-        model = self.model.with_structured_output(ProposedItem)
-
         result = cast(
             ProposedItem,
-            await model.ainvoke(
-                messages,
-                config={"run_name": "generate_item"},
+            await self._invoke_structured_with_repair(
+                output_model=ProposedItem,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid ProposedItem."
+                ),
+                run_name="generate_item",
+                max_attempts=2,
             ),
         )
 
@@ -283,13 +289,16 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             data=data,
         )
 
-        model = self.model.with_structured_output(ProposedEquipment)
-
         result = cast(
             ProposedEquipment,
-            await model.ainvoke(
-                messages,
-                config={"run_name": "generate_equipment"},
+            await self._invoke_structured_with_repair(
+                output_model=ProposedEquipment,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid ProposedEquipment."
+                ),
+                run_name="generate_equipment",
+                max_attempts=2,
             ),
         )
 
@@ -333,13 +342,16 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
             data=data,
         )
 
-        model = self.model.with_structured_output(self._patch_entity_model(entity_types))
-
         result = cast(
             ProposedEntity,
-            await model.ainvoke(
-                messages,
-                config={"run_name": "generate_entity"},
+            await self._invoke_structured_with_repair(
+                output_model=ProposedEntity,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid ProposedEntity."
+                ),
+                run_name="generate_entity",
+                max_attempts=2,
             ),
         )
 
@@ -386,9 +398,14 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
 
         result = cast(
             ProposedWorldEntry,
-            await model.ainvoke(
-                messages,
-                config={"run_name": "generate_world_entry"},
+            await self._invoke_structured_with_repair(
+                output_model=ProposedWorldEntry,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid ProposedWorldEntry."
+                ),
+                run_name="generate_world_entry",
+                max_attempts=2,
             ),
         )
 
@@ -436,9 +453,14 @@ class WorldGeneratorAgent(WorldAgent[WorldGeneratorAgentProfile]):
 
         result = cast(
             ProposedGenerationPackage,
-            await model.ainvoke(
-                messages,
-                config={"run_name": "generate_generation_package"},
+            await self._invoke_structured_with_repair(
+                output_model=ProposedGenerationPackage,
+                messages=messages,
+                repair_instruction=(
+                    "You must return a valid ProposedGenerationPackage."
+                ),
+                run_name="generate_generation_package",
+                max_attempts=2,
             ),
         )
 
