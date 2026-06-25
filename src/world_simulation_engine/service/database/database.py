@@ -9,6 +9,7 @@ from .character import CharacterRepository
 from .connection import ConnectionRepository
 from .location import LocationRepository
 from .turn_record import TurnRecordRepository
+from .image_record import ImageRecordRepository
 from .inventory import ItemRepository, EquipmentRepository
 from .world_entry import WorldEntryRepository
 from .task import TaskRepository
@@ -99,3 +100,7 @@ class DatabaseService:
     @property
     def world(self) -> WorldRepository:
         return WorldRepository(self._session_factory)
+
+    @property
+    def image(self) -> ImageRecordRepository:
+        return ImageRecordRepository(self._session_factory)

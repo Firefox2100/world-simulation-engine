@@ -98,15 +98,30 @@ class ImageGenerationPromptTemplate(BaseModel):
     )
 
 
-class CharacterGeneratorProfile(ImageGeneratorProfile):
-    canonical_prompts: ImageGenerationPromptTemplate = Field(
+class TextImageGeneratorProfile(ImageGeneratorProfile):
+    canonical_character_prompts: ImageGenerationPromptTemplate = Field(
         ...,
         description="The prompt templates to use when generating canonical character images.",
+    )
+    current_character_prompts: ImageGenerationPromptTemplate = Field(
+        ...,
+        description="The prompt templates to use when generating current character images.",
+    )
+
+
+class ReferencedImageGenerationProfile(ImageGeneratorProfile):
+    current_character_prompts: ImageGenerationPromptTemplate = Field(
+        ...,
+        description="The prompt templates to use when generating current character images.",
     )
 
 
 class ImageGenerationPreset(BaseModel):
-    character: CharacterGeneratorProfile = Field(
+    text: TextImageGeneratorProfile = Field(
         ...,
-        description="The image generation configuration profiles for character images.",
+        description="The image generation configuration profiles for basic text to images.",
+    )
+    referenced: ReferencedImageGenerationProfile = Field(
+        ...,
+        description="The image generation configuration profiles for generating an image with reference images.",
     )

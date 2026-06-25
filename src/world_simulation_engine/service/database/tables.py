@@ -1,6 +1,7 @@
 from typing import Any
 import numpy as np
-from sqlalchemy import ForeignKey, String, Text, Integer, Float, JSON, LargeBinary, Boolean, TypeDecorator
+from sqlalchemy import ForeignKey, String, Text, Integer, Float, JSON, LargeBinary, Boolean, TypeDecorator, \
+    UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -225,6 +226,7 @@ class WorldOrm(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     agent_preset: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    image_generation_preset: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     data_preset: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     embedding_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     language: Mapped[str | None] = mapped_column(String(8), nullable=True)
@@ -257,3 +259,21 @@ class WorldEntryOrm(Base):
     chained_ids: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
     semantic_instruction: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding: Mapped[np.ndarray | None] = mapped_column(NumpyArray(dtype=np.float32), nullable=True)
+
+
+class ImageRecordOrm(Base):
+    __tablename__ = "image_record"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "simulation_id", "target", "category", "target_id",
+            name="uq_identifier_parts"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[int] = mapped_column(Integer, ForeignKey("simulation.id", ondelete="CASCADE"), nullable=False)
+    target: Mapped[str] = mapped_column(String(32), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    spec: Mapped[dict] = mapped_column(JSON, nullable=False)

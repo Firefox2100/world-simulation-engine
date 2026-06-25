@@ -8,7 +8,7 @@ import {
     getSimulationCoverUrl,
     sendSimulationInput,
 } from "@/api/simulations";
-import placeholderImage from "@/assets/placeholder.png";
+import placeholderImage from "@/assets/placeholder/world.svg";
 
 const simulationLimit = 24;
 const recordLimit = 50;

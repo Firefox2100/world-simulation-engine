@@ -9,9 +9,9 @@ from .connection_profile import LlmConnectionProfile, ImageGenerationConnectionP
 from .data_preset import DataPreset, ModelAttribute, ModelStat
 from .embedding_profile import EmbeddingProfile
 from .faction import FactionRelationship, Faction
-from .image_generation import CanonicalCharacterVisualSpec, CurrentCharacterVisualSpec
+from .image_record import CanonicalCharacterVisualSpec, CurrentCharacterVisualSpec, ImageRecord
 from .image_generation_preset import ComfyUiBackendConfiguration, ImageBackendConfigurations, ImageGeneratorProfile, \
-    ImageGenerationPromptTemplate, CharacterGeneratorProfile, ImageGenerationPreset
+    ImageGenerationPromptTemplate, TextImageGeneratorProfile, ReferencedImageGenerationProfile, ImageGenerationPreset
 from .inventory import Item, Equipment, CharacterInventory
 from .location import Location, Entity
 from .prompt_message import PromptMessage

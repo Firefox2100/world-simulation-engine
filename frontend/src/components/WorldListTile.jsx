@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { getWorldCoverUrl } from "@/api/worlds";
-import placeholderImage from "@/assets/placeholder.png";
+import placeholderImage from "@/assets/placeholder/world.svg";
 import { WorldActionButton } from "@/components/WorldActionButton";
 
 export function WorldListTile({ world, onEdit, onDelete, onCreateSimulation }) {

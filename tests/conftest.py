@@ -11,8 +11,8 @@ from world_simulation_engine.model import LlmConnectionProfile, EmbeddingProfile
     CharacterAgentProfile, Simulation, AgentPreset, DataPreset, ModelAttribute, SimulationState, Character, \
     Faction, FactionRelationship, Item, Equipment, Location, Entity, WorldEntry, WorldEntryRecallKeyword, Task, \
     ResolverAgentProfile, CommitterAgentProfile, NarratorAgentProfile, ImageGenerationAgentProfile, \
-    CharacterInventory, ComfyUiBackendConfiguration, CharacterGeneratorProfile, ImageGenerationPreset, \
-    ImageGenerationConnectionProfile, ImageGenerationPromptTemplate
+    CharacterInventory, ComfyUiBackendConfiguration, TextImageGeneratorProfile, ReferencedImageGenerationProfile, \
+    ImageGenerationPreset, ImageGenerationConnectionProfile, ImageGenerationPromptTemplate
 from world_simulation_engine.model.world import WorldCreate
 from world_simulation_engine.model.connection_profile import LlmConnectionCreate
 from world_simulation_engine.service import DatabaseService
@@ -173,6 +173,11 @@ def mock_comfyui_workflow() -> dict:
             }
         }
     }
+
+
+@pytest.fixture
+def mock_comfyui_referenced_workflow() -> dict:
+    return {}
 
 
 @pytest.fixture
@@ -5071,82 +5076,72 @@ Field guidance:
                 content="""
 # Target Character
 
-ID: {{ character.id }}
-Name: {{ character.name }}
-Gender: {{ character.gender }}
-Age: {{ character.age }}
+ID: {{ data.character.id }}
+Name: {{ data.character.name }}
+Gender: {{ data.character.gender }}
+Age: {{ data.character.age }}
 
 Character description:
-{{ character.description }}
+{{ data.character.description }}
 
 Persistent appearance:
-{{ character.appearance }}
+{{ data.character.appearance }}
 
 Public current state:
-{{ character.public_state }}
+{{ data.character.public_state }}
 
-{% if include_private_state %}
 Private current state, only for subtle visual cues:
-{{ character.private_state }}
-{% endif %}
+{{ data.character.private_state }}
 
-{% if canonical_visual_spec %}
+# Current Location
+
+Location name: {{ data.location.scene }}
+Location visual description: {{ data.location.description }}
+
+{% if data.canonical_spec %}
 Canonical visual identity:
-{% for item in canonical_visual_spec.demographic_keywords %}
+{% for item in data.canonical_spec.demographic_keywords %}
 - {{ item }}
 {% endfor %}
-{% for item in canonical_visual_spec.face_keywords %}
+{% for item in data.canonical_spec.face_keywords %}
 - {{ item }}
 {% endfor %}
-{% for item in canonical_visual_spec.posture_keywords %}
+{% for item in data.canonical_spec.posture_keywords %}
 - {{ item }}
 {% endfor %}
-{% for item in canonical_visual_spec.expression_keywords %}
+{% for item in data.canonical_spec.expression_keywords %}
 - {{ item }}
 {% endfor %}
 {% endif %}
 
 # Visible Equipment
 
-{% if equipped_items %}
+{% if data.equipments %}
 The character is currently wearing or carrying the following visible equipment:
-{% for equipment in equipped_items %}
+{% for equipment in data.equipments %}
 - {{ equipment.name }}{% if equipment.quality %} ({{ equipment.quality }}){% endif %}: {{ equipment.description }}
 {% endfor %}
 {% else %}
 No visible equipment is specified.
 {% endif %}
 
-# Current Location
-
-{% if location_name %}
-Location name:
-{{ location_name }}
-{% endif %}
-
-{% if location_description %}
-Location visual description:
-{{ location_description }}
-{% else %}
-No specific location description is available.
-{% endif %}
-
+{% if data.actions %}
 # Current Character Action
 
-{% if current_action %}
 Resolved visible action for this character:
-{{ current_action }}
-{% else %}
-No specific character action is provided.
+
+{% for action in data.actions %}
+- {{ action.visible_result }}
+{% endfor %}
 {% endif %}
 
-{% if current_scene_summary %}
 Scene summary, for context only. Do not add other characters unless explicitly required:
-{{ current_scene_summary }}
-{% endif %}
 
-Preferred image format:
-{{ reference_format }}
+{{ data.state.state }}
+
+{% if data.reference_format %}
+Preferred image format: {{ data.reference_format.to_image_prompts() }}
+{% endif %} 
 """
             )
         ],
@@ -5154,10 +5149,10 @@ Preferred image format:
 
 
 @pytest.fixture
-def mock_character_generation_profile(mock_comfyui_workflow,
-                                      comfyui_checkpoint,
-                                      ):
-    return CharacterGeneratorProfile(
+def mock_text_image_generation_profile(mock_comfyui_workflow,
+                                       comfyui_checkpoint,
+                                       ):
+    return TextImageGeneratorProfile(
         backend_configuration=ComfyUiBackendConfiguration(
             connection=1,
             workflow=mock_comfyui_workflow,
@@ -5168,7 +5163,7 @@ def mock_character_generation_profile(mock_comfyui_workflow,
             latent_image_id="5",
             checkpoint=comfyui_checkpoint,
         ),
-        canonical_prompts=ImageGenerationPromptTemplate(
+        canonical_character_prompts=ImageGenerationPromptTemplate(
             positive="""
 {{ data.spec.must_include | join(", ") }},
 {{ data.spec.style_keywords | join(", ") }},
@@ -5195,6 +5190,123 @@ different face between views, cropped body, missing feet,
 bad hands, extra fingers, extra limbs, distorted anatomy,
 text, watermark, logo, blurry, low detail, noisy image
 """
+        ),
+        current_character_prompts=ImageGenerationPromptTemplate(
+            positive="""
+{{ data.spec.style_keywords | join(", ") }},
+current character state showcase,
+single target character,
+{{ data.spec.reference_phrase }},
+{{ data.spec.identity_keywords | join(", ") }},
+{{ data.spec.persistent_appearance_keywords | join(", ") }},
+wearing {{ data.spec.current_clothing_keywords | join(", ") }},
+visible equipment: {{ data.spec.visible_equipment_keywords | join(", ") }},
+held objects: {{ data.spec.held_object_keywords | join(", ") }},
+expression: {{ data.spec.expression_keywords | join(", ") }},
+pose: {{ data.spec.pose_keywords | join(", ") }},
+action: {{ data.spec.action_keywords | join(", ") }},
+subtle state cues: {{ data.spec.private_state_visual_cues | join(", ") }},
+background: {{ data.spec.location_background_keywords | join(", ") }},
+atmosphere: {{ data.spec.atmosphere_keywords | join(", ") }},
+lighting: {{ data.spec.lighting_keywords | join(", ") }},
+camera: {{ data.spec.camera_keywords | join(", ") }},
+composition: {{ data.spec.composition_keywords | join(", ") }},
+high detail, coherent design, consistent character identity
+""",
+            negative="""
+{{ data.spec.must_avoid | join(", ") }},
+multiple main characters,
+crowd scene,
+unrelated people,
+different character,
+wrong age,
+wrong gender,
+inconsistent face,
+inconsistent outfit,
+missing required equipment,
+invisible equipment shown as floating objects,
+literal text explanation,
+plot spoilers as symbols,
+excessive props,
+busy background,
+cropped head,
+cropped body,
+bad hands,
+extra fingers,
+extra limbs,
+distorted anatomy,
+blurry,
+low detail,
+watermark,
+logo,
+caption,
+speech bubble
+"""
+        )
+    )
+
+
+@pytest.fixture
+def mock_referenced_image_generation_profile(mock_comfyui_referenced_workflow,
+                                             comfyui_checkpoint,
+                                             ):
+    return ReferencedImageGenerationProfile(
+        backend_configuration=ComfyUiBackendConfiguration(
+            connection=1,
+            workflow=mock_comfyui_referenced_workflow,
+            checkpoint_loader_id="4",
+            positive_prompt_id="6",
+            negative_prompt_id="7",
+            k_sampler_id="3",
+            latent_image_id="5",
+            checkpoint=comfyui_checkpoint,
+        ),
+        current_character_prompts=ImageGenerationPromptTemplate(
+            positive="""
+{{ data.spec.style_keywords | join(", ") }},
+same character identity as reference image,
+preserve facial identity, age, gender, facial structure, and general bearing,
+current character state showcase,
+single target character,
+{{ data.spec.reference_phrase }},
+{{ data.spec.identity_keywords | join(", ") }},
+{{ data.spec.persistent_appearance_keywords | join(", ") }},
+wearing {{ data.spec.current_clothing_keywords | join(", ") }},
+visible equipment: {{ data.spec.visible_equipment_keywords | join(", ") }},
+held objects: {{ data.spec.held_object_keywords | join(", ") }},
+expression: {{ data.spec.expression_keywords | join(", ") }},
+pose: {{ data.spec.pose_keywords | join(", ") }},
+action: {{ data.spec.action_keywords | join(", ") }},
+background: {{ data.spec.location_background_keywords | join(", ") }},
+atmosphere: {{ data.spec.atmosphere_keywords | join(", ") }},
+lighting: {{ data.spec.lighting_keywords | join(", ") }},
+camera: {{ data.spec.camera_keywords | join(", ") }},
+composition: {{ data.spec.composition_keywords | join(", ") }},
+high detail, coherent design
+""",
+            negative="""
+{{ data.spec.must_avoid | join(", ") }},
+different person,
+identity drift,
+wrong age,
+wrong gender,
+different facial structure,
+inconsistent face,
+multiple main characters,
+crowd scene,
+unrelated people,
+missing required equipment,
+busy background,
+bad hands,
+extra fingers,
+extra limbs,
+distorted anatomy,
+text,
+watermark,
+logo,
+caption,
+speech bubble
+""",
         )
     )
 
@@ -5208,6 +5320,8 @@ def mock_simulation(mock_director_profile,
                     mock_narrator_agent_profile,
                     mock_world_generator_profile,
                     mock_embedding_profile,
+                    mock_text_image_generation_profile,
+                    mock_referenced_image_generation_profile,
                     ) -> Simulation:
     return Simulation(
         id=1,
@@ -5225,6 +5339,10 @@ def mock_simulation(mock_director_profile,
             committer=mock_committer_agent_profile,
             narrator=mock_narrator_agent_profile,
             world_generator=mock_world_generator_profile,
+        ),
+        image_generation_preset=ImageGenerationPreset(
+            text=mock_text_image_generation_profile,
+            referenced=mock_referenced_image_generation_profile,
         ),
         data_preset=DataPreset(
             character_attributes=[

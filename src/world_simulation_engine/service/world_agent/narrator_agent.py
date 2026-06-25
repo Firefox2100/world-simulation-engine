@@ -63,10 +63,7 @@ class NarratorAgent(WorldAgent[NarratorAgentProfile]):
 
         result = await self.model.ainvoke(
             messages,
-            config=patch_config(
-                config,
-                run_name="narrate_user_input_failure",
-            ) if config else None,
+            config={"run_name": "narrate_user_input_failure"},
         )
 
         return cast(str, result.content).strip()

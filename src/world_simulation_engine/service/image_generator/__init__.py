@@ -1,1 +1,2 @@
-from .character_generator import CharacterImageGenerator
+from .referenced_generator import ReferencedImageGenerator
+from .text_generator import TextImageGenerator

@@ -2,45 +2,12 @@ import pytest
 
 from world_simulation_engine.misc.enums import CanonicalImageReferenceFormat
 from world_simulation_engine.model import CanonicalCharacterVisualSpec
-from world_simulation_engine.service import ImageGenerationAgent, TextImageGenerator
+from world_simulation_engine.model.image_record import ImageRecord, ImageRecordCreate
 
 
 @pytest.fixture
-def image_generation_agent(mock_image_generation_agent_profile,
-                           mock_llm_connection,
-                           ) -> ImageGenerationAgent:
-    return ImageGenerationAgent(
-        profile=mock_image_generation_agent_profile,
-        connection=mock_llm_connection,
-    )
-
-
-@pytest.fixture
-def character_generator(mock_text_image_generation_profile,
-                        mock_image_generation_connection,
-                        ) -> TextImageGenerator:
-    return TextImageGenerator(
-        profile=mock_text_image_generation_profile,
-        connection=mock_image_generation_connection,
-    )
-
-
-async def test_generate_canonical_character_spec(image_generation_agent,
-                                                 mock_characters,
-                                                 ):
-    spec = await image_generation_agent.generate_canonical_spec(
-        character=mock_characters[0],
-        # TODO: Implement these configurations
-        world_style=None,
-        reference_format=None,
-    )
-
-    assert isinstance(spec, CanonicalCharacterVisualSpec)
-    assert spec.character_id == mock_characters[0].id
-
-
-async def test_generate_canonical_character_image(character_generator):
-    spec = CanonicalCharacterVisualSpec(
+def mock_character_canonical_spec():
+    return CanonicalCharacterVisualSpec(
         character_id=1,
         name='Eleanor Graves',
         demographic_keywords=[
@@ -95,6 +62,48 @@ async def test_generate_canonical_character_image(character_generator):
         ]
     )
 
-    image = await character_generator.generate_character_canonical(spec)
 
-    assert isinstance(image, bytes)
+@pytest.fixture
+def mock_image_record_create(mock_character_canonical_spec,
+                             mock_simulation,
+                             ):
+    return ImageRecordCreate(
+        simulation_id=mock_simulation.id,
+        target="character",
+        category="canonical",
+        target_id=1,
+        spec=mock_character_canonical_spec,
+    )
+
+
+@pytest.fixture(autouse=True)
+async def setup(db, mock_simulation):
+    await db.simulation.create(mock_simulation)
+
+
+async def test_create_image_record(db,
+                                   mock_image_record_create
+                                   ):
+    result = await db.image.create(mock_image_record_create)
+
+    assert isinstance(result, ImageRecord)
+    assert result.id == 1
+    assert result.simulation_id == 1
+    assert result.target == "character"
+    assert result.category == "canonical"
+    assert result.target_id == 1
+
+
+async def test_get_image_record(db,
+                                mock_image_record_create,
+                                ):
+    result = await db.image.create(mock_image_record_create)
+
+    fetch_result = await db.image.get(result.id)
+
+    assert isinstance(fetch_result, ImageRecord)
+    assert fetch_result.id == result.id
+    assert fetch_result.simulation_id == mock_image_record_create.simulation_id
+    assert fetch_result.target == mock_image_record_create.target
+    assert fetch_result.category == mock_image_record_create.category
+    assert fetch_result.target_id == mock_image_record_create.target_id

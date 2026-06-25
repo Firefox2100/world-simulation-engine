@@ -6,6 +6,7 @@ from .character import Character
 from .data_preset import DataPreset
 from .embedding_profile import EmbeddingProfile
 from .faction import Faction, FactionRelationship
+from .image_generation_preset import ImageGenerationPreset
 from .inventory import CharacterInventory
 from .location import Location
 from .simulation import SimulationState
@@ -27,6 +28,10 @@ class WorldCreate(BaseModel):
     agent_preset: Optional[AgentPreset] = Field(
         None,
         description="The agent preset used for this world, containing model configurations and prompt templates."
+    )
+    image_generation_preset: Optional[ImageGenerationPreset] = Field(
+        None,
+        description="The image generation preset for this world. Can be None if image generation is not enabled.",
     )
     data_preset: Optional[DataPreset] = Field(
         None,

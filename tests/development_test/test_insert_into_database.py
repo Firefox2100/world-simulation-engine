@@ -19,4 +19,9 @@ async def test_insert_world_into_database(mock_world_create,
                                           ):
     client = AsyncClient(base_url=backend_url)
 
-    await client.post("/worlds", json=mock_world_create.model_dump(mode="json", exclude_none=True))
+    result = await client.post(
+        "/worlds",
+        json=mock_world_create.model_dump(mode="json", exclude_none=True),
+        timeout=60,
+    )
+    result.raise_for_status()
