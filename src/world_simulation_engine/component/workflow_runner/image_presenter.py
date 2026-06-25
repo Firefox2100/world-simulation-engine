@@ -17,7 +17,7 @@ class ImagePresenterState(BaseModel):
     simulation_id: int
 
 
-class CharacterCanonicalImageState(BaseModel):
+class CharacterImageState(BaseModel):
     simulation_id: int
     character_id: int
     llm_profile: ImageGenerationAgentProfile
@@ -34,7 +34,7 @@ class ImagePresenter:
         self._db = database_service
         self._storage = storage_service
 
-    async def generate_character_canonical_image(self, state: CharacterCanonicalImageState):
+    async def generate_character_canonical_image(self, state: CharacterImageState):
         character = await self._db.character.get(state.character_id)
         if not character:
             raise ValueError(f"Character {state.character_id} not found")
@@ -55,11 +55,21 @@ class ImagePresenter:
             reference_format=None,
         )
 
-        images = await character_generator.generate_character_canonical(spec)
-        if not images:
+        image = await character_generator.generate_character_canonical(spec)
+        if not image:
             raise ValueError(f"Failed to generate image for character {state.character_id}")
 
         await self._storage.simulation(state.simulation_id).image.save(
             file_name=f"character-{state.character_id}.png",
-            data=images[0],
+            data=image,
         )
+
+    async def generate_character_current_image(self, state: CharacterImageState):
+        try:
+            canonical_image = await self._storage.simulation(state.simulation_id).image.get(
+                file_name=f"character-{state.character_id}.png",
+            )
+        except FileNotFoundError:
+            canonical_image = None
+
+

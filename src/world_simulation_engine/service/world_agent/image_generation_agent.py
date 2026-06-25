@@ -1,6 +1,7 @@
 from typing import cast
 
-from world_simulation_engine.model import ImageGenerationAgentProfile, CanonicalCharacterVisualSpec, Character
+from world_simulation_engine.model import ImageGenerationAgentProfile, CanonicalCharacterVisualSpec, \
+    CurrentCharacterVisualSpec, Character
 from .world_agent import WorldAgent
 
 
@@ -40,3 +41,22 @@ class ImageGenerationAgent(WorldAgent[ImageGenerationAgentProfile]):
                 max_attempts=2,
             ),
         )
+
+    async def generate_current_spec(self) -> CurrentCharacterVisualSpec:
+        data = {
+            "character": character
+        }
+
+
+        class CurrentCharacterImageInput(BaseModel):
+            character: Character
+            canonical_visual_spec: CanonicalCharacterVisualSpec | None = None
+            inventory: CharacterInventory
+            location_name: str | None = None
+            location_description: str | None = None
+
+            current_action: str | None = None
+            current_scene_summary: str | None = None
+
+            include_private_state: bool = False
+            reference_format: str | None = None

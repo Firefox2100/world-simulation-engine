@@ -1,19 +1,39 @@
 from enum import StrEnum
 
 
-class CharacterImageReferenceFormat(StrEnum):
+class CanonicalImageReferenceFormat(StrEnum):
     FRONT_BACK_REFERENCE = "front_back_reference"
     SINGLE_FULL_BODY_SHOWCASE = "single_full_body_showcase"
     PORTRAIT_REFERENCE = "portrait_reference"
 
     def to_image_prompt(self) -> str:
         match self:
-            case CharacterImageReferenceFormat.FRONT_BACK_REFERENCE:
+            case CanonicalImageReferenceFormat.FRONT_BACK_REFERENCE:
                 return "front view and back view, same character, same outfit, neutral pose"
-            case CharacterImageReferenceFormat.SINGLE_FULL_BODY_SHOWCASE:
+            case CanonicalImageReferenceFormat.SINGLE_FULL_BODY_SHOWCASE:
                 return "single full body view, neutral pose, simple showcase composition"
-            case CharacterImageReferenceFormat.PORTRAIT_REFERENCE:
+            case CanonicalImageReferenceFormat.PORTRAIT_REFERENCE:
                 return "upper body portrait, neutral pose, clear face reference"
+            case _:
+                raise ValueError(f"Unknown value: {self}")
+
+
+class CurrentImageReferenceFormat(StrEnum):
+    SINGLE_FULL_BODY_SHOWCASE = "single_full_body_showcase"
+    THREE_QUARTER_SHOWCASE = "three_quarter_showcase"
+    PORTRAIT = "portrait"
+    CINEMATIC_CHARACTER_SHOT = "cinematic_character_showcase"
+
+    def to_image_prompt(self) -> str:
+        match self:
+            case CurrentImageReferenceFormat.SINGLE_FULL_BODY_SHOWCASE:
+                return "single full body view, character clearly visible, simple showcase composition"
+            case CurrentImageReferenceFormat.THREE_QUARTER_SHOWCASE:
+                return "three-quarter body view, character clearly visible, expressive but not a full scene"
+            case CurrentImageReferenceFormat.PORTRAIT:
+                return "upper body portrait, clear face, current expression visible"
+            case CurrentImageReferenceFormat.CINEMATIC_CHARACTER_SHOT:
+                return "cinematic single-character shot, character dominant in frame, environment secondary"
             case _:
                 raise ValueError(f"Unknown value: {self}")
 

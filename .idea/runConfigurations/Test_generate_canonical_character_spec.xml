@@ -1,13 +1,12 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Development Tests" type="tests" factoryName="py.test" folderName="Development">
+  <configuration default="false" name="Test generate canonical character spec" type="tests" factoryName="Autodetect" folderName="Development">
     <module name="world-simulation-engine" />
     <option name="ENV_FILES" value="$PROJECT_DIR$/tests/.env" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <option name="SDK_HOME" value="" />
-    <option name="SDK_NAME" value="world-simulation-engine" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
-    <option name="IS_MODULE_SDK" value="false" />
+    <option name="IS_MODULE_SDK" value="true" />
     <option name="ADD_CONTENT_ROOTS" value="true" />
     <option name="ADD_SOURCE_ROOTS" value="true" />
     <option name="DEBUG_JUST_MY_CODE" value="false" />
@@ -23,11 +22,9 @@
       </ENTRIES>
     </EXTENSION>
     <option name="RUN_TOOL" value="" />
-    <option name="_new_keywords" value="&quot;&quot;" />
-    <option name="_new_parameters" value="&quot;&quot;" />
     <option name="_new_additionalArguments" value="&quot;&quot;" />
-    <option name="_new_target" value="&quot;$PROJECT_DIR$/tests/development_test&quot;" />
-    <option name="_new_targetType" value="&quot;PATH&quot;" />
+    <option name="_new_target" value="&quot;development_test.test_image_generation.test_generate_canonical_character_spec&quot;" />
+    <option name="_new_targetType" value="&quot;PYTHON&quot;" />
     <method v="2" />
   </configuration>
 </component>

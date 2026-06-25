@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Test run turn" type="tests" factoryName="Autodetect">
+  <configuration default="false" name="Test run turn" type="tests" factoryName="Autodetect" folderName="Development">
     <module name="world-simulation-engine" />
     <option name="ENV_FILES" value="$PROJECT_DIR$/tests/.env" />
     <option name="INTERPRETER_OPTIONS" value="" />

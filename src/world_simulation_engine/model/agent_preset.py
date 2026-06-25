@@ -228,6 +228,10 @@ class ImageGenerationAgentProfile(AgentProfile):
         ...,
         description="The prompts to use when asking it to generate a canonical character image."
     )
+    character_current_prompt: list[PromptMessage] = Field(
+        ...,
+        description="The prompts to use when asking it to generate a character image of the current state."
+    )
 
 
 class AgentPreset(BaseModel):

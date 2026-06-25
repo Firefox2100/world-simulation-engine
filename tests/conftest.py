@@ -4877,6 +4877,7 @@ Output natural language only.
     )
 
 
+@pytest.fixture
 def mock_image_generation_agent_profile(inference_model) -> ImageGenerationAgentProfile:
     return ImageGenerationAgentProfile(
         backend_configuration=OllamaAgentBackendConfiguration(
@@ -4976,7 +4977,179 @@ front_back_reference
 {% endif %}
 """
             ),
-        ]
+        ],
+        character_current_prompt=[
+            PromptMessage(
+                role=MessageRole.SYSTEM,
+                content="""
+You are a visual design planning agent for a role-playing image generation system.
+
+Your task is to convert structured character, equipment, location, and action context into a current character state image specification.
+
+This is NOT a canonical reference sheet.
+This is NOT a full multi-character scene.
+This image should show one target character as they currently appear.
+
+Rules:
+- Focus on the target character only.
+- Include current visible equipment if provided.
+- Include current clothing/equipment state, but do not override persistent appearance.
+- Include the current location as background context, not as the main subject.
+- Include the character's current visible action or pose if provided.
+- Use private_state only when explicitly provided and only to influence expression, tension, posture, or subtle visual cues.
+- Do not reveal hidden facts literally as objects, symbols, text, or explicit visual exposition.
+- Do not include other characters unless the input explicitly says they must be visible.
+- Do not include invisible inventory items.
+- Do not invent equipment, weapons, injuries, supernatural traits, uniforms, or props unless supported by the input.
+- Prefer concrete visual descriptors over abstract psychological descriptions.
+- If information is missing, leave the relevant list empty rather than inventing details.
+- Output valid JSON matching the schema exactly.
+- No markdown.
+- No comments.
+- No additional keys.
+
+Target image type:
+current character state showcase
+
+Output schema:
+
+{
+  "character_id": int,
+  "name": str,
+
+  "identity_keywords": list[str],
+  "persistent_appearance_keywords": list[str],
+
+  "current_clothing_keywords": list[str],
+  "visible_equipment_keywords": list[str],
+  "held_object_keywords": list[str],
+
+  "expression_keywords": list[str],
+  "pose_keywords": list[str],
+  "action_keywords": list[str],
+
+  "location_background_keywords": list[str],
+  "atmosphere_keywords": list[str],
+  "lighting_keywords": list[str],
+
+  "camera_keywords": list[str],
+  "composition_keywords": list[str],
+  "style_keywords": list[str],
+
+  "must_include": list[str],
+  "must_avoid": list[str],
+
+  "private_state_visual_cues": list[str],
+  "uncertainty_notes": list[str],
+
+  "reference_format": "single_full_body_showcase" | "three_quarter_showcase" | "portrait" | "cinematic_character_shot"
+}
+
+Field guidance:
+- identity_keywords: age, gender, role, and stable identity terms.
+- persistent_appearance_keywords: traits from canonical appearance or canonical visual spec.
+- current_clothing_keywords: visible clothing or outfit implied by equipment/current situation.
+- visible_equipment_keywords: equipped items visible on the body.
+- held_object_keywords: objects visibly held or actively used.
+- expression_keywords: current facial expression.
+- pose_keywords: body posture and stance.
+- action_keywords: visible action currently being performed.
+- location_background_keywords: background elements from the current location.
+- atmosphere_keywords: mood of the image, not hidden plot exposition.
+- lighting_keywords: lighting suitable to the current location and tone.
+- camera_keywords: framing, lens, angle.
+- composition_keywords: image layout constraints.
+- style_keywords: broad rendering style.
+- must_include: required visible elements.
+- must_avoid: contradictions, leakage, unwanted image content.
+- private_state_visual_cues: subtle non-literal visual cues derived from private state if provided.
+- uncertainty_notes: missing or ambiguous details.
+"""
+            ),
+            PromptMessage(
+                role=MessageRole.USER,
+                content="""
+# Target Character
+
+ID: {{ character.id }}
+Name: {{ character.name }}
+Gender: {{ character.gender }}
+Age: {{ character.age }}
+
+Character description:
+{{ character.description }}
+
+Persistent appearance:
+{{ character.appearance }}
+
+Public current state:
+{{ character.public_state }}
+
+{% if include_private_state %}
+Private current state, only for subtle visual cues:
+{{ character.private_state }}
+{% endif %}
+
+{% if canonical_visual_spec %}
+Canonical visual identity:
+{% for item in canonical_visual_spec.demographic_keywords %}
+- {{ item }}
+{% endfor %}
+{% for item in canonical_visual_spec.face_keywords %}
+- {{ item }}
+{% endfor %}
+{% for item in canonical_visual_spec.posture_keywords %}
+- {{ item }}
+{% endfor %}
+{% for item in canonical_visual_spec.expression_keywords %}
+- {{ item }}
+{% endfor %}
+{% endif %}
+
+# Visible Equipment
+
+{% if equipped_items %}
+The character is currently wearing or carrying the following visible equipment:
+{% for equipment in equipped_items %}
+- {{ equipment.name }}{% if equipment.quality %} ({{ equipment.quality }}){% endif %}: {{ equipment.description }}
+{% endfor %}
+{% else %}
+No visible equipment is specified.
+{% endif %}
+
+# Current Location
+
+{% if location_name %}
+Location name:
+{{ location_name }}
+{% endif %}
+
+{% if location_description %}
+Location visual description:
+{{ location_description }}
+{% else %}
+No specific location description is available.
+{% endif %}
+
+# Current Character Action
+
+{% if current_action %}
+Resolved visible action for this character:
+{{ current_action }}
+{% else %}
+No specific character action is provided.
+{% endif %}
+
+{% if current_scene_summary %}
+Scene summary, for context only. Do not add other characters unless explicitly required:
+{{ current_scene_summary }}
+{% endif %}
+
+Preferred image format:
+{{ reference_format }}
+"""
+            )
+        ],
     )
 
 

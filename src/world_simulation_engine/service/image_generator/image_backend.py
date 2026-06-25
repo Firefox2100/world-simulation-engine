@@ -22,7 +22,8 @@ class ImageBackend(ABC):
     @abstractmethod
     async def generate_image(self,
                              positive_prompt: str,
-                             negative_prompt: str,
+                             negative_prompt: str | None = None,
+                             reference_image: bytes | None = None,
                              ):
         pass
 
@@ -37,6 +38,7 @@ class ComfyUiBackend(ImageBackend):
                  negative_prompt_id: str | None = None,
                  k_sampler_id: str | None = None,
                  latent_image_id: str | None = None,
+                 reference_image_id: str | None = None,
                  seed: int | None = None,
                  steps: int | None = None,
                  width: int | None = None,
@@ -57,6 +59,7 @@ class ComfyUiBackend(ImageBackend):
         self._negative_prompt_id = negative_prompt_id
         self._k_sampler_id = k_sampler_id
         self._latent_image_id = latent_image_id
+        self._reference_image_id = reference_image_id
 
         self._checkpoint = checkpoint
         self._loras = loras or []
@@ -117,6 +120,7 @@ class ComfyUiBackend(ImageBackend):
     def _build_workflow(self,
                         positive_prompt: str,
                         negative_prompt: str | None = None,
+                        reference_name: str | None = None
                         ) -> dict:
         workflow = deepcopy(self._workflow_json)
 
@@ -142,7 +146,31 @@ class ComfyUiBackend(ImageBackend):
 
         self._insert_loras(workflow)
 
+        if self._reference_image_id and reference_name:
+            workflow[self._reference_image_id]["inputs"]["image"] = reference_name
+
         return workflow
+
+    async def _upload_reference_image(self,
+                                      reference_image: bytes,
+                                      ) -> str:
+        file_name = f"reference.{uuid4()}.png"
+
+        result = await self._client.post(
+            f"{self._base_url}/upload/image",
+            files={
+                "image": (file_name, reference_image, "image/png")
+            },
+            data={
+                "type": "input",
+                "overwrite": "true",
+            }
+        )
+        result.raise_for_status()
+
+        data = result.json()
+        return data["name"]
+
 
     async def _queue_generation(self,
                                 workflow: dict,
@@ -205,13 +233,31 @@ class ComfyUiBackend(ImageBackend):
         result.raise_for_status()
         return result.content
 
+    async def _delete_reference_image(self, file_name: str) -> None:
+        result = await self._client.delete(
+            f"{self._base_url}/api/delete",
+            params={
+                "filename": file_name,
+                "subfolder": "",
+                "type": "input",
+            },
+        )
+        result.raise_for_status()
+
     async def generate_image(self,
                              positive_prompt: str,
                              negative_prompt: str | None = None,
+                             reference_image: bytes | None = None,
                              ) -> list[bytes]:
+        if reference_image:
+            reference_name = await self._upload_reference_image(reference_image)
+        else:
+            reference_name = None
+
         workflow = self._build_workflow(
             positive_prompt=positive_prompt,
             negative_prompt=negative_prompt,
+            reference_name=reference_name,
         )
 
         client_id = str(uuid4())
@@ -229,5 +275,8 @@ class ComfyUiBackend(ImageBackend):
                         folder_type=image["type"],
                     )
                     images.append(image_data)
+
+        if reference_name:
+            await self._delete_reference_image(reference_name)
 
         return images
