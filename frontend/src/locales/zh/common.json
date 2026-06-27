@@ -41,6 +41,89 @@
     "sendError": "无法发送消息：{{error}}",
     "cancelled": "生成已取消。"
   },
+  "simulationDetails": {
+    "title": "模拟",
+    "close": "关闭模拟详情",
+    "navLabel": "模拟详情分区",
+    "emptyValue": "未设置",
+    "noDescription": "暂无描述。",
+    "noCharacters": "该模拟暂无角色。",
+    "noLocations": "该模拟暂无地点。",
+    "noFactions": "该模拟暂无阵营。",
+    "noWorldEntries": "该模拟暂无世界条目。",
+    "boolean": {
+      "yes": "是",
+      "no": "否"
+    },
+    "tabs": {
+      "basic": "基本信息",
+      "characters": "角色",
+      "locations": "地点",
+      "factions": "阵营",
+      "worldEntries": "世界条目"
+    },
+    "fields": {
+      "id": "ID",
+      "name": "名称",
+      "language": "语言",
+      "actForUser": "代用户行动",
+      "enableTts": "启用 TTS",
+      "enableImageGeneration": "启用图像生成"
+    },
+    "characterFields": {
+      "id": "ID",
+      "gender": "性别",
+      "age": "年龄",
+      "location": "地点",
+      "userControlled": "用户控制",
+      "appearance": "外观",
+      "publicState": "公开状态",
+      "privateState": "私有状态",
+      "attributes": "属性",
+      "stats": "数值",
+      "inventory": "库存"
+    },
+    "inventory": {
+      "items": "物品",
+      "equipment": "装备",
+      "emptyItems": "库存中暂无物品。",
+      "emptyEquipment": "库存中暂无装备。",
+      "quantity": "数量 {{quantity}}",
+      "unique": "唯一"
+    },
+    "locationFields": {
+      "id": "ID",
+      "location": "地点",
+      "primaryLocation": "主要地点",
+      "detailedLocation": "详细地点",
+      "scene": "场景",
+      "attributes": "属性",
+      "stats": "数值",
+      "entities": "实体",
+      "noEntities": "该地点暂无实体。"
+    },
+    "factionFields": {
+      "id": "ID",
+      "name": "名称",
+      "attributes": "属性",
+      "stats": "数值"
+    },
+    "worldEntryFields": {
+      "entryTitle": "世界条目 {{id}}",
+      "scope": "范围",
+      "scopeEveryone": "所有人",
+      "scopeNoOne": "无人",
+      "scopeCharacter": "角色 {{id}}",
+      "confidence": "置信度",
+      "createdAt": "创建回合",
+      "background": "背景",
+      "narrationPermission": "叙述权限",
+      "recallType": "召回类型",
+      "embeddingDimensions": "{{count}} 维",
+      "chainedIdsLabel": "链式条目：",
+      "chainedIds": "链式条目：{{ids}}"
+    }
+  },
   "worlds": {
     "title": "世界",
     "subtitle": "浏览可用的世界。",

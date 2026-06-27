@@ -41,6 +41,89 @@
     "sendError": "Unable to send message: {{error}}",
     "cancelled": "Generation was cancelled."
   },
+  "simulationDetails": {
+    "title": "Simulation",
+    "close": "Close simulation details",
+    "navLabel": "Simulation details sections",
+    "emptyValue": "Not set",
+    "noDescription": "No description is available.",
+    "noCharacters": "No characters are available for this simulation.",
+    "noLocations": "No locations are available for this simulation.",
+    "noFactions": "No factions are available for this simulation.",
+    "noWorldEntries": "No world entries are available for this simulation.",
+    "boolean": {
+      "yes": "Yes",
+      "no": "No"
+    },
+    "tabs": {
+      "basic": "Basic information",
+      "characters": "Characters",
+      "locations": "Locations",
+      "factions": "Factions",
+      "worldEntries": "World entries"
+    },
+    "fields": {
+      "id": "ID",
+      "name": "Name",
+      "language": "Language",
+      "actForUser": "Act for user",
+      "enableTts": "Enable TTS",
+      "enableImageGeneration": "Enable image generation"
+    },
+    "characterFields": {
+      "id": "ID",
+      "gender": "Gender",
+      "age": "Age",
+      "location": "Location",
+      "userControlled": "User controlled",
+      "appearance": "Appearance",
+      "publicState": "Public state",
+      "privateState": "Private state",
+      "attributes": "Attributes",
+      "stats": "Stats",
+      "inventory": "Inventory"
+    },
+    "inventory": {
+      "items": "Items",
+      "equipment": "Equipment",
+      "emptyItems": "No items in inventory.",
+      "emptyEquipment": "No equipment in inventory.",
+      "quantity": "Qty {{quantity}}",
+      "unique": "Unique"
+    },
+    "locationFields": {
+      "id": "ID",
+      "location": "Location",
+      "primaryLocation": "Primary location",
+      "detailedLocation": "Detailed location",
+      "scene": "Scene",
+      "attributes": "Attributes",
+      "stats": "Stats",
+      "entities": "Entities",
+      "noEntities": "No entities are available in this location."
+    },
+    "factionFields": {
+      "id": "ID",
+      "name": "Name",
+      "attributes": "Attributes",
+      "stats": "Stats"
+    },
+    "worldEntryFields": {
+      "entryTitle": "World entry {{id}}",
+      "scope": "Scope",
+      "scopeEveryone": "Everyone",
+      "scopeNoOne": "No one",
+      "scopeCharacter": "Character {{id}}",
+      "confidence": "Confidence",
+      "createdAt": "Created at",
+      "background": "Background",
+      "narrationPermission": "Narration permission",
+      "recallType": "Recall type",
+      "embeddingDimensions": "{{count}} dimensions",
+      "chainedIdsLabel": "Chained entries:",
+      "chainedIds": "Chained entries: {{ids}}"
+    }
+  },
   "worlds": {
     "title": "Worlds",
     "subtitle": "Browse available worlds.",

@@ -48,6 +48,10 @@ class ComfyUiBackendConfiguration(ImageBackendConfiguration):
         None,
         description="The id of the latent image node.",
     )
+    reference_image_id: Optional[str] = Field(
+        None,
+        description="The id of the reference image node.",
+    )
 
     checkpoint: str = Field(
         ...,

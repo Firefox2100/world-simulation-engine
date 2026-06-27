@@ -1,19 +1,35 @@
 import { createBrowserRouter } from "react-router-dom";
 import { AppLayout } from "@/layouts/AppLayout";
-import { ConnectionsPage } from "@/pages/ConnectionsPage.jsx";
-import { SimulationChatPage } from "@/pages/SimulationChatPage.jsx";
-import { SimulationPage } from "@/pages/SimulationPage.jsx";
-import { WorldPage } from "@/pages/WorldPage.jsx";
 
 export const router = createBrowserRouter([
     {
         path: "/",
         element: <AppLayout />,
         children: [
-            { index: true, element: <SimulationPage /> },
-            { path: "simulations/:simulationId", element: <SimulationChatPage /> },
-            { path: "worlds", element: <WorldPage /> },
-            { path: "connections", element: <ConnectionsPage /> },
+            {
+                index: true,
+                lazy: async () => ({
+                    Component: (await import("@/pages/SimulationPage.jsx")).SimulationPage,
+                }),
+            },
+            {
+                path: "simulations/:simulationId",
+                lazy: async () => ({
+                    Component: (await import("@/pages/SimulationChatPage.jsx")).SimulationChatPage,
+                }),
+            },
+            {
+                path: "worlds",
+                lazy: async () => ({
+                    Component: (await import("@/pages/WorldPage.jsx")).WorldPage,
+                }),
+            },
+            {
+                path: "connections",
+                lazy: async () => ({
+                    Component: (await import("@/pages/ConnectionsPage.jsx")).ConnectionsPage,
+                }),
+            },
         ],
     },
 ]);

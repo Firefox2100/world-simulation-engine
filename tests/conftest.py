@@ -177,7 +177,197 @@ def mock_comfyui_workflow() -> dict:
 
 @pytest.fixture
 def mock_comfyui_referenced_workflow() -> dict:
-    return {}
+    return {
+        "3": {
+            "inputs": {
+                "seed": 0,
+                "steps": 20,
+                "cfg": 8,
+                "sampler_name": "euler",
+                "scheduler": "normal",
+                "denoise": 1,
+                "model": [
+                    "17",
+                    0
+                ],
+                "positive": [
+                    "6",
+                    0
+                ],
+                "negative": [
+                    "7",
+                    0
+                ],
+                "latent_image": [
+                    "5",
+                    0
+                ]
+            },
+            "class_type": "KSampler",
+            "_meta": {
+                "title": "KSampler"
+            }
+        },
+        "4": {
+            "inputs": {
+                "ckpt_name": "sd_xl_base_1.0.safetensors"
+            },
+            "class_type": "CheckpointLoaderSimple",
+            "_meta": {
+                "title": "Load Checkpoint"
+            }
+        },
+        "5": {
+            "inputs": {
+                "width": 512,
+                "height": 512,
+                "batch_size": 1
+            },
+            "class_type": "EmptyLatentImage",
+            "_meta": {
+                "title": "Empty Latent Image"
+            }
+        },
+        "6": {
+            "inputs": {
+                "text": "beautiful scenery nature glass bottle landscape, , purple galaxy bottle,",
+                "clip": [
+                    "4",
+                    1
+                ]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+                "title": "CLIP Text Encode (Prompt)"
+            }
+        },
+        "7": {
+            "inputs": {
+                "text": "text, watermark",
+                "clip": [
+                    "4",
+                    1
+                ]
+            },
+            "class_type": "CLIPTextEncode",
+            "_meta": {
+                "title": "CLIP Text Encode (Prompt)"
+            }
+        },
+        "8": {
+            "inputs": {
+                "samples": [
+                    "3",
+                    0
+                ],
+                "vae": [
+                    "4",
+                    2
+                ]
+            },
+            "class_type": "VAEDecode",
+            "_meta": {
+                "title": "VAE Decode"
+            }
+        },
+        "9": {
+            "inputs": {
+                "filename_prefix": "ComfyUI",
+                "images": [
+                    "8",
+                    0
+                ]
+            },
+            "class_type": "SaveImage",
+            "_meta": {
+                "title": "Save Image"
+            }
+        },
+        "11": {
+            "inputs": {
+                "number_of_faces": 5,
+                "scale_factor": 1.5,
+                "shift_factor": 0.45,
+                "start_index": 0,
+                "max_faces_per_image": 50,
+                "aspect_ratio": "1:1",
+                "image": [
+                    "12",
+                    0
+                ]
+            },
+            "class_type": "AutoCropFaces",
+            "_meta": {
+                "title": "Auto Crop Faces"
+            }
+        },
+        "12": {
+            "inputs": {
+                "image": "ComfyUI_00043_.png"
+            },
+            "class_type": "LoadImage",
+            "_meta": {
+                "title": "Load Image"
+            }
+        },
+        "14": {
+            "inputs": {
+                "pulid_file": "ip-adapter_pulid_sdxl_fp16.safetensors"
+            },
+            "class_type": "PulidModelLoader",
+            "_meta": {
+                "title": "Load PuLID Model"
+            }
+        },
+        "15": {
+            "inputs": {
+                "provider": "CUDA"
+            },
+            "class_type": "PulidInsightFaceLoader",
+            "_meta": {
+                "title": "Load InsightFace (PuLID)"
+            }
+        },
+        "16": {
+            "inputs": {},
+            "class_type": "PulidEvaClipLoader",
+            "_meta": {
+                "title": "Load Eva Clip (PuLID)"
+            }
+        },
+        "17": {
+            "inputs": {
+                "method": "fidelity",
+                "weight": 0.8,
+                "start_at": 0,
+                "end_at": 1,
+                "model": [
+                    "4",
+                    0
+                ],
+                "pulid": [
+                    "14",
+                    0
+                ],
+                "eva_clip": [
+                    "16",
+                    0
+                ],
+                "face_analysis": [
+                    "15",
+                    0
+                ],
+                "image": [
+                    "11",
+                    0
+                ]
+            },
+            "class_type": "ApplyPulid",
+            "_meta": {
+                "title": "Apply PuLID"
+            }
+        }
+    }
 
 
 @pytest.fixture
@@ -5259,6 +5449,7 @@ def mock_referenced_image_generation_profile(mock_comfyui_referenced_workflow,
             negative_prompt_id="7",
             k_sampler_id="3",
             latent_image_id="5",
+            reference_image_id="12",
             checkpoint=comfyui_checkpoint,
         ),
         current_character_prompts=ImageGenerationPromptTemplate(
