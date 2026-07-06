@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "world-simulation-engine"
+authors = [
+  { name="Firefox2100", email="patrick@firefox2100.co.uk" },
+]
+description = "A python project to experiment with world simulation with LLM"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "aiofiles~=25.1.0",
+    "fastapi~=0.139.0",
+    "httpx~=0.28.1",
+    "jinja2~=3.1.2",
+    "langchain~=1.3.11",
+    "langfuse~=4.13.0",
+    "langgraph~=1.2.7",
+    "neo4j~=6.2.0",
+    "numpy~=2.5.1",
+    "pillow~=12.3.0",
+    "pydantic~=2.13.4",
+    "pydantic-settings~=2.14.2",
+    "pyicu~=2.16.2",
+    "python-multipart~=0.0.32",
+    "uvicorn~=0.50.2",
+]
+dynamic = [
+    "version"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest~=9.1.1",
+    "pytest-asyncio~=1.4.0",
+    "pytest-cov~=7.1.0",
+    "pylint~=4.0.6",
+    "testcontainers~=4.14.2",
+]
+docs = [
+    "zensical~=0.0.47",
+]
+
+# LLM backend dependencies
+ollama = [
+    "langchain-ollama~=1.1.0",
+]
+openai = [
+    "langchain-openai~=1.3.3",
+]
+all-llm = [
+    "langchain-ollama~=1.1.0",
+    "langchain-openai~=1.3.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/Firefox2100/world-simulation-engine"
+Repository = "https://github.com/Firefox2100/world-simulation-engine.git"
+Issues = "https://github.com/Firefox2100/world-simulation-engine/issues"
+
+[tool.setuptools.dynamic]
+version = {attr = "world_simulation_engine.__version__"}
+
+[tool.pytest]
+asyncio_mode = "auto"
+log_file = "audit.log"
+log_file_level = "DEBUG"
