@@ -37,7 +37,7 @@ class WorldStore:
             url=author_node.get("url"),
         )
 
-    async def get_author_of_world(self, world_id: str) -> Author | None:
+    async def get_author_by_world(self, world_id: str) -> Author | None:
         result = await self._driver.execute_query(
             "MATCH (a:Author)-[:CREATED]->(w:World {id: $id}) RETURN a",
             parameters_={"id": world_id},
@@ -68,7 +68,8 @@ class WorldStore:
                 name: $world_name,
                 description: $world_description,
                 url: $world_url,
-                version: $world_version
+                version: $world_version,
+                language: $world_language,
             })
             CREATE (a)-[:CREATED]->(w)
             WITH w
@@ -89,6 +90,26 @@ class WorldStore:
                 "world_description": world.description,
                 "world_url": world.url,
                 "world_version": world.version,
+                "world_language": world.language,
                 "previous_version": previous_version,
             },
+        )
+
+    async def get_world(self, world_id: str) -> World | None:
+        result = await self._driver.execute_query(
+            "MATCH (w:World {id: $id}) RETURN w LIMIT 1",
+            parameters_={"id": world_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return World(
+            id=record["w"]["id"],
+            name=record["w"]["name"],
+            description=record["w"].get("description"),
+            version=record["w"]["version"],
+            url=record["w"].get("url"),
+            language=record["w"]["language"],
         )

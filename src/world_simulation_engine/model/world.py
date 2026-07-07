@@ -2,6 +2,8 @@ from uuid import uuid4
 from typing import Optional
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.misc.enums import SupportedLanguage
+
 
 class Author(BaseModel):
     """
@@ -42,4 +44,8 @@ class World(BaseModel):
     url: Optional[str] = Field(
         None,
         description="The URL of the world",
+    )
+    language: SupportedLanguage = Field(
+        ...,
+        description="The language of the world",
     )

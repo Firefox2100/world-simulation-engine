@@ -33,7 +33,6 @@ dependencies = [
     "pillow~=12.3.0",
     "pydantic~=2.13.4",
     "pydantic-settings~=2.14.2",
-    "pyicu~=2.16.2",
     "python-multipart~=0.0.32",
     "uvicorn~=0.50.2",
 ]
