@@ -14,6 +14,10 @@ class ActionType(StrEnum):
     stop_activity = "stop_activity"
 
 
+class ComponentType(StrEnum):
+    CHARACTER_SIMULATOR = "character_simulator"
+
+
 class ConnectionType(StrEnum):
     OLLAMA = "ollama"
     OPENAI = "openai"
@@ -24,10 +28,6 @@ class MessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
     TOOL = "tool"
-
-
-class RelationshipType(StrEnum):
-    CREATED = "CREATED"
 
 
 class Salience(StrEnum):

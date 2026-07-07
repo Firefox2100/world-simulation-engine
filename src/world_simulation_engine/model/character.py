@@ -1,5 +1,30 @@
+from datetime import datetime
 from uuid import uuid4
+from typing import Optional
 from pydantic import BaseModel, Field
+
+
+class CurrentActivity(BaseModel):
+    name: str = Field(
+        ...,
+        description="Name of the activity",
+    )
+    started_at: Optional[datetime] = Field(
+        None,
+        description="Date and time the activity was started",
+    )
+    expected_end: Optional[datetime] = Field(
+        None,
+        description="Date and time the activity is expected to end, if not interrupted",
+    )
+    interruptible: bool = Field(
+        True,
+        description="Whether the activity is interruptible",
+    )
+    constraints: list[str] = Field(
+        default_factory=list,
+        description="Constraints for the activity",
+    )
 
 
 class Character(BaseModel):
@@ -35,4 +60,8 @@ class Character(BaseModel):
     private_state: str = Field(
         ...,
         description="Private state of the character, i.e. what he is thinking or secretly doing",
+    )
+    current_activity: CurrentActivity = Field(
+        ...,
+        description="Current activity of the character",
     )

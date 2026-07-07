@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Union, Any, TYPE_CHECKING, cast
+from typing import Union, Any, TypeVar, Type, TYPE_CHECKING, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 
 LcMessage = AIMessage | HumanMessage | SystemMessage | ToolMessage
+T = TypeVar("T", bound=BaseModel)
 
 
 class LlmService:
@@ -205,9 +206,7 @@ class LlmService:
         for prompt in prompts:
             rendered_content = sandbox.from_string(
                 prompt.content
-            ).render(
-                data=data,
-            )
+            ).render(data)
 
             if prompt.role == MessageRole.SYSTEM:
                 messages.append(
@@ -232,16 +231,17 @@ class LlmService:
 
     async def invoke_structured_with_repair(self,
                                             *,
-                                            output_model: type[BaseModel],
+                                            output_model: Type[T],
                                             messages: list[PromptMessage],
+                                            data: dict[str, Any],
                                             repair_instruction: str,
                                             run_name: str,
                                             max_attempts: int = 2,
-                                            ) -> BaseModel:
+                                            ) -> T:
         last_error: Exception | None = None
         last_raw: Any = None
 
-        current_messages = self._compose_messages(messages, data={})
+        current_messages = self._compose_messages(messages, data=data)
 
         for attempt in range(max_attempts):
             structured_model = self.model.with_structured_output(
@@ -270,7 +270,7 @@ class LlmService:
                         f"Structured output parsed=None. Raw content: {raw_content!r}"
                     )
 
-                return cast(BaseModel, parsed)
+                return cast(output_model, parsed)
 
             except Exception as exc:
                 last_error = exc

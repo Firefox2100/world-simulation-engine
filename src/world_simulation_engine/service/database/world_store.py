@@ -3,6 +3,25 @@ from neo4j import AsyncDriver
 from world_simulation_engine.model import Author, World
 
 
+def _author_from_node(author_node) -> Author:
+    return Author(
+        id=author_node["id"],
+        name=author_node["name"],
+        url=author_node.get("url"),
+    )
+
+
+def _world_from_node(world_node) -> World:
+    return World(
+        id=world_node["id"],
+        name=world_node["name"],
+        description=world_node.get("description"),
+        version=world_node["version"],
+        url=world_node.get("url"),
+        language=world_node["language"],
+    )
+
+
 class WorldStore:
     def __init__(self,
                  driver: AsyncDriver,
@@ -29,13 +48,7 @@ class WorldStore:
         if not record:
             return None
 
-        author_node = record["a"]
-
-        return Author(
-            id=author_node["id"],
-            name=author_node["name"],
-            url=author_node.get("url"),
-        )
+        return _author_from_node(record["a"])
 
     async def get_author_by_world(self, world_id: str) -> Author | None:
         result = await self._driver.execute_query(
@@ -47,13 +60,7 @@ class WorldStore:
         if not record:
             return None
 
-        author_node = record["a"]
-
-        return Author(
-            id=author_node["id"],
-            name=author_node["name"],
-            url=author_node.get("url"),
-        )
+        return _author_from_node(record["a"])
 
     async def create_world(self,
                            world: World,
@@ -69,9 +76,9 @@ class WorldStore:
                 description: $world_description,
                 url: $world_url,
                 version: $world_version,
-                language: $world_language,
+                language: $world_language
             })
-            CREATE (a)-[:CREATED]->(w)
+            MERGE (a)-[:CREATED]->(w)
             WITH w
             OPTIONAL MATCH (p:World {id: $previous_version})
             FOREACH (_ IN CASE
@@ -79,7 +86,7 @@ class WorldStore:
                 THEN [1]
                 ELSE []
             END |
-                CREATE (w)-[:NEW_VERSION_OF]->(p)
+                MERGE (w)-[:NEW_VERSION_OF]->(p)
             )
             RETURN w
             """,
@@ -105,11 +112,4 @@ class WorldStore:
         if not record:
             return None
 
-        return World(
-            id=record["w"]["id"],
-            name=record["w"]["name"],
-            description=record["w"].get("description"),
-            version=record["w"]["version"],
-            url=record["w"].get("url"),
-            language=record["w"]["language"],
-        )
+        return _world_from_node(record["w"])

@@ -3,6 +3,19 @@ from neo4j import AsyncDriver
 from world_simulation_engine.model import Simulation
 
 
+def _simulation_from_node(simulation_node) -> Simulation:
+    current_time = simulation_node["current_time"]
+    if hasattr(current_time, "to_native"):
+        current_time = current_time.to_native()
+
+    return Simulation(
+        id=simulation_node["id"],
+        name=simulation_node["name"],
+        description=simulation_node.get("description"),
+        current_time=current_time,
+    )
+
+
 class SimulationStore:
     def __init__(self,
                  driver: AsyncDriver,
@@ -17,15 +30,16 @@ class SimulationStore:
             """
             MATCH (w:World {id: $world_id})
             CREATE (s:Simulation {
-                id: $world_id,
+                id: $simulation_id,
                 name: $world_name,
                 description: $world_description,
-                current_time: $current_time,
+                current_time: $current_time
             })
             CREATE (s)-[:BASED_ON]->(w)
             RETURN s
             """,
             parameters_={
+                "simulation_id": simulation.id,
                 "world_id": world_id,
                 "world_name": simulation.name,
                 "world_description": simulation.description,
@@ -45,11 +59,4 @@ class SimulationStore:
         if not record:
             return None
 
-        simulation_node = record["a"]
-
-        return Simulation(
-            id=simulation_node["id"],
-            name=simulation_node["name"],
-            description=simulation_node["description"],
-            current_time=simulation_node["current_time"].to_native(),
-        )
+        return _simulation_from_node(record["s"])
