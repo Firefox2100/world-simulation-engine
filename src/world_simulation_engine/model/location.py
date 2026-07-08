@@ -15,3 +15,18 @@ class Location(BaseModel):
         ...,
         description="Description of the location",
     )
+
+
+class Landmark(BaseModel):
+    id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        description="Unique identifier for the landmark",
+    )
+    name: str = Field(
+        ...,
+        description="Name of the landmark",
+    )
+    description: str = Field(
+        ...,
+        description="Description of the landmark",
+    )

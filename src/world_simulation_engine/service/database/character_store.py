@@ -87,3 +87,21 @@ class CharacterStore:
                 "location_id": location_id,
             }
         )
+
+    async def anchor_to_landmark(self,
+                                character_id: str,
+                                landmark_id: str,
+                                ):
+        await self._driver.execute_query(
+            """
+            MATCH (c:Character {id: $character_id})
+            OPTIONAL MATCH (:Landmark) <-[r:ANCHORED_TO]- (c)
+            MATCH (l:Landmark {id: $landmark_id})
+            DELETE r
+            MERGE (c) -[:ANCHORED_TO]-> (l)
+            """,
+            parameters_={
+                "character_id": character_id,
+                "landmark_id": landmark_id,
+            }
+        )

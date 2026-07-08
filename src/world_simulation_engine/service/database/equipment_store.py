@@ -1,6 +1,6 @@
 from neo4j import AsyncDriver
 
-from world_simulation_engine.model import Equipment
+from world_simulation_engine.model import Equipment, InventoryEquipment
 
 
 def _equipment_from_node(equipment_node) -> Equipment:
@@ -12,15 +12,12 @@ def _equipment_from_node(equipment_node) -> Equipment:
     )
 
 
-def _inventory_equipment_from_record(record) -> "InventoryEquipment":
+def _inventory_equipment_from_record(record) -> InventoryEquipment:
     return InventoryEquipment(
         **_equipment_from_node(record["e"]).model_dump(),
         equipped=record["relationship_type"] == "EQUIPS",
+        equipped_position=record.get("equipped_position"),
     )
-
-
-class InventoryEquipment(Equipment):
-    equipped: bool
 
 
 class EquipmentStore:
@@ -63,7 +60,7 @@ class EquipmentStore:
         result = await self._driver.execute_query(
             """
             MATCH (holder {id: $holder_id}) -[r:HOLDS|EQUIPS]-> (e:Equipment)
-            RETURN e, type(r) AS relationship_type
+            RETURN e, type(r) AS relationship_type, r.position AS equipped_position
             """,
             parameters_={"holder_id": holder_id}
         )
@@ -89,6 +86,7 @@ class EquipmentStore:
                                 equipment_id: str,
                                 holder_id: str,
                                 equipped: bool = False,
+                                equipped_position: str | None = None,
                                 ):
         if not equipped:
             # New holder is holding it
@@ -113,10 +111,11 @@ class EquipmentStore:
                 OPTIONAL MATCH (h) -[r:HOLDS|EQUIPS]-> (e)
                 MATCH (holder:Character {id: $holder_id})
                 DELETE r
-                MERGE (holder)-[:EQUIPS]->(e)
+                MERGE (holder)-[:EQUIPS {position: $position}]->(e)
                 """,
                 parameters_={
                     "id": equipment_id,
-                    "holder_id": holder_id
+                    "holder_id": holder_id,
+                    "position": equipped_position,
                 }
             )

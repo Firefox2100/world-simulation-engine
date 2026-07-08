@@ -1,9 +1,11 @@
-from typing import Optional, Any
+from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import Salience, Visibility, ComponentType
-from world_simulation_engine.model import PromptMessage, ProposedAction, Character, Location
+from world_simulation_engine.model import PromptMessage, ProposedAction, Character, Location, InventoryStack, \
+    InventoryEquipment
 from world_simulation_engine.service import DatabaseService, LlmService
 
 
@@ -13,20 +15,7 @@ class EntityRef(BaseModel):
     name: str
 
 
-class PerceivedEntity(BaseModel):
-    entity: EntityRef
-    relation_to_actor: Optional[str] = None
-    visibility: list[Visibility] = Field(default_factory=list)
-    distance_hint: Optional[str] = Field(
-        default=None,
-        description="near, across_room, same_location, behind_counter, unknown, etc."
-    )
-    affordances: list[str] = Field(
-        default_factory=list,
-        description="Actions this actor currently believes are possible with this entity."
-    )
-    salience: Salience = "medium"
-    notes: Optional[str] = None
+
 
 
 class MemoryAtom(BaseModel):
@@ -52,11 +41,23 @@ class CharacterPerspective(BaseModel):
         ...,
         description="The character that the perspective is in"
     )
-    world_time: str
-    location: Location
+    world_time: datetime = Field(
+        ...,
+        description="The current time in the simulation"
+    )
+    location: Location = Field(
+        ...,
+        description="The current location the character is in"
+    )
 
-    inventory: list[EntityRef] = Field(default_factory=list)
-    equipment: list[EntityRef] = Field(default_factory=list)
+    inventory: list[InventoryStack] = Field(
+        default_factory=list,
+        description="The items this character holds"
+    )
+    equipment: list[InventoryEquipment] = Field(
+        default_factory=list,
+        description="The equipment this character is wearing or holding"
+    )
 
     goals: list[Goal] = Field(default_factory=list)
 
@@ -99,11 +100,14 @@ class CharacterSimulator:
         if not character:
             raise ValueError(f"Character {self._character_id} not found")
 
-        location = await self._db.loca
+        location = await self._db.location.get_location_by_character(self._character_id)
+        if not location:
+            raise ValueError(f"Character {self._character_id} is not in a location")
 
         return CharacterPerspective(
             actor=character,
             world_time=simulation.current_time,
+            location=location
         )
 
     async def propose_actions(self):

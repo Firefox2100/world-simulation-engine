@@ -1,8 +1,6 @@
-from typing import Optional
 from neo4j import AsyncDriver
-from pydantic import BaseModel, Field
 
-from world_simulation_engine.model import Item, ItemStack
+from world_simulation_engine.model import Item, ItemStack, InventoryStack
 
 
 def _item_from_node(item_node) -> Item:
@@ -14,8 +12,8 @@ def _item_from_node(item_node) -> Item:
     )
 
 
-def _inventory_stack_from_record(record) -> "ItemInventory.InventoryStack":
-    return ItemInventory.InventoryStack(
+def _inventory_stack_from_record(record) -> InventoryStack:
+    return InventoryStack(
         item_id=record["i"]["id"],
         name=record["i"]["name"],
         description=record["i"]["description"],
@@ -24,27 +22,6 @@ def _inventory_stack_from_record(record) -> "ItemInventory.InventoryStack":
         quantity=record["s"]["quantity"],
         quality=record["s"].get("quality"),
         owner_id=record["o"]["id"] if record["o"] else None,
-    )
-
-
-class ItemInventory(BaseModel):
-    class InventoryStack(BaseModel):
-        item_id: str
-        name: str
-        description: str
-        unique: bool
-        stack_id: str
-        quantity: int
-        quality: Optional[str]
-        owner_id: Optional[str] = Field(
-            None,
-            description="Owner of the stack",
-        )
-
-    holder_id: str
-    stacks: list[InventoryStack] = Field(
-        default_factory=list,
-        description="List of item stacks in the character's inventory",
     )
 
 
@@ -141,7 +118,7 @@ class ItemStore:
                 }
             )
 
-    async def get_inventory(self, holder_id: str) -> ItemInventory:
+    async def get_inventory(self, holder_id: str) -> list[InventoryStack]:
         result = await self._driver.execute_query(
             """
             MATCH (h {id: $holder_id}) -[:HOLDS]-> (s:ItemStack) -[:OF_TYPE]->(i:Item)
@@ -153,7 +130,4 @@ class ItemStore:
             }
         )
 
-        return ItemInventory(
-            holder_id=holder_id,
-            stacks=[_inventory_stack_from_record(record) for record in result.records],
-        )
+        return [_inventory_stack_from_record(record) for record in result.records]

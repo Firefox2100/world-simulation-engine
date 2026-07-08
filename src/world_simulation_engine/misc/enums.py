@@ -23,6 +23,13 @@ class ConnectionType(StrEnum):
     OPENAI = "openai"
 
 
+class ContainerState(StrEnum):
+    HIDDEN = "hidden"
+    LOCKED = "locked"
+    UNLOCKED = "unlocked"
+    OPEN = "open"
+
+
 class MessageRole(StrEnum):
     SYSTEM = "system"
     USER = "user"

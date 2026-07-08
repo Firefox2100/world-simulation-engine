@@ -4,6 +4,7 @@ from .character_store import CharacterStore
 from .config_store import ConfigStore
 from .equipment_store import EquipmentStore
 from .item_store import ItemStore
+from .location_store import LocationStore
 from .simulation_store import SimulationStore
 from .world_store import WorldStore
 
@@ -18,6 +19,7 @@ class DatabaseService:
         self._config = ConfigStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
         self._item = ItemStore(self._driver)
+        self._location = LocationStore(self._driver)
         self._simulation = SimulationStore(self._driver)
         self._world = WorldStore(self._driver)
 
@@ -36,6 +38,10 @@ class DatabaseService:
     @property
     def item(self) -> ItemStore:
         return self._item
+
+    @property
+    def location(self) -> LocationStore:
+        return self._location
 
     @property
     def simulation(self) -> SimulationStore:

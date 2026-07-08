@@ -1,8 +1,9 @@
-from .character import CurrentActivity, Character
-from .equipment import Equipment
-from .inter_state import ProposedAction
-from .item import Item, ItemStack
-from .location import Location
+from .character import CurrentActivity, Character, BackgroundCharacter
+from .container import Container
+from .equipment import Equipment, InventoryEquipment
+from .inter_state import PerceivedEntity, ProposedAction
+from .item import Item, ItemStack, InventoryStack
+from .location import Location, Landmark
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig
 from .prompt_message import PromptMessage
 from .simulation import Simulation
