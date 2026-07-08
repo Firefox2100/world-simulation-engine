@@ -1,21 +1,21 @@
 from datetime import datetime
 from typing import Optional
+from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import Salience, Visibility, ComponentType
 from world_simulation_engine.model import PromptMessage, ProposedAction, Character, Location, InventoryStack, \
-    InventoryEquipment
+    InventoryEquipment, Simulation, World
 from world_simulation_engine.service import DatabaseService, LlmService
+from .simulator_component import SimulatorComponent
+from .perspective_resolver import PerspectiveResolver
 
 
 class EntityRef(BaseModel):
     id: str
     kind: str = Field(description="character, item, landmark, location, event, etc.")
     name: str
-
-
-
 
 
 class MemoryAtom(BaseModel):
@@ -78,67 +78,80 @@ class CharacterPerspective(BaseModel):
     )
 
 
-class CharacterSimulator:
+class CharacterSimulator(SimulatorComponent):
+    COMPONENT_TYPE = ComponentType.CHARACTER_SIMULATOR
+
     def __init__(self,
-                 world_id: str,
-                 simulation_id: str,
-                 character_id: str,
                  database: DatabaseService,
+                 langfuse_handler: CallbackHandler,
                  ):
-        self._world_id = world_id
-        self._simulation_id = simulation_id
-        self._character_id = character_id
+        super().__init__(database)
 
-        self._db = database
+        self._perspective_resolver = PerspectiveResolver(
+            database=database,
+            langfuse_handler=langfuse_handler
+        )
 
-    async def _build_perspective(self) -> CharacterPerspective:
-        simulation=await self._db.simulation.get_simulation(self._simulation_id)
-        if not simulation:
-            raise ValueError(f"Simulation {self._simulation_id} not found")
-
-        character = await self._db.character.get_character(self._character_id)
-        if not character:
-            raise ValueError(f"Character {self._character_id} not found")
-
-        location = await self._db.location.get_location_by_character(self._character_id)
+    async def _build_perspective(self,
+                                 world: World,
+                                 simulation: Simulation,
+                                 character: Character,
+                                 thread_id: str | None = None,
+                                 ) -> CharacterPerspective:
+        location = await self._db.location.get_location_by_character(character.id)
         if not location:
-            raise ValueError(f"Character {self._character_id} is not in a location")
+            raise ValueError(f"Character {character.id} is not in a location")
+
+        inventory = await self._db.item.get_inventory(character.id)
+        equipment = await self._db.equipment.get_equipment_inventory(character.id)
+
+        perspective = await self._perspective_resolver.resolve_perceived_entities(
+            world_id=world.id,
+            simulation_id=simulation.id,
+            character_id=character.id,
+            thread_id=thread_id,
+        )
 
         return CharacterPerspective(
             actor=character,
             world_time=simulation.current_time,
-            location=location
+            location=location,
+            inventory=inventory,
+            equipment=equipment,
         )
 
-    async def propose_actions(self):
-        perspective = await self._build_perspective()
-        world = await self._db.world.get_world(self._world_id)
+    async def propose_actions(self,
+                              world_id: str,
+                              simulation_id: str,
+                              character_id: str,
+                              thread_id: str | None = None,
+                              ) -> ProposedAction:
+        world = await self._db.world.get_world(world_id)
         if not world:
-            raise ValueError(f"World {self._world_id} not found")
+            raise ValueError(f"World {world_id} not found in database")
 
-        prompt_data = PROMPTS[world.language]["action_proposal"]
-        prompt = [PromptMessage.model_validate(p) for p in prompt_data]
+        simulation = await self._db.simulation.get_simulation(simulation_id)
+        if not simulation:
+            raise ValueError(f"Simulation {simulation_id} not found in database")
 
-        chat_config = await self._db.config.get_chat_by_source(
-            source_id=self._simulation_id,
-            component=ComponentType.CHARACTER_SIMULATOR,
+        character = await self._db.character.get_character(character_id)
+        if not character:
+            raise ValueError(f"Character {character_id} not found in database")
+
+        perspective = await self._build_perspective(
+            world=world,
+            simulation=simulation,
+            character=character,
+            thread_id=thread_id,
         )
-        if not chat_config:
-            raise ValueError(
-                f"Simulation {self._simulation_id} does not have a chat model configured for character simulation"
-            )
 
-        connection_config = await self._db.config.get_connection_by_source(
-            source_id=chat_config.id,
+        prompt = self._prepare_prompt(
+            language=world.language,
+            prompt_name="action_proposal",
         )
-        if not connection_config:
-            raise ValueError(
-                f"Chat model config {chat_config.id} does not have a connection configured"
-            )
 
-        llm = LlmService(
-            model_config=chat_config,
-            connection_config=connection_config,
+        llm = await self._prepare_llm_service(
+            simulation_id=simulation_id,
         )
 
         result = await llm.invoke_structured_with_repair(

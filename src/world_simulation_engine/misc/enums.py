@@ -16,6 +16,7 @@ class ActionType(StrEnum):
 
 class ComponentType(StrEnum):
     CHARACTER_SIMULATOR = "character_simulator"
+    PERSPECTIVE_RESOLVER = "perspective_resolver"
 
 
 class ConnectionType(StrEnum):
@@ -38,10 +39,10 @@ class MessageRole(StrEnum):
 
 
 class Salience(StrEnum):
-    low = "low"
-    medium = "medium"
-    high = "high"
-    critical = "critical"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
 
 
 class SupportedLanguage(StrEnum):
@@ -56,7 +57,7 @@ class SystemMessagePolicy(StrEnum):
 
 
 class Visibility(StrEnum):
-    visible = "visible"
-    audible = "audible"
-    remembered = "remembered"
-    inferred = "inferred"
+    VISIBLE = "visible"
+    AUDIBLE = "audible"
+    INFERRED = "inferred"
+    INVISIBLE = "invisible"

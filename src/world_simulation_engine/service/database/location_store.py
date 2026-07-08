@@ -3,46 +3,50 @@ from neo4j import AsyncDriver
 from world_simulation_engine.model import Location, Landmark
 
 
-def _location_from_node(location_node) -> Location:
-    return Location(
-        id=location_node["id"],
-        name=location_node["name"],
-        description=location_node["description"],
-    )
-
-
-def _landmark_from_node(landmark_node) -> Landmark:
-    return Landmark(
-        id=landmark_node["id"],
-        name=landmark_node["name"],
-        description=landmark_node["description"],
-    )
-
-
 class LocationStore:
     def __init__(self,
                  driver: AsyncDriver,
                  ):
         self._driver = driver
 
+    @staticmethod
+    def location_from_node(location_node) -> Location:
+        return Location(
+            id=location_node["id"],
+            name=location_node["name"],
+            description=location_node["description"],
+        )
+
+    @staticmethod
+    def landmark_from_node(landmark_node) -> Landmark:
+        return Landmark(
+            id=landmark_node["id"],
+            name=landmark_node["name"],
+            description=landmark_node["description"],
+        )
+
     async def create_location(self,
                               location: Location,
+                              source_id: str,
                               contained_in: str | None = None,
                               ):
         await self._driver.execute_query(
             """
+            MATCH (source:World|Simulation {id: $source_id})
             CREATE (l:Location {
                 id: $id,
                 name: $name,
                 description: $description
             })
-            OPTIONAL MATCH (location:Location {id: $contained_in})
+            MERGE (source)-[:CONTAINS]->(l)
+            WITH l
+            OPTIONAL MATCH (parent:Location {id: $contained_in})
             FOREACH (_ IN CASE
-                WHEN $contained_in IS NOT NULL AND location IS NOT NULL
+                WHEN $contained_in IS NOT NULL AND parent IS NOT NULL
                 THEN [1]
                 ELSE []
             END |
-                MERGE (l)<-[:CONTAINS]-(location)
+                MERGE (l)<-[:CONTAINS]-(parent)
             )
             RETURN l
             """,
@@ -50,6 +54,7 @@ class LocationStore:
                 "id": location.id,
                 "name": location.name,
                 "description": location.description,
+                "source_id": source_id,
                 "contained_in": contained_in,
             }
         )
@@ -64,7 +69,7 @@ class LocationStore:
         if not record:
             return None
 
-        return _location_from_node(record["l"])
+        return self.location_from_node(record["l"])
 
     async def get_location_by_character(self, character_id: str) -> Location | None:
         result = await self._driver.execute_query(
@@ -90,7 +95,7 @@ class LocationStore:
             if not record:
                 return None
 
-        return _location_from_node(record["loc"])
+        return self.location_from_node(record["loc"])
 
     async def create_landmark(self,
                               landmark: Landmark,
@@ -98,12 +103,12 @@ class LocationStore:
                               ):
         await self._driver.execute_query(
             """
+            MATCH (loc:Location {id: $location_id})
             CREATE (l:Landmark {
                 id: $id,
                 name: $name,
                 description: $description
             })
-            MATCH (loc:Location {id: $location_id})
             MERGE (l)<-[:CONTAINS]-(loc)
             RETURN l
             """,
@@ -114,3 +119,20 @@ class LocationStore:
                 "location_id": location_id,
             }
         )
+
+    async def get_landmarks_by_location(self,
+                                        location_id: str,
+                                        ) -> list[Landmark]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Location {id: $location_id}) -[:CONTAINS]-> (landmark:Landmark)
+            RETURN landmark
+            ORDER BY landmark.name
+            """,
+            parameters_={"location_id": location_id},
+        )
+
+        return [
+            self.landmark_from_node(record["landmark"])
+            for record in result.records
+        ]

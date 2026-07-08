@@ -7,8 +7,14 @@ if TYPE_CHECKING:
     from .enums import SupportedLanguage
 
 
-class Prompts(TypedDict):
+class Prompts(TypedDict, total=False):
     action_proposal: list[dict]
+    resolve_perceived_character: list[dict]
+    resolve_perceived_background_characters: list[dict]
+    resolve_perceived_items: list[dict]
+    resolve_perceived_equipment: list[dict]
+    resolve_perceived_containers: list[dict]
+    resolve_perceived_landmarks: list[dict]
 
 
 def _load_builtin_prompt(language: str, name: str) -> list[dict]:
@@ -41,11 +47,24 @@ def _load_prompt(language: str, name: str) -> list[dict]:
 def load_prompt() -> dict["SupportedLanguage", Prompts]:
     from .enums import SupportedLanguage
 
+    prompt_names = [
+        "action_proposal",
+        "resolve_perceived_character",
+        "resolve_perceived_background_characters",
+        "resolve_perceived_items",
+        "resolve_perceived_equipment",
+        "resolve_perceived_containers",
+        "resolve_perceived_landmarks",
+    ]
+
     result = {}
     for language in SupportedLanguage:
-        result[language] = Prompts(
-            action_proposal=_load_prompt(language.value, "action_proposal")
-        )
+        result[language] = Prompts()
+        for prompt_name in prompt_names:
+            try:
+                result[language][prompt_name] = _load_prompt(language.value, prompt_name)
+            except FileNotFoundError:
+                pass
 
     return result
 
