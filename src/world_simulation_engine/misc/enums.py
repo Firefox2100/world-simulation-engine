@@ -38,6 +38,31 @@ class MessageRole(StrEnum):
     TOOL = "tool"
 
 
+class EventInvolvement(StrEnum):
+    WITNESS = "witness"
+    PARTICIPATE = "participate"
+    HEAR = "hear"
+    INFER = "infer"
+    BELIEVE = "believe"
+    SUSPECT = "suspect"
+
+
+class MemoryStance(StrEnum):
+    REMEMBER = "remember"
+    INFER = "infer"
+    BELIEVE = "believe"
+    DOUBT = "doubt"
+    DENY = "deny"
+    MISTAKE = "mistake"
+
+
+class MemorySupportType(StrEnum):
+    DIRECT = "direct"
+    INFERRED = "inferred"
+    REPORTED = "reported"
+    CONTRADICTS = "contradicts"
+
+
 class Salience(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
@@ -54,6 +79,12 @@ class SystemMessagePolicy(StrEnum):
     PRESERVE = "preserve"
     MERGE_TO_TOP = "merge_to_top"
     DROP = "drop"
+
+
+class TurnType(StrEnum):
+    USER_INPUT = "user_input"
+    SYSTEM_RESPONSE = "system_response"
+    SYSTEM_CONTINUE = "system_continue"
 
 
 class Visibility(StrEnum):

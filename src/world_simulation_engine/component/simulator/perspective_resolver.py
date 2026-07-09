@@ -7,7 +7,7 @@ from langgraph.types import Send
 from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType
+from world_simulation_engine.misc.enums import ComponentType, Visibility
 from world_simulation_engine.model import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, \
     PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, Character, BackgroundCharacter, Location, \
     World, Simulation, Landmark, Item, ItemStack, Equipment, Container
@@ -223,6 +223,15 @@ class PerspectiveResolver(SimulatorComponent):
             run_name="perspective.resolve_character",
         )
 
+        visible_equipment = []
+        if result.visibility == Visibility.VISIBLE:
+            target_equipment = await self._db.equipment.get_equipment_inventory(state.target.id)
+            visible_equipment = [
+                equipment
+                for equipment in target_equipment
+                if equipment.equipped
+            ]
+
         return {
             "perceived_characters": [
                 PerceivedCharacter(
@@ -233,6 +242,7 @@ class PerspectiveResolver(SimulatorComponent):
                     affordances=result.affordances,
                     salience=result.salience,
                     notes=result.notes,
+                    visible_equipment=visible_equipment,
                 )
             ]
         }
@@ -486,6 +496,9 @@ class PerspectiveResolver(SimulatorComponent):
             result = []
             characters = await self._db.get_characters_in_location(state.location.id)
             for character, location, position, landmark in characters:
+                if character.id == state.observer.id:
+                    continue
+
                 result.append(Send(
                     "resolve_perceived_character",
                     ResolvePerceivedCharacterState(

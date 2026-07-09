@@ -73,7 +73,7 @@ class OllamaChatModelConfig(ChatModelConfig):
 
 class OpenAiChatModelConfig(ChatModelConfig):
     """
-    The specialised configuration for using a chat model with OpenAi.
+    The specialised configuration for using a chat model with OpenAI.
     """
 
 

@@ -78,6 +78,9 @@ class ContainerStore:
         result = await self._driver.execute_query(
             """
             MATCH (location:Location {id: $location_id}) <-[r:PRESENT_IN]- (container:Container)
+            OPTIONAL MATCH (holder)-[:HOLDS]->(container)
+            WITH container, location, r, holder
+            WHERE holder IS NULL
             OPTIONAL MATCH (owner)-[:OWNS]->(container)
             RETURN container, location, r.position AS position, owner.id AS owner_id
             ORDER BY container.name

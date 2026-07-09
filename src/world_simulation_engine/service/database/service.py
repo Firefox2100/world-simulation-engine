@@ -5,9 +5,12 @@ from .character_store import CharacterStore
 from .config_store import ConfigStore
 from .container_store import ContainerStore
 from .equipment_store import EquipmentStore
+from .event_store import EventStore
 from .item_store import ItemStore
 from .location_store import LocationStore
+from .memory_store import MemoryStore
 from .simulation_store import SimulationStore
+from .turn_store import TurnStore
 from .world_store import WorldStore
 
 
@@ -21,9 +24,12 @@ class DatabaseService:
         self._config = ConfigStore(self._driver)
         self._container = ContainerStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
+        self._event = EventStore(self._driver)
         self._item = ItemStore(self._driver)
         self._location = LocationStore(self._driver)
+        self._memory = MemoryStore(self._driver)
         self._simulation = SimulationStore(self._driver)
+        self._turn = TurnStore(self._driver)
         self._world = WorldStore(self._driver)
 
     @property
@@ -43,6 +49,10 @@ class DatabaseService:
         return self._equipment
 
     @property
+    def event(self) -> EventStore:
+        return self._event
+
+    @property
     def item(self) -> ItemStore:
         return self._item
 
@@ -51,8 +61,16 @@ class DatabaseService:
         return self._location
 
     @property
+    def memory(self) -> MemoryStore:
+        return self._memory
+
+    @property
     def simulation(self) -> SimulationStore:
         return self._simulation
+
+    @property
+    def turn(self) -> TurnStore:
+        return self._turn
 
     @property
     def world(self) -> WorldStore:

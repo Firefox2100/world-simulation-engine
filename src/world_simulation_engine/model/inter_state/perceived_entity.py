@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.misc.enums import Visibility, Salience
 from ..character import Character, BackgroundCharacter
 from ..item import Item, ItemStack
-from ..equipment import Equipment
+from ..equipment import Equipment, InventoryEquipment
 from ..location import Landmark
 from ..container import Container
 
@@ -41,6 +41,10 @@ class PerceivedCharacter(PerceivedEntity):
     relation_to_actor: Optional[str] = Field(
         None,
         description="The relationship between character and observer"
+    )
+    visible_equipment: list[InventoryEquipment] = Field(
+        default_factory=list,
+        description="Equipment visibly equipped by this character"
     )
 
 

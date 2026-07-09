@@ -115,3 +115,38 @@ async def test_hold_equipment_removes_location_presence(clean_neo4j):
     await equipment_store.change_hold_state(equipment.id, holder.id)
 
     assert await equipment_store.get_equipment_by_location(location.id) == []
+
+
+async def test_location_equipment_query_ignores_equipped_equipment(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    equipment_store = EquipmentStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    equipment = Equipment(
+        id=str(uuid4()),
+        name="Lantern",
+        description="A brass lantern",
+        quality="worn",
+    )
+    location = Location(id=str(uuid4()), name="Cave", description="A dark cave")
+    holder = await create_character(clean_neo4j, world.id, name="Explorer")
+
+    await location_store.create_location(location, source_id=world.id)
+    await equipment_store.create_equipment(
+        equipment,
+        source_id=world.id,
+        location_id=location.id,
+        position="near the entrance",
+    )
+    await clean_neo4j.execute_query(
+        """
+        MATCH (holder:Character {id: $holder_id})
+        MATCH (equipment:Equipment {id: $equipment_id})
+        MERGE (holder)-[:EQUIPS {position: 'left hand'}]->(equipment)
+        """,
+        parameters_={
+            "holder_id": holder.id,
+            "equipment_id": equipment.id,
+        },
+    )
+
+    assert await equipment_store.get_equipment_by_location(location.id) == []

@@ -105,6 +105,41 @@ async def test_assign_container_holder_and_owner(clean_neo4j):
     assert result.records[0]["link_count"] == 1
 
 
+async def test_location_container_query_ignores_held_container(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = ContainerStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    location = Location(id=str(uuid4()), name="Vault", description="A quiet vault")
+    holder = await create_character(clean_neo4j, world.id, name="Holder")
+    container = Container(
+        id=str(uuid4()),
+        name="Chest",
+        description="A wooden chest",
+        state=ContainerState.UNLOCKED,
+    )
+
+    await location_store.create_location(location, source_id=world.id)
+    await store.create_container(
+        container,
+        source_id=world.id,
+        location_id=location.id,
+        position="against the wall",
+    )
+    await clean_neo4j.execute_query(
+        """
+        MATCH (holder:Character {id: $holder_id})
+        MATCH (container:Container {id: $container_id})
+        MERGE (holder)-[:HOLDS]->(container)
+        """,
+        parameters_={
+            "holder_id": holder.id,
+            "container_id": container.id,
+        },
+    )
+
+    assert await store.get_containers_by_location(location.id) == []
+
+
 async def test_container_can_hold_items_equipment_and_containers(clean_neo4j):
     world = await create_world(clean_neo4j)
     container_store = ContainerStore(clean_neo4j)

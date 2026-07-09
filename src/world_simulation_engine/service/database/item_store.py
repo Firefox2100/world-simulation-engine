@@ -191,6 +191,9 @@ class ItemStore:
         result = await self._driver.execute_query(
             """
             MATCH (location:Location {id: $location_id}) <-[r:PRESENT_IN]- (stack:ItemStack) -[:OF_TYPE]-> (item:Item)
+            OPTIONAL MATCH (holder)-[:HOLDS]->(stack)
+            WITH item, stack, location, r, holder
+            WHERE holder IS NULL
             OPTIONAL MATCH (owner)-[:OWNS]->(stack)
             RETURN item, stack, location, r.position AS position, owner.id AS owner_id
             ORDER BY item.name, stack.id

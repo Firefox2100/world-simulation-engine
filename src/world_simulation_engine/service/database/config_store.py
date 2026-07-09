@@ -2,7 +2,7 @@ from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion, OllamaChatModelConfig, \
-    OpenAiChatModelConfig
+    OpenAiChatModelConfig, EmbedModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig
 
 
 def _connection_from_node(connection_node) -> ConnectionConfig:
@@ -50,6 +50,31 @@ def _chat_from_node(config_node, labels: list[str]) -> ChatModelConfigUnion:
         return _ollama_chat_from_node(config_node)
     if "OpenAiChatModelConfig" in labels:
         return _openai_chat_from_node(config_node)
+    raise ValueError(f"Unknown config labels {labels}")
+
+
+def _ollama_embed_from_node(config_node) -> OllamaEmbedModelConfig:
+    return OllamaEmbedModelConfig(
+        id=config_node["id"],
+        model=config_node["model"],
+        dimension=config_node.get("dimension"),
+        context_window=config_node.get("context_window"),
+    )
+
+
+def _openai_embed_from_node(config_node) -> OpenAiEmbedModelConfig:
+    return OpenAiEmbedModelConfig(
+        id=config_node["id"],
+        model=config_node["model"],
+        dimension=config_node.get("dimension"),
+    )
+
+
+def _embed_from_node(config_node, labels: list[str]) -> EmbedModelConfigUnion:
+    if "OllamaEmbedModelConfig" in labels:
+        return _ollama_embed_from_node(config_node)
+    if "OpenAiEmbedModelConfig" in labels:
+        return _openai_embed_from_node(config_node)
     raise ValueError(f"Unknown config labels {labels}")
 
 
@@ -108,13 +133,32 @@ class ConfigStore:
 
         return _connection_from_node(record["c"])
 
+    async def get_connection_by_embed_source(self, source_id: str) -> ConnectionConfig | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $source_id})
+                -[:USES]->
+                (c:ConnectionConfig)
+            RETURN c LIMIT 1
+            """,
+            parameters_={"source_id": source_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _connection_from_node(record["c"])
+
     async def link_connection(self,
                               source_id: str,
                               connection_id: str,
                               ):
         await self._driver.execute_query(
             """
-            MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig {id: $source_id})
+            MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig {
+                id: $source_id
+            })
             MATCH (c:ConnectionConfig {id: $connection_id})
             MERGE (s) -[:USES]-> (c)
             """,
@@ -233,6 +277,83 @@ class ConfigStore:
             """
             MATCH (s:World|Simulation {id: $source_id})
             MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            MERGE (s) -[:USES {component: $component}]-> (c)
+            """,
+            parameters_={
+                "source_id": source_id,
+                "config_id": config_id,
+                "component": component,
+            }
+        )
+
+    async def create_embed(self, embed_config: EmbedModelConfigUnion):
+        if isinstance(embed_config, OllamaEmbedModelConfig):
+            await self._driver.execute_query(
+                """
+                CREATE (c:OllamaEmbedModelConfig {
+                    id: $id,
+                    model: $model,
+                    dimension: $dimension,
+                    context_window: $context_window
+                }) RETURN c
+                """,
+                parameters_={
+                    "id": embed_config.id,
+                    "model": embed_config.model,
+                    "dimension": embed_config.dimension,
+                    "context_window": embed_config.context_window,
+                }
+            )
+        elif isinstance(embed_config, OpenAiEmbedModelConfig):
+            await self._driver.execute_query(
+                """
+                CREATE (c:OpenAiEmbedModelConfig {
+                    id: $id,
+                    model: $model,
+                    dimension: $dimension
+                }) RETURN c
+                """,
+                parameters_={
+                    "id": embed_config.id,
+                    "model": embed_config.model,
+                    "dimension": embed_config.dimension,
+                }
+            )
+        else:
+            raise TypeError(f"Expected EmbedModelConfigUnion, got {type(embed_config)}")
+
+    async def get_embed_by_source(self,
+                                  source_id: str,
+                                  component: ComponentType,
+                                  ) -> EmbedModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+                -[:USES {component: $component}]->
+                (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig)
+            RETURN labels(c) as config_labels, c as config
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            }
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _embed_from_node(record["config"], record["config_labels"])
+
+    async def link_embed(self,
+                         source_id: str,
+                         config_id: str,
+                         component: ComponentType,
+                         ):
+        await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
             MERGE (s) -[:USES {component: $component}]-> (c)
             """,
             parameters_={

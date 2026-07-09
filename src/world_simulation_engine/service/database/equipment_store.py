@@ -95,6 +95,9 @@ class EquipmentStore:
         result = await self._driver.execute_query(
             """
             MATCH (location:Location {id: $location_id}) <-[r:PRESENT_IN]- (equipment:Equipment)
+            OPTIONAL MATCH (holder)-[:HOLDS|EQUIPS]->(equipment)
+            WITH equipment, location, r, holder
+            WHERE holder IS NULL
             OPTIONAL MATCH (owner)-[:OWNS]->(equipment)
             RETURN equipment, location, r.position AS position, owner.id AS owner_id
             ORDER BY equipment.name
