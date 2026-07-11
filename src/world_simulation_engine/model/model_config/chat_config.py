@@ -12,6 +12,10 @@ class ChatModelConfig(BaseModel):
         default_factory=lambda: str(uuid4()),
         description="Unique identifier for the model",
     )
+    name: str = Field(
+        ...,
+        description="The name of the chat config",
+    )
     model: str = Field(
         ...,
         description="The model to use for the chat",

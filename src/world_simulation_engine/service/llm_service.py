@@ -241,7 +241,8 @@ class LlmService:
         last_error: Exception | None = None
         last_raw: Any = None
 
-        current_messages = self._compose_messages(messages, data=data)
+        base_messages = self._compose_messages(messages, data=data)
+        current_messages = base_messages
 
         for attempt in range(max_attempts):
             structured_model = self.model.with_structured_output(
@@ -276,7 +277,7 @@ class LlmService:
                 last_error = exc
 
                 current_messages = [
-                    *messages,
+                    *base_messages,
                     HumanMessage(
                         content=(
                             f"{repair_instruction}\n\n"

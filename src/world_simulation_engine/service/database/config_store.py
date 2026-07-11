@@ -18,6 +18,7 @@ def _connection_from_node(connection_node) -> ConnectionConfig:
 def _ollama_chat_from_node(config_node) -> OllamaChatModelConfig:
     return OllamaChatModelConfig(
         id=config_node["id"],
+        name=config_node["name"],
         model=config_node["model"],
         temperature=config_node["temperature"],
         context_window=config_node["context_window"],
@@ -36,6 +37,7 @@ def _ollama_chat_from_node(config_node) -> OllamaChatModelConfig:
 def _openai_chat_from_node(config_node) -> OpenAiChatModelConfig:
     return OpenAiChatModelConfig(
         id=config_node["id"],
+        name=config_node["name"],
         model=config_node["model"],
         temperature=config_node["temperature"],
         context_window=config_node["context_window"],
@@ -174,6 +176,7 @@ class ConfigStore:
                 """
                 CREATE (c:OllamaChatModelConfig {
                     id: $id,
+                    name: $name,
                     model: $model,
                     temperature: $temperature,
                     context_window: $context_window,
@@ -190,6 +193,7 @@ class ConfigStore:
                 """,
                 parameters_={
                     "id": chat_config.id,
+                    "name": chat_config.name,
                     "model": chat_config.model,
                     "temperature": chat_config.temperature,
                     "context_window": chat_config.context_window,
@@ -209,6 +213,7 @@ class ConfigStore:
                 """
                 CREATE (c:OpenAiChatModelConfig {
                     id: $id,
+                    name: $name,
                     model: $model,
                     temperature: $temperature,
                     context_window: $context_window,
@@ -219,6 +224,7 @@ class ConfigStore:
                 """,
                 parameters_={
                     "id": chat_config.id,
+                    "name": chat_config.name,
                     "model": chat_config.model,
                     "temperature": chat_config.temperature,
                     "context_window": chat_config.context_window,

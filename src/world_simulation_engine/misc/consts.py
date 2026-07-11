@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 class Prompts(TypedDict, total=False):
     action_proposal: list[dict]
+    action_validator: list[dict]
+    input_interpreter: list[dict]
     resolve_perceived_character: list[dict]
     resolve_perceived_background_characters: list[dict]
     resolve_perceived_items: list[dict]
@@ -49,6 +51,8 @@ def load_prompt() -> dict["SupportedLanguage", Prompts]:
 
     prompt_names = [
         "action_proposal",
+        "action_validator",
+        "input_interpreter",
         "resolve_perceived_character",
         "resolve_perceived_background_characters",
         "resolve_perceived_items",

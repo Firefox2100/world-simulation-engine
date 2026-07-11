@@ -14,6 +14,7 @@ class CharacterStore:
     def character_from_node(character_node) -> Character:
         return Character(
             id=character_node["id"],
+            user_controlled=character_node["user_controlled"],
             name=character_node["name"],
             age=character_node["age"],
             gender=character_node["gender"],
@@ -41,6 +42,7 @@ class CharacterStore:
             MATCH (s:World|Simulation {id: $source_id})
             CREATE (c:Character {
                 id: $id,
+                user_controlled: $user_controlled,
                 name: $name,
                 age: $age,
                 gender: $gender,
@@ -55,6 +57,7 @@ class CharacterStore:
             """,
             parameters_={
                 "id": character.id,
+                "user_controlled": character.user_controlled,
                 "name": character.name,
                 "age": character.age,
                 "gender": character.gender,
@@ -71,6 +74,21 @@ class CharacterStore:
         result = await self._driver.execute_query(
             "MATCH (c:Character {id: $character_id}) RETURN c LIMIT 1",
             parameters_={"character_id": character_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.character_from_node(record["c"])
+
+    async def get_user_character_by_simulation(self, simulation_id: str) -> Character | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:Character {user_controlled: true}) <-[:CONTAINS]-(s:Simulation {id: $simulation_id})
+            RETURN c LIMIT 1
+            """,
+            parameters_={"simulation_id": simulation_id}
         )
 
         record = result.records[0] if result.records else None

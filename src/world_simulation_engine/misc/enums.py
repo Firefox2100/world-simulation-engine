@@ -1,21 +1,38 @@
 from enum import StrEnum
 
 
+class ActionModality(StrEnum):
+    PHYSICAL = "physical"
+    VERBAL = "verbal"
+    MENTAL_ATTENTION = "mental_attention"
+    MIXED = "mixed"
+
+
 class ActionType(StrEnum):
-    speak = "speak"
-    move = "move"
-    interact = "interact"
-    wait = "wait"
-    observe = "observe"
-    use_item = "use_item"
-    social_signal = "social_signal"
-    refuse = "refuse"
-    continue_activity = "continue_activity"
-    stop_activity = "stop_activity"
+    SPEAK = "speak"
+    MOVE = "move"
+    CHANGE_POSTURE = "change_posture"
+    LOOK = "look"
+    OBSERVE = "observe"
+    TOUCH = "touch"
+    TAKE = "take"
+    DROP = "drop"
+    GIVE = "give"
+    USE = "use"
+    MANIPULATE = "manipulate"
+    ATTACK = "attack"
+    DEFEND = "defend"
+    WAIT = "wait"
+    CONTINUE_ACTIVITY = "continue_activity"
+    STOP_ACTIVITY = "stop_activity"
+    SOCIAL_SIGNAL = "social_signal"
+    OTHER = "other"
 
 
 class ComponentType(StrEnum):
+    ACTION_VALIDATOR = "action_validator"
     CHARACTER_SIMULATOR = "character_simulator"
+    INPUT_INTERPRETER = "input_interpreter"
     PERSPECTIVE_RESOLVER = "perspective_resolver"
 
 

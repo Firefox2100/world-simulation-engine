@@ -1,8 +1,9 @@
 from .character import CurrentActivity, Character, BackgroundCharacter
 from .container import Container
 from .equipment import Equipment, InventoryEquipment
-from .inter_state import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, PerceivedItem, \
-    PerceivedEquipment, PerceivedLandmark, PerceivedContainer, ProposedAction
+from .inter_state import ActionValidation, ActionValidationResult, PerceivedEntity, PerceivedCharacter, \
+    PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
+    ProposedAction, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem
 from .item import Item, ItemStack, InventoryStack
 from .location import Location, Landmark
 from .memory import MemoryAtom

@@ -46,6 +46,10 @@ class Character(BaseModel):
         default_factory=lambda: str(uuid4()),
         description="Unique identifier for the character",
     )
+    user_controlled: bool = Field(
+        False,
+        description="Whether the user controls the character",
+    )
     name: str = Field(
         ...,
         description="Name of the character",
