@@ -39,6 +39,7 @@ async def test_create_chat_configs(clean_neo4j):
     store = ConfigStore(clean_neo4j)
     ollama_chat = OllamaChatModelConfig(
         id=str(uuid4()),
+        name="Local chat",
         model="llama3",
         temperature=0.7,
         context_window=4096,
@@ -54,6 +55,7 @@ async def test_create_chat_configs(clean_neo4j):
     )
     openai_chat = OpenAiChatModelConfig(
         id=str(uuid4()),
+        name="Hosted chat",
         model="gpt-test",
         temperature=0.2,
         context_window=8192,
@@ -65,8 +67,13 @@ async def test_create_chat_configs(clean_neo4j):
     await store.create_chat(ollama_chat)
     await store.create_chat(openai_chat)
 
-    assert await store.get_chat(ollama_chat.id) == ollama_chat
-    assert await store.get_chat(openai_chat.id) == openai_chat
+    stored_ollama_chat = await store.get_chat(ollama_chat.id)
+    stored_openai_chat = await store.get_chat(openai_chat.id)
+
+    assert stored_ollama_chat == ollama_chat
+    assert stored_ollama_chat.name == "Local chat"
+    assert stored_openai_chat == openai_chat
+    assert stored_openai_chat.name == "Hosted chat"
 
 
 async def test_connection_and_chat_links(clean_neo4j):
@@ -79,8 +86,8 @@ async def test_connection_and_chat_links(clean_neo4j):
         base_url=None,
         api_key="test-key",
     )
-    ollama_chat = OllamaChatModelConfig(id=str(uuid4()), model="llama3")
-    openai_chat = OpenAiChatModelConfig(id=str(uuid4()), model="gpt-test")
+    ollama_chat = OllamaChatModelConfig(id=str(uuid4()), name="Local chat", model="llama3")
+    openai_chat = OpenAiChatModelConfig(id=str(uuid4()), name="Hosted chat", model="gpt-test")
 
     await store.create_connection(connection)
     await store.create_chat(ollama_chat)
@@ -88,5 +95,9 @@ async def test_connection_and_chat_links(clean_neo4j):
     await store.link_connection(ollama_chat.id, connection.id)
     await store.link_chat(world.id, openai_chat.id, ComponentType.CHARACTER_SIMULATOR)
 
-    assert await store.get_connection_by_source(ollama_chat.id) == connection
-    assert await store.get_chat_by_source(world.id, ComponentType.CHARACTER_SIMULATOR) == openai_chat
+    linked_connection = await store.get_connection_by_source(ollama_chat.id)
+    linked_chat = await store.get_chat_by_source(world.id, ComponentType.CHARACTER_SIMULATOR)
+
+    assert linked_connection == connection
+    assert linked_chat == openai_chat
+    assert linked_chat.name == "Hosted chat"
