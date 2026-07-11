@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import exp, log, sqrt
 from typing import Optional
 from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, MemoryStance, MemorySupportType, Salience
-from world_simulation_engine.model import ProposedAction, Character, Location, InventoryStack, \
+from world_simulation_engine.model import Intent, ProposedAction, Character, Location, InventoryStack, \
     InventoryEquipment, Simulation, World, MemoryAtom, PerceivedBackgroundCharacter, PerceivedCharacter, \
     PerceivedContainer, PerceivedEquipment, PerceivedItem, PerceivedLandmark
 from world_simulation_engine.service import DatabaseService, EmbedService
@@ -30,13 +30,10 @@ class RecalledMemory(BaseModel):
     similarity: Optional[float] = None
 
 
-class Goal(BaseModel):
-    id: str
-    description: str
-    priority: float = Field(ge=0, le=1)
-    deadline: Optional[str] = Field(default=None, description="World time or natural description.")
-    constraints: list[str] = Field(default_factory=list)
-    success_conditions: list[str] = Field(default_factory=list)
+class RecalledIntent(BaseModel):
+    intent: Intent
+    recall_sources: list[str] = Field(default_factory=list)
+    similarity: Optional[float] = None
 
 
 class CharacterPerspective(BaseModel):
@@ -66,7 +63,7 @@ class CharacterPerspective(BaseModel):
         description="The latest user input that triggered this action proposal"
     )
 
-    goals: list[Goal] = Field(default_factory=list)
+    intents: list[RecalledIntent] = Field(default_factory=list)
 
     perceived_characters: list[PerceivedCharacter] = Field(default_factory=list)
     perceived_background_characters: list[PerceivedBackgroundCharacter] = Field(default_factory=list)
@@ -231,6 +228,59 @@ class CharacterSimulator(SimulatorComponent):
 
         return list(recalled_by_id.values())
 
+    async def _recall_intents(self,
+                              simulation: Simulation,
+                              character: Character,
+                              user_input: str,
+                              ) -> list[RecalledIntent]:
+        deadline_delta = timedelta(hours=24)
+        priority_threshold = 0.7
+        urgency_threshold = 0.7
+
+        recalled_by_id = {
+            intent.id: RecalledIntent(
+                intent=intent,
+                recall_sources=["active_filter"],
+            )
+            for intent in await self._db.intent.get_active_intent_candidates(
+                character_id=character.id,
+                current_time=simulation.current_time,
+                deadline_delta=deadline_delta,
+                priority_threshold=priority_threshold,
+                urgency_threshold=urgency_threshold,
+            )
+        }
+
+        if user_input.strip():
+            embed_service = await self._prepare_embed_service(simulation.id)
+            query_embedding = (await embed_service.embed_texts([user_input]))[0]
+            scored_intents = [
+                (
+                    intent,
+                    self._cosine_similarity(query_embedding, intent.embedding or []),
+                )
+                for intent in await self._db.intent.get_character_intents(character.id)
+            ]
+            scored_intents.sort(key=lambda item: item[1], reverse=True)
+
+            for intent, similarity in scored_intents[:10]:
+                if similarity <= 0:
+                    continue
+
+                if intent.id in recalled_by_id:
+                    recalled = recalled_by_id[intent.id]
+                    recalled.similarity = similarity
+                    if "embedding_match" not in recalled.recall_sources:
+                        recalled.recall_sources.append("embedding_match")
+                else:
+                    recalled_by_id[intent.id] = RecalledIntent(
+                        intent=intent,
+                        recall_sources=["embedding_match"],
+                        similarity=similarity,
+                    )
+
+        return list(recalled_by_id.values())
+
     async def _build_perspective(self,
                                  world: World,
                                  simulation: Simulation,
@@ -256,6 +306,11 @@ class CharacterSimulator(SimulatorComponent):
             character=character,
             user_input=user_input,
         )
+        intents = await self._recall_intents(
+            simulation=simulation,
+            character=character,
+            user_input=user_input,
+        )
 
         return CharacterPerspective(
             actor=character,
@@ -264,6 +319,7 @@ class CharacterSimulator(SimulatorComponent):
             inventory=inventory,
             equipment=equipment,
             user_input=user_input,
+            intents=intents,
             perceived_characters=perspective.perceived_characters,
             perceived_background_characters=perspective.perceived_background_characters,
             perceived_items=perspective.perceived_items,

@@ -6,6 +6,7 @@ from .config_store import ConfigStore
 from .container_store import ContainerStore
 from .equipment_store import EquipmentStore
 from .event_store import EventStore
+from .intent_store import IntentStore
 from .item_store import ItemStore
 from .location_store import LocationStore
 from .memory_store import MemoryStore
@@ -25,6 +26,7 @@ class DatabaseService:
         self._container = ContainerStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
         self._event = EventStore(self._driver)
+        self._intent = IntentStore(self._driver)
         self._item = ItemStore(self._driver)
         self._location = LocationStore(self._driver)
         self._memory = MemoryStore(self._driver)
@@ -51,6 +53,10 @@ class DatabaseService:
     @property
     def event(self) -> EventStore:
         return self._event
+
+    @property
+    def intent(self) -> IntentStore:
+        return self._intent
 
     @property
     def item(self) -> ItemStore:

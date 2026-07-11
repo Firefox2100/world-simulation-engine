@@ -31,6 +31,33 @@ class ContainerState(StrEnum):
     OPEN = "open"
 
 
+class IntentHorizon(StrEnum):
+    IMMEDIATE = "immediate"
+    SHORT = "short"
+    DAY = "day"
+    LONG = "long"
+    OPEN_ENDED = "open_ended"
+
+
+class IntentStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    ABANDONED = "abandoned"
+
+
+class IntentType(StrEnum):
+    NEED = "need"                   # hunger, safety, rest
+    OBLIGATION = "obligation"       # promise, job, debt
+    QUEST = "quest"                 # accepted explicit objective
+    AGENDA = "agenda"               # personal scheme
+    ASPIRATION = "aspiration"       # be a better painter
+    RELATIONSHIP = "relationship"   # involving another character
+    HABIT = "habit"                 # routine but not hard constraint, repetitive
+    REACTION = "reaction"           # respond to an event
+
+
 class MessageRole(StrEnum):
     SYSTEM = "system"
     USER = "user"
