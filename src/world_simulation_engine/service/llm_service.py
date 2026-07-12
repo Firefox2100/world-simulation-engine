@@ -80,6 +80,7 @@ class LlmService:
                 temperature=self._model_config.temperature,
                 seed=self._model_config.seed,
                 base_url=self._connection_config.base_url,
+                api_key=self._connection_config.api_key,
             )
 
         raise ValueError(f"Unsupported provider: {self._connection_config.type}")
