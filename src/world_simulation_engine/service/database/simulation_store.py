@@ -60,3 +60,25 @@ class SimulationStore:
             return None
 
         return _simulation_from_node(record["s"])
+
+    async def update_current_time(self,
+                                  simulation_id: str,
+                                  current_time,
+                                  ) -> Simulation:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:Simulation {id: $id})
+            SET s.current_time = $current_time
+            RETURN s
+            """,
+            parameters_={
+                "id": simulation_id,
+                "current_time": current_time,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            raise ValueError(f"Simulation {simulation_id} not found")
+
+        return _simulation_from_node(record["s"])

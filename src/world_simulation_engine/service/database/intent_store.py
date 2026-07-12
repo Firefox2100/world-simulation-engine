@@ -132,6 +132,30 @@ class IntentStore:
             },
         )
 
+    async def update_intent(self,
+                            *,
+                            intent_id: str,
+                            properties: dict,
+                            ):
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+        if not properties:
+            return
+
+        await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            SET intent += $properties
+            """,
+            parameters_={
+                "intent_id": intent_id,
+                "properties": properties,
+            },
+        )
+
     async def get_active_intent_candidates(self,
                                            character_id: str,
                                            current_time: datetime,

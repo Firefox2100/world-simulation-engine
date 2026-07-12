@@ -5,7 +5,7 @@ from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, MemoryStance, MemorySupportType, Salience
-from world_simulation_engine.model import Intent, ProposedAction, Character, Location, InventoryStack, \
+from world_simulation_engine.model import Intent, ActionProposal, Character, Location, InventoryStack, \
     InventoryEquipment, Simulation, World, MemoryAtom, PerceivedBackgroundCharacter, PerceivedCharacter, \
     PerceivedContainer, PerceivedEquipment, PerceivedItem, PerceivedLandmark
 from world_simulation_engine.service import DatabaseService, EmbedService
@@ -335,7 +335,7 @@ class CharacterSimulator(SimulatorComponent):
                               character_id: str,
                               user_input: str,
                               thread_id: str | None = None,
-                              ) -> ProposedAction:
+                              ) -> ActionProposal:
         world = await self._db.world.get_world(world_id)
         if not world:
             raise ValueError(f"World {world_id} not found in database")
@@ -366,7 +366,7 @@ class CharacterSimulator(SimulatorComponent):
         )
 
         result = await llm.invoke_structured_with_repair(
-            output_model=ProposedAction,
+            output_model=ActionProposal,
             messages=prompt,
             data=perspective.model_dump(),
             repair_instruction="",

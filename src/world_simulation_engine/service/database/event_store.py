@@ -60,6 +60,30 @@ class EventStore:
             },
         )
 
+    async def update_event(self,
+                           event_id: str,
+                           name: str | None = None,
+                           summary: str | None = None,
+                           ):
+        properties = {}
+        if name is not None:
+            properties["name"] = name
+        if summary is not None:
+            properties["summary"] = summary
+        if not properties:
+            return
+
+        await self._driver.execute_query(
+            """
+            MATCH (event:Event {id: $event_id})
+            SET event += $properties
+            """,
+            parameters_={
+                "event_id": event_id,
+                "properties": properties,
+            },
+        )
+
     async def add_character_involvement(self,
                                         event_id: str,
                                         character_id: str,

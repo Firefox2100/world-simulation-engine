@@ -33,7 +33,11 @@ class ComponentType(StrEnum):
     ACTION_VALIDATOR = "action_validator"
     CHARACTER_SIMULATOR = "character_simulator"
     INPUT_INTERPRETER = "input_interpreter"
+    MEMORY_SUMMARIZER = "memory_summarizer"
+    NARRATOR = "narrator"
     PERSPECTIVE_RESOLVER = "perspective_resolver"
+    SCENE_COORDINATOR = "scene_coordinator"
+    STATE_COMMITTER = "state_committer"
 
 
 class ConnectionType(StrEnum):
@@ -73,6 +77,23 @@ class IntentType(StrEnum):
     RELATIONSHIP = "relationship"   # involving another character
     HABIT = "habit"                 # routine but not hard constraint, repetitive
     REACTION = "reaction"           # respond to an event
+
+
+class SceneCoordinationProblemType(StrEnum):
+    EXCLUSIVE_RESOURCE = "exclusive_resource"
+    INTERRUPTION = "interruption"
+    CONSENT_REQUIRED = "consent_required"
+    REACTION_TRIGGER = "reaction_trigger"
+    CONTESTED_ACTION = "contested_action"
+    MUTUALLY_INCOMPATIBLE = "mutually_incompatible"
+    REPEATED_REACTION = "repeated_reaction"
+    OTHER = "other"
+
+
+class SceneCoordinationStatus(StrEnum):
+    COMPLETE = "complete"
+    PROBLEM = "problem"
+    STOPPED = "stopped"
 
 
 class MessageRole(StrEnum):

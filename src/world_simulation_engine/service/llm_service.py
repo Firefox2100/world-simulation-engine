@@ -296,3 +296,30 @@ class LlmService:
             f"Last error: {type(last_error).__name__ if last_error else None}: {last_error}. "
             f"Last raw content: {raw_content!r}"
         )
+
+    async def invoke_text(self,
+                          *,
+                          messages: list[PromptMessage],
+                          data: dict[str, Any],
+                          run_name: str,
+                          ) -> str:
+        response = await self.model.ainvoke(
+            self._compose_messages(messages, data=data),
+            config={"run_name": run_name},
+        )
+        content = getattr(response, "content", response)
+
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, str):
+                    text_parts.append(item)
+                elif isinstance(item, dict) and item.get("type") == "text":
+                    text_parts.append(str(item.get("text", "")))
+
+            return "".join(text_parts)
+
+        return str(content)

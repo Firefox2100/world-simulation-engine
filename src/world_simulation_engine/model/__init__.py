@@ -3,7 +3,15 @@ from .container import Container
 from .equipment import Equipment, InventoryEquipment
 from .inter_state import ActionValidation, ActionValidationResult, PerceivedEntity, PerceivedCharacter, \
     PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
-    ProposedAction, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem
+    ProposedAction, ActionProposal, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem, \
+    AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, ReactionHistoryEntry, \
+    SceneActionReference, SceneCoordinationProblem, SceneCoordinationResult, PhysicalEntityType, \
+    ProposedEntityCreation, ProposedEntityPromotion, ProposedEntityStateChange, ProposedNoPhysicalChange, \
+    ProposedRelationshipChange, RelationshipType, StateCommitEntityRef, StateCommitFieldChange, \
+    StateCommitOperation, StateCommitProposal, EventInvolvementProposal, MemoryCharacterLinkProposal, \
+    MemorySummaryOperation, MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, \
+    ProposedExistingMemoryLink, ProposedIntentCreation, ProposedIntentUpdate, ProposedMemoryCreation, \
+    ProposedNoAbstractChange, ProposedTurnEventLink
 from .item import Item, ItemStack, InventoryStack
 from .location import Location, Landmark
 from .memory import MemoryAtom

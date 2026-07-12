@@ -10,7 +10,9 @@ from .intent_store import IntentStore
 from .item_store import ItemStore
 from .location_store import LocationStore
 from .memory_store import MemoryStore
+from .memory_summary_store import MemorySummaryStore
 from .simulation_store import SimulationStore
+from .state_commit_store import StateCommitStore
 from .turn_store import TurnStore
 from .world_store import WorldStore
 
@@ -30,7 +32,13 @@ class DatabaseService:
         self._item = ItemStore(self._driver)
         self._location = LocationStore(self._driver)
         self._memory = MemoryStore(self._driver)
+        self._memory_summary = MemorySummaryStore(
+            event_store=self._event,
+            memory_store=self._memory,
+            intent_store=self._intent,
+        )
         self._simulation = SimulationStore(self._driver)
+        self._state_commit = StateCommitStore(self._driver)
         self._turn = TurnStore(self._driver)
         self._world = WorldStore(self._driver)
 
@@ -71,8 +79,16 @@ class DatabaseService:
         return self._memory
 
     @property
+    def memory_summary(self) -> MemorySummaryStore:
+        return self._memory_summary
+
+    @property
     def simulation(self) -> SimulationStore:
         return self._simulation
+
+    @property
+    def state_commit(self) -> StateCommitStore:
+        return self._state_commit
 
     @property
     def turn(self) -> TurnStore:
