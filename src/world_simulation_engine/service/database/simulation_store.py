@@ -147,9 +147,11 @@ class SimulationStore:
         result = await self._driver.execute_query(
             """
             MATCH (s:Simulation {id: $id})
-            WITH collect(s) AS simulations
-            FOREACH (simulation IN simulations | DETACH DELETE simulation)
-            RETURN size(simulations) AS deleted
+            WITH s, 1 AS deleted
+            OPTIONAL MATCH path = (s)-[:CONTAINS|HOLDS|PART_OF*0..]->(node)
+            WITH deleted, collect(DISTINCT s) + collect(DISTINCT node) AS nodes
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
             """,
             parameters_={"id": simulation_id},
         )

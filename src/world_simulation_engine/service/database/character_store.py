@@ -173,9 +173,12 @@ class CharacterStore:
         result = await self._driver.execute_query(
             """
             MATCH (c:Character {id: $character_id})
-            WITH collect(c) AS characters
-            FOREACH (character IN characters | DETACH DELETE character)
-            RETURN size(characters) AS deleted
+            OPTIONAL MATCH (c)-[:HOLDS]->(intent:Intent)
+            OPTIONAL MATCH (c)-[:HOLDS]->(stack:ItemStack)
+            WITH collect(DISTINCT c) + collect(DISTINCT intent) + collect(DISTINCT stack) AS nodes,
+                1 AS deleted
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
             """,
             parameters_={"character_id": character_id},
         )
@@ -337,24 +340,25 @@ class CharacterStore:
         result = await self._driver.execute_query(
             """
             MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (loc:Location {id: $location_id})
+            OPTIONAL MATCH (landmark:Landmark {id: $landmark_id})
+            WITH source, loc, landmark
+            WHERE ($location_id IS NULL OR loc IS NOT NULL)
+                AND ($landmark_id IS NULL OR landmark IS NOT NULL)
             CREATE (c:BackgroundCharacter {
                 id: $id,
                 name: $name,
                 description: $description
             })
             MERGE (source)-[:CONTAINS]->(c)
-            WITH c
-            OPTIONAL MATCH (loc:Location {id: $location_id})
             FOREACH (_ IN CASE
                 WHEN $location_id IS NOT NULL AND loc IS NOT NULL
                 THEN [1]
                 ELSE []
             END |
                 MERGE (c)-[present:PRESENT_IN]->(loc)
-                SET present.position = $position
+                    SET present.position = $position
             )
-            WITH c
-            OPTIONAL MATCH (landmark:Landmark {id: $landmark_id})
             FOREACH (_ IN CASE
                 WHEN $landmark_id IS NOT NULL AND landmark IS NOT NULL
                 THEN [1]
@@ -483,9 +487,11 @@ class CharacterStore:
         result = await self._driver.execute_query(
             """
             MATCH (c:BackgroundCharacter {id: $character_id})
-            WITH collect(c) AS characters
-            FOREACH (character IN characters | DETACH DELETE character)
-            RETURN size(characters) AS deleted
+            OPTIONAL MATCH (c)-[:HOLDS]->(stack:ItemStack)
+            WITH collect(DISTINCT c) + collect(DISTINCT stack) AS nodes,
+                1 AS deleted
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
             """,
             parameters_={"character_id": character_id},
         )

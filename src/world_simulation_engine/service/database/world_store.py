@@ -101,9 +101,19 @@ class WorldStore:
         result = await self._driver.execute_query(
             """
             MATCH (a:Author {id: $id})
-            WITH collect(a) AS authors
-            FOREACH (author IN authors | DETACH DELETE author)
-            RETURN size(authors) AS deleted
+            OPTIONAL MATCH (a)-[:CREATED]->(world:World)
+            OPTIONAL MATCH (simulation:Simulation)-[:BASED_ON]->(world)
+            WITH collect(DISTINCT a) + collect(DISTINCT world) + collect(DISTINCT simulation) AS roots,
+                count(DISTINCT a) AS deleted
+            UNWIND roots AS root
+            WITH root, deleted
+            WHERE root IS NOT NULL
+            OPTIONAL MATCH path = (root)-[:CONTAINS|HOLDS|PART_OF*0..]->(node)
+            WITH deleted, collect(DISTINCT root) + collect(DISTINCT node) AS nodes
+            UNWIND nodes AS node
+            WITH deleted, collect(DISTINCT node) AS nodes
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
             """,
             parameters_={"id": author_id},
         )
@@ -234,6 +244,21 @@ class WorldStore:
 
         return _world_from_node(record["w"])
 
+    async def get_world_by_simulation(self, simulation_id: str) -> World | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Simulation {id: $simulation_id})-[:BASED_ON]->(w:World)
+            RETURN w LIMIT 1
+            """,
+            parameters_={"simulation_id": simulation_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _world_from_node(record["w"])
+
     async def update_world(self,
                            world_id: str,
                            properties: dict,
@@ -267,7 +292,16 @@ class WorldStore:
             """
             MATCH (w:World {id: $id})
             WITH w, properties(w) AS properties
-            DETACH DELETE w
+            OPTIONAL MATCH (simulation:Simulation)-[:BASED_ON]->(w)
+            WITH properties, [w] + collect(DISTINCT simulation) AS roots
+            UNWIND roots AS root
+            WITH properties, root
+            WHERE root IS NOT NULL
+            OPTIONAL MATCH path = (root)-[:CONTAINS|HOLDS|PART_OF*0..]->(node)
+            WITH properties, collect(DISTINCT root) + collect(DISTINCT node) AS nodes
+            UNWIND nodes AS node
+            WITH properties, collect(DISTINCT node) AS nodes
+            FOREACH (node IN nodes | DETACH DELETE node)
             RETURN properties LIMIT 1
             """,
             parameters_={"id": world_id},

@@ -57,7 +57,7 @@ class IntentStore:
     async def create_intent(self,
                             intent: Intent,
                             character_id: str,
-                            ):
+                            ) -> Intent | None:
         intent = await self._with_keyword_embedding(intent)
 
         result = await self._driver.execute_query(
@@ -113,45 +113,123 @@ class IntentStore:
             },
         )
         if not result.records:
-            raise ValueError(f"Could not create intent because character {character_id} was not found")
+            return None
+
+        return intent
+
+    async def list_intents(self,
+                           character_id: str | None = None,
+                           event_id: str | None = None,
+                           ) -> list[Intent]:
+        if character_id is not None and event_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Character {id: $character_id})-[:HOLDS]->(intent:Intent)
+                MATCH (:Event {id: $event_id})-[:CREATES|CONTRIBUTES_TO]->(intent)
+                RETURN DISTINCT intent
+                ORDER BY intent.name
+                """,
+                parameters_={
+                    "character_id": character_id,
+                    "event_id": event_id,
+                },
+            )
+        elif character_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Character {id: $character_id})-[:HOLDS]->(intent:Intent)
+                RETURN intent
+                ORDER BY intent.name
+                """,
+                parameters_={"character_id": character_id},
+            )
+        elif event_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Event {id: $event_id})-[:CREATES|CONTRIBUTES_TO]->(intent:Intent)
+                RETURN DISTINCT intent
+                ORDER BY intent.name
+                """,
+                parameters_={"event_id": event_id},
+            )
+        else:
+            result = await self._driver.execute_query(
+                """
+                MATCH (intent:Intent)
+                RETURN intent
+                ORDER BY intent.name
+                """
+            )
+
+        return [
+            self.intent_from_node(record["intent"])
+            for record in result.records
+        ]
+
+    async def get_intent(self, intent_id: str) -> Intent | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            RETURN intent LIMIT 1
+            """,
+            parameters_={"intent_id": intent_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.intent_from_node(record["intent"])
 
     async def add_event_contribution(self,
                                      event_id: str,
                                      intent_id: str,
-                                     ):
-        await self._driver.execute_query(
+                                     ) -> Intent | None:
+        result = await self._driver.execute_query(
             """
             MATCH (event:Event {id: $event_id})
             MATCH (intent:Intent {id: $intent_id})
             MERGE (event)-[:CONTRIBUTES_TO]->(intent)
+            RETURN intent
             """,
             parameters_={
                 "event_id": event_id,
                 "intent_id": intent_id,
             },
         )
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.intent_from_node(record["intent"])
 
     async def add_event_creation(self,
                                  event_id: str,
                                  intent_id: str,
-                                 ):
-        await self._driver.execute_query(
+                                 ) -> Intent | None:
+        result = await self._driver.execute_query(
             """
             MATCH (event:Event {id: $event_id})
             MATCH (intent:Intent {id: $intent_id})
             MERGE (event)-[:CREATES]->(intent)
+            RETURN intent
             """,
             parameters_={
                 "event_id": event_id,
                 "intent_id": intent_id,
             },
         )
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.intent_from_node(record["intent"])
 
     async def update_intent(self,
                             *,
                             intent_id: str,
                             properties: dict,
-                            ):
+                            ) -> Intent | None:
         if (
             properties.get("embedding") is None
             and properties.get("keywords")
@@ -168,17 +246,134 @@ class IntentStore:
             if value is not None
         }
         if not properties:
-            return
+            return None
 
-        await self._driver.execute_query(
+        result = await self._driver.execute_query(
             """
             MATCH (intent:Intent {id: $intent_id})
             SET intent += $properties
+            RETURN intent LIMIT 1
             """,
             parameters_={
                 "intent_id": intent_id,
                 "properties": properties,
             },
+        )
+        records = getattr(result, "records", None)
+        if not isinstance(records, list):
+            return None
+        record = records[0] if records else None
+        if not record:
+            return None
+
+        return self.intent_from_node(record["intent"])
+
+    async def delete_intent(self, intent_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            WITH collect(intent) AS intents
+            FOREACH (intent IN intents | DETACH DELETE intent)
+            RETURN size(intents) AS deleted
+            """,
+            parameters_={"intent_id": intent_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
+    async def copy_intents(self,
+                           character_pairs: list[dict],
+                           event_pairs: list[dict] | None = None,
+                           ) -> tuple[list[Intent], list[dict]]:
+        event_pairs = event_pairs or []
+        if not character_pairs:
+            return [], []
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $character_pairs AS character_pair
+            MATCH (:Character {id: character_pair.source_id})-[:HOLDS]->(source_intent:Intent)
+            MATCH (copy_character:Character {id: character_pair.copy_id})
+            CREATE (intent:Intent {
+                id: randomUUID(),
+                type: source_intent.type,
+                name: source_intent.name,
+                description: source_intent.description,
+                keywords: source_intent.keywords,
+                embedding: source_intent.embedding,
+                priority: source_intent.priority,
+                urgency: source_intent.urgency,
+                status: source_intent.status,
+                desired_state: source_intent.desired_state,
+                success_conditions: source_intent.success_conditions,
+                failure_conditions: source_intent.failure_conditions,
+                maintenance_conditions: source_intent.maintenance_conditions,
+                deadline: source_intent.deadline,
+                horizon: source_intent.horizon,
+                constraints: source_intent.constraints,
+                current_plan: source_intent.current_plan,
+                next_action_biases: source_intent.next_action_biases,
+                blockers: source_intent.blockers,
+                open_threads: source_intent.open_threads
+            })
+            MERGE (copy_character)-[:HOLDS]->(intent)
+            RETURN source_intent.id AS source_id, intent.id AS copy_id, intent
+            ORDER BY intent.name
+            """,
+            parameters_={"character_pairs": character_pairs},
+        )
+        intent_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+        if intent_pairs and event_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $intent_pairs AS intent_pair
+                MATCH (source_event:Event)-[:CREATES]->(:Intent {id: intent_pair.source_id})
+                WITH intent_pair, [
+                    event_pair IN $event_pairs
+                    WHERE event_pair.source_id = source_event.id
+                ][0] AS event_pair
+                WHERE event_pair IS NOT NULL
+                MATCH (copy_event:Event {id: event_pair.copy_id})
+                MATCH (copy_intent:Intent {id: intent_pair.copy_id})
+                MERGE (copy_event)-[:CREATES]->(copy_intent)
+                """,
+                parameters_={
+                    "intent_pairs": intent_pairs,
+                    "event_pairs": event_pairs,
+                },
+            )
+            await self._driver.execute_query(
+                """
+                UNWIND $intent_pairs AS intent_pair
+                MATCH (source_event:Event)-[:CONTRIBUTES_TO]->(:Intent {id: intent_pair.source_id})
+                WITH intent_pair, [
+                    event_pair IN $event_pairs
+                    WHERE event_pair.source_id = source_event.id
+                ][0] AS event_pair
+                WHERE event_pair IS NOT NULL
+                MATCH (copy_event:Event {id: event_pair.copy_id})
+                MATCH (copy_intent:Intent {id: intent_pair.copy_id})
+                MERGE (copy_event)-[:CONTRIBUTES_TO]->(copy_intent)
+                """,
+                parameters_={
+                    "intent_pairs": intent_pairs,
+                    "event_pairs": event_pairs,
+                },
+            )
+
+        return (
+            [
+                self.intent_from_node(record["intent"])
+                for record in result.records
+            ],
+            intent_pairs,
         )
 
     async def get_active_intent_candidates(self,

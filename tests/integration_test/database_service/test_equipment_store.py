@@ -40,7 +40,7 @@ async def test_create_equipment(clean_neo4j):
     assert result.records[0]["link_count"] == 1
 
 
-async def test_list_update_and_delete_equipment(clean_neo4j):
+async def test_create_equipment_returns_none_when_location_is_missing(clean_neo4j):
     world = await create_world(clean_neo4j)
     store = EquipmentStore(clean_neo4j)
     equipment = Equipment(
@@ -50,10 +50,42 @@ async def test_list_update_and_delete_equipment(clean_neo4j):
         quality="worn",
     )
 
-    await store.create_equipment(equipment, source_id=world.id)
+    assert await store.create_equipment(equipment, source_id=world.id, location_id=str(uuid4())) is None
+    assert await store.get_equipment(equipment.id) is None
 
-    assert await store.list_equipment() == [equipment]
+
+async def test_list_update_and_delete_equipment(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    store = EquipmentStore(clean_neo4j)
+    equipment = Equipment(
+        id=str(uuid4()),
+        name="Lantern",
+        description="A brass lantern",
+        quality="worn",
+    )
+    simulation_equipment = Equipment(
+        id=str(uuid4()),
+        name="Simulation Lantern",
+        description="A simulation lantern",
+        quality="new",
+    )
+    simulation = await simulation_store.create_simulation(
+        simulation=Simulation(
+            id=str(uuid4()),
+            name="Test Simulation",
+            description="A test simulation",
+            current_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        ),
+        world_id=world.id,
+    )
+
+    await store.create_equipment(equipment, source_id=world.id)
+    await store.create_equipment(simulation_equipment, source_id=simulation.id)
+
+    assert await store.list_equipment() == [equipment, simulation_equipment]
     assert await store.list_equipment(world_id=world.id) == [equipment]
+    assert await store.list_equipment(simulation_id=simulation.id) == [simulation_equipment]
 
     updated_equipment = await store.update_equipment(
         equipment.id,

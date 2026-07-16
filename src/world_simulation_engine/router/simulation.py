@@ -1,10 +1,13 @@
+import json
 from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Any, Optional
+from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.model import Simulation
-from .utils import db_dep
+from world_simulation_engine.component.simulator.world_simulator import WorldSimulatorState
+from .utils import db_dep, simulator_dep
 
 
 simulation_router = APIRouter(
@@ -30,6 +33,39 @@ class SimulationUpdate(BaseModel):
     )
 
 
+class SimulationInput(BaseModel):
+    """
+    DTO model for starting a simulation generation
+    """
+
+    user_input: Optional[str] = Field(
+        None,
+        description="Optional user input. Leave empty to continue generation.",
+    )
+
+
+class SimulationRun(BaseModel):
+    thread_id: str = Field(..., description="The simulator graph thread id")
+
+
+def _sse_event(*, data: Any, event: str | None = None, event_id: str | None = None) -> str:
+    lines = []
+    if event_id is not None:
+        lines.append(f"id: {event_id}")
+    if event is not None:
+        lines.append(f"event: {event}")
+    lines.append(f"data: {json.dumps(data, default=_json_default)}")
+    return "\n".join(lines) + "\n\n"
+
+
+def _json_default(value):
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
 @simulation_router.get("/simulations", response_model=list[Simulation])
 async def list_simulations(db: db_dep,
                            author_id: Optional[str] = Query(None, description="Optionally filter by author"),
@@ -51,6 +87,113 @@ async def get_simulation(simulation_id: str, db: db_dep):
         )
 
     return simulation
+
+
+@simulation_router.post("/simulations/{simulation_id}/input", response_model=SimulationRun)
+async def start_simulation_input(
+        simulation_id: str,
+        simulation_input: SimulationInput,
+        db: db_dep,
+        simulator: simulator_dep,
+):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    world = await db.world.get_world_by_simulation(simulation_id)
+    if not world:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World for simulation {simulation_id} not found",
+        )
+
+    try:
+        thread_id = await simulator.start_generation(
+            WorldSimulatorState(
+                world=world,
+                simulation=simulation,
+                user_input=simulation_input.user_input,
+            )
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    return SimulationRun(thread_id=thread_id)
+
+
+@simulation_router.get("/simulations/{simulation_id}/runs/{thread_id}")
+async def stream_simulation_run(
+        simulation_id: str,
+        thread_id: str,
+        request: Request,
+        db: db_dep,
+        simulator: simulator_dep,
+):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    async def event_stream():
+        last_event_id = request.headers.get("last-event-id")
+        if last_event_id and simulator.is_generation_running(thread_id):
+            yield _sse_event(
+                event="status",
+                data={
+                    "code": "still_generating",
+                    "message": "Generation is still running; wait for completion and fetch final state.",
+                    "thread_id": thread_id,
+                },
+            )
+            return
+
+        try:
+            event_index = 0
+            async for chunk in simulator.stream_generation(thread_id):
+                if await request.is_disconnected():
+                    return
+
+                yield _sse_event(
+                    event="chunk",
+                    event_id=str(event_index),
+                    data=chunk,
+                )
+                event_index += 1
+        except KeyError:
+            yield _sse_event(
+                event="status",
+                data={
+                    "code": "not_found",
+                    "message": f"Generation thread {thread_id} not found.",
+                    "thread_id": thread_id,
+                },
+            )
+        except Exception as exc:
+            yield _sse_event(
+                event="error",
+                data={
+                    "code": "generation_failed",
+                    "message": str(exc),
+                    "thread_id": thread_id,
+                },
+            )
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @simulation_router.patch("/simulations/{simulation_id}", response_model=Simulation)
@@ -98,6 +241,10 @@ async def create_simulation(world_id: str, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
+    _, turn_pairs = await db.turn.copy_turns(
+        world_id,
+        created_simulation.id,
+    )
     _, location_pairs, landmark_pairs = await db.location.copy_locations(
         world_id,
         created_simulation.id,
@@ -115,11 +262,26 @@ async def create_simulation(world_id: str, db: db_dep):
         location_pairs=location_pairs,
         landmark_pairs=landmark_pairs,
     )
-    await db.equipment.copy_equipment(
+    _, equipment_pairs = await db.equipment.copy_equipment(
         world_id,
         created_simulation.id,
         location_pairs=location_pairs,
         entity_pairs=character_pairs + background_character_pairs,
+    )
+    await db.container.copy_containers(
+        world_id,
+        created_simulation.id,
+        location_pairs=location_pairs,
+        entity_pairs=character_pairs + background_character_pairs,
+        equipment_pairs=equipment_pairs,
+    )
+    _, event_pairs = await db.event.copy_events(
+        turn_pairs=turn_pairs,
+        character_pairs=character_pairs,
+    )
+    await db.intent.copy_intents(
+        character_pairs=character_pairs,
+        event_pairs=event_pairs,
     )
 
     return created_simulation

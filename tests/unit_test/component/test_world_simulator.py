@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
@@ -65,6 +66,31 @@ def make_action_proposal(action: ProposedAction) -> ActionProposal:
         reasoning_summary="Look around.",
         next_review_hint_seconds=2,
     )
+
+
+class FakeStreamingGraph:
+    def __init__(self, chunks, release_event: asyncio.Event | None = None):
+        self.chunks = chunks
+        self.release_event = release_event
+        self.config = None
+        self.stream_mode = None
+        self.started = asyncio.Event()
+
+    async def astream(self, state, config=None, stream_mode=None):
+        self.config = config
+        self.stream_mode = stream_mode
+        self.started.set()
+        for index, chunk in enumerate(self.chunks):
+            if index > 0 and self.release_event is not None:
+                await self.release_event.wait()
+            yield chunk
+
+
+async def collect_async(async_iterable):
+    return [
+        item
+        async for item in async_iterable
+    ]
 
 
 async def test_validate_user_action_validates_interpreted_actions():
@@ -476,3 +502,78 @@ async def test_summarize_user_memory_applies_summary_proposal():
         state_commit=state_commit,
         user_input="I look around.",
     )
+
+
+async def test_start_generation_streams_graph_values_and_stores_final_state():
+    release_event = asyncio.Event()
+    graph = FakeStreamingGraph(
+        chunks=[
+            {"narration": "The scene begins."},
+            {"narration": "The scene settles.", "committed_turn": {"id": "turn_1"}},
+        ],
+        release_event=release_event,
+    )
+    simulator = WorldSimulator(database=Mock())
+    simulator._simulator_graph = graph
+    state = make_state(InputInterpretation(items=[]))
+
+    thread_id = await simulator.start_generation(state)
+    await graph.started.wait()
+
+    stream = simulator.stream_generation(thread_id)
+    first_chunk = await anext(stream)
+    release_event.set()
+    remaining_chunks = [item async for item in stream]
+
+    assert first_chunk == {"narration": "The scene begins."}
+    assert remaining_chunks == [
+        {"narration": "The scene settles.", "committed_turn": {"id": "turn_1"}},
+    ]
+    assert graph.stream_mode == "values"
+    assert graph.config["configurable"]["thread_id"] == thread_id
+    assert await simulator.get_generation_final_state(thread_id) == remaining_chunks[-1]
+
+
+async def test_stream_generation_returns_final_state_after_active_run_is_cleaned_up():
+    graph = FakeStreamingGraph(
+        chunks=[
+            {"narration": "Already finished."},
+        ],
+    )
+    simulator = WorldSimulator(database=Mock())
+    simulator._simulator_graph = graph
+    state = make_state(InputInterpretation(items=[]))
+
+    thread_id = await simulator.start_generation(state)
+    final_state = await simulator.get_generation_final_state(thread_id)
+
+    assert final_state == {"narration": "Already finished."}
+    assert await collect_async(simulator.stream_generation(thread_id)) == [final_state]
+
+
+async def test_start_generation_allows_one_active_run_per_simulation():
+    release_event = asyncio.Event()
+    graph = FakeStreamingGraph(
+        chunks=[
+            {"narration": "First."},
+            {"narration": "Second."},
+        ],
+        release_event=release_event,
+    )
+    simulator = WorldSimulator(database=Mock())
+    simulator._simulator_graph = graph
+    state = make_state(InputInterpretation(items=[]))
+
+    first_thread_id = await simulator.start_generation(state)
+    await graph.started.wait()
+
+    with pytest.raises(RuntimeError, match="already has an active generation"):
+        await simulator.start_generation(state)
+
+    release_event.set()
+    await simulator.get_generation_final_state(first_thread_id)
+
+    second_thread_id = await simulator.start_generation(state)
+
+    assert second_thread_id != first_thread_id
+    assert await simulator.get_generation_final_state(second_thread_id) == {"narration": "Second."}

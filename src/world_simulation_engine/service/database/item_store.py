@@ -175,9 +175,11 @@ class ItemStore:
         result = await self._driver.execute_query(
             """
             MATCH (i:Item {id: $id})
-            WITH collect(i) AS items
-            FOREACH (item IN items | DETACH DELETE item)
-            RETURN size(items) AS deleted
+            OPTIONAL MATCH (stack:ItemStack)-[:OF_TYPE]->(i)
+            WITH collect(DISTINCT i) AS items, collect(DISTINCT stack) AS stacks
+            WITH items + stacks AS nodes, size(items) AS deleted
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
             """,
             parameters_={"id": item_id},
         )
@@ -191,6 +193,8 @@ class ItemStore:
                            location_id: str | None = None,
                            position: str | None = None,
                            source_id: str | None = None,
+                           holder_id: str | None = None,
+                           owner_id: str | None = None,
                            ) -> ItemStack | None:
         if source_id is not None:
             result = await self._driver.execute_query(
@@ -199,8 +203,15 @@ class ItemStore:
                 MATCH (item:Item {id: $item_id})
                 OPTIONAL MATCH (source)-[:CONTAINS]->(direct_item:Item {id: $item_id})
                 OPTIONAL MATCH (source)-[:BASED_ON]->(:World)-[:CONTAINS]->(world_item:Item {id: $item_id})
-                WITH source, item, direct_item, world_item
-                WHERE direct_item IS NOT NULL OR world_item IS NOT NULL
+                OPTIONAL MATCH (location:Location {id: $location_id})
+                OPTIONAL MATCH (holder {id: $holder_id})
+                OPTIONAL MATCH (owner {id: $owner_id})
+                WITH source, item, direct_item, world_item, location, holder, owner
+                WHERE (direct_item IS NOT NULL OR world_item IS NOT NULL)
+                    AND ($location_id IS NULL OR location IS NOT NULL)
+                    AND ($holder_id IS NULL OR holder IS NOT NULL)
+                    AND ($owner_id IS NULL OR owner IS NOT NULL)
+                    AND ($location_id IS NOT NULL OR $holder_id IS NOT NULL)
                 CREATE (stack:ItemStack {
                     id: $id,
                     quantity: $quantity,
@@ -208,8 +219,6 @@ class ItemStore:
                 })
                 MERGE (source)-[:CONTAINS]->(stack)
                 MERGE (stack)-[:OF_TYPE]->(item)
-                WITH stack
-                OPTIONAL MATCH (location:Location {id: $location_id})
                 FOREACH (_ IN CASE
                     WHEN $location_id IS NOT NULL AND location IS NOT NULL
                     THEN [1]
@@ -217,6 +226,20 @@ class ItemStore:
                 END |
                     MERGE (stack)-[present:PRESENT_IN]->(location)
                     SET present.position = $position
+                )
+                FOREACH (_ IN CASE
+                    WHEN $holder_id IS NOT NULL AND holder IS NOT NULL
+                    THEN [1]
+                    ELSE []
+                END |
+                    MERGE (holder)-[:HOLDS]->(stack)
+                )
+                FOREACH (_ IN CASE
+                    WHEN $owner_id IS NOT NULL AND owner IS NOT NULL
+                    THEN [1]
+                    ELSE []
+                END |
+                    MERGE (owner)-[:OWNS]->(stack)
                 )
                 RETURN stack
                 """,
@@ -228,13 +251,22 @@ class ItemStore:
                     "quality": stack.quality,
                     "location_id": location_id,
                     "position": position,
+                    "holder_id": holder_id,
+                    "owner_id": owner_id,
                 },
             )
         else:
             result = await self._driver.execute_query(
                 """
                 MATCH (source:World|Simulation)-[:CONTAINS]->(item:Item {id: $item_id})
-                WITH source, item
+                OPTIONAL MATCH (location:Location {id: $location_id})
+                OPTIONAL MATCH (holder {id: $holder_id})
+                OPTIONAL MATCH (owner {id: $owner_id})
+                WITH source, item, location, holder, owner
+                WHERE ($location_id IS NULL OR location IS NOT NULL)
+                    AND ($holder_id IS NULL OR holder IS NOT NULL)
+                    AND ($owner_id IS NULL OR owner IS NOT NULL)
+                    AND ($location_id IS NOT NULL OR $holder_id IS NOT NULL)
                 LIMIT 1
                 CREATE (stack:ItemStack {
                     id: $id,
@@ -243,8 +275,6 @@ class ItemStore:
                 })
                 MERGE (source)-[:CONTAINS]->(stack)
                 MERGE (stack)-[:OF_TYPE]->(item)
-                WITH stack
-                OPTIONAL MATCH (location:Location {id: $location_id})
                 FOREACH (_ IN CASE
                     WHEN $location_id IS NOT NULL AND location IS NOT NULL
                     THEN [1]
@@ -252,6 +282,20 @@ class ItemStore:
                 END |
                     MERGE (stack)-[present:PRESENT_IN]->(location)
                     SET present.position = $position
+                )
+                FOREACH (_ IN CASE
+                    WHEN $holder_id IS NOT NULL AND holder IS NOT NULL
+                    THEN [1]
+                    ELSE []
+                END |
+                    MERGE (holder)-[:HOLDS]->(stack)
+                )
+                FOREACH (_ IN CASE
+                    WHEN $owner_id IS NOT NULL AND owner IS NOT NULL
+                    THEN [1]
+                    ELSE []
+                END |
+                    MERGE (owner)-[:OWNS]->(stack)
                 )
                 RETURN stack
                 """,
@@ -262,6 +306,8 @@ class ItemStore:
                     "quality": stack.quality,
                     "location_id": location_id,
                     "position": position,
+                    "holder_id": holder_id,
+                    "owner_id": owner_id,
                 },
             )
 
@@ -279,24 +325,35 @@ class ItemStore:
                           holder_id: str | None = None,
                           location_id: str | None = None,
                           ) -> list[ItemStack]:
-        result = await self._driver.execute_query(
+        if world_id is not None and simulation_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(stack:ItemStack)
+            MATCH (stack)-[:OF_TYPE]->(item:Item)
             """
+        elif world_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(stack:ItemStack)
+            MATCH (stack)-[:OF_TYPE]->(item:Item)
+            """
+        elif simulation_id is not None:
+            source_match = """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(stack:ItemStack)
+            MATCH (stack)-[:OF_TYPE]->(item:Item)
+            """
+        else:
+            source_match = """
             MATCH (stack:ItemStack)-[:OF_TYPE]->(item:Item)
-            OPTIONAL MATCH (source:World|Simulation)-[:CONTAINS]->(stack)
-            OPTIONAL MATCH (source)-[:BASED_ON]->(source_world:World)
+            """
+
+        result = await self._driver.execute_query(
+            source_match + """
             OPTIONAL MATCH (owner)-[:OWNS]->(stack)
             OPTIONAL MATCH (holder)-[:HOLDS]->(stack)
             OPTIONAL MATCH (stack)-[:PRESENT_IN]->(location:Location)
-            WHERE (
-                    $world_id IS NULL
-                    OR ($simulation_id IS NULL AND source:World AND source.id = $world_id)
-                    OR ($simulation_id IS NOT NULL AND source:Simulation AND source_world.id = $world_id)
-                )
-                AND ($simulation_id IS NULL OR source:Simulation AND source.id = $simulation_id)
-                AND ($item_id IS NULL OR item.id = $item_id)
+            WHERE ($item_id IS NULL OR item.id = $item_id)
                 AND ($owner_id IS NULL OR owner.id = $owner_id)
                 AND ($holder_id IS NULL OR holder.id = $holder_id)
-                AND ($location_id IS NULL OR location.id = $location_id)
+                AND ($location_id IS NULL OR location.id = $location_id AND holder IS NULL)
             RETURN DISTINCT stack
             ORDER BY stack.id
             """,

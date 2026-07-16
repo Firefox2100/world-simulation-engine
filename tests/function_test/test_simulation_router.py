@@ -8,12 +8,42 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
-from world_simulation_engine.misc.enums import SupportedLanguage
+from world_simulation_engine.misc.enums import EventInvolvement, IntentHorizon, IntentStatus, IntentType, \
+    SupportedLanguage, TurnType
 from world_simulation_engine.model import Author, BackgroundCharacter, Character, CurrentActivity, Equipment, \
-    Landmark, Location, World
+    Event, Intent, Landmark, Location, Turn, World
 from world_simulation_engine.router import background_character_router, character_router, equipment_router, \
-    location_router, simulation_router
+    event_router, intent_router, location_router, simulation_router
 from world_simulation_engine.service import DatabaseService
+
+
+class FakeWorldSimulator:
+    def __init__(self):
+        self.started_states = []
+        self.running_threads = set()
+        self.streams = {}
+        self.error_threads = set()
+
+    async def start_generation(self, state):
+        thread_id = f"thread_{len(self.started_states) + 1}"
+        self.started_states.append(state)
+        self.streams[thread_id] = [
+            {"narration": "The room settles."},
+            {"committed_turn": {"id": "turn_1"}},
+        ]
+        return thread_id
+
+    def is_generation_running(self, thread_id: str) -> bool:
+        return thread_id in self.running_threads
+
+    async def stream_generation(self, thread_id: str):
+        if thread_id in self.error_threads:
+            raise RuntimeError("Generation failed")
+        if thread_id not in self.streams:
+            raise KeyError(thread_id)
+
+        for chunk in self.streams[thread_id]:
+            yield chunk
 
 
 @dataclass(frozen=True)
@@ -26,9 +56,12 @@ class SimulationRouterTestClient:
     world_character: Character
     background_character: BackgroundCharacter
     equipment: Equipment
+    event: Event
+    intent: Intent
     city: Location
     market: Location
     landmark: Landmark
+    simulator: FakeWorldSimulator
 
 
 @pytest.fixture
@@ -84,6 +117,40 @@ def simulation_api(neo4j_container):
         description="A brass lantern",
         quality="worn",
     )
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=0,
+        type=TurnType.USER_INPUT,
+        content="Alex greets the shopkeeper",
+        start_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    event = Event(
+        id=str(uuid4()),
+        name="Greeting",
+        summary="Alex greets the shopkeeper.",
+    )
+    intent = Intent(
+        id=str(uuid4()),
+        type=IntentType.QUEST,
+        name="Buy supplies",
+        description="Alex wants to buy supplies.",
+        keywords=["buy", "supplies"],
+        embedding=[0.1, 0.2],
+        priority=0.8,
+        urgency=0.7,
+        status=IntentStatus.ACTIVE,
+        desired_state="Supplies purchased",
+        success_conditions=["Alex has supplies"],
+        failure_conditions=["Shop closes"],
+        maintenance_conditions=[],
+        deadline=datetime(2026, 1, 1, 18, 0, tzinfo=UTC),
+        horizon=IntentHorizon.SHORT,
+        constraints=["Stay polite"],
+        current_plan=["Ask the shopkeeper"],
+        next_action_biases=["Inspect shelves"],
+        blockers=[],
+        open_threads=["What is available"],
+    )
     city = Location(
         id=str(uuid4()),
         name="City",
@@ -135,7 +202,18 @@ def simulation_api(neo4j_container):
             equipped=True,
             equipped_position="left hand",
         )
+        await database.turn.create_turn(turn, world.id)
+        await database.event.create_event(event, [turn.id])
+        await database.event.add_character_involvement(
+            event.id,
+            world_character.id,
+            EventInvolvement.PARTICIPATE,
+        )
+        await database.intent.create_intent(intent, world_character.id)
+        await database.intent.add_event_creation(event.id, intent.id)
+        await database.intent.add_event_contribution(event.id, intent.id)
         app.state.database = database
+        app.state.world_simulator = FakeWorldSimulator()
 
         try:
             yield
@@ -148,6 +226,8 @@ def simulation_api(neo4j_container):
     app.include_router(simulation_router)
     app.include_router(character_router)
     app.include_router(equipment_router)
+    app.include_router(event_router)
+    app.include_router(intent_router)
     app.include_router(location_router)
 
     with TestClient(app) as client:
@@ -160,9 +240,12 @@ def simulation_api(neo4j_container):
             world_character=world_character,
             background_character=background_character,
             equipment=equipment,
+            event=event,
+            intent=intent,
             city=city,
             market=market,
             landmark=landmark,
+            simulator=app.state.world_simulator,
         )
 
 
@@ -194,7 +277,6 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "/equipment",
         params={"simulation_id": created_simulation["id"]},
     )
-
     assert copied_characters_response.status_code == 200
     assert len(copied_characters_response.json()) == 1
     copied_character = copied_characters_response.json()[0]
@@ -244,6 +326,34 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "/equipment",
         params={"holder_id": copied_character["id"]},
     ).json() == [copied_equipment]
+    copied_events_response = client.get(
+        "/events",
+        params={"character_id": copied_character["id"]},
+    )
+    copied_intents_response = client.get(
+        "/intents",
+        params={"character_id": copied_character["id"]},
+    )
+    assert copied_events_response.status_code == 200
+    assert len(copied_events_response.json()) == 1
+    copied_event = copied_events_response.json()[0]
+    assert copied_event["id"] != simulation_api.event.id
+    assert copied_event == {
+        **simulation_api.event.model_dump(mode="json"),
+        "id": copied_event["id"],
+    }
+    assert copied_intents_response.status_code == 200
+    assert len(copied_intents_response.json()) == 1
+    copied_intent = copied_intents_response.json()[0]
+    assert copied_intent["id"] != simulation_api.intent.id
+    assert copied_intent == {
+        **simulation_api.intent.model_dump(mode="json"),
+        "id": copied_intent["id"],
+    }
+    assert client.get(
+        "/intents",
+        params={"event_id": copied_event["id"]},
+    ).json() == [copied_intent]
 
     other_create_response = client.post(f"/worlds/{simulation_api.other_world.id}/simulations")
     other_simulation = other_create_response.json()
@@ -328,3 +438,95 @@ def test_simulation_endpoints_return_404_for_missing_resources(simulation_api):
     assert update_response.json()["detail"] == f"Simulation {missing_simulation_id} not found"
     assert delete_response.status_code == 404
     assert delete_response.json()["detail"] == f"Simulation {missing_simulation_id} not found"
+
+
+def test_start_simulation_input_schedules_generation(simulation_api):
+    missing_response = simulation_api.client.post(
+        f"/simulations/{str(uuid4())}/input",
+        json={"user_input": "I look around."},
+    )
+
+    assert missing_response.status_code == 404
+
+    create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+    response = simulation_api.client.post(
+        f"/simulations/{simulation['id']}/input",
+        json={"user_input": "I look around."},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"thread_id": "thread_1"}
+    started_state = simulation_api.simulator.started_states[0]
+    assert started_state.world.id == simulation_api.world.id
+    assert started_state.simulation.id == simulation["id"]
+    assert started_state.user_input == "I look around."
+
+
+def test_start_simulation_input_accepts_null_user_input(simulation_api):
+    create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+
+    response = simulation_api.client.post(
+        f"/simulations/{simulation['id']}/input",
+        json={"user_input": None},
+    )
+
+    assert response.status_code == 200
+    assert simulation_api.simulator.started_states[0].user_input is None
+
+
+def test_stream_simulation_run_streams_sse_chunks(simulation_api):
+    create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+    thread_id = simulation_api.client.post(
+        f"/simulations/{simulation['id']}/input",
+        json={"user_input": "I look around."},
+    ).json()["thread_id"]
+
+    with simulation_api.client.stream("GET", f"/simulations/{simulation['id']}/runs/{thread_id}") as response:
+        body = response.read().decode()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: chunk" in body
+    assert 'data: {"narration": "The room settles."}' in body
+    assert 'data: {"committed_turn": {"id": "turn_1"}}' in body
+
+
+def test_stream_simulation_run_tells_reconnecting_client_to_wait(simulation_api):
+    create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+    thread_id = simulation_api.client.post(
+        f"/simulations/{simulation['id']}/input",
+        json={"user_input": "I look around."},
+    ).json()["thread_id"]
+    simulation_api.simulator.running_threads.add(thread_id)
+
+    response = simulation_api.client.get(
+        f"/simulations/{simulation['id']}/runs/{thread_id}",
+        headers={"Last-Event-ID": "0"},
+    )
+
+    assert response.status_code == 200
+    assert "event: status" in response.text
+    assert '"code": "still_generating"' in response.text
+
+
+def test_stream_simulation_run_reports_missing_or_failed_thread(simulation_api):
+    create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+    missing_response = simulation_api.client.get(f"/simulations/{simulation['id']}/runs/missing")
+
+    thread_id = simulation_api.client.post(
+        f"/simulations/{simulation['id']}/input",
+        json={"user_input": "I look around."},
+    ).json()["thread_id"]
+    simulation_api.simulator.error_threads.add(thread_id)
+    failed_response = simulation_api.client.get(f"/simulations/{simulation['id']}/runs/{thread_id}")
+
+    assert missing_response.status_code == 200
+    assert '"code": "not_found"' in missing_response.text
+    assert failed_response.status_code == 200
+    assert "event: error" in failed_response.text
+    assert '"code": "generation_failed"' in failed_response.text

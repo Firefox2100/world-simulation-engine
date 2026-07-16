@@ -328,3 +328,20 @@ def test_stack_cannot_be_placed_and_held_at_the_same_time(item_api):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Stack cannot be placed in a location and held at the same time"
+
+
+def test_stack_must_be_connected_when_created(item_api):
+    client = item_api.client
+    item_response = client.post(f"/worlds/{item_api.world.id}/items", json=item_payload())
+    assert item_response.status_code == 200
+    item = item_response.json()
+
+    response = client.post(
+        f"/simulations/{item_api.simulation.id}/items/{item['id']}/stacks",
+        json={
+            "quantity": 1,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Stack must be placed in a location or held by another entity"

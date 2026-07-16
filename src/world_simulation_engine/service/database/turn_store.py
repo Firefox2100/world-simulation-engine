@@ -107,3 +107,138 @@ class TurnStore:
             raise ValueError("Could not create turn because the source was not found")
 
         return self.turn_from_node(result.records[0]["turn"])
+
+    async def get_turn(self, turn_id: str) -> Turn | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (turn:Turn {id: $turn_id})
+            RETURN turn LIMIT 1
+            """,
+            parameters_={"turn_id": turn_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.turn_from_node(record["turn"])
+
+    async def list_turns(self,
+                         source_id: str | None = None,
+                         limit: int = 10,
+                         skip: int = 0,
+                         ) -> list[Turn]:
+        if source_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(turn:Turn)
+                RETURN turn
+                ORDER BY turn.sequence DESC
+                SKIP $skip
+                LIMIT $limit
+                """,
+                parameters_={
+                    "source_id": source_id,
+                    "limit": limit,
+                    "skip": skip,
+                },
+            )
+        else:
+            result = await self._driver.execute_query(
+                """
+                MATCH (turn:Turn)
+                RETURN turn
+                ORDER BY turn.sequence DESC
+                SKIP $skip
+                LIMIT $limit
+                """,
+                parameters_={
+                    "limit": limit,
+                    "skip": skip,
+                },
+            )
+
+        return [
+            self.turn_from_node(record["turn"])
+            for record in result.records
+        ]
+
+    async def get_turn_by_sequence(self,
+                                   source_id: str,
+                                   sequence: int,
+                                   ) -> Turn | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(turn:Turn {sequence: $sequence})
+            RETURN turn LIMIT 1
+            """,
+            parameters_={
+                "source_id": source_id,
+                "sequence": sequence,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.turn_from_node(record["turn"])
+
+    async def copy_turns(self,
+                         source_id: str,
+                         target_id: str,
+                         ) -> tuple[list[Turn], list[dict]]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:World|Simulation {id: $source_id})
+            MATCH (target:World|Simulation {id: $target_id})
+            MATCH (source)-[:CONTAINS]->(source_turn:Turn)
+            WITH target, source_turn
+            ORDER BY source_turn.sequence
+            CREATE (turn:Turn {
+                id: randomUUID(),
+                sequence: source_turn.sequence,
+                type: source_turn.type,
+                content: source_turn.content,
+                start_time: source_turn.start_time
+            })
+            MERGE (target)-[:CONTAINS]->(turn)
+            WITH collect({
+                source_id: source_turn.id,
+                copy_id: turn.id,
+                copy: turn
+            }) AS turn_pairs
+            CALL {
+                WITH turn_pairs
+                UNWIND turn_pairs AS previous_pair
+                UNWIND turn_pairs AS next_pair
+                MATCH (:Turn {id: previous_pair.source_id})-[:NEXT]->(:Turn {id: next_pair.source_id})
+                MATCH (previous_copy:Turn {id: previous_pair.copy_id})
+                MATCH (next_copy:Turn {id: next_pair.copy_id})
+                MERGE (previous_copy)-[:NEXT]->(next_copy)
+                RETURN count(*) AS link_count
+            }
+            WITH turn_pairs
+            UNWIND turn_pairs AS pair
+            RETURN pair.source_id AS source_id, pair.copy_id AS copy_id, pair.copy AS turn
+            ORDER BY turn.sequence
+            """,
+            parameters_={
+                "source_id": source_id,
+                "target_id": target_id,
+            },
+        )
+
+        turns = [
+            self.turn_from_node(record["turn"])
+            for record in result.records
+        ]
+        turn_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+
+        return turns, turn_pairs

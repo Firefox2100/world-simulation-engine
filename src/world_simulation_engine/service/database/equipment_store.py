@@ -36,6 +36,9 @@ class EquipmentStore:
         result = await self._driver.execute_query(
             """
             MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (loc:Location {id: $location_id})
+            WITH source, loc
+            WHERE $location_id IS NULL OR loc IS NOT NULL
             CREATE (e:Equipment {
                 id: $id,
                 name: $name,
@@ -43,8 +46,6 @@ class EquipmentStore:
                 quality: $quality
             })
             MERGE (source)-[:CONTAINS]->(e)
-            WITH e
-            OPTIONAL MATCH (loc:Location {id: $location_id})
             FOREACH (_ IN CASE
                 WHEN $location_id IS NOT NULL AND loc IS NOT NULL
                 THEN [1]
@@ -79,21 +80,29 @@ class EquipmentStore:
                              owner_id: str | None = None,
                              holder_id: str | None = None,
                              ) -> list[Equipment]:
-        result = await self._driver.execute_query(
+        if world_id is not None and simulation_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(equipment:Equipment)
             """
+        elif world_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(equipment:Equipment)
+            """
+        elif simulation_id is not None:
+            source_match = """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(equipment:Equipment)
+            """
+        else:
+            source_match = """
             MATCH (equipment:Equipment)
-            OPTIONAL MATCH (source:World|Simulation)-[:CONTAINS]->(equipment)
-            OPTIONAL MATCH (source)-[:BASED_ON]->(source_world:World)
+            """
+
+        result = await self._driver.execute_query(
+            source_match + """
             OPTIONAL MATCH (equipment)-[:PRESENT_IN]->(location:Location)
             OPTIONAL MATCH (owner)-[:OWNS]->(equipment)
             OPTIONAL MATCH (holder)-[:HOLDS|EQUIPS]->(equipment)
-            WHERE (
-                    $world_id IS NULL
-                    OR ($simulation_id IS NULL AND source:World AND source.id = $world_id)
-                    OR ($simulation_id IS NOT NULL AND source:Simulation AND source_world.id = $world_id)
-                )
-                AND ($simulation_id IS NULL OR source:Simulation AND source.id = $simulation_id)
-                AND ($location_id IS NULL OR location.id = $location_id)
+            WHERE ($location_id IS NULL OR location.id = $location_id AND holder IS NULL)
                 AND ($owner_id IS NULL OR owner.id = $owner_id)
                 AND ($holder_id IS NULL OR holder.id = $holder_id)
             RETURN DISTINCT equipment

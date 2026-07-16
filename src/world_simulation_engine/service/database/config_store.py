@@ -87,7 +87,7 @@ class ConfigStore:
         self._driver = driver
 
     async def create_connection(self, connection_config: ConnectionConfig):
-        await self._driver.execute_query(
+        result = await self._driver.execute_query(
             """
             CREATE (c:ConnectionConfig {
                 id: $id,
@@ -105,6 +105,21 @@ class ConfigStore:
                 "api_key": connection_config.api_key,
             }
         )
+        return _connection_from_node(result.records[0]["c"])
+
+    async def list_connections(self) -> list[ConnectionConfig]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ConnectionConfig)
+            RETURN c
+            ORDER BY c.name
+            """
+        )
+
+        return [
+            _connection_from_node(record["c"])
+            for record in result.records
+        ]
 
     async def get_connection(self, config_id: str) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
@@ -155,14 +170,17 @@ class ConfigStore:
     async def link_connection(self,
                               source_id: str,
                               connection_id: str,
-                              ):
-        await self._driver.execute_query(
+                              ) -> ConnectionConfig | None:
+        result = await self._driver.execute_query(
             """
             MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig {
                 id: $source_id
             })
             MATCH (c:ConnectionConfig {id: $connection_id})
+            OPTIONAL MATCH (s)-[previous:USES]->(:ConnectionConfig)
+            DELETE previous
             MERGE (s) -[:USES]-> (c)
+            RETURN c LIMIT 1
             """,
             parameters_={
                 "source_id": source_id,
@@ -170,9 +188,57 @@ class ConfigStore:
             }
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _connection_from_node(record["c"])
+
+    async def update_connection(self,
+                                config_id: str,
+                                properties: dict,
+                                ) -> ConnectionConfig | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ConnectionConfig {id: $config_id})
+            SET c += $properties
+            RETURN c LIMIT 1
+            """,
+            parameters_={
+                "config_id": config_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _connection_from_node(record["c"])
+
+    async def delete_connection(self, config_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ConnectionConfig {id: $config_id})
+            WITH collect(c) AS configs
+            FOREACH (config IN configs | DETACH DELETE config)
+            RETURN size(configs) AS deleted
+            """,
+            parameters_={"config_id": config_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
     async def create_chat(self, chat_config: ChatModelConfigUnion):
         if isinstance(chat_config, OllamaChatModelConfig):
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 CREATE (c:OllamaChatModelConfig {
                     id: $id,
@@ -208,8 +274,9 @@ class ConfigStore:
                     "repeat_penalty": chat_config.repeat_penalty,
                 }
             )
+            return _ollama_chat_from_node(result.records[0]["c"])
         elif isinstance(chat_config, OpenAiChatModelConfig):
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 CREATE (c:OpenAiChatModelConfig {
                     id: $id,
@@ -233,8 +300,23 @@ class ConfigStore:
                     "stop_tokens": chat_config.stop_tokens,
                 }
             )
+            return _openai_chat_from_node(result.records[0]["c"])
         else:
             raise TypeError(f"Expected ChatModelConfigUnion, got {type(chat_config)}")
+
+    async def list_chats(self) -> list[ChatModelConfigUnion]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig)
+            RETURN labels(c) AS config_labels, c AS config
+            ORDER BY c.name
+            """
+        )
+
+        return [
+            _chat_from_node(record["config"], record["config_labels"])
+            for record in result.records
+        ]
 
     async def get_chat(self, config_id: str) -> ChatModelConfigUnion | None:
         result = await self._driver.execute_query(
@@ -278,12 +360,17 @@ class ConfigStore:
                         source_id: str,
                         config_id: str,
                         component: ComponentType,
-                        ):
-        await self._driver.execute_query(
+                        ) -> ChatModelConfigUnion | None:
+        result = await self._driver.execute_query(
             """
             MATCH (s:World|Simulation {id: $source_id})
             MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            OPTIONAL MATCH (s)-[previous:USES {component: $component}]->(
+                :OllamaChatModelConfig|OpenAiChatModelConfig
+            )
+            DELETE previous
             MERGE (s) -[:USES {component: $component}]-> (c)
+            RETURN labels(c) as config_labels, c as config
             """,
             parameters_={
                 "source_id": source_id,
@@ -292,9 +379,57 @@ class ConfigStore:
             }
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _chat_from_node(record["config"], record["config_labels"])
+
+    async def update_chat(self,
+                          config_id: str,
+                          properties: dict,
+                          ) -> ChatModelConfigUnion | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            SET c += $properties
+            RETURN labels(c) AS config_labels, c AS config
+            """,
+            parameters_={
+                "config_id": config_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _chat_from_node(record["config"], record["config_labels"])
+
+    async def delete_chat(self, config_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            WITH collect(c) AS configs
+            FOREACH (config IN configs | DETACH DELETE config)
+            RETURN size(configs) AS deleted
+            """,
+            parameters_={"config_id": config_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
     async def create_embed(self, embed_config: EmbedModelConfigUnion):
         if isinstance(embed_config, OllamaEmbedModelConfig):
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 CREATE (c:OllamaEmbedModelConfig {
                     id: $id,
@@ -310,8 +445,9 @@ class ConfigStore:
                     "context_window": embed_config.context_window,
                 }
             )
+            return _ollama_embed_from_node(result.records[0]["c"])
         elif isinstance(embed_config, OpenAiEmbedModelConfig):
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 CREATE (c:OpenAiEmbedModelConfig {
                     id: $id,
@@ -325,8 +461,38 @@ class ConfigStore:
                     "dimension": embed_config.dimension,
                 }
             )
+            return _openai_embed_from_node(result.records[0]["c"])
         else:
             raise TypeError(f"Expected EmbedModelConfigUnion, got {type(embed_config)}")
+
+    async def list_embeds(self) -> list[EmbedModelConfigUnion]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig)
+            RETURN labels(c) AS config_labels, c AS config
+            ORDER BY c.model
+            """
+        )
+
+        return [
+            _embed_from_node(record["config"], record["config_labels"])
+            for record in result.records
+        ]
+
+    async def get_embed(self, config_id: str) -> EmbedModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            RETURN labels(c) as config_labels, c as config
+            """,
+            parameters_={"config_id": config_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _embed_from_node(record["config"], record["config_labels"])
 
     async def get_embed_by_source(self,
                                   source_id: str,
@@ -355,12 +521,17 @@ class ConfigStore:
                          source_id: str,
                          config_id: str,
                          component: ComponentType,
-                         ):
-        await self._driver.execute_query(
+                         ) -> EmbedModelConfigUnion | None:
+        result = await self._driver.execute_query(
             """
             MATCH (s:World|Simulation {id: $source_id})
             MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            OPTIONAL MATCH (s)-[previous:USES {component: $component}]->(
+                :OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            )
+            DELETE previous
             MERGE (s) -[:USES {component: $component}]-> (c)
+            RETURN labels(c) as config_labels, c as config
             """,
             parameters_={
                 "source_id": source_id,
@@ -368,3 +539,51 @@ class ConfigStore:
                 "component": component,
             }
         )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _embed_from_node(record["config"], record["config_labels"])
+
+    async def update_embed(self,
+                           config_id: str,
+                           properties: dict,
+                           ) -> EmbedModelConfigUnion | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            SET c += $properties
+            RETURN labels(c) AS config_labels, c AS config
+            """,
+            parameters_={
+                "config_id": config_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _embed_from_node(record["config"], record["config_labels"])
+
+    async def delete_embed(self, config_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            WITH collect(c) AS configs
+            FOREACH (config IN configs | DETACH DELETE config)
+            RETURN size(configs) AS deleted
+            """,
+            parameters_={"config_id": config_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])

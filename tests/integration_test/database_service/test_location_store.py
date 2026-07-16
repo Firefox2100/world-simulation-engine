@@ -40,6 +40,15 @@ async def test_create_location_returns_none_when_source_is_missing(clean_neo4j):
     assert await store.get_location(location.id) is None
 
 
+async def test_create_location_returns_none_when_parent_is_missing(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = LocationStore(clean_neo4j)
+    location = Location(id=str(uuid4()), name="Market", description="A market")
+
+    assert await store.create_location(location, source_id=world.id, contained_in=str(uuid4())) is None
+    assert await store.get_location(location.id) is None
+
+
 async def test_list_update_and_delete_location(clean_neo4j):
     world = await create_world(clean_neo4j)
     store = LocationStore(clean_neo4j)

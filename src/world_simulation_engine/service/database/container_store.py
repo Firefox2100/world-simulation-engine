@@ -26,10 +26,13 @@ class ContainerStore:
                                source_id: str,
                                location_id: str | None = None,
                                position: str | None = None,
-                               ):
-        await self._driver.execute_query(
+                               ) -> Container | None:
+        result = await self._driver.execute_query(
             """
             MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (loc:Location {id: $location_id})
+            WITH source, loc
+            WHERE $location_id IS NULL OR loc IS NOT NULL
             CREATE (c:Container {
                 id: $id,
                 name: $name,
@@ -37,8 +40,6 @@ class ContainerStore:
                 state: $state
             })
             MERGE (source)-[:CONTAINS]->(c)
-            WITH c
-            OPTIONAL MATCH (loc:Location {id: $location_id})
             FOREACH (_ IN CASE
                 WHEN $location_id IS NOT NULL AND loc IS NOT NULL
                 THEN [1]
@@ -60,6 +61,61 @@ class ContainerStore:
             }
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["c"])
+
+    async def list_containers(self,
+                              world_id: str | None = None,
+                              simulation_id: str | None = None,
+                              location_id: str | None = None,
+                              owner_id: str | None = None,
+                              holder_id: str | None = None,
+                              ) -> list[Container]:
+        if world_id is not None and simulation_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(container:Container)
+            """
+        elif world_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(container:Container)
+            """
+        elif simulation_id is not None:
+            source_match = """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(container:Container)
+            """
+        else:
+            source_match = """
+            MATCH (container:Container)
+            """
+
+        result = await self._driver.execute_query(
+            source_match + """
+            OPTIONAL MATCH (container)-[:PRESENT_IN]->(location:Location)
+            OPTIONAL MATCH (owner)-[:OWNS]->(container)
+            OPTIONAL MATCH (holder)-[:HOLDS]->(container)
+            WHERE ($location_id IS NULL OR location.id = $location_id AND holder IS NULL)
+                AND ($owner_id IS NULL OR owner.id = $owner_id)
+                AND ($holder_id IS NULL OR holder.id = $holder_id)
+            RETURN DISTINCT container
+            ORDER BY container.name
+            """,
+            parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
+                "location_id": location_id,
+                "owner_id": owner_id,
+                "holder_id": holder_id,
+            },
+        )
+
+        return [
+            self.container_from_node(record["container"])
+            for record in result.records
+        ]
+
     async def get_container(self, container_id: str) -> Container | None:
         result = await self._driver.execute_query(
             "MATCH (c:Container {id: $id}) RETURN c LIMIT 1",
@@ -71,6 +127,50 @@ class ContainerStore:
             return None
 
         return self.container_from_node(record["c"])
+
+    async def update_container(self,
+                               container_id: str,
+                               properties: dict,
+                               ) -> Container | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            SET container += $properties
+            RETURN container LIMIT 1
+            """,
+            parameters_={
+                "container_id": container_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["container"])
+
+    async def delete_container(self, container_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH path = (container)-[:HOLDS*0..]->(node)
+            WHERE node:Container OR node:ItemStack OR node:Equipment
+            WITH collect(DISTINCT node) AS nodes, 1 AS deleted
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
+            """,
+            parameters_={"container_id": container_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
 
     async def get_containers_by_location(self,
                                          location_id: str,
@@ -102,8 +202,8 @@ class ContainerStore:
                                           container_id: str,
                                           location_id: str,
                                           position: str | None = None,
-                                          ):
-        await self._driver.execute_query(
+                                          ) -> Container | None:
+        result = await self._driver.execute_query(
             """
             MATCH (container:Container {id: $container_id})
             OPTIONAL MATCH (holder)-[hold:HOLDS]->(container)
@@ -112,6 +212,7 @@ class ContainerStore:
             DELETE hold, present
             MERGE (container)-[new_present:PRESENT_IN]->(location)
             SET new_present.position = $position
+            RETURN container
             """,
             parameters_={
                 "container_id": container_id,
@@ -120,13 +221,23 @@ class ContainerStore:
             },
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["container"])
+
     async def assign_container(self,
                                container_id: str,
                                holder_id: str | None = None,
                                owner_id: str | None = None,
-                               ):
+                               ) -> Container | None:
+        container = await self.get_container(container_id)
+        if container is None:
+            return None
+
         if holder_id:
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 MATCH (container:Container {id: $container_id})
                 OPTIONAL MATCH (holder)-[hold:HOLDS]->(container)
@@ -134,33 +245,45 @@ class ContainerStore:
                 MATCH (new_holder {id: $holder_id})
                 DELETE hold, present
                 MERGE (new_holder)-[:HOLDS]->(container)
+                RETURN container
                 """,
                 parameters_={
                     "container_id": container_id,
                     "holder_id": holder_id,
                 },
             )
+            record = result.records[0] if result.records else None
+            if not record:
+                return None
+            container = self.container_from_node(record["container"])
 
         if owner_id:
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 MATCH (container:Container {id: $container_id})
                 OPTIONAL MATCH (previous_owner)-[owns:OWNS]->(container)
                 MATCH (owner {id: $owner_id})
                 DELETE owns
                 MERGE (owner)-[:OWNS]->(container)
+                RETURN container
                 """,
                 parameters_={
                     "container_id": container_id,
                     "owner_id": owner_id,
                 },
             )
+            record = result.records[0] if result.records else None
+            if not record:
+                return None
+            container = self.container_from_node(record["container"])
+
+        return container
 
     async def put_stack_in_container(self,
                                      stack_id: str,
                                      container_id: str,
-                                     ):
-        await self._driver.execute_query(
+                                     ) -> Container | None:
+        result = await self._driver.execute_query(
             """
             MATCH (stack:ItemStack {id: $stack_id})
             MATCH (container:Container {id: $container_id})
@@ -168,6 +291,7 @@ class ContainerStore:
             OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(stack)
             DELETE hold, present
             MERGE (container)-[:HOLDS]->(stack)
+            RETURN container
             """,
             parameters_={
                 "stack_id": stack_id,
@@ -175,11 +299,17 @@ class ContainerStore:
             },
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["container"])
+
     async def put_equipment_in_container(self,
                                          equipment_id: str,
                                          container_id: str,
-                                         ):
-        await self._driver.execute_query(
+                                         ) -> Container | None:
+        result = await self._driver.execute_query(
             """
             MATCH (equipment:Equipment {id: $equipment_id})
             MATCH (container:Container {id: $container_id})
@@ -187,6 +317,7 @@ class ContainerStore:
             OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(equipment)
             DELETE hold, present
             MERGE (container)-[:HOLDS]->(equipment)
+            RETURN container
             """,
             parameters_={
                 "equipment_id": equipment_id,
@@ -194,11 +325,17 @@ class ContainerStore:
             },
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["container"])
+
     async def put_container_in_container(self,
                                         held_container_id: str,
                                         holder_container_id: str,
-                                        ):
-        await self._driver.execute_query(
+                                        ) -> Container | None:
+        result = await self._driver.execute_query(
             """
             MATCH (held:Container {id: $held_container_id})
             MATCH (holder:Container {id: $holder_container_id})
@@ -207,12 +344,19 @@ class ContainerStore:
             OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(held)
             DELETE hold, present
             MERGE (holder)-[:HOLDS]->(held)
+            RETURN holder
             """,
             parameters_={
                 "held_container_id": held_container_id,
                 "holder_container_id": holder_container_id,
             },
         )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["holder"])
 
     async def get_held_stacks(self,
                               container_id: str,
@@ -268,18 +412,25 @@ class ContainerStore:
     async def add_unlocking_item(self,
                                  item_id: str,
                                  container_id: str,
-                                 ):
-        await self._driver.execute_query(
+                                 ) -> Container | None:
+        result = await self._driver.execute_query(
             """
             MATCH (item:Item {id: $item_id})
             MATCH (container:Container {id: $container_id})
             MERGE (item)-[:UNLOCKS]->(container)
+            RETURN container
             """,
             parameters_={
                 "item_id": item_id,
                 "container_id": container_id,
             },
         )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.container_from_node(record["container"])
 
     async def remove_unlocking_item(self,
                                     item_id: str,
@@ -312,3 +463,145 @@ class ContainerStore:
             ItemStore.item_from_node(record["item"])
             for record in result.records
         ]
+
+    async def copy_containers(self,
+                              source_id: str,
+                              target_id: str,
+                              location_pairs: list[dict] | None = None,
+                              entity_pairs: list[dict] | None = None,
+                              equipment_pairs: list[dict] | None = None,
+                              ) -> tuple[list[Container], list[dict]]:
+        location_pairs = location_pairs or []
+        entity_pairs = entity_pairs or []
+        equipment_pairs = equipment_pairs or []
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(source_container:Container)
+            MATCH (target:World|Simulation {id: $target_id})
+            CREATE (container:Container {
+                id: randomUUID(),
+                name: source_container.name,
+                description: source_container.description,
+                state: source_container.state
+            })
+            MERGE (target)-[:CONTAINS]->(container)
+            RETURN source_container.id AS source_id, container.id AS copy_id, container
+            ORDER BY container.name
+            """,
+            parameters_={
+                "source_id": source_id,
+                "target_id": target_id,
+            },
+        )
+        container_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+        if container_pairs and location_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $container_pairs AS container_pair
+                MATCH (source_container:Container {id: container_pair.source_id})-[source_present:PRESENT_IN]->(source_location:Location)
+                WITH container_pair, source_present, [
+                    location_pair IN $location_pairs
+                    WHERE location_pair.source_id = source_location.id
+                ][0] AS location_pair
+                WHERE location_pair IS NOT NULL
+                MATCH (copy_container:Container {id: container_pair.copy_id})
+                MATCH (copy_location:Location {id: location_pair.copy_id})
+                MERGE (copy_container)-[present:PRESENT_IN]->(copy_location)
+                SET present.position = source_present.position
+                """,
+                parameters_={
+                    "container_pairs": container_pairs,
+                    "location_pairs": location_pairs,
+                },
+            )
+        if container_pairs and entity_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $container_pairs AS container_pair
+                MATCH (source_owner)-[:OWNS]->(:Container {id: container_pair.source_id})
+                WITH container_pair, [
+                    entity_pair IN $entity_pairs
+                    WHERE entity_pair.source_id = source_owner.id
+                ][0] AS owner_pair
+                WHERE owner_pair IS NOT NULL
+                MATCH (copy_owner {id: owner_pair.copy_id})
+                MATCH (copy_container:Container {id: container_pair.copy_id})
+                MERGE (copy_owner)-[:OWNS]->(copy_container)
+                """,
+                parameters_={
+                    "container_pairs": container_pairs,
+                    "entity_pairs": entity_pairs,
+                },
+            )
+            await self._driver.execute_query(
+                """
+                UNWIND $container_pairs AS container_pair
+                MATCH (source_holder)-[:HOLDS]->(:Container {id: container_pair.source_id})
+                WITH container_pair, [
+                    entity_pair IN $entity_pairs
+                    WHERE entity_pair.source_id = source_holder.id
+                ][0] AS holder_pair
+                WHERE holder_pair IS NOT NULL
+                MATCH (copy_holder {id: holder_pair.copy_id})
+                MATCH (copy_container:Container {id: container_pair.copy_id})
+                MERGE (copy_holder)-[:HOLDS]->(copy_container)
+                """,
+                parameters_={
+                    "container_pairs": container_pairs,
+                    "entity_pairs": entity_pairs,
+                },
+            )
+        if container_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $container_pairs AS holder_pair
+                UNWIND $container_pairs AS held_pair
+                MATCH (:Container {id: holder_pair.source_id})-[:HOLDS]->(:Container {id: held_pair.source_id})
+                MATCH (copy_holder:Container {id: holder_pair.copy_id})
+                MATCH (copy_held:Container {id: held_pair.copy_id})
+                MERGE (copy_holder)-[:HOLDS]->(copy_held)
+                """,
+                parameters_={"container_pairs": container_pairs},
+            )
+            await self._driver.execute_query(
+                """
+                UNWIND $container_pairs AS container_pair
+                MATCH (item:Item)-[:UNLOCKS]->(:Container {id: container_pair.source_id})
+                MATCH (copy_container:Container {id: container_pair.copy_id})
+                MERGE (item)-[:UNLOCKS]->(copy_container)
+                """,
+                parameters_={"container_pairs": container_pairs},
+            )
+        if container_pairs and equipment_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $container_pairs AS container_pair
+                MATCH (:Container {id: container_pair.source_id})-[:HOLDS]->(source_equipment:Equipment)
+                WITH container_pair, [
+                    equipment_pair IN $equipment_pairs
+                    WHERE equipment_pair.source_id = source_equipment.id
+                ][0] AS equipment_pair
+                WHERE equipment_pair IS NOT NULL
+                MATCH (copy_container:Container {id: container_pair.copy_id})
+                MATCH (copy_equipment:Equipment {id: equipment_pair.copy_id})
+                MERGE (copy_container)-[:HOLDS]->(copy_equipment)
+                """,
+                parameters_={
+                    "container_pairs": container_pairs,
+                    "equipment_pairs": equipment_pairs,
+                },
+            )
+
+        return (
+            [
+                self.container_from_node(record["container"])
+                for record in result.records
+            ],
+            container_pairs,
+        )

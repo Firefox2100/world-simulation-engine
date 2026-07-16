@@ -370,9 +370,6 @@ class GraphWorldSetup:
                 location_id=placement.location_id,
                 position=placement.position,
                 source_id=self.simulation.id,
-            )
-            await database.item.assign_stack(
-                stack_id=placement.stack.id,
                 holder_id=placement.holder_id,
                 owner_id=placement.owner_id,
             )

@@ -286,6 +286,34 @@ async def test_create_background_character(clean_neo4j):
     assert result.records[0]["link_count"] == 1
 
 
+async def test_create_background_character_returns_none_when_relationship_target_is_missing(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = CharacterStore(clean_neo4j)
+    missing_location_character = BackgroundCharacter(
+        id=str(uuid4()),
+        name="Porter",
+        description="A porter",
+    )
+    missing_landmark_character = BackgroundCharacter(
+        id=str(uuid4()),
+        name="Guide",
+        description="A guide",
+    )
+
+    assert await store.create_background_character(
+        missing_location_character,
+        source_id=world.id,
+        location_id=str(uuid4()),
+    ) is None
+    assert await store.create_background_character(
+        missing_landmark_character,
+        source_id=world.id,
+        landmark_id=str(uuid4()),
+    ) is None
+    assert await store.get_background_character(missing_location_character.id) is None
+    assert await store.get_background_character(missing_landmark_character.id) is None
+
+
 async def test_list_update_delete_and_move_background_character(clean_neo4j):
     world = await create_world(clean_neo4j)
     store = CharacterStore(clean_neo4j)

@@ -70,8 +70,12 @@ async def test_stack_inventory_holder_and_owner(clean_neo4j):
     owner = await create_character(clean_neo4j, world.id, name="Owner")
 
     await item_store.create_item(item, source_id=world.id)
-    assert await item_store.create_stack(item.id, stack) == stack
-    await item_store.assign_stack(stack.id, holder_id=holder.id, owner_id=owner.id)
+    assert await item_store.create_stack(
+        item.id,
+        stack,
+        holder_id=holder.id,
+        owner_id=owner.id,
+    ) == stack
 
     inventory = await item_store.get_inventory(holder.id)
 
@@ -151,8 +155,14 @@ async def test_create_stack_can_assign_physical_stack_to_simulation(clean_neo4j)
 
     await item_store.create_item(item, source_id=world.id)
     await simulation_store.create_simulation(simulation, world.id)
+    holder = await create_character(clean_neo4j, simulation.id, name="Holder")
 
-    assert await item_store.create_stack(item.id, stack, source_id=simulation.id) == stack
+    assert await item_store.create_stack(
+        item.id,
+        stack,
+        source_id=simulation.id,
+        holder_id=holder.id,
+    ) == stack
 
     result = await clean_neo4j.execute_query(
         """
@@ -189,9 +199,37 @@ async def test_create_stack_returns_none_for_missing_source_or_item(clean_neo4j)
     await item_store.create_item(other_item, source_id=other_world.id)
     await simulation_store.create_simulation(simulation, world.id)
 
-    assert await item_store.create_stack(str(uuid4()), ItemStack(id=str(uuid4()))) is None
-    assert await item_store.create_stack(item.id, ItemStack(id=str(uuid4())), source_id=str(uuid4())) is None
-    assert await item_store.create_stack(other_item.id, ItemStack(id=str(uuid4())), source_id=simulation.id) is None
+    assert await item_store.create_stack(
+        str(uuid4()),
+        ItemStack(id=str(uuid4())),
+        location_id=str(uuid4()),
+    ) is None
+    assert await item_store.create_stack(
+        item.id,
+        ItemStack(id=str(uuid4())),
+        source_id=str(uuid4()),
+        location_id=str(uuid4()),
+    ) is None
+    assert await item_store.create_stack(
+        other_item.id,
+        ItemStack(id=str(uuid4())),
+        source_id=simulation.id,
+        location_id=str(uuid4()),
+    ) is None
+
+
+async def test_create_stack_returns_none_without_location_or_holder(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    item_store = ItemStore(clean_neo4j)
+    item = Item(id=str(uuid4()), name="Apple", description="Fresh fruit", unique=False)
+
+    await item_store.create_item(item, source_id=world.id)
+
+    assert await item_store.create_stack(
+        item.id,
+        ItemStack(id=str(uuid4())),
+        source_id=world.id,
+    ) is None
 
 
 async def test_stack_location_assignment(clean_neo4j):

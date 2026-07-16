@@ -4,8 +4,10 @@ from fastapi import FastAPI
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.component.simulator.world_simulator import WorldSimulator
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
-    equipment_router, item_router, location_router, simulation_router, world_router
+    config_router, container_router, equipment_router, event_router, intent_router, item_router, location_router, \
+    simulation_router, turn_router, world_router
 
 
 @asynccontextmanager
@@ -18,6 +20,7 @@ async def lifespan(app: FastAPI):
     )
 
     app.state.database = database
+    app.state.world_simulator = WorldSimulator(database=database)
 
     yield
 
@@ -30,10 +33,15 @@ def create_app() -> FastAPI:
     app.include_router(author_router)
     app.include_router(background_character_router)
     app.include_router(character_router)
+    app.include_router(config_router)
+    app.include_router(container_router)
     app.include_router(equipment_router)
+    app.include_router(event_router)
+    app.include_router(intent_router)
     app.include_router(item_router)
     app.include_router(location_router)
     app.include_router(simulation_router)
+    app.include_router(turn_router)
     app.include_router(world_router)
 
     return app

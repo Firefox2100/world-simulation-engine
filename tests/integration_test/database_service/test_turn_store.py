@@ -69,3 +69,51 @@ async def test_create_turn_links_previous_turn(clean_neo4j):
     )
 
     assert result.records[0]["link_count"] == 1
+
+
+async def test_list_turns_returns_latest_first_with_limit_and_skip(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = TurnStore(clean_neo4j)
+    turns = [
+        Turn(
+            id=str(uuid4()),
+            sequence=sequence,
+            type=TurnType.USER_INPUT,
+            content=f"Turn {sequence}",
+            start_time=datetime(2026, 1, 1, 9, sequence, tzinfo=UTC),
+        )
+        for sequence in range(5)
+    ]
+
+    previous_turn_id = None
+    for turn in turns:
+        await store.create_turn(turn, source_id=world.id, previous_turn_id=previous_turn_id)
+        previous_turn_id = turn.id
+
+    assert await store.list_turns(source_id=world.id, limit=3) == [
+        turns[4],
+        turns[3],
+        turns[2],
+    ]
+    assert await store.list_turns(source_id=world.id, limit=2, skip=1) == [
+        turns[3],
+        turns[2],
+    ]
+
+
+async def test_get_turn_by_sequence(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = TurnStore(clean_neo4j)
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=42,
+        type=TurnType.USER_INPUT,
+        content="The answer",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+
+    await store.create_turn(turn, source_id=world.id)
+
+    assert await store.get_turn(turn.id) == turn
+    assert await store.get_turn_by_sequence(world.id, 42) == turn
+    assert await store.get_turn_by_sequence(world.id, 41) is None

@@ -33,14 +33,15 @@ class LocationStore:
         result = await self._driver.execute_query(
             """
             MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (parent:Location {id: $contained_in})
+            WITH source, parent
+            WHERE $contained_in IS NULL OR parent IS NOT NULL
             CREATE (l:Location {
                 id: $id,
                 name: $name,
                 description: $description
             })
             MERGE (source)-[:CONTAINS]->(l)
-            WITH l
-            OPTIONAL MATCH (parent:Location {id: $contained_in})
             FOREACH (_ IN CASE
                 WHEN $contained_in IS NOT NULL AND parent IS NOT NULL
                 THEN [1]
@@ -198,9 +199,11 @@ class LocationStore:
         result = await self._driver.execute_query(
             """
             MATCH (location:Location {id: $location_id})
-            WITH collect(location) AS locations
-            FOREACH (location IN locations | DETACH DELETE location)
-            RETURN size(locations) AS deleted
+            OPTIONAL MATCH path = (location)-[:CONTAINS*0..]->(node)
+            WHERE node:Location OR node:Landmark
+            WITH collect(DISTINCT node) AS nodes, 1 AS deleted
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
             """,
             parameters_={"location_id": location_id},
         )

@@ -1,6 +1,9 @@
+import asyncio
 import operator
 from datetime import timedelta
-from typing import Annotated
+from dataclasses import dataclass, field
+from typing import Annotated, Any, AsyncIterator
+from uuid import uuid4
 from langgraph.constants import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langfuse.langchain import CallbackHandler
@@ -77,8 +80,19 @@ class CharacterActionProposalState(BaseModel):
     memory_summary_proposal: MemorySummaryProposal | None = None
 
 
+@dataclass
+class _SimulatorRun:
+    thread_id: str
+    simulation_id: str
+    queue: asyncio.Queue[Any] = field(default_factory=asyncio.Queue)
+    task: asyncio.Task | None = None
+    final_state: Any = None
+    error: BaseException | None = None
+
+
 class WorldSimulator:
     _MAX_VALIDATION_REWORK_ATTEMPTS = 3
+    _RUN_DONE = object()
 
     def __init__(self,
                  database: DatabaseService,
@@ -99,6 +113,126 @@ class WorldSimulator:
         self._state_committer = StateCommitter(database=database)
 
         self._simulator_graph = self._build_simulator_graph()
+        self._run_registry: dict[str, _SimulatorRun] = {}
+        self._completed_run_registry: dict[str, _SimulatorRun] = {}
+        self._simulation_run_locks: dict[str, asyncio.Lock] = {}
+        self._run_registry_lock = asyncio.Lock()
+
+    async def start_generation(self, state: WorldSimulatorState) -> str:
+        """
+        Schedule a simulator graph run in the background and return its thread id.
+        """
+        thread_id = str(uuid4())
+        run = _SimulatorRun(
+            thread_id=thread_id,
+            simulation_id=state.simulation.id,
+        )
+
+        async with self._run_registry_lock:
+            simulation_lock = self._simulation_run_locks.setdefault(
+                state.simulation.id,
+                asyncio.Lock(),
+            )
+            if simulation_lock.locked():
+                raise RuntimeError(f"Simulation {state.simulation.id} already has an active generation")
+
+            await simulation_lock.acquire()
+            self._run_registry[thread_id] = run
+            self._completed_run_registry.pop(thread_id, None)
+
+        run.task = asyncio.create_task(
+            self._run_generation(
+                run=run,
+                state=state,
+                simulation_lock=simulation_lock,
+            )
+        )
+        return thread_id
+
+    async def stream_generation(self, thread_id: str) -> AsyncIterator[Any]:
+        """
+        Stream graph output for a running thread.
+
+        If the background run has already finished and been removed from the active registry, this returns the final
+        state once.
+        """
+        async with self._run_registry_lock:
+            run = self._run_registry.get(thread_id)
+            completed_run = self._completed_run_registry.get(thread_id)
+
+        if run is None:
+            if completed_run is None:
+                raise KeyError(f"Generation thread {thread_id} not found")
+            if completed_run.error:
+                raise completed_run.error
+            if completed_run.final_state is not None:
+                yield completed_run.final_state
+            return
+
+        while True:
+            item = await run.queue.get()
+            if item is self._RUN_DONE:
+                break
+
+            yield item
+
+        if run.error:
+            raise run.error
+
+    async def get_generation_final_state(self, thread_id: str) -> Any:
+        async with self._run_registry_lock:
+            run = self._run_registry.get(thread_id) or self._completed_run_registry.get(thread_id)
+
+        if run is None:
+            raise KeyError(f"Generation thread {thread_id} not found")
+
+        if run.task:
+            await run.task
+
+        if run.error:
+            raise run.error
+
+        return run.final_state
+
+    def is_generation_running(self, thread_id: str) -> bool:
+        return thread_id in self._run_registry
+
+    async def _run_generation(
+            self,
+            *,
+            run: _SimulatorRun,
+            state: WorldSimulatorState,
+            simulation_lock: asyncio.Lock,
+    ):
+        try:
+            async for chunk in self._simulator_graph.astream(
+                    state,
+                    config=self._graph_run_config(run.thread_id),
+                    stream_mode="values",
+            ):
+                run.final_state = chunk
+                await run.queue.put(chunk)
+        except BaseException as exc:
+            run.error = exc
+        finally:
+            async with self._run_registry_lock:
+                self._run_registry.pop(run.thread_id, None)
+                self._completed_run_registry[run.thread_id] = run
+                if simulation_lock.locked():
+                    simulation_lock.release()
+
+            await run.queue.put(self._RUN_DONE)
+
+    def _graph_run_config(self, thread_id: str) -> dict:
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+            },
+        }
+        if self._langfuse_handler:
+            config["callbacks"] = [self._langfuse_handler]
+
+        return config
 
     async def interpret_user_input(self, state: WorldSimulatorState):
         user_character = await self._db.character.get_user_character_by_simulation(

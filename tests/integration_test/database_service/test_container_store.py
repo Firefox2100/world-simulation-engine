@@ -26,7 +26,7 @@ async def test_create_container(clean_neo4j):
         state=ContainerState.LOCKED,
     )
 
-    await store.create_container(container, source_id=world.id)
+    assert await store.create_container(container, source_id=world.id) == container
 
     assert await store.get_container(container.id) == container
 
@@ -38,6 +38,69 @@ async def test_create_container(clean_neo4j):
         parameters_={"source_id": world.id, "container_id": container.id},
     )
     assert result.records[0]["link_count"] == 1
+
+
+async def test_create_container_returns_none_when_location_is_missing(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = ContainerStore(clean_neo4j)
+    container = Container(
+        id=str(uuid4()),
+        name="Chest",
+        description="A wooden chest",
+        state=ContainerState.LOCKED,
+    )
+
+    assert await store.create_container(container, source_id=world.id, location_id=str(uuid4())) is None
+    assert await store.get_container(container.id) is None
+
+
+async def test_list_update_and_delete_container(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = ContainerStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    location = Location(id=str(uuid4()), name="Vault", description="A quiet vault")
+    holder = await create_character(clean_neo4j, world.id, name="Holder")
+    owner = await create_character(clean_neo4j, world.id, name="Owner")
+    container = Container(
+        id=str(uuid4()),
+        name="Chest",
+        description="A wooden chest",
+        state=ContainerState.LOCKED,
+    )
+
+    await location_store.create_location(location, source_id=world.id)
+    await store.create_container(
+        container,
+        source_id=world.id,
+        location_id=location.id,
+        position="against the wall",
+    )
+
+    assert await store.list_containers() == [container]
+    assert await store.list_containers(world_id=world.id) == [container]
+    assert await store.list_containers(location_id=location.id) == [container]
+
+    updated_container = await store.update_container(
+        container.id,
+        {
+            "name": "Updated Chest",
+            "state": ContainerState.UNLOCKED,
+        },
+    )
+
+    assert updated_container == Container(
+        id=container.id,
+        name="Updated Chest",
+        description=container.description,
+        state=ContainerState.UNLOCKED,
+    )
+    assert await store.assign_container(container.id, holder_id=holder.id, owner_id=owner.id) == updated_container
+    assert await store.list_containers(holder_id=holder.id) == [updated_container]
+    assert await store.list_containers(owner_id=owner.id) == [updated_container]
+    assert await store.list_containers(location_id=location.id) == []
+    assert await store.delete_container(container.id) is True
+    assert await store.get_container(container.id) is None
+    assert await store.delete_container(container.id) is False
 
 
 async def test_container_location_assignment(clean_neo4j):
@@ -164,12 +227,12 @@ async def test_container_can_hold_items_equipment_and_containers(clean_neo4j):
     await container_store.create_container(parent, source_id=world.id)
     await container_store.create_container(child, source_id=world.id)
     await item_store.create_item(item, source_id=world.id)
-    await item_store.create_stack(item.id, stack)
+    await item_store.create_stack(item.id, stack, holder_id=parent.id)
     await equipment_store.create_equipment(equipment, source_id=world.id)
 
     await container_store.put_stack_in_container(stack.id, parent.id)
     await container_store.put_equipment_in_container(equipment.id, parent.id)
-    await container_store.put_container_in_container(child.id, parent.id)
+    assert await container_store.put_container_in_container(child.id, parent.id) == parent
 
     assert await container_store.get_held_stacks(parent.id) == [(item, stack)]
     assert await container_store.get_held_equipment(parent.id) == [equipment]
@@ -222,7 +285,7 @@ async def test_background_character_can_hold_items_equipment_and_containers(clea
 
     await character_store.create_background_character(background_character, source_id=world.id)
     await item_store.create_item(item, source_id=world.id)
-    await item_store.create_stack(item.id, stack)
+    await item_store.create_stack(item.id, stack, holder_id=background_character.id)
     await equipment_store.create_equipment(equipment, source_id=world.id)
     await container_store.create_container(container, source_id=world.id)
 
@@ -245,3 +308,96 @@ async def test_background_character_can_hold_items_equipment_and_containers(clea
         (("Equipment",), equipment.id),
         (("ItemStack",), stack.id),
     }
+
+
+async def test_copy_containers_preserves_relationships(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    target_world = await create_world(clean_neo4j)
+    character_store = CharacterStore(clean_neo4j)
+    container_store = ContainerStore(clean_neo4j)
+    equipment_store = EquipmentStore(clean_neo4j)
+    item_store = ItemStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    location = Location(id=str(uuid4()), name="Vault", description="A quiet vault")
+    owner = await create_character(clean_neo4j, world.id, name="Owner")
+    copied_owner = await create_character(clean_neo4j, target_world.id, name="Copied Owner")
+    parent = Container(
+        id=str(uuid4()),
+        name="Chest",
+        description="A wooden chest",
+        state=ContainerState.OPEN,
+    )
+    child = Container(
+        id=str(uuid4()),
+        name="Pouch",
+        description="A leather pouch",
+        state=ContainerState.UNLOCKED,
+    )
+    equipment = Equipment(id=str(uuid4()), name="Dagger", description="A short blade", quality="sharp")
+    copied_equipment = Equipment(id=str(uuid4()), name="Copied Dagger", description="A short blade", quality="sharp")
+    key = Item(id=str(uuid4()), name="Key", description="A brass key", unique=True)
+
+    await location_store.create_location(location, source_id=world.id)
+    _, location_pairs, _ = await location_store.copy_locations(world.id, target_world.id)
+    await container_store.create_container(parent, source_id=world.id, location_id=location.id, position="against the wall")
+    await container_store.create_container(child, source_id=world.id)
+    await equipment_store.create_equipment(equipment, source_id=world.id)
+    await equipment_store.create_equipment(copied_equipment, source_id=target_world.id)
+    await item_store.create_item(key, source_id=world.id)
+    await container_store.assign_container(parent.id, owner_id=owner.id)
+    await container_store.put_equipment_in_container(equipment.id, parent.id)
+    await container_store.put_container_in_container(child.id, parent.id)
+    await container_store.add_unlocking_item(key.id, parent.id)
+
+    copied_containers, container_pairs = await container_store.copy_containers(
+        world.id,
+        target_world.id,
+        location_pairs=location_pairs,
+        entity_pairs=[
+            {
+                "source_id": owner.id,
+                "copy_id": copied_owner.id,
+            }
+        ],
+        equipment_pairs=[
+            {
+                "source_id": equipment.id,
+                "copy_id": copied_equipment.id,
+            }
+        ],
+    )
+
+    assert {
+        container.name
+        for container in copied_containers
+    } == {
+        parent.name,
+        child.name,
+    }
+    assert all(
+        pair["source_id"] != pair["copy_id"]
+        for pair in container_pairs
+    )
+    copied_parent_id = next(pair["copy_id"] for pair in container_pairs if pair["source_id"] == parent.id)
+    copied_child_id = next(pair["copy_id"] for pair in container_pairs if pair["source_id"] == child.id)
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:Character {id: $owner_id})-[:OWNS]->(:Container {id: $parent_id})
+        MATCH (:Container {id: $parent_id})-[:HOLDS]->(:Equipment {id: $equipment_id})
+        MATCH (:Container {id: $parent_id})-[:HOLDS]->(:Container {id: $child_id})
+        MATCH (:Item {id: $item_id})-[:UNLOCKS]->(:Container {id: $parent_id})
+        MATCH (:Container {id: $parent_id})-[:PRESENT_IN]->(:Location {id: $location_id})
+        RETURN count(*) AS relationship_count
+        """,
+        parameters_={
+            "owner_id": copied_owner.id,
+            "parent_id": copied_parent_id,
+            "child_id": copied_child_id,
+            "equipment_id": copied_equipment.id,
+            "item_id": key.id,
+            "location_id": location_pairs[0]["copy_id"],
+        },
+    )
+
+    assert result.records[0]["relationship_count"] == 1

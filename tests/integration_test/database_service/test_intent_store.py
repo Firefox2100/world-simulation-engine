@@ -52,7 +52,9 @@ async def test_create_intent_attaches_to_character(clean_neo4j):
         embedding=[0.1, 0.2],
     )
 
-    await store.create_intent(intent, character.id)
+    assert await store.create_intent(intent, character.id) == intent
+    assert await store.get_intent(intent.id) == intent
+    assert await store.list_intents(character_id=character.id) == [intent]
 
     result = await clean_neo4j.execute_query(
         """
@@ -76,6 +78,38 @@ async def test_create_intent_attaches_to_character(clean_neo4j):
     assert stored["current_plan"] == intent.current_plan
 
 
+async def test_list_update_and_delete_intent(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    character = await create_character(clean_neo4j, world.id, name="Alex")
+    store = IntentStore(clean_neo4j)
+    intent = make_intent("Buy coffee")
+
+    await store.create_intent(intent, character.id)
+
+    assert await store.list_intents() == [intent]
+    assert await store.list_intents(character_id=character.id) == [intent]
+
+    updated_intent = await store.update_intent(
+        intent_id=intent.id,
+        properties={
+            "status": IntentStatus.PAUSED,
+            "priority": 0.9,
+            "current_plan": ["wait"],
+        },
+    )
+
+    assert updated_intent == intent.model_copy(
+        update={
+            "status": IntentStatus.PAUSED,
+            "priority": 0.9,
+            "current_plan": ["wait"],
+        }
+    )
+    assert await store.delete_intent(intent.id) is True
+    assert await store.get_intent(intent.id) is None
+    assert await store.delete_intent(intent.id) is False
+
+
 async def test_event_relationships_to_intent(clean_neo4j):
     world = await create_world(clean_neo4j)
     character = await create_character(clean_neo4j, world.id, name="Alex")
@@ -97,8 +131,10 @@ async def test_event_relationships_to_intent(clean_neo4j):
     await TurnStore(clean_neo4j).create_turn(turn, source_id=world.id)
     await EventStore(clean_neo4j).create_event(event, turn_ids=[turn.id])
     await intent_store.create_intent(intent, character.id)
-    await intent_store.add_event_contribution(event.id, intent.id)
-    await intent_store.add_event_creation(event.id, intent.id)
+    assert await intent_store.add_event_contribution(event.id, intent.id) == intent
+    assert await intent_store.add_event_creation(event.id, intent.id) == intent
+    assert await intent_store.list_intents(event_id=event.id) == [intent]
+    assert await intent_store.list_intents(character_id=character.id, event_id=event.id) == [intent]
 
     result = await clean_neo4j.execute_query(
         """
@@ -114,6 +150,81 @@ async def test_event_relationships_to_intent(clean_neo4j):
 
     assert result.records[0]["contributes_count"] == 1
     assert result.records[0]["creates_count"] == 1
+
+
+async def test_copy_intents_preserves_character_and_event_relationships(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    target_world = await create_world(clean_neo4j)
+    source_character = await create_character(clean_neo4j, world.id, name="Alex")
+    copy_character = await create_character(clean_neo4j, target_world.id, name="Copied Alex")
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="A long meeting happened",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    event = Event(
+        id=str(uuid4()),
+        name="Long meeting",
+        summary="Alex had a long meeting.",
+    )
+    copy_event = Event(
+        id=str(uuid4()),
+        name="Copied long meeting",
+        summary="A copied meeting.",
+    )
+    intent = make_intent("Buy coffee")
+    intent_store = IntentStore(clean_neo4j)
+
+    await TurnStore(clean_neo4j).create_turn(turn, source_id=world.id)
+    await EventStore(clean_neo4j).create_event(event, turn_ids=[turn.id])
+    await EventStore(clean_neo4j).create_event(copy_event, turn_ids=[turn.id])
+    await intent_store.create_intent(intent, source_character.id)
+    await intent_store.add_event_creation(event.id, intent.id)
+    await intent_store.add_event_contribution(event.id, intent.id)
+
+    copied_intents, intent_pairs = await intent_store.copy_intents(
+        character_pairs=[
+            {
+                "source_id": source_character.id,
+                "copy_id": copy_character.id,
+            }
+        ],
+        event_pairs=[
+            {
+                "source_id": event.id,
+                "copy_id": copy_event.id,
+            }
+        ],
+    )
+
+    assert len(copied_intents) == 1
+    copied_intent = copied_intents[0]
+    assert copied_intent.id != intent.id
+    assert copied_intent.model_copy(update={"id": intent.id}) == intent
+    assert intent_pairs == [
+        {
+            "source_id": intent.id,
+            "copy_id": copied_intent.id,
+        }
+    ]
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:Character {id: $character_id})-[:HOLDS]->(:Intent {id: $intent_id})
+        MATCH (:Event {id: $event_id})-[:CREATES]->(:Intent {id: $intent_id})
+        MATCH (:Event {id: $event_id})-[:CONTRIBUTES_TO]->(:Intent {id: $intent_id})
+        RETURN count(*) AS relationship_count
+        """,
+        parameters_={
+            "character_id": copy_character.id,
+            "event_id": copy_event.id,
+            "intent_id": copied_intent.id,
+        },
+    )
+
+    assert result.records[0]["relationship_count"] == 1
 
 
 async def test_get_active_intent_candidates_filters_by_deadline_priority_and_urgency(clean_neo4j):

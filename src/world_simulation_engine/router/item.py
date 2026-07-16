@@ -117,6 +117,12 @@ def validate_stack_relationship_request(stack_data: ItemStackCreate | ItemStackU
             detail="Stack cannot be placed in a location and held at the same time",
         )
 
+    if isinstance(stack_data, ItemStackCreate) and not stack_data.location_id and not stack_data.holder_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stack must be placed in a location or held by another entity",
+        )
+
 
 async def validate_stack_relationships(stack_data: ItemStackCreate | ItemStackUpdate, db: db_dep):
     validate_stack_relationship_request(stack_data)
@@ -347,6 +353,8 @@ async def create_stack_in_world(world_id: str, item_id: str, stack_data: ItemSta
         location_id=stack_data.location_id,
         position=stack_data.position,
         source_id=world_id,
+        holder_id=stack_data.holder_id,
+        owner_id=stack_data.owner_id,
     )
     if not created_stack:
         raise HTTPException(
@@ -354,7 +362,7 @@ async def create_stack_in_world(world_id: str, item_id: str, stack_data: ItemSta
             detail=f"Item {item_id} not found in world {world_id}",
         )
 
-    return await apply_stack_relationships(created_stack.id, stack_data, db)
+    return created_stack
 
 
 @item_router.post("/simulations/{simulation_id}/items/{item_id}/stacks", response_model=ItemStack)
@@ -385,6 +393,8 @@ async def create_stack_in_simulation(simulation_id: str, item_id: str, stack_dat
         location_id=stack_data.location_id,
         position=stack_data.position,
         source_id=simulation_id,
+        holder_id=stack_data.holder_id,
+        owner_id=stack_data.owner_id,
     )
     if not created_stack:
         raise HTTPException(
@@ -392,4 +402,4 @@ async def create_stack_in_simulation(simulation_id: str, item_id: str, stack_dat
             detail=f"Item {item_id} not found in simulation {simulation_id} or its world",
         )
 
-    return await apply_stack_relationships(created_stack.id, stack_data, db)
+    return created_stack
