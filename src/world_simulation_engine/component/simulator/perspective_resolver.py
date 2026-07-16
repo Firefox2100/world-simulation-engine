@@ -189,7 +189,7 @@ class PerspectiveResolver(SimulatorComponent):
 
     def __init__(self,
                  database: DatabaseService,
-                 langfuse_handler: CallbackHandler,
+                 langfuse_handler: CallbackHandler | None,
                  ):
         super().__init__(database)
         self._langfuse_handler = langfuse_handler
@@ -646,7 +646,7 @@ class PerspectiveResolver(SimulatorComponent):
                 "location": location
             },
             config=RunnableConfig(
-                callbacks=[self._langfuse_handler],
+                callbacks=[self._langfuse_handler] if self._langfuse_handler else None,
                 configurable={
                     "thread_id": thread_id,
                 },

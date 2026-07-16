@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from world_simulation_engine.misc.enums import IntentHorizon, IntentStatus, IntentType
+from world_simulation_engine.model import Intent
 from world_simulation_engine.service.database.intent_store import IntentStore
 
 
@@ -84,6 +85,86 @@ async def test_update_intent_strips_none_values_before_writing():
         "properties": {
             "status": IntentStatus.PAUSED,
             "current_plan": ["wait"],
+        },
+    }
+
+
+async def test_create_intent_embeds_keywords_when_embedding_missing():
+    driver = SimpleNamespace(
+        execute_query=AsyncMock(return_value=SimpleNamespace(records=[{"intent": {}}]))
+    )
+    embed_service = SimpleNamespace(embed_keywords=AsyncMock(return_value=[0.3, 0.4]))
+    store = IntentStore(driver, embed_service=embed_service)
+
+    await store.create_intent(
+        intent=Intent(
+            id="intent_1",
+            type=IntentType.QUEST,
+            name="Find the key",
+            description="Find the brass key.",
+            keywords=["key", "brass"],
+            embedding=None,
+            priority=0.8,
+            urgency=0.7,
+            status=IntentStatus.ACTIVE,
+            horizon=IntentHorizon.SHORT,
+        ),
+        character_id="character_1",
+    )
+
+    embed_service.embed_keywords.assert_awaited_once_with(["key", "brass"])
+    parameters = driver.execute_query.await_args.kwargs["parameters_"]
+    assert parameters["embedding"] == [0.3, 0.4]
+
+
+async def test_create_intent_preserves_existing_embedding():
+    driver = SimpleNamespace(
+        execute_query=AsyncMock(return_value=SimpleNamespace(records=[{"intent": {}}]))
+    )
+    embed_service = SimpleNamespace(embed_keywords=AsyncMock())
+    store = IntentStore(driver, embed_service=embed_service)
+
+    await store.create_intent(
+        intent=Intent(
+            id="intent_1",
+            type=IntentType.QUEST,
+            name="Find the key",
+            description="Find the brass key.",
+            keywords=["key", "brass"],
+            embedding=[0.1, 0.2],
+            priority=0.8,
+            urgency=0.7,
+            status=IntentStatus.ACTIVE,
+            horizon=IntentHorizon.SHORT,
+        ),
+        character_id="character_1",
+    )
+
+    embed_service.embed_keywords.assert_not_awaited()
+    parameters = driver.execute_query.await_args.kwargs["parameters_"]
+    assert parameters["embedding"] == [0.1, 0.2]
+
+
+async def test_update_intent_embeds_updated_keywords_when_embedding_missing():
+    driver = SimpleNamespace(execute_query=AsyncMock())
+    embed_service = SimpleNamespace(embed_keywords=AsyncMock(return_value=[0.5, 0.6]))
+    store = IntentStore(driver, embed_service=embed_service)
+
+    await store.update_intent(
+        intent_id="intent_1",
+        properties={
+            "keywords": ["key", "brass"],
+            "embedding": None,
+            "priority": None,
+        },
+    )
+
+    embed_service.embed_keywords.assert_awaited_once_with(["key", "brass"])
+    assert driver.execute_query.await_args.kwargs["parameters_"] == {
+        "intent_id": "intent_1",
+        "properties": {
+            "keywords": ["key", "brass"],
+            "embedding": [0.5, 0.6],
         },
     }
 

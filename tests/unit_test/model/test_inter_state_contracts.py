@@ -12,12 +12,17 @@ from world_simulation_engine.misc.enums import (
     MemoryStance,
     MemorySupportType,
     Salience,
+    SceneCoordinationProblemType,
 )
 from world_simulation_engine.model import (
+    ActionValidation,
     ActionValidationResult,
+    AcceptedSceneAction,
+    InputInterpretation,
     Intent,
     MemorySummaryProposal,
     ProposedAction,
+    SceneCoordinationResult,
     StateCommitProposal,
 )
 
@@ -47,6 +52,233 @@ def test_action_validation_forbids_extra_fields_and_negative_indexes():
         )
 
 
+def test_action_validation_result_accepts_single_llm_validation_object():
+    result = ActionValidationResult.model_validate(
+        {
+            "action_index": 0,
+            "action": make_action().model_dump(),
+            "allowed": True,
+            "reason": "The action can start.",
+            "blocking_conditions": [],
+            "warnings": [],
+        }
+    )
+
+    assert len(result.validations) == 1
+    assert result.validations[0].action_index == 0
+    assert result.validations[0].action.label == "look_around"
+
+
+@pytest.mark.parametrize("wrapper_key", ["action_validations", "validation_results", "results"])
+def test_action_validation_result_accepts_known_llm_wrapper_keys(wrapper_key):
+    result = ActionValidationResult.model_validate(
+        {
+            wrapper_key: [
+                {
+                    "action_index": 0,
+                    "action": make_action().model_dump(),
+                    "allowed": True,
+                    "reason": "The action can start.",
+                    "blocking_conditions": [],
+                    "warnings": [],
+                }
+            ]
+        }
+    )
+
+    assert len(result.validations) == 1
+    assert result.validations[0].action_index == 0
+
+
+def test_action_validation_schema_documents_precondition_gate():
+    schema = ActionValidation.model_json_schema()
+
+    assert "required_preconditions" in schema["properties"]["allowed"]["description"]
+    assert "unmet required precondition" in schema["properties"]["blocking_conditions"]["description"]
+
+
+def test_input_interpretation_filters_llm_self_correction_notes():
+    result = InputInterpretation.model_validate(
+        {
+            "items": [
+                {
+                    "type": "action",
+                    "action": make_action().model_dump(),
+                    "source_text": "I look around.",
+                }
+            ],
+            "unparsed_text": [],
+            "parser_notes": [
+                "Target is inferred from the visible room.",
+                "Correction: I should produce two items.",
+                "Re-evaluating: the examples say to split this.",
+            ],
+        }
+    )
+
+    assert result.parser_notes == ["Target is inferred from the visible room."]
+
+
+def test_scene_coordination_result_accepts_flat_accepted_action_fields():
+    result = SceneCoordinationResult.model_validate(
+        {
+            "status": "complete",
+            "accepted_actions": [
+                {
+                    "actor_id": "character_1",
+                    "action_index": 0,
+                    "start_offset_seconds": 0,
+                    "end_offset_seconds": 4,
+                    "summary": "Alex looks around.",
+                    "type": "look",
+                    "label": "look_around",
+                    "target_ids": [],
+                    "intended_duration_seconds": 4,
+                    "interruptible": True,
+                }
+            ],
+            "pending_actions": [],
+            "problem": None,
+        }
+    )
+
+    assert result.accepted_actions[0].action.label == "look_around"
+    assert result.accepted_actions[0].action.intended_duration_seconds == 4
+
+
+def test_scene_coordination_result_accepts_candidate_data_as_action():
+    result = SceneCoordinationResult.model_validate(
+        {
+            "status": "complete",
+            "accepted_actions": [
+                {
+                    "actor_id": "character_1",
+                    "action_index": 0,
+                    "start_offset_seconds": 0,
+                    "end_offset_seconds": 2,
+                    "summary": "Alex waits.",
+                    "candidate_data": make_action().model_dump(),
+                }
+            ],
+            "pending_actions": [],
+            "problem": None,
+            "summary": "A single action was accepted.",
+        }
+    )
+
+    assert result.accepted_actions[0].action.label == "look_around"
+    assert result.coordinator_notes == ["A single action was accepted."]
+
+
+def test_scene_coordination_result_ignores_llm_labels_on_involved_action_references():
+    result = SceneCoordinationResult.model_validate(
+        {
+            "status": "problem",
+            "accepted_actions": [],
+            "problem": {
+                "type": "exclusive_resource",
+                "time_offset_seconds": 0,
+                "involved_actor_ids": ["character_1", "character_2"],
+                "involved_actions": [
+                    {
+                        "actor_id": "character_1",
+                        "action_index": 0,
+                        "label": "look_around",
+                    }
+                ],
+                "description": "Two actors target the same object.",
+                "needs_user_decision": False,
+                "actors_to_react": ["character_1", "character_2"],
+                "resolver_required": True,
+            },
+            "pending_actions": [],
+        }
+    )
+
+    assert result.problem
+    assert result.problem.involved_actions[0].actor_id == "character_1"
+    assert result.problem.involved_actions[0].action_index == 0
+
+
+def test_scene_coordination_result_rounds_fractional_second_offsets_from_llm():
+    result = SceneCoordinationResult.model_validate(
+        {
+            "status": "problem",
+            "accepted_actions": [
+                {
+                    "actor_id": "character_1",
+                    "action_index": 0,
+                    "start_offset_seconds": 4.1,
+                    "end_offset_seconds": 49.1,
+                    "summary": "Alex looks around after another action.",
+                    "action": make_action().model_dump(),
+                }
+            ],
+            "problem": {
+                "type": "mutually_incompatible",
+                "time_offset_seconds": 4.1,
+                "involved_actor_ids": ["character_1"],
+                "involved_actions": [
+                    {
+                        "actor_id": "character_1",
+                        "action_index": 0,
+                    }
+                ],
+                "description": "The action overlaps another actor.",
+                "needs_user_decision": False,
+                "actors_to_react": ["character_1"],
+                "resolver_required": False,
+            },
+            "pending_actions": [],
+        }
+    )
+
+    assert result.accepted_actions[0].start_offset_seconds == 4
+    assert result.accepted_actions[0].end_offset_seconds == 49
+    assert result.problem
+    assert result.problem.time_offset_seconds == 4
+
+
+def test_scene_coordination_result_normalizes_interruption_alias_and_string_notes():
+    result = SceneCoordinationResult.model_validate(
+        {
+            "status": "problem",
+            "accepted_actions": [],
+            "problem": {
+                "type": "simultaneous_interruption_contention",
+                "time_offset_seconds": 0,
+                "involved_actor_ids": ["character_1", "character_2"],
+                "involved_actions": [
+                    {
+                        "actor_id": "character_1",
+                        "action_index": 0,
+                    },
+                    {
+                        "actor_id": "character_2",
+                        "action_index": 0,
+                    },
+                ],
+                "description": "Two actors try to take conversational focus at the same time.",
+                "needs_user_decision": False,
+                "actors_to_react": ["character_2"],
+                "resolver_required": False,
+            },
+            "pending_actions": [],
+            "coordinator_notes": "Both actors start speaking at t=0.",
+        }
+    )
+
+    assert result.problem
+    assert result.problem.type == SceneCoordinationProblemType.INTERRUPTION
+    assert result.coordinator_notes == ["Both actors start speaking at t=0."]
+
+
+def test_scene_coordination_schema_requires_nested_action_for_accepted_actions():
+    schema = AcceptedSceneAction.model_json_schema()
+
+    assert "action" in schema["required"]
+
+
 def test_state_commit_proposal_rejects_unknown_operation_type():
     with pytest.raises(ValidationError):
         StateCommitProposal.model_validate(
@@ -63,6 +295,110 @@ def test_state_commit_proposal_rejects_unknown_operation_type():
                 ]
             }
         )
+
+
+def test_state_commit_proposal_accepts_current_state_change_shape():
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "type": "state_change",
+                    "entity": {
+                        "type": "character",
+                        "id": "character_arthur_moore",
+                    },
+                    "field_changes": [
+                        {
+                            "field_path": "current_activity",
+                            "old_value": "standing at the bar",
+                            "new_value": "questioning Clara at the bar",
+                            "reason": "Arthur starts questioning Clara.",
+                        }
+                    ],
+                    "source_action_refs": ["accepted:0"],
+                    "reason": "Arthur starts questioning Clara.",
+                }
+            ],
+            "committer_notes": ["Uses the current StateCommitProposal shape."],
+        }
+    )
+
+    assert len(proposal.operations) == 1
+    operation = proposal.operations[0]
+    assert operation.type == "state_change"
+    assert operation.entity.id == "character_arthur_moore"
+    assert operation.field_changes[0].field_path == "current_activity"
+
+
+def test_state_commit_proposal_rejects_legacy_wrapper_shape():
+    with pytest.raises(ValidationError):
+        StateCommitProposal.model_validate(
+            {
+                "state_commit_proposal": {
+                    "operations": [
+                        {
+                            "type": "no_physical_change",
+                            "source_action_refs": ["accepted:0"],
+                            "reason": "No change.",
+                        }
+                    ]
+                }
+            }
+        )
+
+
+def test_state_commit_proposal_rejects_legacy_operation_keys():
+    with pytest.raises(ValidationError):
+        StateCommitProposal.model_validate(
+            {
+                "operations": [
+                    {
+                        "op": "relationship_change",
+                        "entity_id": "item_room_7_cash_receipt",
+                        "field_path": "held_by",
+                        "new_value": "character_arthur_moore",
+                        "source_action_refs": ["accepted:0"],
+                    }
+                ]
+            }
+        )
+
+
+def test_state_commit_proposal_accepts_current_relationship_shape():
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "type": "relationship_change",
+                    "relationship_type": "held_by",
+                    "subject": {
+                        "type": "item",
+                        "id": "item_room_7_cash_receipt",
+                    },
+                    "object": {
+                        "type": "character",
+                        "id": "character_arthur_moore",
+                    },
+                    "old_object": None,
+                    "properties": {},
+                    "ended": False,
+                    "source_action_refs": ["accepted:0"],
+                    "reason": "The receipt changes hands.",
+                }
+            ],
+            "committer_notes": [
+                "The receipt changes hands.",
+            ],
+        }
+    )
+
+    assert len(proposal.operations) == 1
+    operation = proposal.operations[0]
+    assert operation.type == "relationship_change"
+    assert operation.relationship_type == "held_by"
+    assert operation.subject.id == "item_room_7_cash_receipt"
+    assert operation.object
+    assert operation.object.id == "character_arthur_moore"
 
 
 def test_state_commit_relationship_change_requires_known_relationship_type():

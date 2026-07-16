@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from world_simulation_engine.misc.enums import SceneCoordinationProblemType, SceneCoordinationStatus
 
@@ -7,6 +9,16 @@ from .action_proposal import ActionProposal, ProposedAction
 
 class SceneActionReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_reference_shape(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        normalized.pop("label", None)
+        return normalized
 
     actor_id: str
     action_index: int = Field(ge=0)
@@ -76,6 +88,68 @@ class ReactionHistoryEntry(BaseModel):
 class AcceptedSceneAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_action_shape(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        action_keys = {
+            "type",
+            "label",
+            "target_ids",
+            "utterance",
+            "intended_duration_seconds",
+            "interruptible",
+            "interruption_triggers",
+            "required_preconditions",
+            "expected_effects",
+        }
+
+        if "action" not in normalized:
+            if isinstance(normalized.get("candidate_data"), dict):
+                normalized["action"] = normalized.pop("candidate_data")
+            else:
+                flat_action = {
+                    key: normalized.pop(key)
+                    for key in list(action_keys)
+                    if key in normalized
+                }
+                if flat_action:
+                    normalized["action"] = flat_action
+        else:
+            normalized.pop("candidate_data", None)
+
+        if "description" in normalized and "summary" not in normalized:
+            normalized["summary"] = normalized.pop("description")
+        else:
+            normalized.pop("description", None)
+
+        for field_name in ("start_offset_seconds", "end_offset_seconds"):
+            value = normalized.get(field_name)
+            if isinstance(value, float):
+                normalized[field_name] = int(round(value))
+
+        if "action" in normalized and isinstance(normalized["action"], dict):
+            action = dict(normalized["action"])
+            duration = normalized.get("end_offset_seconds", 0) - normalized.get("start_offset_seconds", 0)
+            if "label" not in action and isinstance(normalized.get("summary"), str):
+                action["label"] = (
+                    normalized["summary"]
+                    .lower()
+                    .replace("'", "")
+                    .replace('"', "")
+                    .replace(".", "")
+                    .replace(",", "")
+                    .replace(" ", "_")
+                )[:80] or "accepted_action"
+            if "intended_duration_seconds" not in action and duration > 0:
+                action["intended_duration_seconds"] = duration
+            normalized["action"] = action
+
+        return normalized
+
     actor_id: str
     action_index: int = Field(ge=0)
     action: ProposedAction
@@ -89,6 +163,41 @@ class AcceptedSceneAction(BaseModel):
 class PendingSceneAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_action_shape(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        action_keys = {
+            "type",
+            "label",
+            "target_ids",
+            "utterance",
+            "intended_duration_seconds",
+            "interruptible",
+            "interruption_triggers",
+            "required_preconditions",
+            "expected_effects",
+        }
+
+        if "action" not in normalized:
+            if isinstance(normalized.get("candidate_data"), dict):
+                normalized["action"] = normalized.pop("candidate_data")
+            else:
+                flat_action = {
+                    key: normalized.pop(key)
+                    for key in list(action_keys)
+                    if key in normalized
+                }
+                if flat_action:
+                    normalized["action"] = flat_action
+        else:
+            normalized.pop("candidate_data", None)
+
+        return normalized
+
     actor_id: str
     action_index: int = Field(ge=0)
     action: ProposedAction
@@ -99,6 +208,22 @@ class PendingSceneAction(BaseModel):
 
 class SceneCoordinationProblem(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_time_offset(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        problem_type = normalized.get("type")
+        if problem_type == "simultaneous_interruption_contention":
+            normalized["type"] = SceneCoordinationProblemType.INTERRUPTION
+
+        time_offset = normalized.get("time_offset_seconds")
+        if isinstance(time_offset, float):
+            normalized["time_offset_seconds"] = int(round(time_offset))
+        return normalized
 
     type: SceneCoordinationProblemType
     time_offset_seconds: int = Field(
@@ -121,6 +246,36 @@ class SceneCoordinationProblem(BaseModel):
 
 class SceneCoordinationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_wrapper_keys(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        for wrapper_key in ("scene_coordination", "scene_coordination_result", "coordination_result", "result"):
+            if wrapper_key in normalized and isinstance(normalized[wrapper_key], dict):
+                normalized = dict(normalized[wrapper_key])
+                break
+
+        if normalized.get("type") == "SceneCoordinationResult":
+            normalized.pop("type")
+
+        coordinator_notes = normalized.get("coordinator_notes")
+        if isinstance(coordinator_notes, str):
+            normalized["coordinator_notes"] = [coordinator_notes]
+        elif coordinator_notes is None and "coordinator_notes" in normalized:
+            normalized["coordinator_notes"] = []
+
+        if "summary" in normalized:
+            summary = normalized.pop("summary")
+            notes = list(normalized.get("coordinator_notes") or [])
+            if isinstance(summary, str) and summary:
+                notes.append(summary)
+            normalized["coordinator_notes"] = notes
+
+        return normalized
 
     status: SceneCoordinationStatus
     accepted_actions: list[AcceptedSceneAction] = Field(default_factory=list)

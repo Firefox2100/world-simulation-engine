@@ -46,6 +46,7 @@ from world_simulation_engine.model import (
     World,
 )
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.embed_service import EmbedService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 
 
@@ -137,6 +138,17 @@ def evaluation_embed_model_config(evaluation_connection_config: ConnectionConfig
     )
 
 
+@pytest.fixture
+def evaluation_embed_service(
+    evaluation_connection_config: ConnectionConfig,
+    evaluation_embed_model_config,
+) -> EmbedService:
+    return EmbedService(
+        model_config=evaluation_embed_model_config,
+        connection_config=evaluation_connection_config,
+    )
+
+
 @pytest.fixture(scope="session")
 def ollama_chat_model_config(evaluation_chat_model_config):
     return evaluation_chat_model_config
@@ -175,9 +187,9 @@ async def evaluation_neo4j_driver(evaluation_neo4j_container):
 
 
 @pytest.fixture
-async def evaluation_database(evaluation_neo4j_driver):
+async def evaluation_database(evaluation_neo4j_driver, evaluation_embed_service):
     await evaluation_neo4j_driver.execute_query("MATCH (n) DETACH DELETE n")
-    database = DatabaseService(evaluation_neo4j_driver)
+    database = DatabaseService(evaluation_neo4j_driver, embed_service=evaluation_embed_service)
     try:
         yield database
     finally:
@@ -190,18 +202,29 @@ async def evaluation_seeded_database(
     mock_graph_world_setup,
     evaluation_connection_config,
     evaluation_chat_model_config,
+    evaluation_embed_model_config,
 ):
     await mock_graph_world_setup.load_into_database(evaluation_database)
     await evaluation_database.config.create_connection(evaluation_connection_config)
     await evaluation_database.config.create_chat(evaluation_chat_model_config)
+    await evaluation_database.config.create_embed(evaluation_embed_model_config)
     await evaluation_database.config.link_connection(
         source_id=evaluation_chat_model_config.id,
+        connection_id=evaluation_connection_config.id,
+    )
+    await evaluation_database.config.link_connection(
+        source_id=evaluation_embed_model_config.id,
         connection_id=evaluation_connection_config.id,
     )
     await evaluation_database.config.link_chat(
         source_id=mock_graph_world_setup.simulation.id,
         config_id=evaluation_chat_model_config.id,
         component=ComponentType.INPUT_INTERPRETER,
+    )
+    await evaluation_database.config.link_embed(
+        source_id=mock_graph_world_setup.simulation.id,
+        config_id=evaluation_embed_model_config.id,
+        component=ComponentType.CHARACTER_SIMULATOR,
     )
 
     return evaluation_database

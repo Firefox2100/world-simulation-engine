@@ -1,5 +1,5 @@
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Any, Optional
+from pydantic import BaseModel, Field, model_validator
 
 from world_simulation_engine.misc.enums import ActionType
 
@@ -46,6 +46,44 @@ class ProposedAction(BaseModel):
 
 
 class ActionProposal(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_llm_memory_updates(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        updates = normalized.get("memory_updates_suggested")
+        if not isinstance(updates, list):
+            return normalized
+
+        normalized["memory_updates_suggested"] = [
+            cls._memory_update_to_string(update)
+            for update in updates
+        ]
+        return normalized
+
+    @staticmethod
+    def _memory_update_to_string(update: Any) -> str:
+        if isinstance(update, str):
+            return update
+        if not isinstance(update, dict):
+            return str(update)
+
+        key = update.get("key") or update.get("id") or update.get("name") or update.get("type")
+        value = update.get("value") or update.get("summary") or update.get("description")
+        confidence = update.get("confidence")
+
+        parts = []
+        if key:
+            parts.append(str(key))
+        if value:
+            parts.append(str(value))
+        if confidence is not None:
+            parts.append(f"confidence={confidence}")
+
+        return "; ".join(parts) if parts else str(update)
+
     chosen_action: ProposedAction = Field(
         ...,
         description="The action to be performed"

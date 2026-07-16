@@ -216,8 +216,14 @@ class StateCommitter(SimulatorComponent):
             messages=prompt,
             data=context.model_dump(),
             repair_instruction=(
-                "Return a valid StateCommitProposal only. Do not include deletion operations, events, memories, "
-                "intent changes, narration, or database-write instructions."
+                "Return a valid StateCommitProposal only with top-level fields operations, unchanged_action_refs, "
+                "and committer_notes. Every operation must use the current type discriminator shape: create, "
+                "state_change, promote, relationship_change, or no_physical_change. Every operation must include "
+                "a top-level reason. For state_change operations, every field_changes item must also include "
+                "reason; a field-change reason does not replace the operation reason. Do not use wrappers such as "
+                "state_commit_proposal, or legacy keys such as op, operation_type, change_type, entity_id, "
+                "field_path, value, proposed_changes, or proposed_state_changes. Do not include deletion "
+                "operations, events, memories, intent changes, narration, or database-write instructions."
             ),
             run_name=run_name,
         )

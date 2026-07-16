@@ -1,4 +1,5 @@
 from neo4j import AsyncDriver
+from typing import TYPE_CHECKING
 
 from world_simulation_engine.model import Character, Location, Landmark
 from .character_store import CharacterStore
@@ -16,10 +17,14 @@ from .state_commit_store import StateCommitStore
 from .turn_store import TurnStore
 from .world_store import WorldStore
 
+if TYPE_CHECKING:
+    from world_simulation_engine.service.embed_service import EmbedService
+
 
 class DatabaseService:
     def __init__(self,
                  driver: AsyncDriver,
+                 embed_service: "EmbedService | None" = None,
                  ):
         self._driver = driver
 
@@ -28,10 +33,10 @@ class DatabaseService:
         self._container = ContainerStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
         self._event = EventStore(self._driver)
-        self._intent = IntentStore(self._driver)
+        self._intent = IntentStore(self._driver, embed_service=embed_service)
         self._item = ItemStore(self._driver)
         self._location = LocationStore(self._driver)
-        self._memory = MemoryStore(self._driver)
+        self._memory = MemoryStore(self._driver, embed_service=embed_service)
         self._memory_summary = MemorySummaryStore(
             event_store=self._event,
             memory_store=self._memory,

@@ -66,3 +66,9 @@ class EmbedService:
 
     async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         return await self.model.aembed_documents(texts)
+
+    async def embed_keywords(self, keywords: list[str]) -> list[float] | None:
+        if not keywords:
+            return None
+
+        return (await self.embed_texts(["\n".join(keywords)]))[0]

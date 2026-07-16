@@ -93,7 +93,7 @@ class CharacterSimulator(SimulatorComponent):
 
     def __init__(self,
                  database: DatabaseService,
-                 langfuse_handler: CallbackHandler,
+                 langfuse_handler: CallbackHandler | None,
                  ):
         super().__init__(database)
 

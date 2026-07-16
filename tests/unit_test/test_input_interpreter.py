@@ -2,6 +2,9 @@ import os
 from unittest.mock import AsyncMock, Mock
 from datetime import UTC, datetime
 
+import pytest
+from pydantic import ValidationError
+
 os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
@@ -46,6 +49,38 @@ def test_input_interpretation_accepts_ooc_sequence_item():
     assert interpretation.items[0].type == "ooc"
 
 
+def test_ooc_sequence_item_requires_exact_marker_source_text():
+    with pytest.raises(ValidationError):
+        InputInterpretation.model_validate(
+            {
+                "items": [
+                    {
+                        "type": "ooc",
+                        "command_text": "If Clara seems willing to speak privately",
+                        "normalized_intent": "Treat the condition as OOC.",
+                        "source_text": "If Clara seems willing to speak privately",
+                    }
+                ]
+            }
+        )
+
+
+def test_ooc_sequence_item_command_text_must_match_marker():
+    with pytest.raises(ValidationError):
+        InputInterpretation.model_validate(
+            {
+                "items": [
+                    {
+                        "type": "ooc",
+                        "command_text": "Keep it brief.",
+                        "normalized_intent": "Keep future narration concise.",
+                        "source_text": "[/OOC: Keep it short.]",
+                    }
+                ]
+            }
+        )
+
+
 def test_input_interpretation_accepts_action_sequence_item():
     interpretation = InputInterpretation(
         items=[
@@ -65,6 +100,130 @@ def test_input_interpretation_accepts_action_sequence_item():
 
     assert interpretation.items[0].type == "action"
     assert interpretation.items[0].action.type == ActionType.LOOK
+
+
+@pytest.mark.parametrize("wrapper_key", ["input_interpretation", "interpretation"])
+def test_input_interpretation_accepts_known_llm_wrapper_keys(wrapper_key):
+    interpretation = InputInterpretation.model_validate(
+        {
+            wrapper_key: [
+                {
+                    "type": "action",
+                    "action": {
+                        "type": "look",
+                        "label": "look_around",
+                        "target_ids": [],
+                        "intended_duration_seconds": 2,
+                        "interruptible": True,
+                    },
+                    "source_text": "I look around.",
+                }
+            ]
+        }
+    )
+
+    assert interpretation.items[0].type == "action"
+    assert interpretation.items[0].action.type == ActionType.LOOK
+
+
+def test_input_interpretation_accepts_model_type_discriminator_wrapper():
+    interpretation = InputInterpretation.model_validate(
+        {
+            "type": "InputInterpretation",
+            "items": [
+                {
+                    "type": "ooc",
+                    "command_text": "Keep it short.",
+                    "normalized_intent": "Keep future narration concise.",
+                    "source_text": "[/OOC: Keep it short.]",
+                }
+            ],
+        }
+    )
+
+    assert interpretation.items[0].type == "ooc"
+
+
+def test_input_interpretation_discards_blank_unparsed_text_from_llm():
+    interpretation = InputInterpretation.model_validate(
+        {
+            "items": [],
+            "unparsed_text": ["", "   ", "unclear fragment"],
+            "parser_notes": [],
+        }
+    )
+
+    assert interpretation.unparsed_text == ["unclear fragment"]
+
+
+def test_input_interpretation_moves_misplaced_action_label_into_action():
+    interpretation = InputInterpretation.model_validate(
+        {
+            "items": [
+                {
+                    "type": "action",
+                    "source_text": "I study the Notice Board.",
+                    "label": "study_notice_board",
+                    "action": {
+                        "type": "observe",
+                        "target_ids": ["landmark_notice_board"],
+                        "intended_duration_seconds": 10,
+                        "interruptible": True,
+                        "interruption_triggers": [],
+                        "required_preconditions": [],
+                        "expected_effects": [],
+                    },
+                }
+            ],
+            "unparsed_text": [],
+            "parser_notes": [],
+        }
+    )
+
+    assert interpretation.items[0].type == "action"
+    assert interpretation.items[0].action.type == ActionType.OBSERVE
+    assert interpretation.items[0].action.label == "study_notice_board"
+
+
+def test_input_interpretation_wraps_flattened_action_payload():
+    interpretation = InputInterpretation.model_validate(
+        {
+            "items": [
+                {
+                    "type": "action",
+                    "source_text": "Arthur shows Clara the signature line.",
+                    "label": "show_letter_and_ask_handwriting",
+                    "target_ids": ["character_clara_whitlock"],
+                    "utterance": None,
+                    "intended_duration_seconds": 6,
+                    "interruptible": True,
+                    "interruption_triggers": [],
+                    "required_preconditions": [],
+                    "expected_effects": [
+                        "clara_views_signature_line",
+                        "clara_hears_question",
+                    ],
+                }
+            ],
+            "unparsed_text": [],
+            "parser_notes": [],
+        }
+    )
+
+    assert interpretation.items[0].type == "action"
+    assert interpretation.items[0].action.type == ActionType.OTHER
+    assert interpretation.items[0].action.label == "show_letter_and_ask_handwriting"
+    assert interpretation.items[0].action.target_ids == ["character_clara_whitlock"]
+
+
+def test_input_interpretation_still_rejects_unknown_extra_fields():
+    with pytest.raises(ValidationError):
+        InputInterpretation.model_validate(
+            {
+                "items": [],
+                "unexpected": "not allowed",
+            }
+        )
 
 
 async def test_build_context_fetches_typed_database_state():

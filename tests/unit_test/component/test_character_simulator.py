@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from world_simulation_engine.component.simulator.character_simulator import CharacterSimulator
-from world_simulation_engine.misc.enums import MemoryStance, MemorySupportType, Salience
-from world_simulation_engine.model import Event, MemoryAtom
+from world_simulation_engine.misc.enums import ActionType, MemoryStance, MemorySupportType, Salience
+from world_simulation_engine.model import ActionProposal, Event, MemoryAtom
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
 
@@ -84,3 +84,37 @@ def test_recalled_memory_from_record_preserves_source_metadata():
     assert recalled.decayed_confidence == 0.8
     assert recalled.recall_sources == ["recent_event", "embedding_match"]
     assert recalled.similarity == 0.75
+
+
+def test_action_proposal_accepts_object_shaped_memory_update_suggestions():
+    proposal = ActionProposal.model_validate(
+        {
+            "chosen_action": {
+                "type": ActionType.OBSERVE,
+                "label": "inspect_notice_board",
+                "target_ids": ["landmark_notice_board"],
+                "utterance": None,
+                "intended_duration_seconds": 15,
+                "interruptible": True,
+                "interruption_triggers": [],
+                "required_preconditions": [],
+                "expected_effects": [],
+            },
+            "alternatives_considered": [],
+            "reasoning_summary": "Clara wants to check the notices.",
+            "risk_flags": [],
+            "memory_updates_suggested": [
+                {
+                    "key": "notice_board_older_papers",
+                    "value": "Found papers related to Harlan.",
+                    "confidence": 0.8,
+                    "type": "fact",
+                }
+            ],
+            "next_review_hint_seconds": 20,
+        }
+    )
+
+    assert proposal.memory_updates_suggested == [
+        "notice_board_older_papers; Found papers related to Harlan.; confidence=0.8"
+    ]

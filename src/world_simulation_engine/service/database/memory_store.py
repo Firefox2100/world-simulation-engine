@@ -1,10 +1,14 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import MemoryStance, MemorySupportType, Salience
 from world_simulation_engine.model import Event, MemoryAtom
+
+if TYPE_CHECKING:
+    from world_simulation_engine.service.embed_service import EmbedService
 
 
 class CharacterMemoryLink(BaseModel):
@@ -29,8 +33,17 @@ class MemoryRecallRecord(BaseModel):
 class MemoryStore:
     def __init__(self,
                  driver: AsyncDriver,
+                 embed_service: "EmbedService | None" = None,
                  ):
         self._driver = driver
+        self._embed_service = embed_service
+
+    async def _with_keyword_embedding(self, memory: MemoryAtom) -> MemoryAtom:
+        if memory.embedding is not None or not memory.keywords or self._embed_service is None:
+            return memory
+
+        embedding = await self._embed_service.embed_keywords(memory.keywords)
+        return memory.model_copy(update={"embedding": embedding})
 
     @staticmethod
     def memory_from_node(memory_node) -> MemoryAtom:
@@ -74,6 +87,8 @@ class MemoryStore:
                                  ):
         if not character_links:
             raise ValueError("A memory atom must be attached to at least one character")
+
+        memory = await self._with_keyword_embedding(memory)
 
         character_ids = [
             link.character_id

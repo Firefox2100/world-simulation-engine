@@ -1,16 +1,29 @@
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import IntentStatus
 from world_simulation_engine.model import Intent
 
+if TYPE_CHECKING:
+    from world_simulation_engine.service.embed_service import EmbedService
+
 
 class IntentStore:
     def __init__(self,
                  driver: AsyncDriver,
+                 embed_service: "EmbedService | None" = None,
                  ):
         self._driver = driver
+        self._embed_service = embed_service
+
+    async def _with_keyword_embedding(self, intent: Intent) -> Intent:
+        if intent.embedding is not None or not intent.keywords or self._embed_service is None:
+            return intent
+
+        embedding = await self._embed_service.embed_keywords(intent.keywords)
+        return intent.model_copy(update={"embedding": embedding})
 
     @staticmethod
     def intent_from_node(intent_node) -> Intent:
@@ -45,6 +58,8 @@ class IntentStore:
                             intent: Intent,
                             character_id: str,
                             ):
+        intent = await self._with_keyword_embedding(intent)
+
         result = await self._driver.execute_query(
             """
             MATCH (character:Character {id: $character_id})
@@ -137,6 +152,16 @@ class IntentStore:
                             intent_id: str,
                             properties: dict,
                             ):
+        if (
+            properties.get("embedding") is None
+            and properties.get("keywords")
+            and self._embed_service is not None
+        ):
+            properties = {
+                **properties,
+                "embedding": await self._embed_service.embed_keywords(properties["keywords"]),
+            }
+
         properties = {
             key: value
             for key, value in properties.items()
