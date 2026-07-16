@@ -4,6 +4,8 @@ from fastapi import FastAPI
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.router import author_router, background_character_router, character_router, \
+    equipment_router, item_router, location_router, simulation_router, world_router
 
 
 @asynccontextmanager
@@ -24,6 +26,15 @@ def create_app() -> FastAPI:
     app = FastAPI(
         lifespan=lifespan,
     )
+
+    app.include_router(author_router)
+    app.include_router(background_character_router)
+    app.include_router(character_router)
+    app.include_router(equipment_router)
+    app.include_router(item_router)
+    app.include_router(location_router)
+    app.include_router(simulation_router)
+    app.include_router(world_router)
 
     return app
 

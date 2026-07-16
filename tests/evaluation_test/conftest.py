@@ -361,7 +361,7 @@ class GraphWorldSetup:
             )
 
         for item in self.items:
-            await database.item.create_item(item, self.simulation.id)
+            await database.item.create_item(item, self.world.id)
 
         for placement in self.item_stack_placements:
             await database.item.create_stack(
@@ -369,6 +369,7 @@ class GraphWorldSetup:
                 stack=placement.stack,
                 location_id=placement.location_id,
                 position=placement.position,
+                source_id=self.simulation.id,
             )
             await database.item.assign_stack(
                 stack_id=placement.stack.id,
@@ -441,6 +442,7 @@ def mock_world() -> World:
             "However, nobody believes that. The player arrives in town during the annual Founder's "
             "Festival, where tensions between residents are beginning to surface."
         ),
+        starting_time=datetime(1912, 9, 21, 19, 30, tzinfo=UTC),
         version=1,
         url="https://example.test/worlds/blackwater-observatory",
         language=SupportedLanguage.ENGLISH,

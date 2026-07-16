@@ -12,10 +12,15 @@ def _author_from_node(author_node) -> Author:
 
 
 def _world_from_node(world_node) -> World:
+    starting_time = world_node["starting_time"]
+    if hasattr(starting_time, "to_native"):
+        starting_time = starting_time.to_native()
+
     return World(
         id=world_node["id"],
         name=world_node["name"],
         description=world_node.get("description"),
+        starting_time=starting_time,
         version=world_node["version"],
         url=world_node.get("url"),
         language=world_node["language"],
@@ -38,6 +43,20 @@ class WorldStore:
             }
         )
 
+    async def list_authors(self) -> list[Author]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (a:Author)
+            RETURN a
+            ORDER BY a.name
+            """
+        )
+
+        return [
+            _author_from_node(record["a"])
+            for record in result.records
+        ]
+
     async def get_author(self, author_id: str) -> Author | None:
         result = await self._driver.execute_query(
             "MATCH (a:Author {id: $id}) RETURN a LIMIT 1",
@@ -49,6 +68,48 @@ class WorldStore:
             return None
 
         return _author_from_node(record["a"])
+
+    async def update_author(self,
+                            author_id: str,
+                            properties: dict,
+                            ) -> Author | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (a:Author {id: $id})
+            SET a += $properties
+            RETURN a LIMIT 1
+            """,
+            parameters_={
+                "id": author_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _author_from_node(record["a"])
+
+    async def delete_author(self, author_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (a:Author {id: $id})
+            WITH collect(a) AS authors
+            FOREACH (author IN authors | DETACH DELETE author)
+            RETURN size(authors) AS deleted
+            """,
+            parameters_={"id": author_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
 
     async def get_author_by_world(self, world_id: str) -> Author | None:
         result = await self._driver.execute_query(
@@ -62,18 +123,70 @@ class WorldStore:
 
         return _author_from_node(record["a"])
 
+    async def update_world_author(self,
+                                  world_id: str,
+                                  author_id: str,
+                                  ) -> Author | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (w:World {id: $world_id})
+            MATCH (a:Author {id: $author_id})
+            OPTIONAL MATCH (:Author)-[created:CREATED]->(w)
+            DELETE created
+            MERGE (a)-[:CREATED]->(w)
+            RETURN a LIMIT 1
+            """,
+            parameters_={
+                "world_id": world_id,
+                "author_id": author_id,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _author_from_node(record["a"])
+
+    async def list_worlds(self,
+                          author_id: str | None = None,
+                          ) -> list[World]:
+        if author_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Author {id: $author_id})-[:CREATED]->(w:World)
+                RETURN w
+                ORDER BY w.name
+                """,
+                parameters_={"author_id": author_id},
+            )
+        else:
+            result = await self._driver.execute_query(
+                """
+                MATCH (w:World)
+                RETURN w
+                ORDER BY w.name
+                """
+            )
+
+        return [
+            _world_from_node(record["w"])
+            for record in result.records
+        ]
+
     async def create_world(self,
                            world: World,
                            author_id: str,
                            previous_version: str | None = None,
-                           ):
-        await self._driver.execute_query(
+                           ) -> World | None:
+        result = await self._driver.execute_query(
             """
             MATCH (a:Author {id: $author_id})
             CREATE (w:World {
                 id: $world_id,
                 name: $world_name,
                 description: $world_description,
+                starting_time: $world_starting_time,
                 url: $world_url,
                 version: $world_version,
                 language: $world_language
@@ -95,12 +208,19 @@ class WorldStore:
                 "world_id": world.id,
                 "world_name": world.name,
                 "world_description": world.description,
+                "world_starting_time": world.starting_time,
                 "world_url": world.url,
                 "world_version": world.version,
                 "world_language": world.language,
                 "previous_version": previous_version,
             },
         )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _world_from_node(record["w"])
 
     async def get_world(self, world_id: str) -> World | None:
         result = await self._driver.execute_query(
@@ -113,3 +233,48 @@ class WorldStore:
             return None
 
         return _world_from_node(record["w"])
+
+    async def update_world(self,
+                           world_id: str,
+                           properties: dict,
+                           ) -> World | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (w:World {id: $id})
+            SET w += $properties
+            RETURN w LIMIT 1
+            """,
+            parameters_={
+                "id": world_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _world_from_node(record["w"])
+
+    async def delete_world(self, world_id: str) -> World | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (w:World {id: $id})
+            WITH w, properties(w) AS properties
+            DETACH DELETE w
+            RETURN properties LIMIT 1
+            """,
+            parameters_={"id": world_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _world_from_node(record["properties"])

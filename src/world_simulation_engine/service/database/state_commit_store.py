@@ -191,6 +191,19 @@ class StateCommitStore:
             },
         )
 
+        if entity_type == "item_stack" and properties.get("item_id"):
+            await self._driver.execute_query(
+                """
+                MATCH (stack:ItemStack {id: $stack_id})
+                MATCH (item:Item {id: $item_id})
+                MERGE (stack)-[:OF_TYPE]->(item)
+                """,
+                parameters_={
+                    "stack_id": entity_id,
+                    "item_id": properties["item_id"],
+                },
+            )
+
         return StateCommitEntityRef(
             type=entity_type,
             id=entity_id,

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from world_simulation_engine.misc.enums import SupportedLanguage
@@ -19,6 +20,7 @@ def make_world() -> World:
         id=str(uuid4()),
         name="Test World",
         description="A test world",
+        starting_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
         version=1,
         url="https://example.com/worlds/test",
         language=SupportedLanguage.ENGLISH,

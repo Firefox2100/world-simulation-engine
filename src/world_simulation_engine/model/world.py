@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import uuid4
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -35,6 +36,10 @@ class World(BaseModel):
     description: Optional[str] = Field(
         None,
         description="The description of the world",
+    )
+    starting_time: datetime = Field(
+        ...,
+        description="The starting time for simulations created from the world",
     )
 
     version: int = Field(

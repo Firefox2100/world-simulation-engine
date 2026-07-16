@@ -11,6 +11,7 @@ def make_world() -> World:
         id="world_1",
         name="World",
         description="A test world",
+        starting_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
         version=1,
         language=SupportedLanguage.ENGLISH,
     )

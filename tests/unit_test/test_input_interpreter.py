@@ -231,6 +231,7 @@ async def test_build_context_fetches_typed_database_state():
         id="world_1",
         name="World",
         description="A world",
+        starting_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
         version=1,
         language=SupportedLanguage.ENGLISH,
     )

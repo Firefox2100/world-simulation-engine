@@ -25,8 +25,8 @@ class SimulationStore:
     async def create_simulation(self,
                                 simulation: Simulation,
                                 world_id: str,
-                                ):
-        await self._driver.execute_query(
+                                ) -> Simulation | None:
+        result = await self._driver.execute_query(
             """
             MATCH (w:World {id: $world_id})
             CREATE (s:Simulation {
@@ -47,6 +47,60 @@ class SimulationStore:
             },
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _simulation_from_node(record["s"])
+
+    async def list_simulations(self,
+                               author_id: str | None = None,
+                               world_id: str | None = None,
+                               ) -> list[Simulation]:
+        if author_id is not None and world_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Author {id: $author_id})-[:CREATED]->(:World {id: $world_id})<-[:BASED_ON]-(s:Simulation)
+                RETURN s
+                ORDER BY s.name
+                """,
+                parameters_={
+                    "author_id": author_id,
+                    "world_id": world_id,
+                },
+            )
+        elif author_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Author {id: $author_id})-[:CREATED]->(:World)<-[:BASED_ON]-(s:Simulation)
+                RETURN s
+                ORDER BY s.name
+                """,
+                parameters_={"author_id": author_id},
+            )
+        elif world_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:World {id: $world_id})<-[:BASED_ON]-(s:Simulation)
+                RETURN s
+                ORDER BY s.name
+                """,
+                parameters_={"world_id": world_id},
+            )
+        else:
+            result = await self._driver.execute_query(
+                """
+                MATCH (s:Simulation)
+                RETURN s
+                ORDER BY s.name
+                """
+            )
+
+        return [
+            _simulation_from_node(record["s"])
+            for record in result.records
+        ]
+
     async def get_simulation(self, simulation_id: str) -> Simulation | None:
         result = await self._driver.execute_query(
             "MATCH (s:Simulation {id: $id}) RETURN s LIMIT 1",
@@ -60,6 +114,48 @@ class SimulationStore:
             return None
 
         return _simulation_from_node(record["s"])
+
+    async def update_simulation(self,
+                                simulation_id: str,
+                                properties: dict,
+                                ) -> Simulation | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:Simulation {id: $id})
+            SET s += $properties
+            RETURN s LIMIT 1
+            """,
+            parameters_={
+                "id": simulation_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _simulation_from_node(record["s"])
+
+    async def delete_simulation(self, simulation_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:Simulation {id: $id})
+            WITH collect(s) AS simulations
+            FOREACH (simulation IN simulations | DETACH DELETE simulation)
+            RETURN size(simulations) AS deleted
+            """,
+            parameters_={"id": simulation_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
 
     async def update_current_time(self,
                                   simulation_id: str,

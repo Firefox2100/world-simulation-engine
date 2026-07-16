@@ -40,11 +40,23 @@ class ItemStore:
             quality=stack_node.get("quality"),
         )
 
+    async def entity_exists(self, entity_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (entity {id: $id})
+            RETURN count(entity) AS entity_count
+            """,
+            parameters_={"id": entity_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["entity_count"])
+
     async def create_item(self,
                           item: Item,
                           source_id: str,
-                          ):
-        await self._driver.execute_query(
+                          ) -> Item | None:
+        result = await self._driver.execute_query(
             """
             MATCH (source:World|Simulation {id: $source_id})
             CREATE (i:Item {
@@ -65,6 +77,60 @@ class ItemStore:
             }
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.item_from_node(record["i"])
+
+    async def list_items(self,
+                         world_id: str | None = None,
+                         simulation_id: str | None = None,
+                         ) -> list[Item]:
+        if world_id is not None and simulation_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(i:Item)
+                RETURN i
+                ORDER BY i.name
+                """,
+                parameters_={
+                    "world_id": world_id,
+                    "simulation_id": simulation_id,
+                },
+            )
+        elif world_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:World {id: $world_id})-[:CONTAINS]->(i:Item)
+                RETURN i
+                ORDER BY i.name
+                """,
+                parameters_={"world_id": world_id},
+            )
+        elif simulation_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(i:Item)
+                RETURN i
+                ORDER BY i.name
+                """,
+                parameters_={"simulation_id": simulation_id},
+            )
+        else:
+            result = await self._driver.execute_query(
+                """
+                MATCH (i:Item)
+                RETURN i
+                ORDER BY i.name
+                """
+            )
+
+        return [
+            self.item_from_node(record["i"])
+            for record in result.records
+        ]
+
     async def get_item(self, item_id: str) -> Item | None:
         result = await self._driver.execute_query(
             "MATCH (i:Item {id: $id}) RETURN i",
@@ -77,48 +143,241 @@ class ItemStore:
 
         return self.item_from_node(record["i"])
 
+    async def update_item(self,
+                          item_id: str,
+                          properties: dict,
+                          ) -> Item | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (i:Item {id: $id})
+            SET i += $properties
+            RETURN i LIMIT 1
+            """,
+            parameters_={
+                "id": item_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.item_from_node(record["i"])
+
+    async def delete_item(self, item_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (i:Item {id: $id})
+            WITH collect(i) AS items
+            FOREACH (item IN items | DETACH DELETE item)
+            RETURN size(items) AS deleted
+            """,
+            parameters_={"id": item_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
     async def create_stack(self,
                            item_id: str,
                            stack: ItemStack,
                            location_id: str | None = None,
                            position: str | None = None,
-                           ):
-        await self._driver.execute_query(
-            """
-            MATCH (i:Item {id: $item_id})
-            CREATE (s:ItemStack {
-                id: $id,
-                quantity: $quantity,
-                quality: $quality
-            })
-            MERGE (s) -[:OF_TYPE]-> (i)
-            WITH s
-            OPTIONAL MATCH (loc:Location {id: $location_id})
-            FOREACH (_ IN CASE
-                WHEN $location_id IS NOT NULL AND loc IS NOT NULL
-                THEN [1]
-                ELSE []
-            END |
-                MERGE (s)-[present:PRESENT_IN]->(loc)
-                SET present.position = $position
+                           source_id: str | None = None,
+                           ) -> ItemStack | None:
+        if source_id is not None:
+            result = await self._driver.execute_query(
+                """
+                MATCH (source:World|Simulation {id: $source_id})
+                MATCH (item:Item {id: $item_id})
+                OPTIONAL MATCH (source)-[:CONTAINS]->(direct_item:Item {id: $item_id})
+                OPTIONAL MATCH (source)-[:BASED_ON]->(:World)-[:CONTAINS]->(world_item:Item {id: $item_id})
+                WITH source, item, direct_item, world_item
+                WHERE direct_item IS NOT NULL OR world_item IS NOT NULL
+                CREATE (stack:ItemStack {
+                    id: $id,
+                    quantity: $quantity,
+                    quality: $quality
+                })
+                MERGE (source)-[:CONTAINS]->(stack)
+                MERGE (stack)-[:OF_TYPE]->(item)
+                WITH stack
+                OPTIONAL MATCH (location:Location {id: $location_id})
+                FOREACH (_ IN CASE
+                    WHEN $location_id IS NOT NULL AND location IS NOT NULL
+                    THEN [1]
+                    ELSE []
+                END |
+                    MERGE (stack)-[present:PRESENT_IN]->(location)
+                    SET present.position = $position
+                )
+                RETURN stack
+                """,
+                parameters_={
+                    "source_id": source_id,
+                    "item_id": item_id,
+                    "id": stack.id,
+                    "quantity": stack.quantity,
+                    "quality": stack.quality,
+                    "location_id": location_id,
+                    "position": position,
+                },
             )
+        else:
+            result = await self._driver.execute_query(
+                """
+                MATCH (source:World|Simulation)-[:CONTAINS]->(item:Item {id: $item_id})
+                WITH source, item
+                LIMIT 1
+                CREATE (stack:ItemStack {
+                    id: $id,
+                    quantity: $quantity,
+                    quality: $quality
+                })
+                MERGE (source)-[:CONTAINS]->(stack)
+                MERGE (stack)-[:OF_TYPE]->(item)
+                WITH stack
+                OPTIONAL MATCH (location:Location {id: $location_id})
+                FOREACH (_ IN CASE
+                    WHEN $location_id IS NOT NULL AND location IS NOT NULL
+                    THEN [1]
+                    ELSE []
+                END |
+                    MERGE (stack)-[present:PRESENT_IN]->(location)
+                    SET present.position = $position
+                )
+                RETURN stack
+                """,
+                parameters_={
+                    "item_id": item_id,
+                    "id": stack.id,
+                    "quantity": stack.quantity,
+                    "quality": stack.quality,
+                    "location_id": location_id,
+                    "position": position,
+                },
+            )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.stack_from_node(record["stack"])
+
+    async def list_stacks(self,
+                          world_id: str | None = None,
+                          simulation_id: str | None = None,
+                          item_id: str | None = None,
+                          owner_id: str | None = None,
+                          holder_id: str | None = None,
+                          location_id: str | None = None,
+                          ) -> list[ItemStack]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (stack:ItemStack)-[:OF_TYPE]->(item:Item)
+            OPTIONAL MATCH (source:World|Simulation)-[:CONTAINS]->(stack)
+            OPTIONAL MATCH (source)-[:BASED_ON]->(source_world:World)
+            OPTIONAL MATCH (owner)-[:OWNS]->(stack)
+            OPTIONAL MATCH (holder)-[:HOLDS]->(stack)
+            OPTIONAL MATCH (stack)-[:PRESENT_IN]->(location:Location)
+            WHERE (
+                    $world_id IS NULL
+                    OR ($simulation_id IS NULL AND source:World AND source.id = $world_id)
+                    OR ($simulation_id IS NOT NULL AND source:Simulation AND source_world.id = $world_id)
+                )
+                AND ($simulation_id IS NULL OR source:Simulation AND source.id = $simulation_id)
+                AND ($item_id IS NULL OR item.id = $item_id)
+                AND ($owner_id IS NULL OR owner.id = $owner_id)
+                AND ($holder_id IS NULL OR holder.id = $holder_id)
+                AND ($location_id IS NULL OR location.id = $location_id)
+            RETURN DISTINCT stack
+            ORDER BY stack.id
             """,
             parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
                 "item_id": item_id,
-                "id": stack.id,
-                "quantity": stack.quantity,
-                "quality": stack.quality,
+                "owner_id": owner_id,
+                "holder_id": holder_id,
                 "location_id": location_id,
-                "position": position,
-            }
+            },
         )
+
+        return [
+            self.stack_from_node(record["stack"])
+            for record in result.records
+        ]
+
+    async def get_stack(self, stack_id: str) -> ItemStack | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (stack:ItemStack {id: $id})
+            RETURN stack LIMIT 1
+            """,
+            parameters_={"id": stack_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.stack_from_node(record["stack"])
+
+    async def update_stack(self,
+                           stack_id: str,
+                           properties: dict,
+                           ) -> ItemStack | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (stack:ItemStack {id: $id})
+            SET stack += $properties
+            RETURN stack LIMIT 1
+            """,
+            parameters_={
+                "id": stack_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.stack_from_node(record["stack"])
+
+    async def delete_stack(self, stack_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (stack:ItemStack {id: $id})
+            WITH collect(stack) AS stacks
+            FOREACH (stack IN stacks | DETACH DELETE stack)
+            RETURN size(stacks) AS deleted
+            """,
+            parameters_={"id": stack_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
 
     async def place_stack_in_location(self,
                                       stack_id: str,
                                       location_id: str,
                                       position: str | None = None,
-                                      ):
-        await self._driver.execute_query(
+                                      ) -> ItemStack | None:
+        result = await self._driver.execute_query(
             """
             MATCH (s:ItemStack {id: $stack_id})
             OPTIONAL MATCH (holder)-[hold:HOLDS]->(s)
@@ -127,6 +386,7 @@ class ItemStore:
             DELETE hold, present
             MERGE (s)-[new_present:PRESENT_IN]->(loc)
             SET new_present.position = $position
+            RETURN s
             """,
             parameters_={
                 "stack_id": stack_id,
@@ -135,13 +395,23 @@ class ItemStore:
             }
         )
 
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.stack_from_node(record["s"])
+
     async def assign_stack(self,
                            stack_id: str,
                            holder_id: str | None = None,
                            owner_id: str | None = None,
-                           ):
+                           ) -> ItemStack | None:
+        stack: ItemStack | None = await self.get_stack(stack_id)
+        if stack is None:
+            return None
+
         if holder_id:
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 MATCH (s:ItemStack {id: $stack_id})
                 OPTIONAL MATCH (o)-[r:HOLDS]->(s)
@@ -149,27 +419,39 @@ class ItemStore:
                 MATCH (h {id: $holder_id})
                 DELETE r, present
                 MERGE (h) -[:HOLDS]-> (s)
+                RETURN s
                 """,
                 parameters_={
                     "stack_id": stack_id,
                     "holder_id": holder_id,
                 }
             )
+            record = result.records[0] if result.records else None
+            if not record:
+                return None
+            stack = self.stack_from_node(record["s"])
 
         if owner_id:
-            await self._driver.execute_query(
+            result = await self._driver.execute_query(
                 """
                 MATCH (s:ItemStack {id: $stack_id})
                 OPTIONAL MATCH (previous_owner)-[r:OWNS]->(s)
                 MATCH (owner {id: $owner_id})
                 DELETE r
                 MERGE (owner) -[:OWNS]-> (s)
+                RETURN s
                 """,
                 parameters_={
                     "stack_id": stack_id,
                     "owner_id": owner_id,
                 }
             )
+            record = result.records[0] if result.records else None
+            if not record:
+                return None
+            stack = self.stack_from_node(record["s"])
+
+        return stack
 
     async def get_inventory(self, holder_id: str) -> list[InventoryStack]:
         result = await self._driver.execute_query(

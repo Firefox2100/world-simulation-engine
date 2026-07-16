@@ -6,15 +6,15 @@ from pydantic import BaseModel, Field
 class Item(BaseModel):
     id: str = Field(
         default_factory=lambda: str(uuid4()),
-        description="Unique ID for this item",
+        description="Unique ID for this conceptual item type",
     )
     name: str = Field(
         ...,
-        description="Name of the item",
+        description="Name of the conceptual item type",
     )
     description: str = Field(
         ...,
-        description="Description of the item",
+        description="Description of the conceptual item type",
     )
     unique: bool = Field(
         False,
@@ -25,7 +25,7 @@ class Item(BaseModel):
 class ItemStack(BaseModel):
     id: str = Field(
         default_factory=lambda: str(uuid4()),
-        description="Unique ID for this stack",
+        description="Unique ID for this physical item stack",
     )
     quantity: int = Field(
         1,
