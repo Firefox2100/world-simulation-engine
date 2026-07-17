@@ -128,6 +128,15 @@ def test_create_list_get_update_and_delete_world(world_api):
     }
 
     filtered_list_response = client.get("/worlds", params={"author_id": world_api.author.id})
+    paginated_list_response = client.get("/worlds", params={"limit": 1, "skip": 1})
+    filtered_paginated_list_response = client.get(
+        "/worlds",
+        params={
+            "author_id": world_api.author.id,
+            "limit": 1,
+            "skip": 1,
+        },
+    )
 
     assert filtered_list_response.status_code == 200
     assert {
@@ -137,6 +146,16 @@ def test_create_list_get_update_and_delete_world(world_api):
         world_api.seeded_world.id,
         created_world["id"],
     }
+    assert paginated_list_response.status_code == 200
+    assert [
+        world["id"]
+        for world in paginated_list_response.json()
+    ] == [world_api.other_world.id]
+    assert filtered_paginated_list_response.status_code == 200
+    assert [
+        world["id"]
+        for world in filtered_paginated_list_response.json()
+    ] == [world_api.seeded_world.id]
 
     get_response = client.get(f"/worlds/{created_world['id']}")
 
@@ -203,3 +222,13 @@ def test_world_endpoints_return_404_for_missing_resources(world_api):
     assert update_response.json()["detail"] == f"World {missing_world_id} not found"
     assert delete_response.status_code == 404
     assert delete_response.json()["detail"] == f"World {missing_world_id} not found"
+
+
+def test_world_list_rejects_invalid_pagination(world_api):
+    client = world_api.client
+
+    zero_limit_response = client.get("/worlds", params={"limit": 0})
+    negative_skip_response = client.get("/worlds", params={"skip": -1})
+
+    assert zero_limit_response.status_code == 422
+    assert negative_skip_response.status_code == 422

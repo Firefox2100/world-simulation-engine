@@ -18,6 +18,7 @@ from .memory import MemoryAtom
 from .event import Event
 from .graph_state_snapshot import GraphStateSnapshot
 from .intent import Intent
+from .media import MediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig, \
     OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion
 from .prompt_message import PromptMessage

@@ -99,12 +99,20 @@ class EquipmentStore:
 
         result = await self._driver.execute_query(
             source_match + """
-            OPTIONAL MATCH (equipment)-[:PRESENT_IN]->(location:Location)
-            OPTIONAL MATCH (owner)-[:OWNS]->(equipment)
-            OPTIONAL MATCH (holder)-[:HOLDS|EQUIPS]->(equipment)
-            WHERE ($location_id IS NULL OR location.id = $location_id AND holder IS NULL)
-                AND ($owner_id IS NULL OR owner.id = $owner_id)
-                AND ($holder_id IS NULL OR holder.id = $holder_id)
+            WHERE ($location_id IS NULL OR (
+                    EXISTS {
+                        MATCH (equipment)-[:PRESENT_IN]->(:Location {id: $location_id})
+                    }
+                    AND NOT EXISTS {
+                        MATCH ()-[:HOLDS|EQUIPS]->(equipment)
+                    }
+                ))
+                AND ($owner_id IS NULL OR EXISTS {
+                    MATCH (owner {id: $owner_id})-[:OWNS]->(equipment)
+                })
+                AND ($holder_id IS NULL OR EXISTS {
+                    MATCH (holder {id: $holder_id})-[:HOLDS|EQUIPS]->(equipment)
+                })
             RETURN DISTINCT equipment
             ORDER BY equipment.name
             """,

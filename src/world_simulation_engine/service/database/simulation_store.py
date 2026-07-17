@@ -56,17 +56,28 @@ class SimulationStore:
     async def list_simulations(self,
                                author_id: str | None = None,
                                world_id: str | None = None,
+                               limit: int | None = None,
+                               skip: int = 0,
                                ) -> list[Simulation]:
+        pagination = """
+                SKIP $skip
+        """
+        if limit is not None:
+            pagination += """
+                LIMIT $limit
+            """
         if author_id is not None and world_id is not None:
             result = await self._driver.execute_query(
                 """
                 MATCH (:Author {id: $author_id})-[:CREATED]->(:World {id: $world_id})<-[:BASED_ON]-(s:Simulation)
                 RETURN s
                 ORDER BY s.name
-                """,
+                """ + pagination,
                 parameters_={
                     "author_id": author_id,
                     "world_id": world_id,
+                    "limit": limit,
+                    "skip": skip,
                 },
             )
         elif author_id is not None:
@@ -75,8 +86,12 @@ class SimulationStore:
                 MATCH (:Author {id: $author_id})-[:CREATED]->(:World)<-[:BASED_ON]-(s:Simulation)
                 RETURN s
                 ORDER BY s.name
-                """,
-                parameters_={"author_id": author_id},
+                """ + pagination,
+                parameters_={
+                    "author_id": author_id,
+                    "limit": limit,
+                    "skip": skip,
+                },
             )
         elif world_id is not None:
             result = await self._driver.execute_query(
@@ -84,8 +99,12 @@ class SimulationStore:
                 MATCH (:World {id: $world_id})<-[:BASED_ON]-(s:Simulation)
                 RETURN s
                 ORDER BY s.name
-                """,
-                parameters_={"world_id": world_id},
+                """ + pagination,
+                parameters_={
+                    "world_id": world_id,
+                    "limit": limit,
+                    "skip": skip,
+                },
             )
         else:
             result = await self._driver.execute_query(
@@ -93,7 +112,11 @@ class SimulationStore:
                 MATCH (s:Simulation)
                 RETURN s
                 ORDER BY s.name
-                """
+                """ + pagination,
+                parameters_={
+                    "limit": limit,
+                    "skip": skip,
+                },
             )
 
         return [

@@ -96,6 +96,10 @@ class SceneCoordinationStatus(StrEnum):
     STOPPED = "stopped"
 
 
+class MediaType(StrEnum):
+    PNG = "image/png"
+
+
 class MessageRole(StrEnum):
     SYSTEM = "system"
     USER = "user"

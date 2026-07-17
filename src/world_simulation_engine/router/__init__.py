@@ -8,6 +8,7 @@ from .event import event_router
 from .intent import intent_router
 from .item import item_router
 from .location import location_router
+from .media import media_router
 from .simulation import simulation_router
 from .turn import turn_router
 from .world import world_router

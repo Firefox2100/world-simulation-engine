@@ -123,7 +123,11 @@ async def test_list_worlds(clean_neo4j):
     await repo.create_world(third_world, second_author.id)
 
     assert await repo.list_worlds() == [first_world, second_world, third_world]
+    assert await repo.list_worlds(limit=1) == [first_world]
+    assert await repo.list_worlds(limit=1, skip=1) == [second_world]
+    assert await repo.list_worlds(skip=2) == [third_world]
     assert await repo.list_worlds(first_author.id) == [first_world, second_world]
+    assert await repo.list_worlds(first_author.id, limit=1, skip=1) == [second_world]
     assert await repo.list_worlds(str(uuid4())) == []
 
 

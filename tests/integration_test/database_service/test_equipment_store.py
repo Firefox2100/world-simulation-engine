@@ -189,6 +189,7 @@ async def test_hold_equipment_removes_location_presence(clean_neo4j):
     await equipment_store.change_hold_state(equipment.id, holder.id)
 
     assert await equipment_store.get_equipment_by_location(location.id) == []
+    assert await equipment_store.list_equipment(location_id=location.id) == []
 
 
 async def test_location_equipment_query_ignores_equipped_equipment(clean_neo4j):

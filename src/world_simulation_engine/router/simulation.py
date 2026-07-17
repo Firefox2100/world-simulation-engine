@@ -80,10 +80,14 @@ def _json_default(value):
 async def list_simulations(db: db_dep,
                            author_id: Optional[str] = Query(None, description="Optionally filter by author"),
                            world_id: Optional[str] = Query(None, description="Optionally filter by world"),
+                           limit: Optional[int] = Query(None, ge=1, description="Maximum number of simulations to return"),
+                           skip: int = Query(0, ge=0, description="Number of simulations to skip"),
                            ):
     return await db.simulation.list_simulations(
         author_id=author_id,
         world_id=world_id,
+        limit=limit,
+        skip=skip,
     )
 
 

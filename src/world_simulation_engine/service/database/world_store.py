@@ -160,15 +160,28 @@ class WorldStore:
 
     async def list_worlds(self,
                           author_id: str | None = None,
+                          limit: int | None = None,
+                          skip: int = 0,
                           ) -> list[World]:
+        pagination = """
+                SKIP $skip
+        """
+        if limit is not None:
+            pagination += """
+                LIMIT $limit
+            """
         if author_id is not None:
             result = await self._driver.execute_query(
                 """
                 MATCH (:Author {id: $author_id})-[:CREATED]->(w:World)
                 RETURN w
                 ORDER BY w.name
-                """,
-                parameters_={"author_id": author_id},
+                """ + pagination,
+                parameters_={
+                    "author_id": author_id,
+                    "limit": limit,
+                    "skip": skip,
+                },
             )
         else:
             result = await self._driver.execute_query(
@@ -176,7 +189,11 @@ class WorldStore:
                 MATCH (w:World)
                 RETURN w
                 ORDER BY w.name
-                """
+                """ + pagination,
+                parameters_={
+                    "limit": limit,
+                    "skip": skip,
+                },
             )
 
         return [
@@ -293,7 +310,8 @@ class WorldStore:
             MATCH (w:World {id: $id})
             WITH w, properties(w) AS properties
             OPTIONAL MATCH (simulation:Simulation)-[:BASED_ON]->(w)
-            WITH properties, [w] + collect(DISTINCT simulation) AS roots
+            WITH w, properties, collect(DISTINCT simulation) AS simulations
+            WITH properties, [w] + simulations AS roots
             UNWIND roots AS root
             WITH properties, root
             WHERE root IS NOT NULL

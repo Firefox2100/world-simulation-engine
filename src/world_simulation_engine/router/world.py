@@ -79,8 +79,14 @@ class WorldUpdate(BaseModel):
 @world_router.get("/worlds", response_model=list[World])
 async def list_worlds(db: db_dep,
                       author_id: Optional[str] = Query(None, description="Optional filter by author"),
+                      limit: Optional[int] = Query(None, ge=1, description="Maximum number of worlds to return"),
+                      skip: int = Query(0, ge=0, description="Number of worlds to skip"),
                       ):
-    return await db.world.list_worlds(author_id=author_id)
+    return await db.world.list_worlds(
+        author_id=author_id,
+        limit=limit,
+        skip=skip,
+    )
 
 
 @world_router.post("/worlds", response_model=World)

@@ -93,12 +93,20 @@ class ContainerStore:
 
         result = await self._driver.execute_query(
             source_match + """
-            OPTIONAL MATCH (container)-[:PRESENT_IN]->(location:Location)
-            OPTIONAL MATCH (owner)-[:OWNS]->(container)
-            OPTIONAL MATCH (holder)-[:HOLDS]->(container)
-            WHERE ($location_id IS NULL OR location.id = $location_id AND holder IS NULL)
-                AND ($owner_id IS NULL OR owner.id = $owner_id)
-                AND ($holder_id IS NULL OR holder.id = $holder_id)
+            WHERE ($location_id IS NULL OR (
+                    EXISTS {
+                        MATCH (container)-[:PRESENT_IN]->(:Location {id: $location_id})
+                    }
+                    AND NOT EXISTS {
+                        MATCH ()-[:HOLDS]->(container)
+                    }
+                ))
+                AND ($owner_id IS NULL OR EXISTS {
+                    MATCH (owner {id: $owner_id})-[:OWNS]->(container)
+                })
+                AND ($holder_id IS NULL OR EXISTS {
+                    MATCH (holder {id: $holder_id})-[:HOLDS]->(container)
+                })
             RETURN DISTINCT container
             ORDER BY container.name
             """,

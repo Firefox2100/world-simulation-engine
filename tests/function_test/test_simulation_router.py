@@ -24,7 +24,7 @@ class FakeWorldSimulator:
         self.streams = {}
         self.error_threads = set()
 
-    async def start_generation(self, state):
+    async def start_generation(self, state, request_type=None, regenerate_turn_sequence=None):
         thread_id = f"thread_{len(self.started_states) + 1}"
         self.started_states.append(state)
         self.streams[thread_id] = [
@@ -370,9 +370,23 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         created_simulation["id"],
         other_simulation["id"],
     }
+    paginated_response = client.get("/simulations", params={"limit": 1, "skip": 1})
+    assert paginated_response.status_code == 200
+    assert [
+        simulation["id"]
+        for simulation in paginated_response.json()
+    ] == [created_simulation["id"]]
 
     author_filter_response = client.get("/simulations", params={"author_id": simulation_api.author.id})
     world_filter_response = client.get("/simulations", params={"world_id": simulation_api.world.id})
+    world_paginated_response = client.get(
+        "/simulations",
+        params={
+            "world_id": simulation_api.world.id,
+            "limit": 1,
+            "skip": 0,
+        },
+    )
     combined_filter_response = client.get(
         "/simulations",
         params={
@@ -385,6 +399,8 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert author_filter_response.json() == [created_simulation]
     assert world_filter_response.status_code == 200
     assert world_filter_response.json() == [created_simulation]
+    assert world_paginated_response.status_code == 200
+    assert world_paginated_response.json() == [created_simulation]
     assert combined_filter_response.status_code == 200
     assert combined_filter_response.json() == []
 
@@ -530,3 +546,13 @@ def test_stream_simulation_run_reports_missing_or_failed_thread(simulation_api):
     assert failed_response.status_code == 200
     assert "event: error" in failed_response.text
     assert '"code": "generation_failed"' in failed_response.text
+
+
+def test_simulation_list_rejects_invalid_pagination(simulation_api):
+    client = simulation_api.client
+
+    zero_limit_response = client.get("/simulations", params={"limit": 0})
+    negative_skip_response = client.get("/simulations", params={"skip": -1})
+
+    assert zero_limit_response.status_code == 422
+    assert negative_skip_response.status_code == 422

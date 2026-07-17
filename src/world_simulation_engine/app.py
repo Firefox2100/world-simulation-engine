@@ -4,10 +4,11 @@ from fastapi import FastAPI
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.storage_service import StorageService
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulator
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
     config_router, container_router, equipment_router, event_router, intent_router, item_router, location_router, \
-    simulation_router, turn_router, world_router
+    media_router, simulation_router, turn_router, world_router
 
 
 @asynccontextmanager
@@ -18,8 +19,11 @@ async def lifespan(app: FastAPI):
             auth=(CONFIG.neo4j_username, CONFIG.neo4j_password),
         )
     )
+    storage = StorageService(CONFIG.data_folder)
+    await storage.initialise()
 
     app.state.database = database
+    app.state.storage = storage
     app.state.world_simulator = WorldSimulator(database=database)
 
     yield
@@ -40,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(intent_router)
     app.include_router(item_router)
     app.include_router(location_router)
+    app.include_router(media_router)
     app.include_router(simulation_router)
     app.include_router(turn_router)
     app.include_router(world_router)

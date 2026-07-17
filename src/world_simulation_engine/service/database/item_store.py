@@ -347,13 +347,21 @@ class ItemStore:
 
         result = await self._driver.execute_query(
             source_match + """
-            OPTIONAL MATCH (owner)-[:OWNS]->(stack)
-            OPTIONAL MATCH (holder)-[:HOLDS]->(stack)
-            OPTIONAL MATCH (stack)-[:PRESENT_IN]->(location:Location)
             WHERE ($item_id IS NULL OR item.id = $item_id)
-                AND ($owner_id IS NULL OR owner.id = $owner_id)
-                AND ($holder_id IS NULL OR holder.id = $holder_id)
-                AND ($location_id IS NULL OR location.id = $location_id AND holder IS NULL)
+                AND ($owner_id IS NULL OR EXISTS {
+                    MATCH (owner {id: $owner_id})-[:OWNS]->(stack)
+                })
+                AND ($holder_id IS NULL OR EXISTS {
+                    MATCH (holder {id: $holder_id})-[:HOLDS]->(stack)
+                })
+                AND ($location_id IS NULL OR (
+                    EXISTS {
+                        MATCH (stack)-[:PRESENT_IN]->(:Location {id: $location_id})
+                    }
+                    AND NOT EXISTS {
+                        MATCH ()-[:HOLDS]->(stack)
+                    }
+                ))
             RETURN DISTINCT stack
             ORDER BY stack.id
             """,

@@ -13,6 +13,7 @@ from .item_store import ItemStore
 from .location_store import LocationStore
 from .memory_store import MemoryStore
 from .memory_summary_store import MemorySummaryStore
+from .media_store import MediaStore
 from .simulation_store import SimulationStore
 from .state_commit_store import StateCommitStore
 from .turn_store import TurnStore
@@ -44,6 +45,7 @@ class DatabaseService:
             memory_store=self._memory,
             intent_store=self._intent,
         )
+        self._media = MediaStore(self._driver)
         self._simulation = SimulationStore(self._driver)
         self._state_commit = StateCommitStore(self._driver)
         self._turn = TurnStore(self._driver)
@@ -92,6 +94,10 @@ class DatabaseService:
     @property
     def memory_summary(self) -> MemorySummaryStore:
         return self._memory_summary
+
+    @property
+    def media(self) -> MediaStore:
+        return self._media
 
     @property
     def simulation(self) -> SimulationStore:

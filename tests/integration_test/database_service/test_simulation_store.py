@@ -71,6 +71,9 @@ async def test_list_update_and_delete_simulation(clean_neo4j):
     await store.create_simulation(second_simulation, second_world.id)
 
     assert await store.list_simulations() == [first_simulation, second_simulation]
+    assert await store.list_simulations(limit=1) == [first_simulation]
+    assert await store.list_simulations(limit=1, skip=1) == [second_simulation]
+    assert await store.list_simulations(skip=2) == []
     assert await store.list_simulations(world_id=first_world.id) == [first_simulation]
 
     updated_simulation = await store.update_simulation(
@@ -126,6 +129,7 @@ async def test_list_simulations_filters_by_author_and_world(clean_neo4j):
     await simulation_store.create_simulation(other_simulation, other_world.id)
 
     assert await simulation_store.list_simulations(author_id=author.id) == [simulation]
+    assert await simulation_store.list_simulations(author_id=author.id, limit=1, skip=0) == [simulation]
     assert await simulation_store.list_simulations(
         author_id=author.id,
         world_id=world.id,
