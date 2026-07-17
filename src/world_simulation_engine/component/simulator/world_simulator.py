@@ -1,18 +1,18 @@
 import asyncio
-import operator
 from datetime import timedelta
 from dataclasses import dataclass, field
-from typing import Annotated, Any, AsyncIterator
+from typing import Any, AsyncIterator
 from uuid import uuid4
 from langgraph.constants import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import SceneCoordinationStatus, TurnType
+from world_simulation_engine.misc.enums import GraphStateSnapshotType, SceneCoordinationProblemType, \
+    SceneCoordinationStatus, SimulationGenerationRequestType, TurnType
 from world_simulation_engine.model import ActionValidationResult, World, Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
-    MemorySummaryProposal, StateCommitProposal, Turn
+    GraphStateSnapshot, MemorySummaryProposal, ReactionHistoryEntry, StateCommitProposal, Turn
 from world_simulation_engine.service import DatabaseService
 from .action_validator import ActionValidator
 from .character_simulator import CharacterSimulator
@@ -40,20 +40,18 @@ class WorldSimulatorState(BaseModel):
     simulation: Simulation
 
     user_input: str | None
+    request_type: SimulationGenerationRequestType = SimulationGenerationRequestType.USER_INPUT_GENERATION
 
     input_interpretation: InputInterpretation | None = None
     user_action_validation: ActionValidationResult | None = None
     user_action_coordination: SceneCoordinationResult | None = None
 
-    character_actions: Annotated[
-        list[CharacterActionProposalRecord],
-        operator.add,
-    ] = Field(default_factory=list)
-    character_action_validations: Annotated[
-        list[CharacterActionValidationRecord],
-        operator.add,
-    ] = Field(default_factory=list)
+    character_actions: list[CharacterActionProposalRecord] = Field(default_factory=list)
+    character_action_validations: list[CharacterActionValidationRecord] = Field(default_factory=list)
     character_action_coordination: SceneCoordinationResult | None = None
+    previous_character_action_coordination: SceneCoordinationResult | None = None
+    character_actions_are_reactions: bool = False
+    reaction_history: list[ReactionHistoryEntry] = Field(default_factory=list)
     narration: str | None = None
     committed_turn: Turn | None = None
     state_commit_proposal: StateCommitProposal | None = None
@@ -65,15 +63,12 @@ class CharacterActionProposalState(BaseModel):
     simulation_id: str
     character_id: str
     user_input: str
-    character_actions: Annotated[
-        list[CharacterActionProposalRecord],
-        operator.add,
-    ] = Field(default_factory=list)
-    character_action_validations: Annotated[
-        list[CharacterActionValidationRecord],
-        operator.add,
-    ] = Field(default_factory=list)
+    character_actions: list[CharacterActionProposalRecord] = Field(default_factory=list)
+    character_action_validations: list[CharacterActionValidationRecord] = Field(default_factory=list)
     character_action_coordination: SceneCoordinationResult | None = None
+    previous_character_action_coordination: SceneCoordinationResult | None = None
+    character_actions_are_reactions: bool = False
+    reaction_history: list[ReactionHistoryEntry] = Field(default_factory=list)
     narration: str | None = None
     committed_turn: Turn | None = None
     state_commit_proposal: StateCommitProposal | None = None
@@ -112,13 +107,20 @@ class WorldSimulator:
         self._scene_coordinator = SceneCoordinator(database=database)
         self._state_committer = StateCommitter(database=database)
 
-        self._simulator_graph = self._build_simulator_graph()
+        self._user_input_graph = self._build_user_input_generation_graph()
+        self._character_round_graph = self._build_character_round_generation_graph()
+        self._simulator_graph = self._user_input_graph
         self._run_registry: dict[str, _SimulatorRun] = {}
         self._completed_run_registry: dict[str, _SimulatorRun] = {}
         self._simulation_run_locks: dict[str, asyncio.Lock] = {}
         self._run_registry_lock = asyncio.Lock()
 
-    async def start_generation(self, state: WorldSimulatorState) -> str:
+    async def start_generation(
+            self,
+            state: WorldSimulatorState,
+            request_type: SimulationGenerationRequestType = SimulationGenerationRequestType.USER_INPUT_GENERATION,
+            regenerate_turn_sequence: int | None = None,
+    ) -> str:
         """
         Schedule a simulator graph run in the background and return its thread id.
         """
@@ -136,9 +138,26 @@ class WorldSimulator:
             if simulation_lock.locked():
                 raise RuntimeError(f"Simulation {state.simulation.id} already has an active generation")
 
-            await simulation_lock.acquire()
-            self._run_registry[thread_id] = run
-            self._completed_run_registry.pop(thread_id, None)
+            try:
+                await simulation_lock.acquire()
+                state = await self._prepare_generation_state(
+                    state=state,
+                    request_type=request_type,
+                    regenerate_turn_sequence=regenerate_turn_sequence,
+                )
+                self._run_registry[thread_id] = run
+                self._completed_run_registry.pop(thread_id, None)
+                if state.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
+                    await self._save_graph_state_snapshot(
+                        state=state,
+                        type=GraphStateSnapshotType.BEFORE_USER_INPUT,
+                        turn=await self._latest_turn(state.simulation.id),
+                    )
+            except BaseException:
+                self._run_registry.pop(thread_id, None)
+                if simulation_lock.locked():
+                    simulation_lock.release()
+                raise
 
         run.task = asyncio.create_task(
             self._run_generation(
@@ -197,6 +216,18 @@ class WorldSimulator:
     def is_generation_running(self, thread_id: str) -> bool:
         return thread_id in self._run_registry
 
+    def _graph_for_request_type(self, request_type: SimulationGenerationRequestType) -> CompiledStateGraph:
+        if request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
+            return self._user_input_graph
+
+        if request_type in {
+            SimulationGenerationRequestType.CONTINUE_GENERATION,
+            SimulationGenerationRequestType.REGENERATION,
+        }:
+            return self._character_round_graph
+
+        raise ValueError(f"Unsupported generation request type: {request_type}")
+
     async def _run_generation(
             self,
             *,
@@ -205,7 +236,8 @@ class WorldSimulator:
             simulation_lock: asyncio.Lock,
     ):
         try:
-            async for chunk in self._simulator_graph.astream(
+            graph = self._graph_for_request_type(state.request_type)
+            async for chunk in graph.astream(
                     state,
                     config=self._graph_run_config(run.thread_id),
                     stream_mode="values",
@@ -318,6 +350,23 @@ class WorldSimulator:
             "user_action_coordination": coordination,
         }
 
+    async def coordinate_rejected_user_actions(self, state: WorldSimulatorState):
+        if not state.user_action_validation:
+            raise RuntimeError("No user action validation supplied")
+
+        user_character = await self._db.character.get_user_character_by_simulation(
+            simulation_id=state.simulation.id
+        )
+        if not user_character:
+            raise ValueError(f"Simulation {state.simulation.id} has no user character")
+
+        return {
+            "user_action_coordination": self._coordination_from_rejected_user_validation(
+                actor_id=user_character.id,
+                validation=state.user_action_validation,
+            ),
+        }
+
     async def propose_character_actions(self, state: CharacterActionProposalState):
         proposal = await self._character_simulator.propose_actions(
             world_id=state.world_id,
@@ -333,6 +382,11 @@ class WorldSimulator:
                     proposal=proposal,
                 )
             ],
+            "character_action_validations": [],
+            "character_action_coordination": None,
+            "previous_character_action_coordination": None,
+            "character_actions_are_reactions": False,
+            "reaction_history": [],
         }
 
     async def validate_character_actions(self, state: WorldSimulatorState | CharacterActionProposalState):
@@ -367,6 +421,11 @@ class WorldSimulator:
         if not location:
             return {
                 "character_actions": [],
+                "character_action_validations": [],
+                "character_action_coordination": None,
+                "previous_character_action_coordination": None,
+                "character_actions_are_reactions": False,
+                "reaction_history": [],
             }
 
         # TODO: Replace this local-location activation with the time-based simulation scheduler.
@@ -393,6 +452,74 @@ class WorldSimulator:
 
         return {
             "character_actions": proposals,
+            "character_action_validations": [],
+            "character_action_coordination": None,
+            "previous_character_action_coordination": None,
+            "character_actions_are_reactions": False,
+            "reaction_history": [],
+        }
+
+    async def propose_character_reactions(self, state: WorldSimulatorState | CharacterActionProposalState):
+        world_id = state.world.id if isinstance(state, WorldSimulatorState) else state.world_id
+        simulation_id = state.simulation.id if isinstance(state, WorldSimulatorState) else state.simulation_id
+
+        if not state.character_action_coordination:
+            raise RuntimeError("No character action coordination supplied")
+        if not state.character_action_coordination.problem:
+            raise RuntimeError("No coordination problem supplied for character reaction")
+
+        user_character = await self._db.character.get_user_character_by_simulation(
+            simulation_id=simulation_id
+        )
+        user_character_id = user_character.id if user_character else None
+        actors_to_react = self._actors_to_react(
+            coordination=state.character_action_coordination,
+            user_character_id=user_character_id,
+        )
+        if not actors_to_react:
+            return {
+                "character_actions": [],
+                "character_action_validations": [],
+                "previous_character_action_coordination": None,
+                "character_action_coordination": state.character_action_coordination,
+                "character_actions_are_reactions": False,
+                "reaction_history": state.reaction_history,
+            }
+
+        action_plans = self._character_action_plans_from_validations(
+            state.character_action_validations,
+            is_reaction=state.character_actions_are_reactions,
+            previous_coordination=state.previous_character_action_coordination,
+        )
+        reaction_history = self._updated_reaction_history(
+            existing=state.reaction_history,
+            reactions=state.character_actions if state.character_actions_are_reactions else [],
+        )
+        proposals = []
+        for actor_id in actors_to_react:
+            proposal = await self._character_simulator.propose_reaction(
+                world_id=world_id,
+                simulation_id=simulation_id,
+                character_id=actor_id,
+                coordination_result=state.character_action_coordination,
+                action_plans=action_plans,
+                reaction_history=reaction_history,
+                user_input=state.user_input or "",
+            )
+            proposals.append(
+                CharacterActionProposalRecord(
+                    character_id=actor_id,
+                    proposal=proposal,
+                )
+            )
+
+        return {
+            "character_actions": proposals,
+            "character_action_validations": [],
+            "previous_character_action_coordination": state.character_action_coordination,
+            "character_action_coordination": None,
+            "character_actions_are_reactions": True,
+            "reaction_history": reaction_history,
         }
 
     async def coordinate_character_actions(self, state: WorldSimulatorState | CharacterActionProposalState):
@@ -402,14 +529,28 @@ class WorldSimulator:
         if not state.character_action_validations:
             raise RuntimeError("No character action validations supplied")
 
+        previous_coordination = state.previous_character_action_coordination
+        action_plans = self._character_action_plans_from_validations(
+            state.character_action_validations,
+            is_reaction=state.character_actions_are_reactions,
+            previous_coordination=previous_coordination,
+        )
         coordination = await self._scene_coordinator.coordinate_scene(
             world_id=world_id,
             simulation_id=simulation_id,
-            action_plans=self._character_action_plans_from_validations(state.character_action_validations),
+            action_plans=action_plans,
+            reaction_history=state.reaction_history,
+            accepted_history=self._accepted_history_from_coordination(previous_coordination),
         )
+        if state.character_actions_are_reactions and previous_coordination:
+            coordination = self._merge_reaction_coordination(
+                previous_coordination=previous_coordination,
+                reaction_coordination=coordination,
+            )
 
         return {
             "character_action_coordination": coordination,
+            "previous_character_action_coordination": None,
         }
 
     async def narrate_turn(self, state: WorldSimulatorState | CharacterActionProposalState):
@@ -423,6 +564,21 @@ class WorldSimulator:
             world_id=world_id,
             simulation_id=simulation_id,
             coordination_result=state.character_action_coordination,
+            user_input=state.user_input,
+        )
+
+        return {
+            "narration": narration,
+        }
+
+    async def narrate_user_turn(self, state: WorldSimulatorState):
+        if not state.user_action_coordination:
+            raise RuntimeError("No user action coordination supplied")
+
+        narration = await self._narrator.narrate_turn(
+            world_id=state.world.id,
+            simulation_id=state.simulation.id,
+            coordination_result=state.user_action_coordination,
             user_input=state.user_input,
         )
 
@@ -508,9 +664,38 @@ class WorldSimulator:
             proposal=proposal,
             turn_id=state.committed_turn.id,
         )
+        await self._save_graph_state_snapshot(
+            state=state.model_copy(update={"memory_summary_proposal": proposal}),
+            type=GraphStateSnapshotType.AFTER_USER_INPUT,
+            turn=state.committed_turn,
+        )
         return {
             "memory_summary_proposal": proposal,
         }
+
+    async def get_graph_state_snapshot(
+            self,
+            simulation_id: str,
+            type: GraphStateSnapshotType,
+    ) -> GraphStateSnapshot | None:
+        return await self._db.graph_state_snapshot.get_snapshot(
+            simulation_id=simulation_id,
+            type=type,
+        )
+
+    async def get_graph_state_snapshot_state(
+            self,
+            simulation_id: str,
+            type: GraphStateSnapshotType,
+    ) -> WorldSimulatorState | None:
+        snapshot = await self.get_graph_state_snapshot(
+            simulation_id=simulation_id,
+            type=type,
+        )
+        if not snapshot:
+            return None
+
+        return WorldSimulatorState.model_validate(snapshot.state)
 
     async def summarize_character_memory(self, state: WorldSimulatorState | CharacterActionProposalState):
         world_id = state.world.id if isinstance(state, WorldSimulatorState) else state.world_id
@@ -536,16 +721,31 @@ class WorldSimulator:
             proposal=proposal,
             turn_id=state.committed_turn.id,
         )
+        if isinstance(state, WorldSimulatorState):
+            await self._save_graph_state_snapshot(
+                state=state.model_copy(update={"memory_summary_proposal": proposal}),
+                type=GraphStateSnapshotType.AFTER_CHARACTER_ROUND,
+                turn=state.committed_turn,
+            )
         return {
             "memory_summary_proposal": proposal,
         }
 
     async def route_after_input(self, state: WorldSimulatorState):
-        if state.user_input:
+        if state.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
+            if not state.user_input:
+                raise RuntimeError("User input generation requires user input")
             return "interpret_user_input"
 
-        # TODO: Implement system-continue generation when no user input is supplied.
-        raise NotImplementedError("System-continue route is not implemented yet")
+        if state.request_type in {
+            SimulationGenerationRequestType.CONTINUE_GENERATION,
+            SimulationGenerationRequestType.REGENERATION,
+        }:
+            if state.user_input:
+                raise RuntimeError(f"{state.request_type} requires empty user input")
+            return "propose_scheduled_character_actions"
+
+        raise ValueError(f"Unsupported generation request type: {state.request_type}")
 
     async def route_after_input_interpretation(self, state: WorldSimulatorState):
         if not state.input_interpretation:
@@ -564,8 +764,7 @@ class WorldSimulator:
         if all(item.allowed for item in state.user_action_validation.validations):
             return "coordinate_user_actions"
 
-        # TODO: Return validation failures to the user and wait for a revised input.
-        raise NotImplementedError("Rejected user action route is not implemented yet")
+        return "coordinate_rejected_user_actions"
 
     async def route_after_user_coordination(self, state: WorldSimulatorState):
         if not state.user_action_coordination:
@@ -574,7 +773,19 @@ class WorldSimulator:
         return self._route_after_coordination(
             state.user_action_coordination,
             complete_route="commit_user_actions",
+            problem_route="narrate_user_turn",
+            user_decision_route="narrate_user_turn",
+            stopped_route="narrate_user_turn",
         )
+
+    async def route_after_user_memory_summary(self, state: WorldSimulatorState):
+        if not state.user_action_coordination:
+            raise RuntimeError("No user action coordination supplied")
+
+        if state.user_action_coordination.status == SceneCoordinationStatus.COMPLETE:
+            return "propose_scheduled_character_actions"
+
+        return END
 
     async def route_after_scheduled_character_actions(self, state: WorldSimulatorState):
         if state.character_actions:
@@ -586,9 +797,27 @@ class WorldSimulator:
         if not state.character_action_coordination:
             raise RuntimeError("No character action coordination supplied")
 
+        if (
+                state.character_action_coordination.status == SceneCoordinationStatus.PROBLEM
+                and state.character_action_coordination.problem
+                and not state.character_action_coordination.problem.needs_user_decision
+        ):
+            simulation_id = state.simulation.id if isinstance(state, WorldSimulatorState) else state.simulation_id
+            user_character = await self._db.character.get_user_character_by_simulation(
+                simulation_id=simulation_id
+            )
+            if not self._actors_to_react(
+                    coordination=state.character_action_coordination,
+                    user_character_id=user_character.id if user_character else None,
+            ):
+                return "narrate_turn"
+
         return self._route_after_coordination(
             state.character_action_coordination,
             complete_route="narrate_turn",
+            reaction_route="propose_character_reactions",
+            user_decision_route="narrate_turn",
+            stopped_route="narrate_turn",
         )
 
     @staticmethod
@@ -685,15 +914,76 @@ class WorldSimulator:
             if item.allowed
         ]
 
+    @staticmethod
+    def _coordination_from_rejected_user_validation(
+            *,
+            actor_id: str,
+            validation: ActionValidationResult,
+    ) -> SceneCoordinationResult:
+        rejected = [
+            item
+            for item in validation.validations
+            if not item.allowed
+        ]
+        if not rejected:
+            return SceneCoordinationResult(
+                status=SceneCoordinationStatus.COMPLETE,
+                accepted_actions=[],
+                pending_actions=[],
+                coordinator_notes=["No rejected user actions were supplied."],
+            )
+
+        first_rejected = rejected[0]
+        return SceneCoordinationResult(
+            status=SceneCoordinationStatus.PROBLEM,
+            accepted_actions=[],
+            problem={
+                "type": SceneCoordinationProblemType.OTHER,
+                "time_offset_seconds": 0,
+                "involved_actor_ids": [actor_id],
+                "involved_actions": [
+                    {
+                        "actor_id": actor_id,
+                        "action_index": first_rejected.action_index,
+                    }
+                ],
+                "description": first_rejected.reason,
+                "needs_user_decision": False,
+                "actors_to_react": [],
+                "resolver_required": False,
+            },
+            pending_actions=[
+                {
+                    "actor_id": actor_id,
+                    "action_index": item.action_index,
+                    "action": item.action,
+                    "reason": item.reason,
+                }
+                for item in rejected
+            ],
+            coordinator_notes=[
+                *validation.validator_notes,
+                "User action validation failed before coordination.",
+            ],
+        )
+
     def _character_action_plans_from_validations(
             self,
             validation_records: list[CharacterActionValidationRecord],
+            *,
+            is_reaction: bool = False,
+            previous_coordination: SceneCoordinationResult | None = None,
     ) -> list[CharacterActionPlan]:
+        replaces_from_index_by_actor = self._reaction_replacement_indices(previous_coordination) if is_reaction else {}
         plans_by_actor: dict[str, CharacterActionPlan] = {}
         for record in validation_records:
             plan = plans_by_actor.setdefault(
                 record.character_id,
-                CharacterActionPlan(actor_id=record.character_id),
+                CharacterActionPlan(
+                    actor_id=record.character_id,
+                    is_reaction=is_reaction,
+                    replaces_from_index=replaces_from_index_by_actor.get(record.character_id),
+                ),
             )
             allowed_candidates = self._allowed_actions_from_validation(record.validation)
             if not allowed_candidates:
@@ -712,25 +1002,150 @@ class WorldSimulator:
         return list(plans_by_actor.values())
 
     @staticmethod
+    def _reaction_replacement_indices(
+            coordination: SceneCoordinationResult | None,
+    ) -> dict[str, int]:
+        if not coordination or not coordination.problem:
+            return {}
+
+        indices: dict[str, int] = {}
+        for reference in coordination.problem.involved_actions:
+            current = indices.get(reference.actor_id)
+            if current is None or reference.action_index < current:
+                indices[reference.actor_id] = reference.action_index
+
+        for pending in coordination.pending_actions:
+            current = indices.get(pending.actor_id)
+            if current is None or pending.action_index < current:
+                indices[pending.actor_id] = pending.action_index
+
+        return indices
+
+    @staticmethod
+    def _actors_to_react(
+            *,
+            coordination: SceneCoordinationResult,
+            user_character_id: str | None,
+    ) -> list[str]:
+        if not coordination.problem:
+            return []
+
+        candidate_ids = coordination.problem.actors_to_react or coordination.problem.involved_actor_ids
+        return [
+            actor_id
+            for actor_id in candidate_ids
+            if actor_id != user_character_id
+        ]
+
+    @staticmethod
+    def _reaction_signature(proposal: ActionProposal) -> str:
+        action = proposal.chosen_action
+        return "|".join(
+            [
+                str(action.type),
+                action.label,
+                ",".join(action.target_ids),
+                action.utterance or "",
+            ]
+        )
+
+    def _updated_reaction_history(
+            self,
+            *,
+            existing: list[ReactionHistoryEntry],
+            reactions: list[CharacterActionProposalRecord],
+    ) -> list[ReactionHistoryEntry]:
+        by_key = {
+            (entry.actor_id, entry.action_signature): entry.count
+            for entry in existing
+        }
+        for reaction in reactions:
+            key = (
+                reaction.character_id,
+                self._reaction_signature(reaction.proposal),
+            )
+            by_key[key] = by_key.get(key, 0) + 1
+
+        return [
+            ReactionHistoryEntry(
+                actor_id=actor_id,
+                action_signature=action_signature,
+                count=count,
+            )
+            for (actor_id, action_signature), count in by_key.items()
+        ]
+
+    @staticmethod
+    def _accepted_history_from_coordination(
+            coordination: SceneCoordinationResult | None,
+    ) -> list[str]:
+        if not coordination:
+            return []
+
+        return [
+            (
+                f"{action.start_offset_seconds}-{action.end_offset_seconds}s: "
+                f"{action.actor_id} action {action.action_index} {action.summary}"
+            )
+            for action in coordination.accepted_actions
+        ]
+
+    @staticmethod
+    def _merge_reaction_coordination(
+            *,
+            previous_coordination: SceneCoordinationResult,
+            reaction_coordination: SceneCoordinationResult,
+    ) -> SceneCoordinationResult:
+        notes = [
+            *previous_coordination.coordinator_notes,
+            *reaction_coordination.coordinator_notes,
+        ]
+        if previous_coordination.accepted_actions:
+            notes.append("Merged previously accepted actions with the character reaction coordination result.")
+
+        return reaction_coordination.model_copy(
+            update={
+                "accepted_actions": [
+                    *previous_coordination.accepted_actions,
+                    *reaction_coordination.accepted_actions,
+                ],
+                "coordinator_notes": notes,
+            }
+        )
+
+    @staticmethod
     def _route_after_coordination(
             coordination: SceneCoordinationResult,
             *,
             complete_route: str,
+            problem_route: str | None = None,
+            reaction_route: str | None = None,
+            user_decision_route: str | None = None,
+            stopped_route: str | None = None,
     ) -> str:
         if coordination.status == SceneCoordinationStatus.COMPLETE:
             return complete_route
 
         if coordination.status == SceneCoordinationStatus.PROBLEM:
             if coordination.problem and coordination.problem.needs_user_decision:
-                # TODO: Pause the scene and ask the user to resolve or react to the coordination problem.
-                raise NotImplementedError("User-involved coordination problem route is not implemented yet")
+                if user_decision_route:
+                    return user_decision_route
 
-            # TODO: Route non-user coordination problems into character reaction generation.
-            raise NotImplementedError("Non-user coordination reaction route is not implemented yet")
+                return complete_route
+
+            if reaction_route:
+                return reaction_route
+
+            if problem_route:
+                return problem_route
+
+            return complete_route
 
         if coordination.status == SceneCoordinationStatus.STOPPED:
-            # TODO: Commit or narrate a deliberately stopped scene once stop handling is designed.
-            raise NotImplementedError("Stopped scene route is not implemented yet")
+            if stopped_route:
+                return stopped_route
+
+            return complete_route
 
         raise ValueError(f"Unsupported coordination status: {coordination.status}")
 
@@ -774,6 +1189,103 @@ class WorldSimulator:
 
         return simulation
 
+    async def _prepare_generation_state(
+            self,
+            *,
+            state: WorldSimulatorState,
+            request_type: SimulationGenerationRequestType,
+            regenerate_turn_sequence: int | None,
+    ) -> WorldSimulatorState:
+        if request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
+            if not state.user_input:
+                raise RuntimeError("User input generation requires user input")
+            return state.model_copy(update={"request_type": request_type})
+
+        if state.user_input:
+            raise RuntimeError(f"{request_type} requires empty user input")
+
+        if request_type == SimulationGenerationRequestType.CONTINUE_GENERATION:
+            snapshot = await self._db.graph_state_snapshot.get_latest_generation_base_snapshot(
+                simulation_id=state.simulation.id,
+            )
+            if not snapshot:
+                raise RuntimeError(
+                    f"Simulation {state.simulation.id} has no character generation base snapshot to continue from"
+                )
+            return self._character_round_state_from_snapshot(
+                snapshot=snapshot,
+                request_type=request_type,
+            )
+
+        if request_type == SimulationGenerationRequestType.REGENERATION:
+            if regenerate_turn_sequence is None:
+                raise RuntimeError("Regeneration requires regenerate_turn_sequence")
+            if regenerate_turn_sequence <= 0:
+                raise RuntimeError("Regeneration requires a turn after the last user-input base")
+
+            snapshot = await self._db.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence(
+                simulation_id=state.simulation.id,
+                turn_sequence=regenerate_turn_sequence - 1,
+            )
+            if not snapshot:
+                raise RuntimeError(
+                    f"Cannot regenerate turn {regenerate_turn_sequence}: no saved character-round base after "
+                    f"turn {regenerate_turn_sequence - 1}"
+                )
+            return self._character_round_state_from_snapshot(
+                snapshot=snapshot,
+                request_type=request_type,
+            )
+
+        raise ValueError(f"Unsupported generation request type: {request_type}")
+
+    @staticmethod
+    def _character_round_state_from_snapshot(
+            *,
+            snapshot: GraphStateSnapshot,
+            request_type: SimulationGenerationRequestType,
+    ) -> WorldSimulatorState:
+        return WorldSimulatorState.model_validate(snapshot.state).model_copy(
+            update={
+                "request_type": request_type,
+                "user_input": None,
+                "character_actions": [],
+                "character_action_validations": [],
+                "character_action_coordination": None,
+                "previous_character_action_coordination": None,
+                "character_actions_are_reactions": False,
+                "reaction_history": [],
+                "narration": None,
+                "committed_turn": None,
+                "state_commit_proposal": None,
+                "memory_summary_proposal": None,
+            },
+        )
+
+    async def _latest_turn(self, simulation_id: str) -> Turn | None:
+        turns = await self._db.turn.list_turns(
+            source_id=simulation_id,
+            limit=1,
+        )
+        return turns[0] if turns else None
+
+    async def _save_graph_state_snapshot(
+            self,
+            *,
+            state: WorldSimulatorState,
+            type: GraphStateSnapshotType,
+            turn: Turn | None,
+    ) -> GraphStateSnapshot:
+        return await self._db.graph_state_snapshot.save_snapshot(
+            GraphStateSnapshot(
+                simulation_id=state.simulation.id,
+                type=type,
+                turn_id=turn.id if turn else None,
+                turn_sequence=turn.sequence if turn else None,
+                state=state.model_dump(mode="json"),
+            )
+        )
+
     @staticmethod
     def _coordination_elapsed_seconds(coordination: SceneCoordinationResult) -> int:
         if not coordination.accepted_actions:
@@ -781,26 +1293,47 @@ class WorldSimulator:
 
         return max(action.end_offset_seconds for action in coordination.accepted_actions)
 
-    def _build_simulator_graph(self) -> CompiledStateGraph:
+    def _add_character_round_nodes(self, graph: StateGraph):
+        graph.add_node("propose_scheduled_character_actions", self.propose_scheduled_character_actions)
+        graph.add_node("propose_character_reactions", self.propose_character_reactions)
+        graph.add_node("validate_character_actions", self.validate_character_actions)
+        graph.add_node("coordinate_character_actions", self.coordinate_character_actions)
+        graph.add_node("narrate_turn", self.narrate_turn)
+        graph.add_node("commit_character_actions", self.commit_character_actions)
+        graph.add_node("summarize_character_memory", self.summarize_character_memory)
+
+    def _add_character_round_processing_edges(self, graph: StateGraph):
+        graph.add_conditional_edges(
+            "propose_scheduled_character_actions",
+            self.route_after_scheduled_character_actions,
+        )
+        graph.add_edge("validate_character_actions", "coordinate_character_actions")
+        graph.add_conditional_edges(
+            "coordinate_character_actions",
+            self.route_after_character_coordination,
+        )
+        graph.add_edge("propose_character_reactions", "validate_character_actions")
+        graph.add_edge("narrate_turn", "commit_character_actions")
+        graph.add_edge("commit_character_actions", "summarize_character_memory")
+        graph.add_edge("summarize_character_memory", END)
+
+    def _add_character_round_edges(self, graph: StateGraph, start_node: str):
+        graph.add_edge(start_node, "propose_scheduled_character_actions")
+        self._add_character_round_processing_edges(graph)
+
+    def _build_user_input_generation_graph(self) -> CompiledStateGraph:
         graph = StateGraph(WorldSimulatorState)
 
         graph.add_node("interpret_user_input", self.interpret_user_input)
         graph.add_node("validate_user_action", self.validate_user_action)
         graph.add_node("coordinate_user_actions", self.coordinate_user_actions)
-        graph.add_node("propose_scheduled_character_actions", self.propose_scheduled_character_actions)
-        graph.add_node("propose_character_actions", self.propose_character_actions)
-        graph.add_node("validate_character_actions", self.validate_character_actions)
-        graph.add_node("coordinate_character_actions", self.coordinate_character_actions)
-        graph.add_node("narrate_turn", self.narrate_turn)
+        graph.add_node("coordinate_rejected_user_actions", self.coordinate_rejected_user_actions)
+        graph.add_node("narrate_user_turn", self.narrate_user_turn)
         graph.add_node("commit_user_actions", self.commit_user_actions)
-        graph.add_node("commit_character_actions", self.commit_character_actions)
         graph.add_node("summarize_user_memory", self.summarize_user_memory)
-        graph.add_node("summarize_character_memory", self.summarize_character_memory)
+        self._add_character_round_nodes(graph)
 
-        graph.add_conditional_edges(
-            START,
-            self.route_after_input,
-        )
+        graph.add_edge(START, "interpret_user_input")
         graph.add_conditional_edges(
             "interpret_user_input",
             self.route_after_input_interpretation,
@@ -813,20 +1346,21 @@ class WorldSimulator:
             "coordinate_user_actions",
             self.route_after_user_coordination,
         )
+        graph.add_edge("coordinate_rejected_user_actions", "narrate_user_turn")
+        graph.add_edge("narrate_user_turn", "commit_user_actions")
         graph.add_edge("commit_user_actions", "summarize_user_memory")
-        graph.add_edge("summarize_user_memory", "propose_scheduled_character_actions")
         graph.add_conditional_edges(
-            "propose_scheduled_character_actions",
-            self.route_after_scheduled_character_actions,
+            "summarize_user_memory",
+            self.route_after_user_memory_summary,
         )
-        graph.add_edge("propose_character_actions", "validate_character_actions")
-        graph.add_edge("validate_character_actions", "coordinate_character_actions")
-        graph.add_conditional_edges(
-            "coordinate_character_actions",
-            self.route_after_character_coordination,
-        )
-        graph.add_edge("narrate_turn", "commit_character_actions")
-        graph.add_edge("commit_character_actions", "summarize_character_memory")
-        graph.add_edge("summarize_character_memory", END)
+        self._add_character_round_processing_edges(graph)
+
+        return graph.compile()
+
+    def _build_character_round_generation_graph(self) -> CompiledStateGraph:
+        graph = StateGraph(WorldSimulatorState)
+
+        self._add_character_round_nodes(graph)
+        self._add_character_round_edges(graph, START)
 
         return graph.compile()

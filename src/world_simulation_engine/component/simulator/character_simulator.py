@@ -5,9 +5,10 @@ from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, MemoryStance, MemorySupportType, Salience
-from world_simulation_engine.model import Intent, ActionProposal, Character, Location, InventoryStack, \
-    InventoryEquipment, Simulation, World, MemoryAtom, PerceivedBackgroundCharacter, PerceivedCharacter, \
-    PerceivedContainer, PerceivedEquipment, PerceivedItem, PerceivedLandmark
+from world_simulation_engine.model import Intent, ActionProposal, Character, CharacterActionPlan, Location, \
+    InventoryStack, InventoryEquipment, ReactionHistoryEntry, SceneCoordinationResult, Simulation, World, MemoryAtom, \
+    PerceivedBackgroundCharacter, PerceivedCharacter, PerceivedContainer, PerceivedEquipment, PerceivedItem, \
+    PerceivedLandmark
 from world_simulation_engine.service import DatabaseService, EmbedService
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 from .simulator_component import SimulatorComponent
@@ -85,6 +86,25 @@ class CharacterPerspective(BaseModel):
     soft_constraints: list[str] = Field(
         default_factory=list,
         description="Preferences, norms, personality tendencies, uncertainty, tone."
+    )
+
+
+class CharacterReactionContext(BaseModel):
+    perspective: CharacterPerspective = Field(
+        ...,
+        description="The reacting actor's ordinary action-proposal perspective."
+    )
+    coordination_result: SceneCoordinationResult = Field(
+        ...,
+        description="The latest coordination result that requires this reaction."
+    )
+    action_plans: list[CharacterActionPlan] = Field(
+        default_factory=list,
+        description="The action plans immediately before the coordination problem, including other actors."
+    )
+    reaction_history: list[ReactionHistoryEntry] = Field(
+        default_factory=list,
+        description="Previously attempted reactions in this scene."
     )
 
 
@@ -374,3 +394,59 @@ class CharacterSimulator(SimulatorComponent):
         )
 
         return result
+
+    async def propose_reaction(self,
+                               world_id: str,
+                               simulation_id: str,
+                               character_id: str,
+                               coordination_result: SceneCoordinationResult,
+                               action_plans: list[CharacterActionPlan],
+                               reaction_history: list[ReactionHistoryEntry] | None = None,
+                               user_input: str = "",
+                               thread_id: str | None = None,
+                               ) -> ActionProposal:
+        world = await self._db.world.get_world(world_id)
+        if not world:
+            raise ValueError(f"World {world_id} not found in database")
+
+        simulation = await self._db.simulation.get_simulation(simulation_id)
+        if not simulation:
+            raise ValueError(f"Simulation {simulation_id} not found in database")
+
+        character = await self._db.character.get_character(character_id)
+        if not character:
+            raise ValueError(f"Character {character_id} not found in database")
+
+        perspective = await self._build_perspective(
+            world=world,
+            simulation=simulation,
+            character=character,
+            user_input=user_input,
+            thread_id=thread_id,
+        )
+        context = CharacterReactionContext(
+            perspective=perspective,
+            coordination_result=coordination_result,
+            action_plans=action_plans,
+            reaction_history=reaction_history or [],
+        )
+
+        prompt = self._prepare_prompt(
+            language=world.language,
+            prompt_name="action_reaction",
+        )
+
+        llm = await self._prepare_llm_service(
+            simulation_id=simulation_id,
+        )
+
+        return await llm.invoke_structured_with_repair(
+            output_model=ActionProposal,
+            messages=prompt,
+            data=context.model_dump(),
+            repair_instruction=(
+                "Return a valid ActionProposal for the reacting character only. "
+                "Do not narrate, coordinate, or decide final outcomes."
+            ),
+            run_name="character.propose_reaction",
+        )

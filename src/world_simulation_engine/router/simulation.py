@@ -5,7 +5,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.model import Simulation
+from world_simulation_engine.misc.enums import GraphStateSnapshotType, SimulationGenerationRequestType
+from world_simulation_engine.model import GraphStateSnapshot, Simulation
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulatorState
 from .utils import db_dep, simulator_dep
 
@@ -38,9 +39,18 @@ class SimulationInput(BaseModel):
     DTO model for starting a simulation generation
     """
 
+    request_type: SimulationGenerationRequestType = Field(
+        SimulationGenerationRequestType.USER_INPUT_GENERATION,
+        description="What kind of simulator graph run to start.",
+    )
     user_input: Optional[str] = Field(
         None,
-        description="Optional user input. Leave empty to continue generation.",
+        description="Required for user_input_generation. Must be empty for continue_generation and regeneration.",
+    )
+    regenerate_turn_sequence: Optional[int] = Field(
+        None,
+        ge=0,
+        description="For regeneration, the character-round turn sequence to regenerate.",
     )
 
 
@@ -89,6 +99,47 @@ async def get_simulation(simulation_id: str, db: db_dep):
     return simulation
 
 
+@simulation_router.get("/simulations/{simulation_id}/graph-snapshots", response_model=list[GraphStateSnapshot])
+async def list_graph_state_snapshots(simulation_id: str, db: db_dep):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    return await db.graph_state_snapshot.list_snapshots(simulation_id)
+
+
+@simulation_router.get(
+    "/simulations/{simulation_id}/graph-snapshots/{snapshot_type}",
+    response_model=GraphStateSnapshot,
+)
+async def get_graph_state_snapshot(
+        simulation_id: str,
+        snapshot_type: GraphStateSnapshotType,
+        db: db_dep,
+):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    snapshot = await db.graph_state_snapshot.get_snapshot(
+        simulation_id=simulation_id,
+        type=snapshot_type,
+    )
+    if not snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Graph state snapshot {snapshot_type} for simulation {simulation_id} not found",
+        )
+
+    return snapshot
+
+
 @simulation_router.post("/simulations/{simulation_id}/input", response_model=SimulationRun)
 async def start_simulation_input(
         simulation_id: str,
@@ -116,7 +167,10 @@ async def start_simulation_input(
                 world=world,
                 simulation=simulation,
                 user_input=simulation_input.user_input,
-            )
+                request_type=simulation_input.request_type,
+            ),
+            request_type=simulation_input.request_type,
+            regenerate_turn_sequence=simulation_input.regenerate_turn_sequence,
         )
     except RuntimeError as exc:
         raise HTTPException(

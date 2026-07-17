@@ -112,6 +112,18 @@ class EventInvolvement(StrEnum):
     SUSPECT = "suspect"
 
 
+class GraphStateSnapshotType(StrEnum):
+    BEFORE_USER_INPUT = "before_user_input"
+    AFTER_USER_INPUT = "after_user_input"
+    AFTER_CHARACTER_ROUND = "after_character_round"
+
+
+class SimulationGenerationRequestType(StrEnum):
+    USER_INPUT_GENERATION = "user_input_generation"
+    CONTINUE_GENERATION = "continue_generation"
+    REGENERATION = "regeneration"
+
+
 class MemoryStance(StrEnum):
     REMEMBER = "remember"
     INFER = "infer"

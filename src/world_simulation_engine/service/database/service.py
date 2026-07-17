@@ -7,6 +7,7 @@ from .config_store import ConfigStore
 from .container_store import ContainerStore
 from .equipment_store import EquipmentStore
 from .event_store import EventStore
+from .graph_state_snapshot_store import GraphStateSnapshotStore
 from .intent_store import IntentStore
 from .item_store import ItemStore
 from .location_store import LocationStore
@@ -33,6 +34,7 @@ class DatabaseService:
         self._container = ContainerStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
         self._event = EventStore(self._driver)
+        self._graph_state_snapshot = GraphStateSnapshotStore(self._driver)
         self._intent = IntentStore(self._driver, embed_service=embed_service)
         self._item = ItemStore(self._driver)
         self._location = LocationStore(self._driver)
@@ -66,6 +68,10 @@ class DatabaseService:
     @property
     def event(self) -> EventStore:
         return self._event
+
+    @property
+    def graph_state_snapshot(self) -> GraphStateSnapshotStore:
+        return self._graph_state_snapshot
 
     @property
     def intent(self) -> IntentStore:

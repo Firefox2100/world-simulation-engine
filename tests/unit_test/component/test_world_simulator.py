@@ -8,11 +8,13 @@ import pytest
 os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.simulator.world_simulator import CharacterActionProposalRecord, \
-    CharacterActionProposalState, WorldSimulator, WorldSimulatorState
-from world_simulation_engine.misc.enums import ActionType, SceneCoordinationStatus, SupportedLanguage, TurnType
+    CharacterActionProposalState, CharacterActionValidationRecord, WorldSimulator, WorldSimulatorState
+from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
+    SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
-    CurrentActivity, Character, InputInterpretation, MemorySummaryProposal, OOCCommand, ProposedAction, \
-    SceneCoordinationResult, Simulation, StateCommitProposal, Turn, World
+    CurrentActivity, Character, CharacterActionPlan, GraphStateSnapshot, InputInterpretation, MemorySummaryProposal, \
+    OOCCommand, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, StateCommitProposal, Turn, \
+    World
 
 
 def make_state(input_interpretation: InputInterpretation) -> WorldSimulatorState:
@@ -68,15 +70,29 @@ def make_action_proposal(action: ProposedAction) -> ActionProposal:
     )
 
 
+def make_database_mock() -> Mock:
+    database = Mock()
+    database.turn.list_turns = AsyncMock(return_value=[])
+    database.graph_state_snapshot.save_snapshot = AsyncMock(
+        side_effect=lambda snapshot: snapshot
+    )
+    database.graph_state_snapshot.get_snapshot = AsyncMock(return_value=None)
+    database.graph_state_snapshot.get_latest_generation_base_snapshot = AsyncMock(return_value=None)
+    database.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence = AsyncMock(return_value=None)
+    return database
+
+
 class FakeStreamingGraph:
     def __init__(self, chunks, release_event: asyncio.Event | None = None):
         self.chunks = chunks
         self.release_event = release_event
         self.config = None
         self.stream_mode = None
+        self.state = None
         self.started = asyncio.Event()
 
     async def astream(self, state, config=None, stream_mode=None):
+        self.state = state
         self.config = config
         self.stream_mode = stream_mode
         self.started.set()
@@ -143,7 +159,7 @@ async def test_route_after_input_interpretation_rejects_ooc_for_now():
         await simulator.route_after_input_interpretation(state)
 
 
-async def test_route_after_user_action_validation_rejects_invalid_actions_for_now():
+async def test_route_after_user_action_validation_routes_invalid_actions_to_rejected_coordination():
     action = make_action()
     state = make_state(InputInterpretation(items=[]))
     state.user_action_validation = ActionValidationResult(
@@ -158,8 +174,33 @@ async def test_route_after_user_action_validation_rejects_invalid_actions_for_no
     )
     simulator = WorldSimulator(database=Mock())
 
-    with pytest.raises(NotImplementedError, match="Rejected user action route"):
-        await simulator.route_after_user_action_validation(state)
+    assert await simulator.route_after_user_action_validation(state) == "coordinate_rejected_user_actions"
+
+
+async def test_coordinate_rejected_user_actions_converts_validation_failure_to_coordination_problem():
+    action = make_action()
+    state = make_state(InputInterpretation(items=[]))
+    state.user_action_validation = ActionValidationResult(
+        validations=[
+            ActionValidation(
+                action_index=0,
+                action=action,
+                allowed=False,
+                reason="The ladder is too far away.",
+            )
+        ],
+    )
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+
+    result = await simulator.coordinate_rejected_user_actions(state)
+
+    coordination = result["user_action_coordination"]
+    assert coordination.status == SceneCoordinationStatus.PROBLEM
+    assert coordination.problem.description == "The ladder is too far away."
+    assert coordination.problem.involved_actor_ids == ["character_1"]
+    assert coordination.pending_actions[0].action == action
 
 
 async def test_validate_character_actions_reworks_invalid_proposal_before_coordination():
@@ -254,6 +295,203 @@ async def test_validate_character_actions_stops_after_three_invalid_reworks():
         await simulator.validate_character_actions(state)
 
     assert simulator._character_simulator.propose_actions.await_count == 3
+
+
+async def test_route_after_character_coordination_routes_non_user_problem_to_reactions():
+    state = make_state(InputInterpretation(items=[]))
+    state.character_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.PROBLEM,
+        problem={
+            "type": SceneCoordinationProblemType.EXCLUSIVE_RESOURCE,
+            "time_offset_seconds": 1,
+            "involved_actor_ids": ["character_1", "character_2"],
+            "involved_actions": [
+                {"actor_id": "character_1", "action_index": 0},
+                {"actor_id": "character_2", "action_index": 0},
+            ],
+            "description": "Both actors reach for the same glass.",
+            "needs_user_decision": False,
+            "actors_to_react": ["character_2"],
+        },
+    )
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+
+    assert await simulator.route_after_character_coordination(state) == "propose_character_reactions"
+
+
+async def test_route_after_character_coordination_routes_user_decision_to_narration():
+    state = make_state(InputInterpretation(items=[]))
+    state.character_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.PROBLEM,
+        problem={
+            "type": SceneCoordinationProblemType.REACTION_TRIGGER,
+            "time_offset_seconds": 1,
+            "involved_actor_ids": ["character_1", "character_2"],
+            "involved_actions": [
+                {"actor_id": "character_2", "action_index": 0},
+            ],
+            "description": "Bob swings at Alex, requiring Alex's response.",
+            "needs_user_decision": True,
+            "actors_to_react": [],
+        },
+    )
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+
+    assert await simulator.route_after_character_coordination(state) == "narrate_turn"
+
+
+async def test_route_after_character_coordination_routes_stopped_scene_to_narration():
+    state = make_state(InputInterpretation(items=[]))
+    state.character_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.STOPPED,
+        stopped_reason="The same reaction repeated three times.",
+    )
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+
+    assert await simulator.route_after_character_coordination(state) == "narrate_turn"
+
+
+async def test_route_after_user_coordination_routes_problem_to_user_narration():
+    state = make_state(InputInterpretation(items=[]))
+    state.user_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.PROBLEM,
+        problem={
+            "type": SceneCoordinationProblemType.OTHER,
+            "time_offset_seconds": 0,
+            "involved_actor_ids": ["character_1"],
+            "involved_actions": [
+                {"actor_id": "character_1", "action_index": 0},
+            ],
+            "description": "Alex cannot reach the ladder.",
+            "needs_user_decision": False,
+            "actors_to_react": [],
+        },
+    )
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_user_coordination(state) == "narrate_user_turn"
+
+
+async def test_route_after_user_memory_summary_stops_after_user_problem():
+    state = make_state(InputInterpretation(items=[]))
+    state.user_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.PROBLEM,
+        problem={
+            "type": SceneCoordinationProblemType.OTHER,
+            "time_offset_seconds": 0,
+            "involved_actor_ids": ["character_1"],
+            "involved_actions": [],
+            "description": "Alex cannot reach the ladder.",
+            "needs_user_decision": False,
+            "actors_to_react": [],
+        },
+    )
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_user_memory_summary(state) == "__end__"
+
+
+async def test_propose_character_reactions_replaces_active_actions_and_preserves_problem_context():
+    original_action = make_action("take_glass")
+    reaction_action = make_action("pull_hand_back")
+    reaction_proposal = make_action_proposal(reaction_action)
+    coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.PROBLEM,
+        problem={
+            "type": SceneCoordinationProblemType.EXCLUSIVE_RESOURCE,
+            "time_offset_seconds": 1,
+            "involved_actor_ids": ["character_1", "character_2"],
+            "involved_actions": [
+                {"actor_id": "character_2", "action_index": 0},
+            ],
+            "description": "The glass is already taken.",
+            "needs_user_decision": False,
+            "actors_to_react": ["character_2"],
+        },
+    )
+    state = make_state(InputInterpretation(items=[]))
+    state.character_actions = [
+        CharacterActionProposalRecord(
+            character_id="character_2",
+            proposal=make_action_proposal(original_action),
+        )
+    ]
+    state.character_action_validations = [
+        CharacterActionValidationRecord(
+            character_id="character_2",
+            proposal=make_action_proposal(original_action),
+            validation=ActionValidationResult(
+                validations=[
+                    ActionValidation(
+                        action_index=0,
+                        action=original_action,
+                        allowed=True,
+                        reason="Allowed.",
+                    )
+                ],
+            ),
+        )
+    ]
+    state.character_action_coordination = coordination
+    state.character_actions_are_reactions = True
+    state.reaction_history = [
+        ReactionHistoryEntry(
+            actor_id="character_2",
+            action_signature="old",
+            count=1,
+        )
+    ]
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=Character(
+        id="character_1",
+        name="Alex",
+        age=30,
+        gender="unknown",
+        appearance="Plain",
+        description="The user character",
+        public_state="Standing",
+        private_state="Focused",
+        current_activity=CurrentActivity(name="idle"),
+        user_controlled=True,
+    ))
+    simulator = WorldSimulator(database=database)
+    simulator._character_simulator.propose_reaction = AsyncMock(return_value=reaction_proposal)
+
+    result = await simulator.propose_character_reactions(state)
+
+    assert result["character_actions"] == [
+        CharacterActionProposalRecord(
+            character_id="character_2",
+            proposal=reaction_proposal,
+        )
+    ]
+    assert result["character_action_validations"] == []
+    assert result["previous_character_action_coordination"] == coordination
+    assert result["character_action_coordination"] is None
+    assert result["character_actions_are_reactions"] is True
+    assert any(entry.actor_id == "character_2" for entry in result["reaction_history"])
+    simulator._character_simulator.propose_reaction.assert_awaited_once()
+    assert simulator._character_simulator.propose_reaction.await_args.kwargs["coordination_result"] == coordination
+    assert simulator._character_simulator.propose_reaction.await_args.kwargs["action_plans"] == [
+        CharacterActionPlan(
+            actor_id="character_2",
+            actions=[original_action],
+            action_proposals=[make_action_proposal(original_action)],
+            candidate_sets=[
+                {
+                    "action_index": 0,
+                    "actions": [original_action],
+                }
+            ],
+            is_reaction=True,
+        )
+    ]
 
 
 async def test_narrate_turn_uses_character_action_coordination():
@@ -470,6 +708,38 @@ async def test_summarize_character_memory_applies_summary_proposal():
     )
 
 
+async def test_summarize_character_memory_saves_character_round_base_for_world_state():
+    coordination = SceneCoordinationResult(status=SceneCoordinationStatus.COMPLETE)
+    state_commit = StateCommitProposal()
+    turn = Turn(
+        id="turn_2",
+        sequence=2,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="The scene continues.",
+        start_time=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    state = make_state(InputInterpretation(items=[]))
+    state.user_input = None
+    state.request_type = SimulationGenerationRequestType.CONTINUE_GENERATION
+    state.character_action_coordination = coordination
+    state.narration = "The scene continues."
+    state.committed_turn = turn
+    state.state_commit_proposal = state_commit
+    database = make_database_mock()
+    simulator = WorldSimulator(database=database)
+    proposal = MemorySummaryProposal()
+    simulator._memory_summarizer.summarize_character_actions = AsyncMock(return_value=proposal)
+    simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
+
+    await simulator.summarize_character_memory(state)
+
+    saved_snapshot = database.graph_state_snapshot.save_snapshot.await_args.args[0]
+    assert saved_snapshot.type == GraphStateSnapshotType.AFTER_CHARACTER_ROUND
+    assert saved_snapshot.turn_id == "turn_2"
+    assert saved_snapshot.turn_sequence == 2
+    assert saved_snapshot.state["memory_summary_proposal"] == proposal.model_dump(mode="json")
+
+
 async def test_summarize_user_memory_applies_summary_proposal():
     coordination = SceneCoordinationResult(status=SceneCoordinationStatus.COMPLETE)
     state_commit = StateCommitProposal()
@@ -484,7 +754,8 @@ async def test_summarize_user_memory_applies_summary_proposal():
     state.user_action_coordination = coordination
     state.committed_turn = turn
     state.state_commit_proposal = state_commit
-    simulator = WorldSimulator(database=Mock())
+    database = make_database_mock()
+    simulator = WorldSimulator(database=database)
     proposal = MemorySummaryProposal()
     simulator._memory_summarizer.summarize_user_actions = AsyncMock(return_value=proposal)
     simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
@@ -502,6 +773,11 @@ async def test_summarize_user_memory_applies_summary_proposal():
         state_commit=state_commit,
         user_input="I look around.",
     )
+    saved_snapshot = database.graph_state_snapshot.save_snapshot.await_args.args[0]
+    assert saved_snapshot.type == GraphStateSnapshotType.AFTER_USER_INPUT
+    assert saved_snapshot.turn_id == "turn_1"
+    assert saved_snapshot.turn_sequence == 1
+    assert saved_snapshot.state["memory_summary_proposal"] == proposal.model_dump(mode="json")
 
 
 async def test_start_generation_streams_graph_values_and_stores_final_state():
@@ -513,8 +789,17 @@ async def test_start_generation_streams_graph_values_and_stores_final_state():
         ],
         release_event=release_event,
     )
-    simulator = WorldSimulator(database=Mock())
-    simulator._simulator_graph = graph
+    database = make_database_mock()
+    previous_turn = Turn(
+        id="turn_40",
+        sequence=40,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="Generated something.",
+        start_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    database.turn.list_turns = AsyncMock(return_value=[previous_turn])
+    simulator = WorldSimulator(database=database)
+    simulator._user_input_graph = graph
     state = make_state(InputInterpretation(items=[]))
 
     thread_id = await simulator.start_generation(state)
@@ -532,6 +817,10 @@ async def test_start_generation_streams_graph_values_and_stores_final_state():
     assert graph.stream_mode == "values"
     assert graph.config["configurable"]["thread_id"] == thread_id
     assert await simulator.get_generation_final_state(thread_id) == remaining_chunks[-1]
+    saved_snapshot = database.graph_state_snapshot.save_snapshot.await_args.args[0]
+    assert saved_snapshot.type == GraphStateSnapshotType.BEFORE_USER_INPUT
+    assert saved_snapshot.turn_id == "turn_40"
+    assert saved_snapshot.turn_sequence == 40
 
 
 async def test_stream_generation_returns_final_state_after_active_run_is_cleaned_up():
@@ -540,8 +829,8 @@ async def test_stream_generation_returns_final_state_after_active_run_is_cleaned
             {"narration": "Already finished."},
         ],
     )
-    simulator = WorldSimulator(database=Mock())
-    simulator._simulator_graph = graph
+    simulator = WorldSimulator(database=make_database_mock())
+    simulator._user_input_graph = graph
     state = make_state(InputInterpretation(items=[]))
 
     thread_id = await simulator.start_generation(state)
@@ -549,6 +838,71 @@ async def test_stream_generation_returns_final_state_after_active_run_is_cleaned
 
     assert final_state == {"narration": "Already finished."}
     assert await collect_async(simulator.stream_generation(thread_id)) == [final_state]
+
+
+async def test_continue_generation_uses_latest_character_round_base():
+    snapshot_state = make_state(InputInterpretation(items=[]))
+    snapshot_state.user_input = "Original user input."
+    snapshot = GraphStateSnapshot(
+        simulation_id="simulation_1",
+        type=GraphStateSnapshotType.AFTER_CHARACTER_ROUND,
+        turn_id="turn_42",
+        turn_sequence=42,
+        state=snapshot_state.model_dump(mode="json"),
+    )
+    graph = FakeStreamingGraph(chunks=[{"narration": "Continued."}])
+    database = make_database_mock()
+    database.graph_state_snapshot.get_latest_generation_base_snapshot = AsyncMock(return_value=snapshot)
+    simulator = WorldSimulator(database=database)
+    simulator._character_round_graph = graph
+    state = make_state(InputInterpretation(items=[]))
+    state.user_input = None
+
+    thread_id = await simulator.start_generation(
+        state,
+        request_type=SimulationGenerationRequestType.CONTINUE_GENERATION,
+    )
+    await simulator.get_generation_final_state(thread_id)
+
+    assert graph.state.request_type == SimulationGenerationRequestType.CONTINUE_GENERATION
+    assert graph.state.user_input is None
+    assert graph.state.character_actions == []
+    database.graph_state_snapshot.get_latest_generation_base_snapshot.assert_awaited_once_with(
+        simulation_id="simulation_1",
+    )
+    database.graph_state_snapshot.save_snapshot.assert_not_awaited()
+
+
+async def test_regeneration_uses_base_before_requested_turn():
+    snapshot_state = make_state(InputInterpretation(items=[]))
+    snapshot = GraphStateSnapshot(
+        simulation_id="simulation_1",
+        type=GraphStateSnapshotType.AFTER_USER_INPUT,
+        turn_id="turn_41",
+        turn_sequence=41,
+        state=snapshot_state.model_dump(mode="json"),
+    )
+    graph = FakeStreamingGraph(chunks=[{"narration": "Regenerated."}])
+    database = make_database_mock()
+    database.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence = AsyncMock(return_value=snapshot)
+    simulator = WorldSimulator(database=database)
+    simulator._character_round_graph = graph
+    state = make_state(InputInterpretation(items=[]))
+    state.user_input = None
+
+    thread_id = await simulator.start_generation(
+        state,
+        request_type=SimulationGenerationRequestType.REGENERATION,
+        regenerate_turn_sequence=42,
+    )
+    await simulator.get_generation_final_state(thread_id)
+
+    assert graph.state.request_type == SimulationGenerationRequestType.REGENERATION
+    assert graph.state.user_input is None
+    database.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        turn_sequence=41,
+    )
 
 
 async def test_start_generation_allows_one_active_run_per_simulation():
@@ -560,8 +914,8 @@ async def test_start_generation_allows_one_active_run_per_simulation():
         ],
         release_event=release_event,
     )
-    simulator = WorldSimulator(database=Mock())
-    simulator._simulator_graph = graph
+    simulator = WorldSimulator(database=make_database_mock())
+    simulator._user_input_graph = graph
     state = make_state(InputInterpretation(items=[]))
 
     first_thread_id = await simulator.start_generation(state)
@@ -577,3 +931,22 @@ async def test_start_generation_allows_one_active_run_per_simulation():
 
     assert second_thread_id != first_thread_id
     assert await simulator.get_generation_final_state(second_thread_id) == {"narration": "Second."}
+
+
+async def test_get_graph_state_snapshot_state_rehydrates_saved_world_state():
+    state = make_state(InputInterpretation(items=[]))
+    snapshot = GraphStateSnapshot(
+        simulation_id="simulation_1",
+        type=GraphStateSnapshotType.BEFORE_USER_INPUT,
+        state=state.model_dump(mode="json"),
+    )
+    database = make_database_mock()
+    database.graph_state_snapshot.get_snapshot = AsyncMock(return_value=snapshot)
+    simulator = WorldSimulator(database=database)
+
+    result = await simulator.get_graph_state_snapshot_state(
+        simulation_id="simulation_1",
+        type=GraphStateSnapshotType.BEFORE_USER_INPUT,
+    )
+
+    assert result == state
