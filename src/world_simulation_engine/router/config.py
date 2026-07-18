@@ -72,6 +72,101 @@ class SimulationModelConfigUpdate(BaseModel):
     config_id: str = Field(..., description="The model config id")
 
 
+class ComponentChatConfig(BaseModel):
+    """
+    DTO model for a component-specific chat config assignment
+    """
+
+    component: ComponentType = Field(..., description="The component using the config")
+    config: ChatModelConfigUnion = Field(..., description="The assigned chat model config")
+
+
+class ComponentEmbedConfig(BaseModel):
+    """
+    DTO model for a component-specific embedding config assignment
+    """
+
+    component: ComponentType = Field(..., description="The component using the config")
+    config: EmbedModelConfigUnion = Field(..., description="The assigned embedding model config")
+
+
+class ComponentModelConfigUpdate(BaseModel):
+    """
+    DTO model for a component-specific optional model config assignment
+    """
+
+    component: ComponentType = Field(..., description="The component using the config")
+    config_id: Optional[str] = Field(None, description="The model config id")
+
+
+class ComponentModelConfigBatchUpdate(BaseModel):
+    """
+    DTO model for replacing model config assignments across multiple components
+    """
+
+    assignments: list[ComponentModelConfigUpdate] = Field(
+        ..., description="The component assignments to update"
+    )
+
+
+async def _validate_simulation(simulation_id: str, db: db_dep):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+
+async def _validate_world(world_id: str, db: db_dep):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+
+async def _apply_chat_assignments(source_id: str, assignments: list[ComponentModelConfigUpdate], db: db_dep):
+    for assignment in assignments:
+        if assignment.config_id:
+            if not await db.config.get_chat(assignment.config_id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"LLM config {assignment.config_id} not found",
+                )
+            await db.config.link_chat(source_id, assignment.config_id, assignment.component)
+        else:
+            await db.config.unlink_chat(source_id, assignment.component)
+
+
+async def _apply_embed_assignments(source_id: str, assignments: list[ComponentModelConfigUpdate], db: db_dep):
+    for assignment in assignments:
+        if assignment.config_id:
+            if not await db.config.get_embed(assignment.config_id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Embedding config {assignment.config_id} not found",
+                )
+            await db.config.link_embed(source_id, assignment.config_id, assignment.component)
+        else:
+            await db.config.unlink_embed(source_id, assignment.component)
+
+
+async def _list_chat_assignments(source_id: str, db: db_dep) -> list[ComponentChatConfig]:
+    configs = await db.config.list_chats_by_source(source_id)
+    return [
+        ComponentChatConfig(component=component, config=config)
+        for component, config in configs.items()
+    ]
+
+
+async def _list_embed_assignments(source_id: str, db: db_dep) -> list[ComponentEmbedConfig]:
+    configs = await db.config.list_embeds_by_source(source_id)
+    return [
+        ComponentEmbedConfig(component=component, config=config)
+        for component, config in configs.items()
+    ]
+
+
 @config_router.get("/config/connections", response_model=list[ConnectionConfig])
 async def list_connections(db: db_dep):
     return await db.config.list_connections()
@@ -347,6 +442,23 @@ async def set_simulation_llm_connection(
     )
 
 
+@config_router.get("/simulations/{simulation_id}/llm-connections", response_model=list[ComponentChatConfig])
+async def list_simulation_llm_connections(simulation_id: str, db: db_dep):
+    await _validate_simulation(simulation_id, db)
+    return await _list_chat_assignments(simulation_id, db)
+
+
+@config_router.put("/simulations/{simulation_id}/llm-connections", response_model=list[ComponentChatConfig])
+async def set_simulation_llm_connections(
+        simulation_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_simulation(simulation_id, db)
+    await _apply_chat_assignments(simulation_id, config_update.assignments, db)
+    return await _list_chat_assignments(simulation_id, db)
+
+
 @config_router.get("/simulations/{simulation_id}/llm-connection", response_model=ChatModelConfigUnion)
 async def get_simulation_llm_connection(
         simulation_id: str,
@@ -413,6 +525,23 @@ async def set_simulation_embedding_connection(
     )
 
 
+@config_router.get("/simulations/{simulation_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+async def list_simulation_embedding_connections(simulation_id: str, db: db_dep):
+    await _validate_simulation(simulation_id, db)
+    return await _list_embed_assignments(simulation_id, db)
+
+
+@config_router.put("/simulations/{simulation_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+async def set_simulation_embedding_connections(
+        simulation_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_simulation(simulation_id, db)
+    await _apply_embed_assignments(simulation_id, config_update.assignments, db)
+    return await _list_embed_assignments(simulation_id, db)
+
+
 @config_router.get("/simulations/{simulation_id}/embedding-connection", response_model=EmbedModelConfigUnion)
 async def get_simulation_embedding_connection(
         simulation_id: str,
@@ -452,4 +581,170 @@ async def delete_simulation_embedding_connection(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Simulation {simulation_id} not found",
+        )
+
+
+@config_router.put("/worlds/{world_id}/llm-connection", response_model=ChatModelConfigUnion)
+async def set_world_llm_connection(
+        world_id: str,
+        config_update: SimulationModelConfigUpdate,
+        db: db_dep,
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+    if not await db.config.get_chat(config_update.config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LLM config {config_update.config_id} not found",
+        )
+
+    return await db.config.link_chat(
+        world_id,
+        config_update.config_id,
+        config_update.component,
+    )
+
+
+@config_router.get("/worlds/{world_id}/llm-connections", response_model=list[ComponentChatConfig])
+async def list_world_llm_connections(world_id: str, db: db_dep):
+    await _validate_world(world_id, db)
+    return await _list_chat_assignments(world_id, db)
+
+
+@config_router.put("/worlds/{world_id}/llm-connections", response_model=list[ComponentChatConfig])
+async def set_world_llm_connections(
+        world_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_world(world_id, db)
+    await _apply_chat_assignments(world_id, config_update.assignments, db)
+    return await _list_chat_assignments(world_id, db)
+
+
+@config_router.get("/worlds/{world_id}/llm-connection", response_model=ChatModelConfigUnion)
+async def get_world_llm_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    chat_config = await db.config.get_chat_by_source(world_id, component)
+    if not chat_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LLM config for world {world_id} and component {component} not found",
+        )
+
+    return chat_config
+
+
+@config_router.delete("/worlds/{world_id}/llm-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_world_llm_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    deleted = await db.config.unlink_chat(world_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+
+@config_router.put("/worlds/{world_id}/embedding-connection", response_model=EmbedModelConfigUnion)
+async def set_world_embedding_connection(
+        world_id: str,
+        config_update: SimulationModelConfigUpdate,
+        db: db_dep,
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+    if not await db.config.get_embed(config_update.config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Embedding config {config_update.config_id} not found",
+        )
+
+    return await db.config.link_embed(
+        world_id,
+        config_update.config_id,
+        config_update.component,
+    )
+
+
+@config_router.get("/worlds/{world_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+async def list_world_embedding_connections(world_id: str, db: db_dep):
+    await _validate_world(world_id, db)
+    return await _list_embed_assignments(world_id, db)
+
+
+@config_router.put("/worlds/{world_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+async def set_world_embedding_connections(
+        world_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_world(world_id, db)
+    await _apply_embed_assignments(world_id, config_update.assignments, db)
+    return await _list_embed_assignments(world_id, db)
+
+
+@config_router.get("/worlds/{world_id}/embedding-connection", response_model=EmbedModelConfigUnion)
+async def get_world_embedding_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    embed_config = await db.config.get_embed_by_source(world_id, component)
+    if not embed_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Embedding config for world {world_id} and component {component} not found",
+        )
+
+    return embed_config
+
+
+@config_router.delete("/worlds/{world_id}/embedding-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_world_embedding_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    deleted = await db.config.unlink_embed(world_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
         )

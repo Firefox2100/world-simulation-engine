@@ -181,9 +181,17 @@ async def test_simulation_links_to_chat_and_embed_configs_by_component(clean_neo
     assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) == replacement_chat_config
     assert await store.link_embed(simulation.id, embed_config.id, ComponentType.CHARACTER_SIMULATOR) == embed_config
     assert await store.get_embed_by_source(simulation.id, ComponentType.CHARACTER_SIMULATOR) == embed_config
+    assert await store.list_chats_by_source(simulation.id) == {
+        ComponentType.NARRATOR: replacement_chat_config,
+    }
+    assert await store.list_embeds_by_source(simulation.id) == {
+        ComponentType.CHARACTER_SIMULATOR: embed_config,
+    }
     assert await store.unlink_chat(simulation.id, ComponentType.NARRATOR) is True
     assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) is None
+    assert await store.list_chats_by_source(simulation.id) == {}
     assert await store.unlink_chat(str(uuid4()), ComponentType.NARRATOR) is False
     assert await store.unlink_embed(simulation.id, ComponentType.CHARACTER_SIMULATOR) is True
     assert await store.get_embed_by_source(simulation.id, ComponentType.CHARACTER_SIMULATOR) is None
+    assert await store.list_embeds_by_source(simulation.id) == {}
     assert await store.unlink_embed(str(uuid4()), ComponentType.CHARACTER_SIMULATOR) is False

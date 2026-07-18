@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 class Prompts(TypedDict, total=False):
     action_proposal: list[dict]
+    action_reaction: list[dict]
     action_validator: list[dict]
     input_interpreter: list[dict]
     memory_summarizer: list[dict]
@@ -26,7 +27,7 @@ class Prompts(TypedDict, total=False):
 def _load_builtin_prompt(language: str, name: str) -> list[dict]:
     file_path = importlib.resources.files("world_simulation_engine.data.prompts") / language / f"{name}.json"
 
-    with open(str(file_path), "r") as f:
+    with open(str(file_path), "r", encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -35,7 +36,7 @@ def _load_override_prompt(language: str, name: str) -> list[dict] | None:
 
     data_path = Path(CONFIG.data_folder) / "prompts" / language / f"{name}.json"
     if data_path.is_file():
-        with open(str(data_path), "r") as f:
+        with open(str(data_path), "r", encoding="utf-8") as f:
             return json.load(f)
 
     return None
@@ -55,6 +56,7 @@ def load_prompt() -> dict["SupportedLanguage", Prompts]:
 
     prompt_names = [
         "action_proposal",
+        "action_reaction",
         "action_validator",
         "input_interpreter",
         "memory_summarizer",

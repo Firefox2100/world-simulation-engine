@@ -1,5 +1,9 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from datetime import datetime
 
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel, Field
+
+from world_simulation_engine.misc.enums import TurnType
 from world_simulation_engine.model import Turn
 from .utils import db_dep
 
@@ -7,6 +11,13 @@ from .utils import db_dep
 turn_router = APIRouter(
     tags=["Turn"],
 )
+
+
+class TurnCreate(BaseModel):
+    sequence: int = Field(..., ge=1, description="The sequence number of the turn, starting at 1")
+    type: TurnType = Field(..., description="The type of the turn")
+    content: str = Field(..., min_length=1, description="The final, visible content of this turn")
+    start_time: datetime = Field(..., description="The start time of the turn")
 
 
 @turn_router.get("/turns", response_model=list[Turn])
@@ -38,6 +49,37 @@ async def list_turns(db: db_dep,
         limit=limit,
         skip=skip,
     )
+
+
+@turn_router.post("/worlds/{world_id}/turns", response_model=Turn)
+async def create_world_turn(world_id: str, turn_data: TurnCreate, db: db_dep):
+    world = await db.world.get_world(world_id)
+    if not world:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    latest_turns = await db.turn.list_turns(source_id=world_id, limit=1)
+    previous_turn = latest_turns[0] if latest_turns else None
+    expected_sequence = previous_turn.sequence + 1 if previous_turn else 1
+    if turn_data.sequence != expected_sequence:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Turn sequence must be {expected_sequence}",
+        )
+
+    try:
+        return await db.turn.create_turn(
+            Turn(**turn_data.model_dump()),
+            world_id,
+            previous_turn_id=previous_turn.id if previous_turn else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
 
 @turn_router.get("/turns/{turn_id}", response_model=Turn)

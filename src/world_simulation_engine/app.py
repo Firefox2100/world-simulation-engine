@@ -7,8 +7,8 @@ from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulator
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
-    config_router, container_router, equipment_router, event_router, intent_router, item_router, location_router, \
-    media_router, simulation_router, turn_router, world_router
+    config_router, container_router, equipment_router, event_router, intent_router, item_router, landmark_router, \
+    location_router, media_router, memory_router, simulation_router, turn_router, world_router
 
 
 @asynccontextmanager
@@ -43,8 +43,10 @@ def create_app() -> FastAPI:
     app.include_router(event_router)
     app.include_router(intent_router)
     app.include_router(item_router)
+    app.include_router(landmark_router)
     app.include_router(location_router)
     app.include_router(media_router)
+    app.include_router(memory_router)
     app.include_router(simulation_router)
     app.include_router(turn_router)
     app.include_router(world_router)

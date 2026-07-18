@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import GraphStateSnapshotType, SimulationGenerationRequestType
+from world_simulation_engine.misc.enums import ComponentType, GraphStateSnapshotType, SimulationGenerationRequestType
 from world_simulation_engine.model import GraphStateSnapshot, Simulation
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulatorState
 from .utils import db_dep, simulator_dep
@@ -299,6 +299,16 @@ async def create_simulation(world_id: str, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
+
+    for component in ComponentType:
+        chat_config = await db.config.get_chat_by_source(world_id, component)
+        if chat_config:
+            await db.config.link_chat(created_simulation.id, chat_config.id, component)
+
+        embed_config = await db.config.get_embed_by_source(world_id, component)
+        if embed_config:
+            await db.config.link_embed(created_simulation.id, embed_config.id, component)
+
     _, turn_pairs = await db.turn.copy_turns(
         world_id,
         created_simulation.id,

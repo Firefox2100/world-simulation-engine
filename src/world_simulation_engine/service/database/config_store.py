@@ -372,6 +372,26 @@ class ConfigStore:
 
         return _chat_from_node(record["config"], record["config_labels"])
 
+    async def list_chats_by_source(self,
+                                   source_id: str,
+                                   ) -> dict[ComponentType, ChatModelConfigUnion]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+                -[uses:USES]->
+                (c:OllamaChatModelConfig|OpenAiChatModelConfig)
+            WHERE uses.component IS NOT NULL
+            RETURN uses.component AS component, labels(c) AS config_labels, c AS config
+            ORDER BY uses.component
+            """,
+            parameters_={"source_id": source_id},
+        )
+
+        return {
+            ComponentType(record["component"]): _chat_from_node(record["config"], record["config_labels"])
+            for record in result.records
+        }
+
     async def link_chat(self,
                         source_id: str,
                         config_id: str,
@@ -554,6 +574,26 @@ class ConfigStore:
             return None
 
         return _embed_from_node(record["config"], record["config_labels"])
+
+    async def list_embeds_by_source(self,
+                                    source_id: str,
+                                    ) -> dict[ComponentType, EmbedModelConfigUnion]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+                -[uses:USES]->
+                (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig)
+            WHERE uses.component IS NOT NULL
+            RETURN uses.component AS component, labels(c) AS config_labels, c AS config
+            ORDER BY uses.component
+            """,
+            parameters_={"source_id": source_id},
+        )
+
+        return {
+            ComponentType(record["component"]): _embed_from_node(record["config"], record["config_labels"])
+            for record in result.records
+        }
 
     async def link_embed(self,
                          source_id: str,

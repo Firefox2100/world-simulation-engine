@@ -170,14 +170,28 @@ async def test_get_landmarks_by_location(clean_neo4j):
     world = await create_world(clean_neo4j)
     store = LocationStore(clean_neo4j)
     location = Location(id=str(uuid4()), name="Lobby", description="A lobby")
+    second_location = Location(id=str(uuid4()), name="Gallery", description="A gallery")
     first = Landmark(id=str(uuid4()), name="Desk", description="A front desk")
     second = Landmark(id=str(uuid4()), name="Statue", description="A marble statue")
 
     await store.create_location(location, source_id=world.id)
+    await store.create_location(second_location, source_id=world.id)
     await store.create_landmark(second, location.id)
     await store.create_landmark(first, location.id)
 
     assert await store.get_landmarks_by_location(location.id) == [first, second]
+    assert await store.list_landmarks(location_id=location.id) == [first, second]
+    assert await store.list_landmarks(world_id=world.id) == [first, second]
+    assert await store.update_landmark(first.id, {"name": "Updated Desk"}) == first.model_copy(
+        update={"name": "Updated Desk"}
+    )
+    moved_first = first.model_copy(update={"name": "Updated Desk"})
+    assert await store.move_landmark_to_location(first.id, second_location.id) == moved_first
+    assert await store.list_landmarks(location_id=location.id) == [second]
+    assert await store.list_landmarks(location_id=second_location.id) == [moved_first]
+    assert await store.delete_landmark(first.id) is True
+    assert await store.get_landmark(first.id) is None
+    assert await store.delete_landmark(first.id) is False
 
 
 async def test_copy_locations_preserves_nesting_landmarks_and_character_location(clean_neo4j):

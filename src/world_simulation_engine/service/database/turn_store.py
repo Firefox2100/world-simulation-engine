@@ -13,7 +13,7 @@ class TurnStore:
                           turn: Turn,
                           source_id: str,
                           previous_turn_id: str | None = None,
-                          ):
+                          ) -> Turn:
         result = await self._driver.execute_query(
             """
             MATCH (source:World|Simulation {id: $source_id})
@@ -50,6 +50,8 @@ class TurnStore:
         )
         if not result.records:
             raise ValueError("Could not create turn because the source or previous turn was not found")
+
+        return self.turn_from_node(result.records[0]["turn"])
 
     @staticmethod
     def turn_from_node(turn_node) -> Turn:

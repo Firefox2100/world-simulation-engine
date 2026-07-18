@@ -266,6 +266,49 @@ class LocationStore:
 
         return self.landmark_from_node(record["l"])
 
+    async def list_landmarks(self,
+                             world_id: str | None = None,
+                             simulation_id: str | None = None,
+                             location_id: str | None = None,
+                             ) -> list[Landmark]:
+        if location_id is not None:
+            source_match = """
+            MATCH (:Location {id: $location_id})-[:CONTAINS]->(landmark:Landmark)
+            """
+        elif world_id is not None and simulation_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(:Location)-[:CONTAINS]->(landmark:Landmark)
+            """
+        elif world_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(:Location)-[:CONTAINS]->(landmark:Landmark)
+            """
+        elif simulation_id is not None:
+            source_match = """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(:Location)-[:CONTAINS]->(landmark:Landmark)
+            """
+        else:
+            source_match = """
+            MATCH (landmark:Landmark)
+            """
+
+        result = await self._driver.execute_query(
+            source_match + """
+            RETURN DISTINCT landmark
+            ORDER BY landmark.name
+            """,
+            parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
+                "location_id": location_id,
+            },
+        )
+
+        return [
+            self.landmark_from_node(record["landmark"])
+            for record in result.records
+        ]
+
     async def get_landmarks_by_location(self,
                                         location_id: str,
                                         ) -> list[Landmark]:
@@ -297,6 +340,75 @@ class LocationStore:
             return None
 
         return self.landmark_from_node(record["landmark"])
+
+    async def update_landmark(self,
+                              landmark_id: str,
+                              properties: dict,
+                              ) -> Landmark | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+        if not properties:
+            return await self.get_landmark(landmark_id)
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (landmark:Landmark {id: $landmark_id})
+            SET landmark += $properties
+            RETURN landmark LIMIT 1
+            """,
+            parameters_={
+                "landmark_id": landmark_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.landmark_from_node(record["landmark"])
+
+    async def move_landmark_to_location(self,
+                                        landmark_id: str,
+                                        location_id: str,
+                                        ) -> Landmark | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (landmark:Landmark {id: $landmark_id})
+            MATCH (location:Location {id: $location_id})
+            OPTIONAL MATCH (:Location)-[existing:CONTAINS]->(landmark)
+            DELETE existing
+            MERGE (location)-[:CONTAINS]->(landmark)
+            RETURN landmark LIMIT 1
+            """,
+            parameters_={
+                "landmark_id": landmark_id,
+                "location_id": location_id,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.landmark_from_node(record["landmark"])
+
+    async def delete_landmark(self, landmark_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (landmark:Landmark {id: $landmark_id})
+            WITH collect(landmark) AS landmarks
+            FOREACH (landmark IN landmarks | DETACH DELETE landmark)
+            RETURN size(landmarks) AS deleted
+            """,
+            parameters_={"landmark_id": landmark_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
 
     async def copy_locations(self,
                              source_id: str,

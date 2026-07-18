@@ -17,6 +17,7 @@ from world_simulation_engine.service import DatabaseService
 @dataclass(frozen=True)
 class ConfigRouterTestClient:
     client: TestClient
+    world: World
     simulation: Simulation
 
 
@@ -65,6 +66,7 @@ def config_api(neo4j_container):
     with TestClient(app) as client:
         yield ConfigRouterTestClient(
             client=client,
+            world=world,
             simulation=simulation,
         )
 
@@ -300,6 +302,98 @@ def test_simulation_model_config_links(config_api):
     ).status_code == 404
 
 
+def test_component_model_config_batch_links(config_api):
+    client = config_api.client
+    narrator_chat = client.post("/config/llm/openai", json=openai_chat_payload("Narrator Chat")).json()
+    character_chat = client.post("/config/llm/openai", json=openai_chat_payload("Character Chat")).json()
+    embed = client.post("/config/embeddings/openai", json=openai_embed_payload()).json()
+
+    world_chat_response = client.put(
+        f"/worlds/{config_api.world.id}/llm-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.NARRATOR,
+                    "config_id": narrator_chat["id"],
+                },
+                {
+                    "component": ComponentType.CHARACTER_SIMULATOR,
+                    "config_id": character_chat["id"],
+                },
+            ],
+        },
+    )
+    world_embed_response = client.put(
+        f"/worlds/{config_api.world.id}/embedding-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.CHARACTER_SIMULATOR,
+                    "config_id": embed["id"],
+                },
+            ],
+        },
+    )
+
+    assert world_chat_response.status_code == 200
+    assert world_chat_response.json() == [
+        {
+            "component": ComponentType.CHARACTER_SIMULATOR,
+            "config": character_chat,
+        },
+        {
+            "component": ComponentType.NARRATOR,
+            "config": narrator_chat,
+        },
+    ]
+    assert client.get(f"/worlds/{config_api.world.id}/llm-connections").json() == world_chat_response.json()
+    assert world_embed_response.status_code == 200
+    assert world_embed_response.json() == [
+        {
+            "component": ComponentType.CHARACTER_SIMULATOR,
+            "config": embed,
+        },
+    ]
+    assert client.get(f"/worlds/{config_api.world.id}/embedding-connections").json() == world_embed_response.json()
+
+    remove_response = client.put(
+        f"/worlds/{config_api.world.id}/llm-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.NARRATOR,
+                    "config_id": None,
+                },
+            ],
+        },
+    )
+
+    assert remove_response.status_code == 200
+    assert remove_response.json() == [
+        {
+            "component": ComponentType.CHARACTER_SIMULATOR,
+            "config": character_chat,
+        },
+    ]
+    assert client.put(
+        f"/simulations/{config_api.simulation.id}/llm-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.NARRATOR,
+                    "config_id": narrator_chat["id"],
+                },
+            ],
+        },
+    ).status_code == 200
+    assert client.get(f"/simulations/{config_api.simulation.id}/llm-connections").json() == [
+        {
+            "component": ComponentType.NARRATOR,
+            "config": narrator_chat,
+        },
+    ]
+
+
 def test_config_endpoints_return_404_for_missing_resources(config_api):
     client = config_api.client
     missing_id = str(uuid4())
@@ -374,4 +468,28 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
     assert client.delete(
         f"/simulations/{missing_id}/embedding-connection",
         params={"component": ComponentType.CHARACTER_SIMULATOR},
+    ).status_code == 404
+    assert client.get(f"/worlds/{missing_id}/llm-connections").status_code == 404
+    assert client.put(
+        f"/worlds/{config_api.world.id}/llm-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.NARRATOR,
+                    "config_id": missing_id,
+                },
+            ],
+        },
+    ).status_code == 404
+    assert client.get(f"/simulations/{missing_id}/embedding-connections").status_code == 404
+    assert client.put(
+        f"/simulations/{config_api.simulation.id}/embedding-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.CHARACTER_SIMULATOR,
+                    "config_id": missing_id,
+                },
+            ],
+        },
     ).status_code == 404

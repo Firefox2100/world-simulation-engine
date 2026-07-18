@@ -17,6 +17,7 @@ from world_simulation_engine.service import DatabaseService
 @dataclass(frozen=True)
 class TurnRouterTestClient:
     client: TestClient
+    world: World
     simulation: Simulation
     turns: list[Turn]
 
@@ -84,6 +85,7 @@ def turn_api(neo4j_container):
     with TestClient(app) as client:
         yield TurnRouterTestClient(
             client=client,
+            world=world,
             simulation=simulation,
             turns=turns,
         )
@@ -135,6 +137,45 @@ def test_get_turns_by_id_and_sequence(turn_api):
     assert id_response.json() == turn.model_dump(mode="json")
     assert sequence_response.status_code == 200
     assert sequence_response.json() == turn.model_dump(mode="json")
+
+
+def test_create_world_turn_validates_sequence(turn_api):
+    client = turn_api.client
+
+    first_response = client.post(
+        f"/worlds/{turn_api.world.id}/turns",
+        json={
+            "sequence": 1,
+            "type": TurnType.SYSTEM_RESPONSE,
+            "content": "Opening world turn",
+            "start_time": "2026-01-01T12:00:00Z",
+        },
+    )
+    bad_sequence_response = client.post(
+        f"/worlds/{turn_api.world.id}/turns",
+        json={
+            "sequence": 3,
+            "type": TurnType.USER_INPUT,
+            "content": "Skipped sequence",
+            "start_time": "2026-01-01T12:01:00Z",
+        },
+    )
+    second_response = client.post(
+        f"/worlds/{turn_api.world.id}/turns",
+        json={
+            "sequence": 2,
+            "type": TurnType.USER_INPUT,
+            "content": "Second world turn",
+            "start_time": "2026-01-01T12:01:00Z",
+        },
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["sequence"] == 1
+    assert bad_sequence_response.status_code == 400
+    assert bad_sequence_response.json()["detail"] == "Turn sequence must be 2"
+    assert second_response.status_code == 200
+    assert second_response.json()["sequence"] == 2
 
 
 def test_turn_endpoints_return_404_for_missing_resources(turn_api):

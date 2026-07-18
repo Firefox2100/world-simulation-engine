@@ -36,7 +36,7 @@ async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):
 
     await turn_store.create_turn(turn, source_id=world.id)
     await event_store.create_event(event, turn_ids=[turn.id])
-    await memory_store.create_memory_atom(
+    assert await memory_store.create_memory_atom(
         memory,
         event_id=event.id,
         support_type=MemorySupportType.DIRECT,
@@ -49,6 +49,13 @@ async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):
                 stance=MemoryStance.REMEMBER,
             )
         ],
+    ) == memory
+    assert await memory_store.get_memory(memory.id) == memory
+    assert await memory_store.list_memories() == [memory]
+    assert await memory_store.list_memories(character_id=character.id) == [memory]
+    assert await memory_store.list_memories(event_id=event.id) == [memory]
+    assert await memory_store.update_memory(memory.id, {"summary": "Updated memory"}) == memory.model_copy(
+        update={"summary": "Updated memory"}
     )
 
     result = await clean_neo4j.execute_query(
@@ -73,13 +80,16 @@ async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):
 
     record = result.records[0]
     assert record["support_type"] == MemorySupportType.DIRECT
-    assert record["summary"] == memory.summary
+    assert record["summary"] == "Updated memory"
     assert record["keywords"] == memory.keywords
     assert record["embedding"] == memory.embedding
     assert record["confidence"] == 0.9
     assert record["salience"] == Salience.MEDIUM
     assert record["behavioural_relevance"] == "May greet this person again."
     assert record["stance"] == MemoryStance.REMEMBER
+    assert await memory_store.delete_memory(memory.id) is True
+    assert await memory_store.get_memory(memory.id) is None
+    assert await memory_store.delete_memory(memory.id) is False
 
 
 async def test_add_character_memory(clean_neo4j):
@@ -167,3 +177,19 @@ async def test_add_character_memory(clean_neo4j):
             MemoryStance.DOUBT,
         ),
     ]
+    assert await memory_store.replace_character_memories(
+        memory.id,
+        [
+            CharacterMemoryLink(
+                character_id=second_character.id,
+                confidence=0.5,
+                salience=Salience.HIGH,
+                behavioural_relevance=None,
+                stance=MemoryStance.BELIEVE,
+            )
+        ],
+    ) == memory
+    assert await memory_store.list_memories(character_id=first_character.id) == []
+    assert await memory_store.list_memories(character_id=second_character.id) == [memory]
+    assert await memory_store.remove_character_memories(memory.id, [second_character.id]) is False
+    assert await memory_store.link_memory_event(memory.id, event.id, MemorySupportType.DIRECT) == memory
