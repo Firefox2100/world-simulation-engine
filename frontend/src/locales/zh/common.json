@@ -1,0 +1,814 @@
+{
+  "app": {
+    "title": "世界模拟引擎",
+    "navigationLabel": "主导航",
+    "nav": {
+      "simulations": "模拟项目",
+      "worlds": "世界",
+      "connections": "连接配置",
+      "authors": "作者",
+      "media": "媒体",
+      "configurations": "配置"
+    }
+  },
+  "media": {
+    "title": "媒体",
+    "subtitle": "浏览和上传媒体文件。",
+    "tabsLabel": "媒体类型",
+    "upload": "上传 PNG",
+    "uploading": "正在上传...",
+    "loading": "正在加载媒体...",
+    "loadingMore": "正在加载...",
+    "loadMore": "加载更多",
+    "empty": "暂无媒体文件。",
+    "error": "无法加载媒体：{{error}}",
+    "actionError": "无法完成媒体操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "delete": "删除",
+    "imageLoading": "正在加载图片...",
+    "imageError": "无法加载图片",
+    "types": {
+      "image/png": "PNG"
+    }
+  },
+  "mediaPicker": {
+    "title": "选择图片",
+    "subtitle": "从该世界关联的图片中选择，或上传新的 PNG。",
+    "close": "关闭媒体选择器",
+    "upload": "上传 PNG",
+    "uploading": "正在上传...",
+    "loading": "正在加载图片...",
+    "loadingMore": "正在加载...",
+    "loadMore": "加载更多",
+    "empty": "该世界暂无关联图片。",
+    "error": "无法加载图片：{{error}}",
+    "cancel": "取消",
+    "select": "使用所选图片"
+  },
+  "home": {
+    "title": "模拟项目",
+    "subtitle": "浏览可用的模拟项目。",
+    "loading": "正在加载模拟项目...",
+    "loadingMore": "正在加载...",
+    "loadMore": "加载更多",
+    "empty": "暂无可用的模拟项目。",
+    "error": "无法加载模拟项目：{{error}}",
+    "actionError": "无法完成模拟操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "actions": {
+      "openChat": "打开聊天",
+      "delete": "删除"
+    }
+  },
+  "simulationChat": {
+    "title": "聊天",
+    "back": "全部模拟",
+    "loading": "正在加载聊天...",
+    "error": "无法加载聊天：{{error}}",
+    "recordsLoading": "正在加载消息...",
+    "recordsError": "无法加载消息：{{error}}",
+    "emptyRecords": "该模拟暂无消息。",
+    "conversationListLabel": "模拟会话列表",
+    "noPreview": "暂无消息",
+    "selectedFallback": "模拟",
+    "selectedDescriptionFallback": "选择一个模拟以查看消息。",
+    "userName": "你",
+    "inputPlaceholder": "输入消息...",
+    "send": "发送",
+    "sendError": "无法发送消息：{{error}}",
+    "cancelled": "生成已取消。"
+  },
+  "simulationDetails": {
+    "title": "模拟",
+    "close": "关闭模拟详情",
+    "navLabel": "模拟详情分区",
+    "emptyValue": "未设置",
+    "noDescription": "暂无描述。",
+    "noCharacters": "该模拟暂无角色。",
+    "noLocations": "该模拟暂无地点。",
+    "noFactions": "该模拟暂无阵营。",
+    "noWorldEntries": "该模拟暂无世界条目。",
+    "boolean": {
+      "yes": "是",
+      "no": "否"
+    },
+    "tabs": {
+      "basic": "基本信息",
+      "characters": "角色",
+      "locations": "地点",
+      "factions": "阵营",
+      "worldEntries": "世界条目"
+    },
+    "fields": {
+      "id": "ID",
+      "name": "名称",
+      "language": "语言",
+      "actForUser": "代用户行动",
+      "enableTts": "启用 TTS",
+      "enableImageGeneration": "启用图像生成"
+    },
+    "characterFields": {
+      "id": "ID",
+      "gender": "性别",
+      "age": "年龄",
+      "location": "地点",
+      "userControlled": "用户控制",
+      "appearance": "外观",
+      "publicState": "公开状态",
+      "privateState": "私有状态",
+      "attributes": "属性",
+      "stats": "数值",
+      "inventory": "库存"
+    },
+    "inventory": {
+      "items": "物品",
+      "equipment": "装备",
+      "emptyItems": "库存中暂无物品。",
+      "emptyEquipment": "库存中暂无装备。",
+      "quantity": "数量 {{quantity}}",
+      "unique": "唯一"
+    },
+    "locationFields": {
+      "id": "ID",
+      "location": "地点",
+      "primaryLocation": "主要地点",
+      "detailedLocation": "详细地点",
+      "scene": "场景",
+      "attributes": "属性",
+      "stats": "数值",
+      "entities": "实体",
+      "noEntities": "该地点暂无实体。"
+    },
+    "factionFields": {
+      "id": "ID",
+      "name": "名称",
+      "attributes": "属性",
+      "stats": "数值"
+    },
+    "worldEntryFields": {
+      "entryTitle": "世界条目 {{id}}",
+      "scope": "范围",
+      "scopeEveryone": "所有人",
+      "scopeNoOne": "无人",
+      "scopeCharacter": "角色 {{id}}",
+      "confidence": "置信度",
+      "createdAt": "创建回合",
+      "background": "背景",
+      "narrationPermission": "叙述权限",
+      "recallType": "召回类型",
+      "embeddingDimensions": "{{count}} 维",
+      "chainedIdsLabel": "链式条目：",
+      "chainedIds": "链式条目：{{ids}}"
+    }
+  },
+  "worlds": {
+    "title": "世界",
+    "subtitle": "浏览可用的世界。",
+    "create": "创建",
+    "loading": "正在加载世界...",
+    "loadingMore": "正在加载...",
+    "loadMore": "加载更多",
+    "empty": "暂无可用的世界。",
+    "error": "无法加载世界：{{error}}",
+    "actionError": "无法完成世界操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "actions": {
+      "edit": "编辑",
+      "delete": "删除",
+      "createSimulation": "创建模拟"
+    }
+  },
+  "connections": {
+    "title": "连接配置",
+    "subtitle": "管理 LLM 和图像生成提供商配置。",
+    "llmTitle": "LLM 连接",
+    "imageTitle": "图像生成连接",
+    "loading": "正在加载连接配置...",
+    "error": "无法加载连接配置：{{error}}",
+    "unnamedProfile": "{{provider}} 配置",
+    "empty": {
+      "llm": "暂无 LLM 连接配置。",
+      "image": "暂无图像生成连接配置。"
+    },
+    "providers": {
+      "openai": "OpenAI",
+      "ollama": "Ollama",
+      "comfy_ui": "ComfyUI"
+    },
+    "actions": {
+      "create": "创建",
+      "edit": "编辑",
+      "delete": "删除",
+      "editProfile": "编辑 {{name}}",
+      "deleteProfile": "删除 {{name}}"
+    }
+  },
+  "connectionCreate": {
+    "close": "关闭创建连接对话框",
+    "cancel": "取消",
+    "submit": "创建连接",
+    "update": "更新连接",
+    "saving": "正在创建...",
+    "updating": "正在更新...",
+    "error": "无法创建连接：{{error}}",
+    "editError": "无法更新连接：{{error}}",
+    "llm": {
+      "title": "创建 LLM 连接",
+      "editTitle": "编辑 LLM 连接"
+    },
+    "image": {
+      "title": "创建图像生成连接",
+      "editTitle": "编辑图像生成连接"
+    },
+    "fields": {
+      "provider": {
+        "label": "提供商"
+      },
+      "name": {
+        "label": "名称"
+      },
+      "baseUrl": {
+        "label": "Base URL",
+        "placeholder": "官方 API 可留空"
+      },
+      "apiKey": {
+        "label": "API key"
+      }
+    }
+  },
+  "configurations": {
+    "title": "配置",
+    "subtitle": "管理提供商连接、嵌入模型和 LLM 模型配置。",
+    "tabsLabel": "配置分区",
+    "loading": "正在加载配置...",
+    "error": "无法加载配置：{{error}}",
+    "actionError": "无法完成配置操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "tabs": {
+      "connections": "连接",
+      "embeddings": "嵌入",
+      "llms": "LLM"
+    },
+    "empty": {
+      "connections": "暂无连接配置。",
+      "embeddings": "暂无嵌入配置。",
+      "llms": "暂无 LLM 配置。"
+    },
+    "providers": {
+      "openai": "OpenAI",
+      "ollama": "Ollama"
+    },
+    "details": {
+      "dimension": "{{value}} 维",
+      "contextWindow": "{{value}} 上下文",
+      "temperature": "温度 {{value}}"
+    },
+    "actions": {
+      "edit": "编辑",
+      "delete": "删除",
+      "create": {
+        "connections": "创建连接",
+        "embeddings": "创建嵌入",
+        "llms": "创建 LLM"
+      }
+    },
+    "fields": {
+      "provider": "提供商",
+      "name": "名称",
+      "baseUrl": "Base URL",
+      "apiKey": "API key",
+      "model": "模型",
+      "dimension": "维度",
+      "contextWindow": "上下文窗口",
+      "temperature": "温度",
+      "seed": "Seed",
+      "reasoning": "推理",
+      "stopTokens": "停止词",
+      "mirostat": "Mirostat",
+      "mirostat_eta": "Mirostat eta",
+      "mirostat_tau": "Mirostat tau",
+      "num_predict": "预测数量",
+      "repeat_penalty_window": "重复惩罚窗口",
+      "repeat_penalty": "重复惩罚"
+    },
+    "modal": {
+      "close": "关闭配置对话框",
+      "cancel": "取消",
+      "submit": "创建",
+      "update": "更新",
+      "saving": "正在保存...",
+      "error": "无法保存配置：{{error}}",
+      "create": {
+        "connections": "创建连接",
+        "embeddings": "创建嵌入配置",
+        "llms": "创建 LLM 配置"
+      },
+      "edit": {
+        "connections": "编辑连接",
+        "embeddings": "编辑嵌入配置",
+        "llms": "编辑 LLM 配置"
+      }
+    }
+  },
+  "authors": {
+    "title": "作者",
+    "subtitle": "管理世界配置使用的作者。",
+    "loading": "正在加载作者...",
+    "empty": "暂无作者。",
+    "error": "无法加载作者：{{error}}",
+    "actionError": "无法完成作者操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "noUrl": "无 URL",
+    "actions": {
+      "create": "创建作者",
+      "edit": "编辑",
+      "delete": "删除"
+    },
+    "fields": {
+      "name": "名称",
+      "url": "URL"
+    },
+    "modal": {
+      "createTitle": "创建作者",
+      "editTitle": "编辑作者",
+      "close": "关闭作者对话框",
+      "cancel": "取消",
+      "submit": "创建",
+      "update": "更新",
+      "saving": "正在保存...",
+      "error": "无法保存作者：{{error}}"
+    }
+  },
+  "worldCreate": {
+    "title": "创建世界",
+    "editTitle": "编辑世界",
+    "close": "关闭创建世界对话框",
+    "cancel": "取消",
+    "submit": "创建世界",
+    "update": "更新世界",
+    "saving": "正在创建...",
+    "add": "添加",
+    "remove": "移除",
+    "error": "无法创建世界：{{error}}",
+    "connectionLoadError": "无法加载连接配置：{{error}}",
+    "tooltipLabel": "关于 {{field}}",
+    "validation": {
+      "nameRequired": "世界名称为必填项。"
+    },
+    "newEditor": {
+      "navLabel": "世界编辑分区",
+      "loading": "正在加载世界实体...",
+      "unsavedWorld": "先保存世界，再添加关联实体",
+      "savedWorld": "世界 {{id}}",
+      "saveWorld": "保存世界",
+      "saveConfigurations": "保存配置",
+      "saveAuthor": "保存作者",
+      "saveEntity": "创建",
+      "updateEntity": "更新",
+      "deleteEntity": "删除",
+      "chooseCoverImage": "选择封面图片",
+      "removeCoverImage": "移除封面图片",
+      "noCoverImage": "暂无封面图片",
+      "saveBeforeCover": "保存后再选择封面",
+      "done": "完成",
+      "required": "必填",
+      "optional": "可选",
+      "createNew": "新建 +",
+      "emptySelect": "无",
+      "editing": "正在编辑 {{name}}",
+      "confirmDelete": "删除 {{name}}？",
+      "configEndpointMissing": "当前 API 尚未暴露世界级模型配置绑定接口。这里的选择器仅用于查看可用配置。",
+      "tabs": {
+        "world": "世界",
+        "author": "作者",
+        "configs": "配置",
+        "locations": "地点",
+        "characters": "角色",
+        "background": "背景角色",
+        "items": "物品",
+        "equipment": "装备",
+        "containers": "容器",
+        "stacks": "物品堆叠"
+      },
+      "create": {
+        "locations": "创建地点",
+        "characters": "创建角色",
+        "background": "创建背景角色",
+        "items": "创建物品",
+        "equipment": "创建装备",
+        "containers": "创建容器",
+        "stacks": "创建物品堆叠"
+      },
+      "empty": {
+        "locations": "暂无地点。",
+        "characters": "暂无角色。",
+        "background": "暂无背景角色。",
+        "items": "暂无物品。",
+        "equipment": "暂无装备。",
+        "containers": "暂无容器。",
+        "stacks": "物品存在后可创建物品堆叠。"
+      },
+      "validation": {
+        "itemRequired": "创建堆叠前请选择物品。",
+        "worldRequired": "请先填写世界页签中的必填项。"
+      },
+      "fields": {
+        "startingTime": "起始时间",
+        "version": "版本",
+        "url": "URL",
+        "coverImage": "封面图片",
+        "author": "作者",
+        "llmConfig": "LLM 配置",
+        "embeddingConfig": "嵌入配置",
+        "name": "名称",
+        "description": "描述",
+        "parent_location_id": "上级地点",
+        "user_controlled": "用户控制",
+        "age": "年龄",
+        "gender": "性别",
+        "appearance": "外观",
+        "public_state": "公开状态",
+        "private_state": "私有状态",
+        "activity_name": "当前活动",
+        "activity_interruptible": "活动可打断",
+        "activity_constraints": "活动约束",
+        "location_id": "地点",
+        "position": "位置",
+        "landmark_id": "地标",
+        "unique": "唯一",
+        "quality": "品质",
+        "owner_id": "拥有者",
+        "holder_id": "持有者",
+        "equipped": "已装备",
+        "equipped_position": "装备位置",
+        "state": "状态",
+        "held_stack_ids": "持有物品堆叠 ID",
+        "held_equipment_ids": "持有装备 ID",
+        "held_container_ids": "持有容器 ID",
+        "unlocking_item_ids": "解锁物品 ID",
+        "item_id": "物品",
+        "quantity": "数量"
+      }
+    },
+    "fields": {
+      "placeholder": {
+        "label": "占位内容",
+        "itemLabel": "占位内容 {{number}}"
+      },
+      "name": {
+        "label": "名称",
+        "tooltip": "世界的名称。"
+      },
+      "description": {
+        "label": "描述",
+        "tooltip": "世界的描述。"
+      },
+      "agent_preset": {
+        "label": "智能体预设",
+        "tooltip": "该世界使用的智能体预设，包含模型配置和提示词模板。当前先以占位内容搭建。"
+      },
+      "data_preset": {
+        "label": "数据预设",
+        "tooltip": "该世界使用的数据预设，包含额外数据类型及其描述。当前先以占位内容搭建。"
+      },
+      "embedding_profile": {
+        "label": "嵌入配置",
+        "tooltip": "该世界使用的嵌入配置，包含嵌入相关设置。"
+      },
+      "language": {
+        "label": "语言",
+        "placeholder": "zh-CN",
+        "tooltip": "世界的语言，使用区域设置字符串。"
+      },
+      "coverImage": {
+        "label": "封面图片",
+        "tooltip": "可选图片，会在世界创建成功后上传。"
+      },
+      "act_for_user": {
+        "label": "代用户行动",
+        "tooltip": "模拟是否可以代替用户行动，或只能控制其他角色。"
+      },
+      "enable_tts": {
+        "label": "启用 TTS",
+        "tooltip": "模拟是否启用文本转语音。"
+      },
+      "enable_image_generation": {
+        "label": "启用图像生成",
+        "tooltip": "模拟是否启用图像生成。"
+      },
+      "state": {
+        "label": "状态",
+        "tooltip": "世界的当前状态。当前先以占位内容搭建。"
+      },
+      "characters": {
+        "label": "角色",
+        "tooltip": "世界中的角色。当前可添加零个或多个占位角色对象。"
+      },
+      "locations": {
+        "label": "地点",
+        "tooltip": "世界中的地点。当前可添加零个或多个占位地点对象。"
+      },
+      "factions": {
+        "label": "阵营",
+        "tooltip": "世界中的阵营。当前可添加零个或多个占位阵营对象。"
+      },
+      "faction_relationships": {
+        "label": "阵营关系",
+        "tooltip": "世界中的阵营关系。当前可添加零个或多个占位关系对象。"
+      },
+      "inventory": {
+        "label": "库存",
+        "characterId": "角色 ID",
+        "tooltip": "角色的库存。当前可添加零个或多个角色 ID 到占位库存对象的映射。"
+      },
+      "tasks": {
+        "label": "任务",
+        "tooltip": "世界中的任务。当前可添加零个或多个占位任务对象。"
+      },
+      "world_entries": {
+        "label": "世界条目",
+        "tooltip": "世界中的条目。当前可添加零个或多个占位世界条目对象。"
+      },
+      "turn_records": {
+        "label": "回合记录",
+        "tooltip": "作为起始点的已有回合记录。当前可添加零个或多个占位回合记录对象。"
+      }
+    },
+    "agentPreset": {
+      "include": "包含智能体预设",
+      "noConnection": "不使用连接配置",
+      "roleTooltip": "该智能体角色的配置。",
+      "promptTooltip": "该智能体操作使用的提示词消息。内容支持 Jinja2 模板。",
+      "addMessage": "添加消息",
+      "roles": {
+        "director": "导演",
+        "memory": "记忆",
+        "character": "角色",
+        "resolver": "解析器",
+        "committer": "提交器",
+        "narrator": "叙述者",
+        "world_generator": "世界生成器"
+      },
+      "fields": {
+        "connection": "连接配置",
+        "model": "模型",
+        "temperature": "温度",
+        "context_window": "上下文窗口",
+        "seed": "种子",
+        "reasoning": "推理",
+        "stop_tokens": "停止词",
+        "max_tool_rounds": "最大工具轮数",
+        "mirostat": "Mirostat",
+        "mirostat_eta": "Mirostat eta",
+        "mirostat_tau": "Mirostat tau",
+        "num_predict": "预测 token 数",
+        "repeat_penalty_window": "重复惩罚窗口",
+        "repeat_penalty": "重复惩罚",
+        "remove_empty_messages": "移除空消息",
+        "merge_adjacent_user": "合并相邻用户消息",
+        "merge_adjacent_assistant": "合并相邻助手消息",
+        "merge_assistant_with_tool_calls": "合并工具调用助手消息",
+        "system_message_policy": "系统消息策略",
+        "message_merge_separator": "消息合并分隔符"
+      },
+      "reasoning": {
+        "default": "默认",
+        "true": "启用",
+        "false": "禁用",
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      },
+      "systemMessagePolicy": {
+        "preserve": "保留",
+        "merge_to_top": "合并到顶部",
+        "drop": "丢弃"
+      },
+      "messageRoles": {
+        "system": "系统",
+        "user": "用户",
+        "assistant": "助手",
+        "tool": "工具"
+      },
+      "prompts": {
+        "generation_prompt": "生成提示词",
+        "planning_prompt": "规划提示词",
+        "location_generation_prompt": "地点生成提示词",
+        "item_generation_prompt": "物品生成提示词",
+        "equipment_generation_prompt": "装备生成提示词",
+        "entity_generation_prompt": "实体生成提示词",
+        "world_entry_generation_prompt": "世界条目生成提示词",
+        "generation_package_prompt": "生成包提示词",
+        "briefing_prompt": "简报提示词",
+        "summary_prompt": "总结提示词",
+        "action_prompt": "行动提示词",
+        "reaction_prompt": "反应提示词",
+        "resolve_character_prompt": "解析角色提示词",
+        "resolve_reaction_prompt": "解析反应提示词",
+        "resolve_user_prompt": "解析用户输入提示词",
+        "mutation_prompt": "变更提示词",
+        "validation_prompt": "校验提示词",
+        "narrate_resolved_turn_prompt": "叙述已解析回合提示词",
+        "narrate_user_input_failure_prompt": "叙述用户输入失败提示词",
+        "narrate_wait_for_user_prompt": "叙述等待用户提示词"
+      }
+    },
+    "dataPreset": {
+      "include": "包含数据预设",
+      "itemTitle": "字段 {{number}}",
+      "entityTypeTitle": "实体类型 {{number}}",
+      "sections": {
+        "character_attributes": "角色属性",
+        "character_stats": "角色数值",
+        "faction_attributes": "阵营属性",
+        "faction_stats": "阵营数值",
+        "entity_types": "实体类型"
+      },
+      "tooltips": {
+        "character_attributes": "该预设中的额外角色属性。",
+        "character_stats": "该预设中的额外角色数值。",
+        "faction_attributes": "该预设中的额外阵营属性。",
+        "faction_stats": "该预设中的额外阵营数值。",
+        "entity_types": "地点中允许的实体类型及其说明。"
+      },
+      "fields": {
+        "name": "名称",
+        "values": "允许值",
+        "value": "值",
+        "creation_instruction": "创建指令",
+        "update_instruction": "更新指令",
+        "universal": "通用",
+        "type": "类型",
+        "description": "描述"
+      }
+    },
+    "embeddingProfile": {
+      "include": "包含嵌入配置",
+      "fields": {
+        "connection": "连接配置",
+        "model": "模型",
+        "dimensions": "维度",
+        "context_window": "上下文窗口"
+      }
+    },
+    "initialState": {
+      "title": "初始世界状态",
+      "tooltip": "世界开始时可用的初始状态、地点、角色和实体。",
+      "state": "模拟状态",
+      "stateTooltip": "模拟当前状态摘要。",
+      "includeState": "包含模拟状态",
+      "locations": "地点",
+      "locationsTooltip": "初始世界中的地点。",
+      "characters": "角色",
+      "charactersTooltip": "初始世界中的角色。",
+      "entities": "实体",
+      "attributes": "属性",
+      "stats": "数值",
+      "addValue": "添加值",
+      "noLocation": "无地点",
+      "noEntityType": "无实体类型",
+      "locationTitle": "地点 {{number}}",
+      "characterTitle": "角色 {{number}}",
+      "entityTitle": "实体 {{number}}",
+      "fields": {
+        "scene": "场景",
+        "turn_number": "回合数",
+        "state": "状态",
+        "time_label": "时间标签",
+        "recent_history_summary": "近期历史摘要",
+        "long_term_history_summary": "长期历史摘要",
+        "primary_location": "主要地点",
+        "detailed_location": "详细地点",
+        "description": "描述",
+        "name": "名称",
+        "type": "类型",
+        "status": "状态",
+        "interactions": "互动",
+        "interaction": "互动",
+        "gender": "性别",
+        "age": "年龄",
+        "appearance": "外观",
+        "public_state": "公开状态",
+        "private_state": "私有状态",
+        "location": "地点",
+        "user_controlled": "用户控制",
+        "attribute": "属性",
+        "stat": "数值",
+        "value": "值"
+      }
+    },
+    "extraState": {
+      "title": "阵营、库存、任务和知识",
+      "tooltip": "初始阵营、关系、库存、任务和世界条目等额外数据。",
+      "factions": "阵营",
+      "factionsTooltip": "初始世界中的阵营。",
+      "factionRelationships": "阵营关系",
+      "factionRelationshipsTooltip": "阵营、角色和物品之间的关系。",
+      "inventory": "库存",
+      "inventoryTooltip": "角色拥有的物品和装备。",
+      "tasks": "任务",
+      "tasksTooltip": "分配给角色的初始任务。",
+      "worldEntries": "世界条目",
+      "worldEntriesTooltip": "初始知识和记忆条目。",
+      "turnRecords": "回合记录",
+      "turnRecordsTooltip": "初始叙述回合。智能体输出内部字段会被省略。",
+      "items": "物品",
+      "equipment": "装备",
+      "factionTitle": "阵营 {{number}}",
+      "relationshipTitle": "关系 {{number}}",
+      "itemTitle": "物品 {{number}}",
+      "equipmentTitle": "装备 {{number}}",
+      "taskTitle": "任务 {{number}}",
+      "worldEntryTitle": "世界条目 {{number}}",
+      "turnRecordTitle": "回合记录 {{number}}",
+      "scopeMode": {
+        "everyone": "所有人",
+        "no_one": "无人",
+        "characters": "选定角色"
+      },
+      "fields": {
+        "name": "名称",
+        "description": "描述",
+        "from": "来源",
+        "to": "目标",
+        "selectEntity": "选择实体",
+        "selectCharacter": "选择角色",
+        "relationship": "关系",
+        "private": "私有",
+        "quality": "品质",
+        "quantity": "数量",
+        "unique": "唯一",
+        "status": "状态",
+        "priority": "优先级",
+        "type": "类型",
+        "goal": "目标",
+        "progress": "进度",
+        "source": "来源",
+        "reward": "奖励",
+        "scope": "范围",
+        "content": "内容",
+        "confidence": "置信度",
+        "created_at": "创建回合",
+        "semantic_instruction": "语义指令",
+        "visibility": "可见性",
+        "narration_permission": "叙述权限",
+        "recall_type": "召回类型",
+        "keywords": "关键词",
+        "turn_number": "回合数",
+        "narration": "叙述"
+      }
+    },
+    "enums": {
+      "relationshipEntity": {
+        "faction": "阵营",
+        "item": "物品",
+        "character": "角色"
+      },
+      "equipmentStatus": {
+        "equipped": "已装备",
+        "idle": "闲置"
+      },
+      "priority": {
+        "urgent": "紧急",
+        "important": "重要",
+        "normal": "普通",
+        "background": "后台"
+      },
+      "status": {
+        "paused": "暂停",
+        "in_progress": "进行中",
+        "completed": "已完成",
+        "failed": "失败",
+        "abandoned": "放弃"
+      },
+      "type": {
+        "main_quest": "主线任务",
+        "side_quest": "支线任务",
+        "daily": "日常"
+      },
+      "visibility": {
+        "known": "已知",
+        "suspected": "怀疑",
+        "perceived": "感知",
+        "inferred": "推断"
+      },
+      "narration_permission": {
+        "visible": "可见",
+        "may_hint": "可暗示",
+        "invisible": "不可见"
+      },
+      "recall_type": {
+        "always": "总是",
+        "keyword": "关键词",
+        "semantic": "语义",
+        "chained": "链式"
+      },
+      "turnType": {
+        "user_input": "用户输入",
+        "ai_response": "AI 响应",
+        "ai_continue": "AI 继续",
+        "ai_wait": "AI 等待"
+      }
+    }
+  }
+}
