@@ -97,8 +97,14 @@
       "characters": "Characters",
       "locations": "Locations",
       "factions": "Factions",
-      "worldEntries": "World entries"
+      "worldEntries": "World entries",
+      "configs": "Configurations"
     },
+    "configLoading": "Loading configurations...",
+    "configSaving": "Saving...",
+    "configSaved": "Configurations saved.",
+    "configError": "Unable to load configurations: {{error}}",
+    "saveConfigurations": "Save configurations",
     "fields": {
       "id": "ID",
       "name": "Name",
@@ -377,8 +383,19 @@
       "emptySelect": "None",
       "editing": "Editing {{name}}",
       "confirmDelete": "Delete {{name}}?",
-      "configEndpointMissing": "World-level model configuration binding is not exposed by the current API yet. These selectors show available configurations for reference.",
-      "tabs": {
+        "configSaved": "Configurations saved.",
+        "configEndpointMissing": "World-level model configuration binding is not exposed by the current API yet. These selectors show available configurations for reference.",
+        "components": {
+          "action_validator": "Action validator",
+          "character_simulator": "Character simulator",
+          "input_interpreter": "Input interpreter",
+          "memory_summarizer": "Memory summarizer",
+          "narrator": "Narrator",
+          "perspective_resolver": "Perspective resolver",
+          "scene_coordinator": "Scene coordinator",
+          "state_committer": "State committer"
+        },
+        "tabs": {
         "world": "World",
         "author": "Author",
         "configs": "Configurations",
@@ -418,6 +435,7 @@
         "url": "URL",
         "coverImage": "Cover image",
         "author": "Author",
+        "component": "Component",
         "llmConfig": "LLM configuration",
         "embeddingConfig": "Embedding configuration",
         "name": "Name",

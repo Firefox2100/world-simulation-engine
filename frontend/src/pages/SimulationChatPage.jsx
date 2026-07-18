@@ -3,6 +3,15 @@ import { Link, NavLink, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import {
+    fetchEmbeddingConfigs,
+    fetchLlmConfigs,
+    fetchSimulationEmbeddingConfigs,
+    fetchSimulationLlmConfigs,
+    setSimulationEmbeddingConfigs,
+    setSimulationLlmConfigs,
+    simulatorComponents,
+} from "@/api/configurations";
+import {
     fetchSimulation,
     fetchSimulationCharacterInventory,
     fetchSimulationCharacters,
@@ -11,6 +20,7 @@ import {
     fetchSimulationRecords,
     fetchSimulationWorldEntries,
     fetchSimulations,
+    getSimulationRunUrl,
     getSimulationCharacterImageUrl,
     getSimulationLocationImageUrl,
     getSimulationFactionImageUrl,
@@ -71,11 +81,43 @@ function useOptionalImage(imageUrl, fallbackSrc) {
 }
 
 function sortRecords(records) {
-    return [...records].sort((a, b) => a.turn_number - b.turn_number || a.id - b.id);
+    return [...records].sort((a, b) => a.turn_number - b.turn_number || String(a.id).localeCompare(String(b.id)));
 }
 
 function isUserRecord(record) {
     return record.type === "user_input";
+}
+
+function stageFromStateChunk(chunk) {
+    if (chunk?.memory_summary_proposal) {
+        return "memory_summarizer";
+    }
+
+    if (chunk?.committed_turn || chunk?.state_commit_proposal) {
+        return "state_committer";
+    }
+
+    if (chunk?.narration) {
+        return "narrator";
+    }
+
+    if (chunk?.character_action_coordination || chunk?.user_action_coordination) {
+        return "scene_coordinator";
+    }
+
+    if ((chunk?.character_action_validations ?? []).length > 0 || chunk?.user_action_validation) {
+        return "action_validator";
+    }
+
+    if ((chunk?.character_actions ?? []).length > 0) {
+        return "character_simulator";
+    }
+
+    if (chunk?.input_interpretation) {
+        return "input_interpreter";
+    }
+
+    return null;
 }
 
 function SimulationAvatar({ simulation, className = "chat-avatar" }) {
@@ -139,11 +181,13 @@ function ChatRecord({ record, simulation }) {
 }
 
 function TypingIndicator({ stageName }) {
+    const { t } = useTranslation();
+
     return (
         <span className="typing-state">
             {stageName ? (
                 <span className="typing-stage">
-                    {stageName} completed
+                    {t(`worldCreate.newEditor.components.${stageName}`, { defaultValue: stageName })}
                 </span>
             ) : null}
             <span className="typing-indicator" aria-label="Typing">
@@ -238,6 +282,28 @@ function formatLocation(location, emptyValue) {
     return [location.primary_location, location.detailed_location, location.scene]
         .filter(Boolean)
         .join(": ") || emptyValue;
+}
+
+function configLabel(config, fallback) {
+    return config?.name || config?.model || config?.id || fallback;
+}
+
+function emptyComponentConfigMap() {
+    return Object.fromEntries(simulatorComponents.map((component) => [component, ""]));
+}
+
+function componentConfigMapFromAssignments(assignments) {
+    return assignments.reduce((result, assignment) => {
+        result[assignment.component] = assignment.config?.id ?? "";
+        return result;
+    }, emptyComponentConfigMap());
+}
+
+function componentAssignmentsFromMap(configsByComponent) {
+    return simulatorComponents.map((component) => ({
+        component,
+        config_id: configsByComponent[component] || null,
+    }));
 }
 
 function DetailLink({ children, onClick }) {
@@ -517,6 +583,146 @@ function WorldEntryList({ entries, characters, onCharacterClick, onWorldEntryCli
     );
 }
 
+function SimulationConfigEditor({ simulationId }) {
+    const { t } = useTranslation();
+    const [llmConfigs, setLlmConfigs] = useState([]);
+    const [embeddingConfigs, setEmbeddingConfigs] = useState([]);
+    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(() => emptyComponentConfigMap());
+    const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(() => emptyComponentConfigMap());
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadConfigurations() {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const [llms, embeddings, llmAssignments, embeddingAssignments] = await Promise.all([
+                    fetchLlmConfigs(),
+                    fetchEmbeddingConfigs(),
+                    fetchSimulationLlmConfigs(simulationId),
+                    fetchSimulationEmbeddingConfigs(simulationId),
+                ]);
+
+                if (!cancelled) {
+                    setLlmConfigs(llms);
+                    setEmbeddingConfigs(embeddings);
+                    setLlmConfigsByComponent(componentConfigMapFromAssignments(llmAssignments));
+                    setEmbeddingConfigsByComponent(componentConfigMapFromAssignments(embeddingAssignments));
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadConfigurations();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [simulationId]);
+
+    function updateComponentConfig(kind, component, configId) {
+        const setter = kind === "llm" ? setLlmConfigsByComponent : setEmbeddingConfigsByComponent;
+
+        setter((current) => ({
+            ...current,
+            [component]: configId,
+        }));
+    }
+
+    async function saveConfigurations() {
+        try {
+            setSaving(true);
+            setNotice(null);
+            setError(null);
+            await Promise.all([
+                setSimulationLlmConfigs(simulationId, componentAssignmentsFromMap(llmConfigsByComponent)),
+                setSimulationEmbeddingConfigs(
+                    simulationId,
+                    componentAssignmentsFromMap(embeddingConfigsByComponent),
+                ),
+            ]);
+            setNotice(t("simulationDetails.configSaved"));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return <p className="status-text">{t("simulationDetails.configLoading")}</p>;
+    }
+
+    return (
+        <section className="world-editor-form">
+            {error ? (
+                <p className="status-text error-text">
+                    {t("simulationDetails.configError", { error })}
+                </p>
+            ) : null}
+            <div className="world-editor-config-matrix">
+                <div className="world-editor-config-matrix-header">
+                    <span>{t("worldCreate.newEditor.fields.component")}</span>
+                    <span>{t("worldCreate.newEditor.fields.llmConfig")}</span>
+                    <span>{t("worldCreate.newEditor.fields.embeddingConfig")}</span>
+                </div>
+                {simulatorComponents.map((component) => (
+                    <div className="world-editor-config-row" key={component}>
+                        <div className="world-editor-component-name">
+                            {t(`worldCreate.newEditor.components.${component}`, { defaultValue: component })}
+                        </div>
+                        <select
+                            className="single-line-input"
+                            value={llmConfigsByComponent[component] ?? ""}
+                            onChange={(event) => updateComponentConfig("llm", component, event.target.value)}
+                        >
+                            <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                            {llmConfigs.map((config) => (
+                                <option key={config.id} value={config.id}>
+                                    {configLabel(config, config.id)}
+                                </option>
+                            ))}
+                        </select>
+                        <select
+                            className="single-line-input"
+                            value={embeddingConfigsByComponent[component] ?? ""}
+                            onChange={(event) =>
+                                updateComponentConfig("embedding", component, event.target.value)
+                            }
+                        >
+                            <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                            {embeddingConfigs.map((config) => (
+                                <option key={config.id} value={config.id}>
+                                    {configLabel(config, config.id)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                ))}
+            </div>
+            {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
+            <div className="modal-actions inline-actions">
+                <button type="button" className="primary-button" disabled={saving} onClick={saveConfigurations}>
+                    {saving ? t("simulationDetails.configSaving") : t("simulationDetails.saveConfigurations")}
+                </button>
+            </div>
+        </section>
+    );
+}
+
 function SimulationDetailsModal({
     simulation,
     characters,
@@ -589,6 +795,8 @@ function SimulationDetailsModal({
                 ? selectedFaction.name
                 : activeSection === "worldEntries"
                   ? t("simulationDetails.tabs.worldEntries")
+                  : activeSection === "configs"
+                    ? t("simulationDetails.tabs.configs")
                   : simulation.name;
 
     const basicRows = [
@@ -692,6 +900,13 @@ function SimulationDetailsModal({
                     >
                         {t("simulationDetails.tabs.worldEntries")}
                     </button>
+                    <button
+                        type="button"
+                        className={`simulation-details-nav-item${activeSection === "configs" ? " active" : ""}`}
+                        onClick={() => onActiveSectionChange("configs")}
+                    >
+                        {t("simulationDetails.tabs.configs")}
+                    </button>
                 </aside>
 
                 <section className="simulation-details-content">
@@ -762,7 +977,9 @@ function SimulationDetailsModal({
                             </div>
                         ) : null}
 
-                        {activeSection === "worldEntries" ? (
+                        {activeSection === "configs" ? (
+                            <SimulationConfigEditor simulationId={simulation.id} />
+                        ) : activeSection === "worldEntries" ? (
                             <WorldEntryList
                                 entries={worldEntries}
                                 characters={characters}
@@ -1130,7 +1347,6 @@ export function SimulationChatPage() {
                             const latestRecords = await fetchSimulationRecords({
                                 simulationId: simulation.id,
                                 limit: 1,
-                                startFrom: null,
                             });
                             const latestRecord = sortRecords(latestRecords).at(-1);
 
@@ -1175,7 +1391,6 @@ export function SimulationChatPage() {
                 const data = await fetchSimulationRecords({
                     simulationId,
                     limit: recordLimit,
-                    startFrom: null,
                 });
 
                 if (!ignore) {
@@ -1251,6 +1466,24 @@ export function SimulationChatPage() {
         eventSourceRef.current = null;
     }
 
+    async function refreshSimulationTurns(id = simulationId) {
+        if (!id) {
+            return;
+        }
+
+        const data = await fetchSimulationRecords({
+            simulationId: id,
+            limit: recordLimit,
+        });
+        const sortedTurns = sortRecords(data);
+
+        setRecords(sortedTurns);
+        setPreviews((current) => ({
+            ...current,
+            [id]: sortedTurns.at(-1)?.narration ?? "",
+        }));
+    }
+
     function finishRunStream({ runId, error = null }) {
         closeRunStream();
         const finalError = error ?? streamErrorRef.current;
@@ -1266,21 +1499,31 @@ export function SimulationChatPage() {
                 error: finalError,
             };
         });
+
+        refreshSimulationTurns()
+            .then(() => {
+                if (!finalError) {
+                    setStreamingRecord((current) => (current?.runId === runId ? null : current));
+                }
+            })
+            .catch((err) => {
+                setRecordError(err.message);
+            });
     }
 
     function connectRunEvents(runId) {
         closeRunStream();
         streamErrorRef.current = null;
 
-        const eventSource = new EventSource(`/api/simulations/runs/${runId}/events`);
+        const eventSource = new EventSource(getSimulationRunUrl({ simulationId, threadId: runId }));
         eventSourceRef.current = eventSource;
 
-        eventSource.addEventListener("token", (event) => {
+        eventSource.addEventListener("chunk", (event) => {
             try {
-                const payload = JSON.parse(event.data);
-                const node = payload.metadata?.langgraph_node;
+                const chunk = JSON.parse(event.data);
+                const stageName = stageFromStateChunk(chunk);
 
-                if (typeof node === "string" && node.startsWith("narrate_")) {
+                if (stageName) {
                     setStreamingRecord((current) => {
                         if (!current || current.runId !== runId) {
                             return current;
@@ -1288,7 +1531,8 @@ export function SimulationChatPage() {
 
                         return {
                             ...current,
-                            message: `${current.message}${payload.message ?? ""}`,
+                            stageName,
+                            message: chunk.narration ?? current.message,
                         };
                     });
                 }
@@ -1307,34 +1551,36 @@ export function SimulationChatPage() {
             }
         });
 
-        eventSource.addEventListener("stage_update", (event) => {
+        eventSource.addEventListener("status", (event) => {
             try {
                 const payload = JSON.parse(event.data);
-                const stageName = Object.keys(payload).at(-1);
-
-                if (stageName) {
-                    setStreamingRecord((current) => {
-                        if (!current || current.runId !== runId || current.message.length > 0) {
-                            return current;
-                        }
-
-                        return {
-                            ...current,
-                            stageName,
-                        };
-                    });
-                }
-            } catch {
-                // Stage updates are only progress hints; malformed progress data should not stop the run.
+                streamErrorRef.current = payload.message;
+                finishRunStream({
+                    runId,
+                    error: payload.message,
+                });
+            } catch (err) {
+                streamErrorRef.current = err.message;
+                finishRunStream({
+                    runId,
+                    error: err.message,
+                });
             }
         });
 
         eventSource.addEventListener("error", (event) => {
             if ("data" in event && event.data !== undefined) {
-                streamErrorRef.current = event.data;
+                let errorMessage = event.data;
+                try {
+                    const payload = JSON.parse(event.data);
+                    errorMessage = payload.message ?? event.data;
+                } catch {
+                    // Keep the raw stream error text.
+                }
+                streamErrorRef.current = errorMessage;
                 finishRunStream({
                     runId,
-                    error: event.data,
+                    error: errorMessage,
                 });
                 return;
             }

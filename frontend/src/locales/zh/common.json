@@ -97,8 +97,14 @@
       "characters": "角色",
       "locations": "地点",
       "factions": "阵营",
-      "worldEntries": "世界条目"
+      "worldEntries": "世界条目",
+      "configs": "配置"
     },
+    "configLoading": "正在加载配置...",
+    "configSaving": "正在保存...",
+    "configSaved": "配置已保存。",
+    "configError": "无法加载配置：{{error}}",
+    "saveConfigurations": "保存配置",
     "fields": {
       "id": "ID",
       "name": "名称",
@@ -377,8 +383,19 @@
       "emptySelect": "无",
       "editing": "正在编辑 {{name}}",
       "confirmDelete": "删除 {{name}}？",
-      "configEndpointMissing": "当前 API 尚未暴露世界级模型配置绑定接口。这里的选择器仅用于查看可用配置。",
-      "tabs": {
+        "configSaved": "配置已保存。",
+        "configEndpointMissing": "当前 API 尚未暴露世界级模型配置绑定接口。这里的选择器仅用于查看可用配置。",
+        "components": {
+          "action_validator": "行动校验",
+          "character_simulator": "角色模拟",
+          "input_interpreter": "输入解析",
+          "memory_summarizer": "记忆总结",
+          "narrator": "叙述",
+          "perspective_resolver": "视角解析",
+          "scene_coordinator": "场景协调",
+          "state_committer": "状态提交"
+        },
+        "tabs": {
         "world": "世界",
         "author": "作者",
         "configs": "配置",
@@ -418,6 +435,7 @@
         "url": "URL",
         "coverImage": "封面图片",
         "author": "作者",
+        "component": "组件",
         "llmConfig": "LLM 配置",
         "embeddingConfig": "嵌入配置",
         "name": "名称",

@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { fetchAuthors } from "@/api/authors";
-import { fetchEmbeddingConfigs, fetchLlmConfigs } from "@/api/configurations";
+import {
+    fetchEmbeddingConfigs,
+    fetchLlmConfigs,
+    fetchWorldEmbeddingConfigs,
+    fetchWorldLlmConfigs,
+    setWorldEmbeddingConfigs,
+    setWorldLlmConfigs,
+    simulatorComponents,
+} from "@/api/configurations";
 import { deleteCoverImage, getCoverImageUrl, setCoverImage } from "@/api/media";
 import { createWorld, updateWorld } from "@/api/worlds";
 import {
@@ -37,6 +45,15 @@ import {
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 
 const sections = ["world", "configs", "locations", "characters", "background", "items", "equipment", "containers", "stacks"];
+const entitySections = ["locations", "characters", "background", "items", "equipment", "containers", "stacks"];
+
+const entityDependencies = {
+    characters: ["locations"],
+    background: ["locations"],
+    equipment: ["locations", "characters", "containers"],
+    containers: ["locations", "characters", "items", "equipment", "containers"],
+    stacks: ["locations", "characters", "items", "containers"],
+};
 
 const requiredFields = {
     locations: ["name", "description"],
@@ -160,6 +177,24 @@ function worldPayload(form) {
     };
 }
 
+function emptyComponentConfigMap() {
+    return Object.fromEntries(simulatorComponents.map((component) => [component, ""]));
+}
+
+function componentConfigMapFromAssignments(assignments) {
+    return assignments.reduce((result, assignment) => {
+        result[assignment.component] = assignment.config?.id ?? "";
+        return result;
+    }, emptyComponentConfigMap());
+}
+
+function componentAssignmentsFromMap(configsByComponent) {
+    return simulatorComponents.map((component) => ({
+        component,
+        config_id: configsByComponent[component] || null,
+    }));
+}
+
 function hasValue(value) {
     if (typeof value === "boolean") {
         return true;
@@ -189,8 +224,8 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const [authors, setAuthors] = useState([]);
     const [llmConfigs, setLlmConfigs] = useState([]);
     const [embeddingConfigs, setEmbeddingConfigs] = useState([]);
-    const [selectedLlmConfigId, setSelectedLlmConfigId] = useState("");
-    const [selectedEmbeddingConfigId, setSelectedEmbeddingConfigId] = useState("");
+    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(() => emptyComponentConfigMap());
+    const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(() => emptyComponentConfigMap());
     const [locations, setLocations] = useState([]);
     const [characters, setCharacters] = useState([]);
     const [backgroundCharacters, setBackgroundCharacters] = useState([]);
@@ -201,7 +236,9 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
         Object.fromEntries(Object.keys(emptyForms).map((key) => [key, { ...emptyForms[key] }])),
     );
     const [editing, setEditing] = useState({});
-    const [loading, setLoading] = useState(Boolean(initialWorld?.id));
+    const [loadingSections, setLoadingSections] = useState({});
+    const [loadedSections, setLoadedSections] = useState({});
+    const [configConnectionsLoaded, setConfigConnectionsLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [configNotice, setConfigNotice] = useState(null);
@@ -210,6 +247,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
     const worldId = world?.id ?? initialWorld?.id ?? null;
     const worldFormValid = isWorldFormValid(worldForm);
+    const loading = Boolean(loadingSections[activeSection]);
 
     const lookups = useMemo(
         () => ({
@@ -248,56 +286,151 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
         loadGlobalOptions().catch((err) => setError(err.message));
     }, []);
 
-    const refreshWorldEntities = useCallback(async (id = worldId) => {
-        if (!id) {
-            return;
+    const setSectionData = useCallback((kind, data) => {
+        if (kind === "locations") {
+            setLocations(data);
+        } else if (kind === "characters") {
+            setCharacters(data);
+        } else if (kind === "background") {
+            setBackgroundCharacters(data);
+        } else if (kind === "items") {
+            setItems(data);
+        } else if (kind === "equipment") {
+            setEquipment(data);
+        } else if (kind === "containers") {
+            setContainers(data);
+        }
+    }, []);
+
+    const fetchSectionData = useCallback(async (kind, id) => {
+        if (kind === "locations") {
+            return fetchWorldLocations(id);
         }
 
-        try {
-            setLoading(true);
-            const [
-                author,
-                locationData,
-                characterData,
-                backgroundData,
-                itemData,
-                equipmentData,
-                containerData,
-            ] = await Promise.all([
-                fetchWorldAuthor(id).catch(() => null),
-                fetchWorldLocations(id),
-                fetchWorldCharacters(id),
-                fetchWorldBackgroundCharacters(id),
-                fetchWorldItems(id),
-                fetchWorldEquipment(id),
-                fetchWorldContainers(id),
-            ]);
-
-            setWorldForm((current) => ({ ...current, author_id: current.author_id || author?.id || "" }));
-            setLocations(locationData);
-            setCharacters(characterData);
-            setBackgroundCharacters(backgroundData);
-            setItems(itemData);
-            setEquipment(equipmentData);
-            setContainers(containerData);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
+        if (kind === "characters") {
+            return fetchWorldCharacters(id);
         }
-    }, [worldId]);
+
+        if (kind === "background") {
+            return fetchWorldBackgroundCharacters(id);
+        }
+
+        if (kind === "items") {
+            return fetchWorldItems(id);
+        }
+
+        if (kind === "equipment") {
+            return fetchWorldEquipment(id);
+        }
+
+        if (kind === "containers") {
+            return fetchWorldContainers(id);
+        }
+
+        return [];
+    }, []);
+
+    const loadEntitySection = useCallback(
+        async (kind, id = worldId, { force = false, includeDependencies = true } = {}) => {
+            if (!id || !entitySections.includes(kind)) {
+                return;
+            }
+
+            const dependencies = includeDependencies ? (entityDependencies[kind] ?? []) : [];
+            const sectionsToLoad = [...new Set([kind, ...dependencies])]
+                .filter((section) => section !== "stacks")
+                .filter((section) => force || !loadedSections[section]);
+
+            if (sectionsToLoad.length === 0) {
+                return;
+            }
+
+            setLoadingSections((current) => ({
+                ...current,
+                ...Object.fromEntries(sectionsToLoad.map((section) => [section, true])),
+            }));
+
+            try {
+                const results = await Promise.all(
+                    sectionsToLoad.map(async (section) => [section, await fetchSectionData(section, id)]),
+                );
+
+                results.forEach(([section, data]) => setSectionData(section, data));
+                setLoadedSections((current) => ({
+                    ...current,
+                    ...Object.fromEntries(sectionsToLoad.map((section) => [section, true])),
+                }));
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoadingSections((current) => ({
+                    ...current,
+                    ...Object.fromEntries(sectionsToLoad.map((section) => [section, false])),
+                }));
+            }
+        },
+        [fetchSectionData, loadedSections, setSectionData, worldId],
+    );
 
     useEffect(() => {
         if (!worldId) {
             return;
         }
 
-        const refreshTimer = window.setTimeout(() => {
-            refreshWorldEntities(worldId);
+        fetchWorldAuthor(worldId)
+            .then((author) => setWorldForm((current) => ({ ...current, author_id: current.author_id || author?.id || "" })))
+            .catch(() => {});
+    }, [worldId]);
+
+    useEffect(() => {
+        if (!entitySections.includes(activeSection)) {
+            return;
+        }
+
+        const loadTimer = window.setTimeout(() => {
+            loadEntitySection(activeSection);
         }, 0);
 
-        return () => window.clearTimeout(refreshTimer);
-    }, [refreshWorldEntities, worldId]);
+        return () => window.clearTimeout(loadTimer);
+    }, [activeSection, loadEntitySection]);
+
+    useEffect(() => {
+        if (activeSection !== "configs" || !worldId || configConnectionsLoaded) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadWorldConfigConnections() {
+            setLoadingSections((current) => ({ ...current, configs: true }));
+            try {
+                const [llmAssignments, embeddingAssignments] = await Promise.all([
+                    fetchWorldLlmConfigs(worldId),
+                    fetchWorldEmbeddingConfigs(worldId),
+                ]);
+
+                if (!cancelled) {
+                    setLlmConfigsByComponent(componentConfigMapFromAssignments(llmAssignments));
+                    setEmbeddingConfigsByComponent(componentConfigMapFromAssignments(embeddingAssignments));
+                    setConfigConnectionsLoaded(true);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoadingSections((current) => ({ ...current, configs: false }));
+                }
+            }
+        }
+
+        loadWorldConfigConnections();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeSection, configConnectionsLoaded, worldId]);
 
     function updateWorldField(field, value) {
         setWorldForm((current) => ({ ...current, [field]: value }));
@@ -310,6 +443,15 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                 ...current[kind],
                 [field]: value,
             },
+        }));
+    }
+
+    function updateComponentConfig(kind, component, configId) {
+        const setter = kind === "llm" ? setLlmConfigsByComponent : setEmbeddingConfigsByComponent;
+
+        setter((current) => ({
+            ...current,
+            [component]: configId,
         }));
     }
 
@@ -363,8 +505,15 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
         try {
             setSaving(true);
-            await ensureWorldSaved();
-            setConfigNotice(t("worldCreate.newEditor.configEndpointMissing"));
+            const id = await ensureWorldSaved();
+            await Promise.all(
+                [
+                    setWorldLlmConfigs(id, componentAssignmentsFromMap(llmConfigsByComponent)),
+                    setWorldEmbeddingConfigs(id, componentAssignmentsFromMap(embeddingConfigsByComponent)),
+                ],
+            );
+            setConfigConnectionsLoaded(true);
+            setConfigNotice(t("worldCreate.newEditor.configSaved"));
             setSaving(false);
         } catch (err) {
             setError(err.message);
@@ -411,7 +560,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                 savedEntity = await createWorldItemStack(id, form.item_id, form);
             }
 
-            await refreshWorldEntities(id);
+            await loadEntitySection(kind, id, { force: true, includeDependencies: false });
             if (savedEntity && kind !== "stacks") {
                 setEditing((current) => ({ ...current, [kind]: savedEntity }));
                 setForms((current) => ({ ...current, [kind]: makeEntityForm(kind, savedEntity) }));
@@ -446,7 +595,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
             } else if (kind === "containers") {
                 await deleteContainer(entity.id);
             }
-            await refreshWorldEntities();
+            await loadEntitySection(kind, worldId, { force: true, includeDependencies: false });
             setSaving(false);
         } catch (err) {
             setError(err.message);
@@ -590,8 +739,16 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
                         {activeSection === "configs" ? (
                             <section className="world-editor-form">
-                                <SelectField label={t("worldCreate.newEditor.fields.llmConfig")} value={selectedLlmConfigId} onChange={setSelectedLlmConfigId} options={llmConfigs} emptyLabel={t("worldCreate.newEditor.emptySelect")} />
-                                <SelectField label={t("worldCreate.newEditor.fields.embeddingConfig")} value={selectedEmbeddingConfigId} onChange={setSelectedEmbeddingConfigId} options={embeddingConfigs} emptyLabel={t("worldCreate.newEditor.emptySelect")} />
+                                <ComponentConfigMatrix
+                                    llmConfigs={llmConfigs}
+                                    embeddingConfigs={embeddingConfigs}
+                                    llmConfigsByComponent={llmConfigsByComponent}
+                                    embeddingConfigsByComponent={embeddingConfigsByComponent}
+                                    onChange={updateComponentConfig}
+                                />
+                                {configNotice ? (
+                                    <p className="simulation-details-empty-line">{configNotice}</p>
+                                ) : null}
                                 <div className="modal-actions inline-actions">
                                     <button type="button" className="primary-button" disabled={saving || !worldFormValid} onClick={saveConfigurations}>
                                         {saving ? t("worldCreate.saving") : t("worldCreate.newEditor.saveConfigurations")}
@@ -600,13 +757,6 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                                         {t("worldCreate.newEditor.done")}
                                     </button>
                                 </div>
-                                {configNotice ? (
-                                    <p className="simulation-details-empty-line">{configNotice}</p>
-                                ) : (
-                                    <p className="simulation-details-empty-line">
-                                    {t("worldCreate.newEditor.configEndpointMissing")}
-                                    </p>
-                                )}
                             </section>
                         ) : null}
 
@@ -910,6 +1060,57 @@ function SelectField({ label, value, onChange, options, emptyLabel = null, requi
                 ))}
             </select>
         </label>
+    );
+}
+
+function ComponentConfigMatrix({
+    llmConfigs,
+    embeddingConfigs,
+    llmConfigsByComponent,
+    embeddingConfigsByComponent,
+    onChange,
+}) {
+    const { t } = useTranslation();
+
+    return (
+        <div className="world-editor-config-matrix">
+            <div className="world-editor-config-matrix-header">
+                <span>{t("worldCreate.newEditor.fields.component")}</span>
+                <span>{t("worldCreate.newEditor.fields.llmConfig")}</span>
+                <span>{t("worldCreate.newEditor.fields.embeddingConfig")}</span>
+            </div>
+            {simulatorComponents.map((component) => (
+                <div className="world-editor-config-row" key={component}>
+                    <div className="world-editor-component-name">
+                        {t(`worldCreate.newEditor.components.${component}`, { defaultValue: component })}
+                    </div>
+                    <select
+                        className="single-line-input"
+                        value={llmConfigsByComponent[component] ?? ""}
+                        onChange={(event) => onChange("llm", component, event.target.value)}
+                    >
+                        <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                        {llmConfigs.map((config) => (
+                            <option key={config.id} value={config.id}>
+                                {labelFor(config, config.id)}
+                            </option>
+                        ))}
+                    </select>
+                    <select
+                        className="single-line-input"
+                        value={embeddingConfigsByComponent[component] ?? ""}
+                        onChange={(event) => onChange("embedding", component, event.target.value)}
+                    >
+                        <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                        {embeddingConfigs.map((config) => (
+                            <option key={config.id} value={config.id}>
+                                {labelFor(config, config.id)}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            ))}
+        </div>
     );
 }
 

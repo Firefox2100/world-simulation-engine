@@ -17,22 +17,19 @@ export async function fetchSimulation(simulationId) {
     return normalizeSimulation(await apiRequest(`/simulations/${simulationId}`));
 }
 
-export async function fetchSimulationRecords({ simulationId, limit = 50, startFrom = null }) {
+export async function fetchSimulationTurns({ simulationId, limit = 50, offset = 0 }) {
     const params = new URLSearchParams();
 
+    params.set("simulation_id", simulationId);
     params.set("limit", String(limit));
+    params.set("skip", String(offset));
 
-    if (startFrom !== null && startFrom !== undefined) {
-        params.set("start_from", String(startFrom));
-    }
+    const turns = await apiRequest(`/turns?${params.toString()}`);
+    return turns.map(normalizeTurn);
+}
 
-    const response = await fetch(`/api/simulations/${simulationId}/records?${params.toString()}`);
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch simulation records: ${response.status}`);
-    }
-
-    return response.json();
+export async function fetchSimulationRecords(options) {
+    return fetchSimulationTurns(options);
 }
 
 export async function fetchSimulationCharacters(simulationId) {
@@ -92,14 +89,15 @@ export async function deleteSimulation(simulationId) {
 }
 
 export async function sendSimulationInput({ simulationId, userInput }) {
+    const hasUserInput = userInput !== null && userInput !== undefined && String(userInput).trim().length > 0;
     const run = await apiRequest(`/simulations/${simulationId}/input`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            request_type: "user_input_generation",
-            user_input: userInput,
+            request_type: hasUserInput ? "user_input_generation" : "continue_generation",
+            user_input: hasUserInput ? userInput : null,
         }),
     });
 
@@ -107,6 +105,10 @@ export async function sendSimulationInput({ simulationId, userInput }) {
         ...run,
         run_id: run.run_id ?? run.thread_id,
     };
+}
+
+export function getSimulationRunUrl({ simulationId, threadId }) {
+    return apiUrl(`/simulations/${simulationId}/runs/${threadId}`);
 }
 
 export function getSimulationCoverUrl(simulationId) {
@@ -129,5 +131,13 @@ function normalizeSimulation(simulation) {
     return {
         ...simulation,
         description: simulation.description ?? "",
+    };
+}
+
+function normalizeTurn(turn) {
+    return {
+        ...turn,
+        turn_number: turn.sequence,
+        narration: turn.content,
     };
 }

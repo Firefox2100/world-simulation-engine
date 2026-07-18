@@ -2414,6 +2414,106 @@
         }
       }
     },
+    "/simulations/{simulation_id}/llm-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Simulation Llm Connections",
+        "operationId": "list_simulation_llm_connections_simulations__simulation_id__llm_connections_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentChatConfig"
+                  },
+                  "title": "Response List Simulation Llm Connections Simulations  Simulation Id  Llm Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Llm Connections",
+        "operationId": "set_simulation_llm_connections_simulations__simulation_id__llm_connections_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentChatConfig"
+                  },
+                  "title": "Response Set Simulation Llm Connections Simulations  Simulation Id  Llm Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/simulations/{simulation_id}/embedding-connection": {
       "put": {
         "tags": [
@@ -2575,6 +2675,656 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/embedding-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Simulation Embedding Connections",
+        "operationId": "list_simulation_embedding_connections_simulations__simulation_id__embedding_connections_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentEmbedConfig"
+                  },
+                  "title": "Response List Simulation Embedding Connections Simulations  Simulation Id  Embedding Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Embedding Connections",
+        "operationId": "set_simulation_embedding_connections_simulations__simulation_id__embedding_connections_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentEmbedConfig"
+                  },
+                  "title": "Response Set Simulation Embedding Connections Simulations  Simulation Id  Embedding Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/llm-connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Llm Connection",
+        "operationId": "set_world_llm_connection_worlds__world_id__llm_connection_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationModelConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OllamaChatModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpenAiChatModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "ollama": "#/components/schemas/OllamaChatModelConfig",
+                      "openai": "#/components/schemas/OpenAiChatModelConfig"
+                    }
+                  },
+                  "title": "Response Set World Llm Connection Worlds  World Id  Llm Connection Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get World Llm Connection",
+        "operationId": "get_world_llm_connection_worlds__world_id__llm_connection_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OllamaChatModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpenAiChatModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "ollama": "#/components/schemas/OllamaChatModelConfig",
+                      "openai": "#/components/schemas/OpenAiChatModelConfig"
+                    }
+                  },
+                  "title": "Response Get World Llm Connection Worlds  World Id  Llm Connection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete World Llm Connection",
+        "operationId": "delete_world_llm_connection_worlds__world_id__llm_connection_delete",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/llm-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List World Llm Connections",
+        "operationId": "list_world_llm_connections_worlds__world_id__llm_connections_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentChatConfig"
+                  },
+                  "title": "Response List World Llm Connections Worlds  World Id  Llm Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Llm Connections",
+        "operationId": "set_world_llm_connections_worlds__world_id__llm_connections_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentChatConfig"
+                  },
+                  "title": "Response Set World Llm Connections Worlds  World Id  Llm Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/embedding-connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Embedding Connection",
+        "operationId": "set_world_embedding_connection_worlds__world_id__embedding_connection_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationModelConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OllamaEmbedModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpenAiEmbedModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "ollama": "#/components/schemas/OllamaEmbedModelConfig",
+                      "openai": "#/components/schemas/OpenAiEmbedModelConfig"
+                    }
+                  },
+                  "title": "Response Set World Embedding Connection Worlds  World Id  Embedding Connection Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get World Embedding Connection",
+        "operationId": "get_world_embedding_connection_worlds__world_id__embedding_connection_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OllamaEmbedModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpenAiEmbedModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "ollama": "#/components/schemas/OllamaEmbedModelConfig",
+                      "openai": "#/components/schemas/OpenAiEmbedModelConfig"
+                    }
+                  },
+                  "title": "Response Get World Embedding Connection Worlds  World Id  Embedding Connection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete World Embedding Connection",
+        "operationId": "delete_world_embedding_connection_worlds__world_id__embedding_connection_delete",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/embedding-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List World Embedding Connections",
+        "operationId": "list_world_embedding_connections_worlds__world_id__embedding_connections_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentEmbedConfig"
+                  },
+                  "title": "Response List World Embedding Connections Worlds  World Id  Embedding Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Embedding Connections",
+        "operationId": "set_world_embedding_connections_worlds__world_id__embedding_connections_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentEmbedConfig"
+                  },
+                  "title": "Response Set World Embedding Connections Worlds  World Id  Embedding Connections Put"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -6153,6 +6903,326 @@
         }
       }
     },
+    "/landmarks": {
+      "get": {
+        "tags": [
+          "Landmark"
+        ],
+        "summary": "List Landmarks",
+        "operationId": "list_landmarks_landmarks_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by world",
+              "title": "World Id"
+            },
+            "description": "Optionally filter by world"
+          },
+          {
+            "name": "simulation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by simulation",
+              "title": "Simulation Id"
+            },
+            "description": "Optionally filter by simulation"
+          },
+          {
+            "name": "location_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by location",
+              "title": "Location Id"
+            },
+            "description": "Optionally filter by location"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Landmark"
+                  },
+                  "title": "Response List Landmarks Landmarks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/landmarks/{landmark_id}": {
+      "get": {
+        "tags": [
+          "Landmark"
+        ],
+        "summary": "Get Landmark",
+        "operationId": "get_landmark_landmarks__landmark_id__get",
+        "parameters": [
+          {
+            "name": "landmark_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Landmark"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Landmark"
+        ],
+        "summary": "Update Landmark",
+        "operationId": "update_landmark_landmarks__landmark_id__patch",
+        "parameters": [
+          {
+            "name": "landmark_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LandmarkUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Landmark"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Landmark"
+        ],
+        "summary": "Delete Landmark",
+        "operationId": "delete_landmark_landmarks__landmark_id__delete",
+        "parameters": [
+          {
+            "name": "landmark_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/landmarks/{landmark_id}/location": {
+      "put": {
+        "tags": [
+          "Landmark"
+        ],
+        "summary": "Set Landmark Location",
+        "operationId": "set_landmark_location_landmarks__landmark_id__location_put",
+        "parameters": [
+          {
+            "name": "landmark_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LandmarkLocationUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Landmark"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/locations/{location_id}/landmarks": {
+      "post": {
+        "tags": [
+          "Landmark"
+        ],
+        "summary": "Create Landmark",
+        "operationId": "create_landmark_locations__location_id__landmarks_post",
+        "parameters": [
+          {
+            "name": "location_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LandmarkCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Landmark"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/locations": {
       "get": {
         "tags": [
@@ -7990,6 +9060,390 @@
         }
       }
     },
+    "/memories": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "List Memories",
+        "operationId": "list_memories_memories_get",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by character",
+              "title": "Character Id"
+            },
+            "description": "Optionally filter by character"
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by event",
+              "title": "Event Id"
+            },
+            "description": "Optionally filter by event"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryAtom"
+                  },
+                  "title": "Response List Memories Memories Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Create Memory",
+        "operationId": "create_memory_memories_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAtom"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories/{memory_id}": {
+      "get": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Get Memory",
+        "operationId": "get_memory_memories__memory_id__get",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Memory Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAtom"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Update Memory",
+        "operationId": "update_memory_memories__memory_id__patch",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Memory Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAtom"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Delete Memory",
+        "operationId": "delete_memory_memories__memory_id__delete",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Memory Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories/{memory_id}/event": {
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Set Memory Event",
+        "operationId": "set_memory_event_memories__memory_id__event_put",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Memory Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryEventUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAtom"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memories/{memory_id}/characters": {
+      "put": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Set Memory Characters",
+        "operationId": "set_memory_characters_memories__memory_id__characters_put",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Memory Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCharacterRelationshipUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryAtom"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Memory"
+        ],
+        "summary": "Delete Memory Characters",
+        "operationId": "delete_memory_characters_memories__memory_id__characters_delete",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Memory Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryCharacterRelationshipDelete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/simulations": {
       "get": {
         "tags": [
@@ -8516,6 +9970,58 @@
                     "$ref": "#/components/schemas/Turn"
                   },
                   "title": "Response List Turns Turns Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/turns": {
+      "post": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "Create World Turn",
+        "operationId": "create_world_turn_worlds__world_id__turns_post",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Turn"
                 }
               }
             }
@@ -9651,6 +11157,118 @@
         "type": "object",
         "title": "ChatConfigUpdate",
         "description": "DTO model for updating chat model configs"
+      },
+      "ComponentChatConfig": {
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/ComponentType",
+            "description": "The component using the config"
+          },
+          "config": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OllamaChatModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAiChatModelConfig"
+              }
+            ],
+            "title": "Config",
+            "description": "The assigned chat model config",
+            "discriminator": {
+              "propertyName": "provider",
+              "mapping": {
+                "ollama": "#/components/schemas/OllamaChatModelConfig",
+                "openai": "#/components/schemas/OpenAiChatModelConfig"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "component",
+          "config"
+        ],
+        "title": "ComponentChatConfig",
+        "description": "DTO model for a component-specific chat config assignment"
+      },
+      "ComponentEmbedConfig": {
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/ComponentType",
+            "description": "The component using the config"
+          },
+          "config": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OllamaEmbedModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/OpenAiEmbedModelConfig"
+              }
+            ],
+            "title": "Config",
+            "description": "The assigned embedding model config",
+            "discriminator": {
+              "propertyName": "provider",
+              "mapping": {
+                "ollama": "#/components/schemas/OllamaEmbedModelConfig",
+                "openai": "#/components/schemas/OpenAiEmbedModelConfig"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "component",
+          "config"
+        ],
+        "title": "ComponentEmbedConfig",
+        "description": "DTO model for a component-specific embedding config assignment"
+      },
+      "ComponentModelConfigBatchUpdate": {
+        "properties": {
+          "assignments": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentModelConfigUpdate"
+            },
+            "type": "array",
+            "title": "Assignments",
+            "description": "The component assignments to update"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assignments"
+        ],
+        "title": "ComponentModelConfigBatchUpdate",
+        "description": "DTO model for replacing model config assignments across multiple components"
+      },
+      "ComponentModelConfigUpdate": {
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/ComponentType",
+            "description": "The component using the config"
+          },
+          "config_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Id",
+            "description": "The model config id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "component"
+        ],
+        "title": "ComponentModelConfigUpdate",
+        "description": "DTO model for a component-specific optional model config assignment"
       },
       "ComponentType": {
         "type": "string",
@@ -11911,6 +13529,95 @@
         "title": "ItemUpdate",
         "description": "DTO model for updating an item"
       },
+      "Landmark": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the landmark"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the landmark"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Description of the landmark"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "Landmark"
+      },
+      "LandmarkCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the landmark"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Description of the landmark"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "LandmarkCreate"
+      },
+      "LandmarkLocationUpdate": {
+        "properties": {
+          "location_id": {
+            "type": "string",
+            "title": "Location Id",
+            "description": "Location that contains the landmark"
+          }
+        },
+        "type": "object",
+        "required": [
+          "location_id"
+        ],
+        "title": "LandmarkLocationUpdate"
+      },
+      "LandmarkUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Name of the landmark"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Description of the landmark"
+          }
+        },
+        "type": "object",
+        "title": "LandmarkUpdate"
+      },
       "Location": {
         "properties": {
           "id": {
@@ -12036,6 +13743,276 @@
           "image/png"
         ],
         "title": "MediaType"
+      },
+      "MemoryAtom": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The unique identifier of the memory atom"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "A brief summary of the memory content"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords",
+            "description": "A list of keywords associated with the memory content, used for recall"
+          },
+          "embedding": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding",
+            "description": "The embedding of the keywords"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "keywords",
+          "embedding"
+        ],
+        "title": "MemoryAtom",
+        "description": "A memory atom is a recallable minimum unit of character memory, scoped to individual characters"
+      },
+      "MemoryCharacterLinkCreate": {
+        "properties": {
+          "character_id": {
+            "type": "string",
+            "title": "Character Id",
+            "description": "Character that remembers the memory"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "Confidence in the memory"
+          },
+          "salience": {
+            "$ref": "#/components/schemas/Salience",
+            "description": "Memory salience"
+          },
+          "behavioural_relevance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Behavioural Relevance",
+            "description": "Why the memory matters behaviourally"
+          },
+          "stance": {
+            "$ref": "#/components/schemas/MemoryStance",
+            "description": "How the character treats the memory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_id",
+          "confidence",
+          "salience",
+          "stance"
+        ],
+        "title": "MemoryCharacterLinkCreate"
+      },
+      "MemoryCharacterRelationshipDelete": {
+        "properties": {
+          "character_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Character Ids",
+            "description": "Character ids to unlink from the memory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_ids"
+        ],
+        "title": "MemoryCharacterRelationshipDelete"
+      },
+      "MemoryCharacterRelationshipUpdate": {
+        "properties": {
+          "character_links": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryCharacterLinkCreate"
+            },
+            "type": "array",
+            "title": "Character Links",
+            "description": "Characters that remember this memory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_links"
+        ],
+        "title": "MemoryCharacterRelationshipUpdate"
+      },
+      "MemoryCreate": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "A brief summary of the memory content"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords",
+            "description": "Keywords associated with the memory"
+          },
+          "embedding": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding",
+            "description": "Optional embedding of the keywords"
+          },
+          "event_id": {
+            "type": "string",
+            "title": "Event Id",
+            "description": "Event that supports this memory"
+          },
+          "support_type": {
+            "$ref": "#/components/schemas/MemorySupportType",
+            "description": "How the event supports this memory"
+          },
+          "character_links": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryCharacterLinkCreate"
+            },
+            "type": "array",
+            "title": "Character Links",
+            "description": "Characters that remember this memory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "summary",
+          "keywords",
+          "event_id",
+          "support_type",
+          "character_links"
+        ],
+        "title": "MemoryCreate"
+      },
+      "MemoryEventUpdate": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id",
+            "description": "Event that supports this memory"
+          },
+          "support_type": {
+            "$ref": "#/components/schemas/MemorySupportType",
+            "description": "How the event supports this memory"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "support_type"
+        ],
+        "title": "MemoryEventUpdate"
+      },
+      "MemoryStance": {
+        "type": "string",
+        "enum": [
+          "remember",
+          "infer",
+          "believe",
+          "doubt",
+          "deny",
+          "mistake"
+        ],
+        "title": "MemoryStance"
+      },
+      "MemorySupportType": {
+        "type": "string",
+        "enum": [
+          "direct",
+          "inferred",
+          "reported",
+          "contradicts"
+        ],
+        "title": "MemorySupportType"
+      },
+      "MemoryUpdate": {
+        "properties": {
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "A brief summary of the memory content"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords",
+            "description": "Keywords associated with the memory"
+          },
+          "embedding": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Embedding",
+            "description": "Optional embedding of the keywords"
+          }
+        },
+        "type": "object",
+        "title": "MemoryUpdate"
       },
       "OllamaChatModelConfig": {
         "properties": {
@@ -12373,6 +14350,16 @@
         "title": "OpenAiEmbedModelConfig",
         "description": "The specialised configuration for using an embedding model with OpenAI."
       },
+      "Salience": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "Salience"
+      },
       "Simulation": {
         "properties": {
           "id": {
@@ -12650,6 +14637,40 @@
           "start_time"
         ],
         "title": "Turn"
+      },
+      "TurnCreate": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence",
+            "description": "The sequence number of the turn, starting at 1"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TurnType",
+            "description": "The type of the turn"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content",
+            "description": "The final, visible content of this turn"
+          },
+          "start_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start Time",
+            "description": "The start time of the turn"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sequence",
+          "type",
+          "content",
+          "start_time"
+        ],
+        "title": "TurnCreate"
       },
       "TurnType": {
         "type": "string",

@@ -1005,6 +1005,37 @@ body {
     gap: 8px;
 }
 
+.world-editor-config-matrix {
+    display: grid;
+    gap: 8px;
+    overflow-x: auto;
+}
+
+.world-editor-config-matrix-header,
+.world-editor-config-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.25fr) minmax(180px, 1.25fr);
+    gap: 10px;
+    align-items: center;
+}
+
+.world-editor-config-matrix-header {
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.world-editor-config-row {
+    padding: 10px 0;
+    border-top: 1px solid #e5e7eb;
+}
+
+.world-editor-component-name {
+    color: #111827;
+    font-weight: 800;
+}
+
 .danger-button {
     border: 1px solid #fecaca;
     color: #b91c1c;
@@ -2323,6 +2354,14 @@ body {
     .form-field .single-line-input,
     .form-field .multi-line-input {
         grid-column: 1 / -1;
+    }
+
+    .world-editor-config-matrix-header {
+        display: none;
+    }
+
+    .world-editor-config-row {
+        grid-template-columns: 1fr;
     }
 
     .checkbox-grid {
