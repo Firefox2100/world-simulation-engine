@@ -73,6 +73,10 @@ async def test_chat_config_crud_and_connection_link(clean_neo4j):
     assert await store.get_chat(ollama_chat.id) == ollama_chat
     assert await store.link_connection(ollama_chat.id, connection.id) == connection
     assert await store.get_connection_by_source(ollama_chat.id) == connection
+    assert await store.unlink_connection(ollama_chat.id) is True
+    assert await store.get_connection_by_source(ollama_chat.id) is None
+    assert await store.unlink_connection(str(uuid4())) is False
+    assert await store.link_connection(ollama_chat.id, connection.id) == connection
 
     updated_chat = await store.update_chat(
         ollama_chat.id,
@@ -120,6 +124,9 @@ async def test_embed_config_crud_and_connection_link(clean_neo4j):
     assert await store.get_embed(ollama_embed.id) == ollama_embed
     assert await store.link_connection(ollama_embed.id, connection.id) == connection
     assert await store.get_connection_by_embed_source(ollama_embed.id) == connection
+    assert await store.unlink_connection(ollama_embed.id) is True
+    assert await store.get_connection_by_embed_source(ollama_embed.id) is None
+    assert await store.link_connection(ollama_embed.id, connection.id) == connection
 
     updated_embed = await store.update_embed(
         ollama_embed.id,
@@ -174,3 +181,9 @@ async def test_simulation_links_to_chat_and_embed_configs_by_component(clean_neo
     assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) == replacement_chat_config
     assert await store.link_embed(simulation.id, embed_config.id, ComponentType.CHARACTER_SIMULATOR) == embed_config
     assert await store.get_embed_by_source(simulation.id, ComponentType.CHARACTER_SIMULATOR) == embed_config
+    assert await store.unlink_chat(simulation.id, ComponentType.NARRATOR) is True
+    assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) is None
+    assert await store.unlink_chat(str(uuid4()), ComponentType.NARRATOR) is False
+    assert await store.unlink_embed(simulation.id, ComponentType.CHARACTER_SIMULATOR) is True
+    assert await store.get_embed_by_source(simulation.id, ComponentType.CHARACTER_SIMULATOR) is None
+    assert await store.unlink_embed(str(uuid4()), ComponentType.CHARACTER_SIMULATOR) is False

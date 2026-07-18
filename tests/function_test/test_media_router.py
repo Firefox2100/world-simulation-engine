@@ -182,11 +182,18 @@ def test_upload_fetch_and_select_cover_images(media_api):
 
     assert upload_response.status_code == 200
     media = upload_response.json()
+    second_media = _upload_media(client, filename="second.png").json()
     assert media["id"]
     assert media["type"] == "image/png"
     assert media["title"] == "Cover Image"
     assert media["filename"] == "cover-image"
     assert len(media["hash"]) == 64
+    assert client.get("/media").json() == [media, second_media]
+    assert client.get("/media", params={"type": "image/png"}).json() == [media, second_media]
+    assert client.get("/media", params={"limit": 1}).json() == [media]
+    assert client.get("/media", params={"limit": 1, "skip": 1}).json() == [second_media]
+    assert client.get("/media", params={"world_id": media_api.world.id}).json() == []
+    assert client.get("/media", params={"simulation_id": media_api.simulation.id}).json() == []
 
     fetch_response = client.get(f"/media/{media['id']}")
 
@@ -207,6 +214,24 @@ def test_upload_fetch_and_select_cover_images(media_api):
     assert world_cover_response.json() == media
     assert simulation_cover_response.status_code == 200
     assert simulation_cover_response.json() == media
+    assert client.get("/media", params={"world_id": media_api.world.id}).json() == [media]
+    assert client.get("/media", params={"simulation_id": media_api.simulation.id}).json() == [media]
+    assert client.get(
+        "/media",
+        params={
+            "world_id": media_api.world.id,
+            "simulation_id": media_api.simulation.id,
+        },
+    ).json() == [media]
+    assert client.get(
+        "/media",
+        params={
+            "world_id": media_api.world.id,
+            "type": "image/png",
+            "limit": 1,
+            "skip": 0,
+        },
+    ).json() == [media]
 
     get_world_cover_response = client.get(f"/worlds/{media_api.world.id}/cover-image")
     get_simulation_cover_response = client.get(f"/simulations/{media_api.simulation.id}/cover-image")
@@ -343,3 +368,11 @@ def test_media_endpoints_return_404_for_missing_resources(media_api):
     assert missing_media_delete_response.json()["detail"] == f"Media {missing_media_id} not found"
     assert missing_world_delete_cover_response.status_code == 404
     assert missing_world_delete_cover_response.json()["detail"] == f"World {missing_world_id} not found"
+
+
+def test_media_listing_rejects_invalid_pagination(media_api):
+    client = media_api.client
+
+    assert client.get("/media", params={"limit": 0}).status_code == 422
+    assert client.get("/media", params={"skip": -1}).status_code == 422
+    assert client.get("/media", params={"type": "text/plain"}).status_code == 422

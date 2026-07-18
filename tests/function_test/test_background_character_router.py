@@ -154,6 +154,31 @@ def test_create_list_get_update_and_delete_background_character(background_chara
     assert updated_character["id"] == simulation_character["id"]
     assert updated_character["name"] == "Updated Shopkeeper"
 
+    location_response = client.put(
+        f"/background-characters/{simulation_character['id']}/location",
+        json={
+            "location_id": background_character_api.location.id,
+            "position": "at the stall",
+        },
+    )
+    landmark_response = client.put(
+        f"/background-characters/{simulation_character['id']}/landmark",
+        json={"landmark_id": background_character_api.landmark.id},
+    )
+
+    assert location_response.status_code == 200
+    assert client.get(
+        "/background-characters",
+        params={"location_id": background_character_api.location.id},
+    ).json() == [location_response.json()]
+    assert landmark_response.status_code == 200
+    assert client.delete(f"/background-characters/{simulation_character['id']}/location").status_code == 204
+    assert client.delete(f"/background-characters/{simulation_character['id']}/landmark").status_code == 204
+    assert client.get(
+        "/background-characters",
+        params={"location_id": background_character_api.location.id},
+    ).json() == []
+
     delete_response = client.delete(f"/background-characters/{simulation_character['id']}")
 
     assert delete_response.status_code == 204
@@ -175,6 +200,16 @@ def test_background_character_endpoints_return_404_for_missing_resources(backgro
         json={"name": "Missing"},
     ).status_code == 404
     assert client.delete(f"/background-characters/{missing_character_id}").status_code == 404
+    assert client.put(
+        f"/background-characters/{missing_character_id}/location",
+        json={"location_id": background_character_api.location.id},
+    ).status_code == 404
+    assert client.put(
+        f"/background-characters/{missing_character_id}/landmark",
+        json={"landmark_id": background_character_api.landmark.id},
+    ).status_code == 404
+    assert client.delete(f"/background-characters/{missing_character_id}/location").status_code == 404
+    assert client.delete(f"/background-characters/{missing_character_id}/landmark").status_code == 404
     assert client.post(
         f"/worlds/{missing_world_id}/background-characters",
         json=background_character_payload(),

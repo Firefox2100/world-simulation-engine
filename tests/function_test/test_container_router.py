@@ -194,6 +194,77 @@ def test_create_list_get_update_and_delete_container(container_api):
     assert client.get("/containers", params={"holder_id": container_api.holder.id}).json() == [updated_container]
     assert client.get("/containers", params={"location_id": container_api.location.id}).json() == []
 
+    location_response = client.put(
+        f"/containers/{simulation_container['id']}/location",
+        json={
+            "location_id": container_api.location.id,
+            "position": "under the arch",
+        },
+    )
+    owner_response = client.put(
+        f"/containers/{simulation_container['id']}/owner",
+        json={"owner_id": container_api.owner.id},
+    )
+    holder_response = client.put(
+        f"/containers/{simulation_container['id']}/holder",
+        json={"holder_id": container_api.holder.id},
+    )
+
+    assert location_response.status_code == 200
+    assert client.get("/containers", params={"location_id": container_api.location.id}).json() == [
+        location_response.json()
+    ]
+    assert owner_response.status_code == 200
+    assert client.get("/containers", params={"owner_id": container_api.owner.id}).json() == [owner_response.json()]
+    assert holder_response.status_code == 200
+    assert client.get("/containers", params={"holder_id": container_api.holder.id}).json() == [
+        holder_response.json()
+    ]
+    assert client.delete(f"/containers/{simulation_container['id']}/location").status_code == 204
+    assert client.delete(f"/containers/{simulation_container['id']}/owner").status_code == 204
+    assert client.delete(f"/containers/{simulation_container['id']}/holder").status_code == 204
+
+    assert client.put(
+        f"/containers/{simulation_container['id']}/stacks",
+        json={"stack_ids": [container_api.stack.id]},
+    ).status_code == 200
+    assert client.put(
+        f"/containers/{simulation_container['id']}/equipment",
+        json={"equipment_ids": [container_api.equipment.id]},
+    ).status_code == 200
+    assert client.put(
+        f"/containers/{simulation_container['id']}/containers",
+        json={"container_ids": [container_api.child_container.id]},
+    ).status_code == 200
+    assert client.put(
+        f"/containers/{simulation_container['id']}/unlocking-items",
+        json={"item_ids": [container_api.item.id]},
+    ).status_code == 200
+
+    assert client.request(
+        "DELETE",
+        f"/containers/{simulation_container['id']}/stacks",
+        json={"stack_ids": [container_api.stack.id]},
+    ).status_code == 204
+    assert client.request(
+        "DELETE",
+        f"/containers/{simulation_container['id']}/equipment",
+        json={"equipment_ids": [container_api.equipment.id]},
+    ).status_code == 204
+    assert client.request(
+        "DELETE",
+        f"/containers/{simulation_container['id']}/containers",
+        json={"container_ids": [container_api.child_container.id]},
+    ).status_code == 204
+    assert client.request(
+        "DELETE",
+        f"/containers/{simulation_container['id']}/unlocking-items",
+        json={"item_ids": [container_api.item.id]},
+    ).status_code == 204
+    assert client.get(f"/containers/{simulation_container['id']}/equipment").json() == []
+    assert client.get(f"/containers/{simulation_container['id']}/containers").json() == []
+    assert client.get(f"/containers/{simulation_container['id']}/unlocking-items").json() == []
+
     delete_response = client.delete(f"/containers/{simulation_container['id']}")
 
     assert delete_response.status_code == 204
@@ -211,6 +282,27 @@ def test_container_endpoints_return_404_for_missing_resources(container_api):
     assert client.get(f"/containers/{missing_container_id}").status_code == 404
     assert client.patch(f"/containers/{missing_container_id}", json={"state": ContainerState.OPEN}).status_code == 404
     assert client.delete(f"/containers/{missing_container_id}").status_code == 404
+    assert client.put(
+        f"/containers/{missing_container_id}/location",
+        json={"location_id": container_api.location.id},
+    ).status_code == 404
+    assert client.put(
+        f"/containers/{missing_container_id}/owner",
+        json={"owner_id": container_api.owner.id},
+    ).status_code == 404
+    assert client.put(
+        f"/containers/{missing_container_id}/holder",
+        json={"holder_id": container_api.holder.id},
+    ).status_code == 404
+    assert client.delete(f"/containers/{missing_container_id}/location").status_code == 404
+    assert client.delete(f"/containers/{missing_container_id}/owner").status_code == 404
+    assert client.delete(f"/containers/{missing_container_id}/holder").status_code == 404
+    assert client.put(f"/containers/{missing_container_id}/stacks", json={"stack_ids": []}).status_code == 404
+    assert client.request(
+        "DELETE",
+        f"/containers/{missing_container_id}/stacks",
+        json={"stack_ids": []},
+    ).status_code == 404
     assert client.post(f"/worlds/{missing_world_id}/containers", json=container_payload()).status_code == 404
     assert client.post(f"/simulations/{missing_simulation_id}/containers", json=container_payload()).status_code == 404
     assert client.post(

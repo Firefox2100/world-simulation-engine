@@ -167,6 +167,12 @@ def test_llm_config_crud_and_connection_link(config_api):
     assert link_response.status_code == 200
     assert link_response.json() == connection
     assert client.get(f"/config/llm/{ollama_chat['id']}/connection").json() == connection
+    assert client.delete(f"/config/llm/{ollama_chat['id']}/connection").status_code == 204
+    assert client.get(f"/config/llm/{ollama_chat['id']}/connection").status_code == 404
+    assert client.put(
+        f"/config/llm/{ollama_chat['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
 
     update_response = client.patch(
         f"/config/llm/{ollama_chat['id']}",
@@ -210,6 +216,12 @@ def test_embedding_config_crud_and_connection_link(config_api):
     assert link_response.status_code == 200
     assert link_response.json() == connection
     assert client.get(f"/config/embeddings/{ollama_embed['id']}/connection").json() == connection
+    assert client.delete(f"/config/embeddings/{ollama_embed['id']}/connection").status_code == 204
+    assert client.get(f"/config/embeddings/{ollama_embed['id']}/connection").status_code == 404
+    assert client.put(
+        f"/config/embeddings/{ollama_embed['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
 
     update_response = client.patch(
         f"/config/embeddings/{ollama_embed['id']}",
@@ -270,6 +282,22 @@ def test_simulation_model_config_links(config_api):
         f"/simulations/{config_api.simulation.id}/embedding-connection",
         params={"component": ComponentType.CHARACTER_SIMULATOR},
     ).json() == embed
+    assert client.delete(
+        f"/simulations/{config_api.simulation.id}/llm-connection",
+        params={"component": ComponentType.NARRATOR},
+    ).status_code == 204
+    assert client.get(
+        f"/simulations/{config_api.simulation.id}/llm-connection",
+        params={"component": ComponentType.NARRATOR},
+    ).status_code == 404
+    assert client.delete(
+        f"/simulations/{config_api.simulation.id}/embedding-connection",
+        params={"component": ComponentType.CHARACTER_SIMULATOR},
+    ).status_code == 204
+    assert client.get(
+        f"/simulations/{config_api.simulation.id}/embedding-connection",
+        params={"component": ComponentType.CHARACTER_SIMULATOR},
+    ).status_code == 404
 
 
 def test_config_endpoints_return_404_for_missing_resources(config_api):
@@ -292,6 +320,7 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
         404
     assert client.put(f"/config/llm/{chat['id']}/connection", json={"connection_id": missing_id}).status_code == 404
     assert client.get(f"/config/llm/{missing_id}/connection").status_code == 404
+    assert client.delete(f"/config/llm/{missing_id}/connection").status_code == 404
     assert client.put(
         f"/config/embeddings/{missing_id}/connection",
         json={"connection_id": connection["id"]},
@@ -301,6 +330,7 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
         json={"connection_id": missing_id},
     ).status_code == 404
     assert client.get(f"/config/embeddings/{missing_id}/connection").status_code == 404
+    assert client.delete(f"/config/embeddings/{missing_id}/connection").status_code == 404
     assert client.put(
         f"/simulations/{missing_id}/llm-connection",
         json={
@@ -319,6 +349,10 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
         f"/simulations/{missing_id}/llm-connection",
         params={"component": ComponentType.NARRATOR},
     ).status_code == 404
+    assert client.delete(
+        f"/simulations/{missing_id}/llm-connection",
+        params={"component": ComponentType.NARRATOR},
+    ).status_code == 404
     assert client.put(
         f"/simulations/{missing_id}/embedding-connection",
         json={
@@ -334,6 +368,10 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
         },
     ).status_code == 404
     assert client.get(
+        f"/simulations/{missing_id}/embedding-connection",
+        params={"component": ComponentType.CHARACTER_SIMULATOR},
+    ).status_code == 404
+    assert client.delete(
         f"/simulations/{missing_id}/embedding-connection",
         params={"component": ComponentType.CHARACTER_SIMULATOR},
     ).status_code == 404

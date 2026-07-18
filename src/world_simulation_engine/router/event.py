@@ -70,6 +70,21 @@ class EventUpdate(BaseModel):
     )
 
 
+class EventTurnRelationshipUpdate(BaseModel):
+    turn_ids: list[str] = Field(..., description="Turns this event is part of")
+
+
+class EventCharacterRelationshipUpdate(BaseModel):
+    involved_characters: list[EventCharacterInvolvement] = Field(
+        ...,
+        description="Characters involved in the event",
+    )
+
+
+class EventCharacterRelationshipDelete(BaseModel):
+    character_ids: list[str] = Field(..., description="Character ids to remove from the event")
+
+
 async def validate_event_relationships(
         turn_ids: list[str] | None,
         involved_characters: list[EventCharacterInvolvement] | None,
@@ -119,6 +134,14 @@ async def apply_event_relationships(
     return event
 
 
+async def validate_event_exists(event_id: str, db: db_dep):
+    if not await db.event.get_event(event_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event {event_id} not found",
+        )
+
+
 @event_router.get("/events", response_model=list[Event])
 async def list_events(
         db: db_dep,
@@ -141,6 +164,95 @@ async def get_event(event_id: str, db: db_dep):
         )
 
     return event
+
+
+@event_router.put("/events/{event_id}/turns", response_model=Event)
+async def set_event_turns(
+        event_id: str,
+        turn_data: EventTurnRelationshipUpdate,
+        db: db_dep,
+):
+    if not turn_data.turn_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Event must be attached to at least one turn",
+        )
+    await validate_event_exists(event_id, db)
+    await validate_event_relationships(turn_data.turn_ids, None, db)
+
+    event = await db.event.replace_event_turns(event_id, turn_data.turn_ids)
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event {event_id} not found",
+        )
+
+    return event
+
+
+@event_router.delete("/events/{event_id}/turns", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_event_turns(
+        event_id: str,
+        turn_data: EventTurnRelationshipUpdate,
+        db: db_dep,
+):
+    await validate_event_exists(event_id, db)
+    await validate_event_relationships(turn_data.turn_ids, None, db)
+
+    deleted = await db.event.remove_event_turns(event_id, turn_data.turn_ids)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Event must be attached to at least one turn",
+        )
+
+
+@event_router.put("/events/{event_id}/characters", response_model=Event)
+async def set_event_characters(
+        event_id: str,
+        character_data: EventCharacterRelationshipUpdate,
+        db: db_dep,
+):
+    await validate_event_exists(event_id, db)
+    await validate_event_relationships(None, character_data.involved_characters, db)
+
+    event = await db.event.replace_character_involvements(
+        event_id,
+        [
+            involvement.model_dump()
+            for involvement in character_data.involved_characters
+        ],
+    )
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event {event_id} not found",
+        )
+
+    return event
+
+
+@event_router.delete("/events/{event_id}/characters", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_event_characters(
+        event_id: str,
+        character_data: EventCharacterRelationshipDelete,
+        db: db_dep,
+):
+    await validate_event_exists(event_id, db)
+    for character_id in character_data.character_ids:
+        character = await db.character.get_character(character_id)
+        if not character:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Character {character_id} not found",
+            )
+
+    deleted = await db.event.remove_character_involvements(event_id, character_data.character_ids)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Event {event_id} not found",
+        )
 
 
 @event_router.post("/events", response_model=Event)

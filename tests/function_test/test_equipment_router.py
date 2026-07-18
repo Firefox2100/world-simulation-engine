@@ -174,6 +174,43 @@ def test_create_list_get_update_and_delete_equipment(equipment_api):
     assert client.get("/equipment", params={"holder_id": equipment_api.holder.id}).json() == [updated_equipment]
     assert client.get("/equipment", params={"location_id": equipment_api.location.id}).json() == []
 
+    location_response = client.put(
+        f"/equipment/{simulation_equipment['id']}/location",
+        json={
+            "location_id": equipment_api.location.id,
+            "position": "beside the path",
+        },
+    )
+    owner_response = client.put(
+        f"/equipment/{simulation_equipment['id']}/owner",
+        json={"owner_id": equipment_api.owner.id},
+    )
+    holder_response = client.put(
+        f"/equipment/{simulation_equipment['id']}/holder",
+        json={
+            "holder_id": equipment_api.holder.id,
+            "equipped": True,
+            "equipped_position": "belt",
+        },
+    )
+
+    assert location_response.status_code == 200
+    assert client.get("/equipment", params={"location_id": equipment_api.location.id}).json() == [
+        location_response.json()
+    ]
+    assert owner_response.status_code == 200
+    assert client.get("/equipment", params={"owner_id": equipment_api.owner.id}).json() == [owner_response.json()]
+    assert holder_response.status_code == 200
+    assert client.get("/equipment", params={"holder_id": equipment_api.holder.id}).json() == [
+        holder_response.json()
+    ]
+    assert client.delete(f"/equipment/{simulation_equipment['id']}/location").status_code == 204
+    assert client.delete(f"/equipment/{simulation_equipment['id']}/owner").status_code == 204
+    assert client.delete(f"/equipment/{simulation_equipment['id']}/holder").status_code == 204
+    assert client.get("/equipment", params={"location_id": equipment_api.location.id}).json() == []
+    assert client.get("/equipment", params={"owner_id": equipment_api.owner.id}).json() == []
+    assert client.get("/equipment", params={"holder_id": equipment_api.holder.id}).json() == []
+
     delete_response = client.delete(f"/equipment/{simulation_equipment['id']}")
 
     assert delete_response.status_code == 204
@@ -192,6 +229,21 @@ def test_equipment_endpoints_return_404_for_missing_resources(equipment_api):
     assert client.get(f"/equipment/{missing_equipment_id}").status_code == 404
     assert client.patch(f"/equipment/{missing_equipment_id}", json={"quality": "missing"}).status_code == 404
     assert client.delete(f"/equipment/{missing_equipment_id}").status_code == 404
+    assert client.put(
+        f"/equipment/{missing_equipment_id}/location",
+        json={"location_id": equipment_api.location.id},
+    ).status_code == 404
+    assert client.put(
+        f"/equipment/{missing_equipment_id}/owner",
+        json={"owner_id": equipment_api.owner.id},
+    ).status_code == 404
+    assert client.put(
+        f"/equipment/{missing_equipment_id}/holder",
+        json={"holder_id": equipment_api.holder.id},
+    ).status_code == 404
+    assert client.delete(f"/equipment/{missing_equipment_id}/location").status_code == 404
+    assert client.delete(f"/equipment/{missing_equipment_id}/owner").status_code == 404
+    assert client.delete(f"/equipment/{missing_equipment_id}/holder").status_code == 404
     assert client.post(f"/worlds/{missing_world_id}/equipment", json=equipment_payload()).status_code == 404
     assert client.post(f"/simulations/{missing_simulation_id}/equipment", json=equipment_payload()).status_code == 404
     assert client.post(

@@ -287,6 +287,48 @@ class ContainerStore:
 
         return container
 
+    async def remove_location(self, container_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (container)-[present:PRESENT_IN]->(:Location)
+            DELETE present
+            RETURN count(container) AS container_count
+            """,
+            parameters_={"container_id": container_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
+
+    async def remove_owner(self, container_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (owner)-[owns:OWNS]->(container)
+            DELETE owns
+            RETURN count(container) AS container_count
+            """,
+            parameters_={"container_id": container_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
+
+    async def remove_holder(self, container_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (holder)-[holds:HOLDS]->(container)
+            DELETE holds
+            RETURN count(container) AS container_count
+            """,
+            parameters_={"container_id": container_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
+
     async def put_stack_in_container(self,
                                      stack_id: str,
                                      container_id: str,
@@ -454,6 +496,228 @@ class ContainerStore:
                 "container_id": container_id,
             },
         )
+
+    async def replace_held_stacks(self,
+                                  container_id: str,
+                                  stack_ids: list[str],
+                                  ) -> Container | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (container)-[existing:HOLDS]->(:ItemStack)
+            DELETE existing
+            WITH container
+            CALL {
+                WITH container
+                UNWIND $stack_ids AS stack_id
+                MATCH (stack:ItemStack {id: stack_id})
+                OPTIONAL MATCH (holder)-[hold:HOLDS]->(stack)
+                OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(stack)
+                DELETE hold, present
+                MERGE (container)-[:HOLDS]->(stack)
+                RETURN count(*) AS linked_count
+            }
+            RETURN container
+            """,
+            parameters_={
+                "container_id": container_id,
+                "stack_ids": stack_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.container_from_node(record["container"]) if record else None
+
+    async def replace_held_equipment(self,
+                                     container_id: str,
+                                     equipment_ids: list[str],
+                                     ) -> Container | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (container)-[existing:HOLDS]->(:Equipment)
+            DELETE existing
+            WITH container
+            CALL {
+                WITH container
+                UNWIND $equipment_ids AS equipment_id
+                MATCH (equipment:Equipment {id: equipment_id})
+                OPTIONAL MATCH (holder)-[hold:HOLDS|EQUIPS]->(equipment)
+                OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(equipment)
+                DELETE hold, present
+                MERGE (container)-[:HOLDS]->(equipment)
+                RETURN count(*) AS linked_count
+            }
+            RETURN container
+            """,
+            parameters_={
+                "container_id": container_id,
+                "equipment_ids": equipment_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.container_from_node(record["container"]) if record else None
+
+    async def remove_held_equipment(self,
+                                    container_id: str,
+                                    equipment_ids: list[str],
+                                    ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            CALL {
+                WITH container
+                UNWIND $equipment_ids AS equipment_id
+                OPTIONAL MATCH (container)-[hold:HOLDS]->(:Equipment {id: equipment_id})
+                DELETE hold
+                RETURN count(*) AS removed_count
+            }
+            RETURN count(container) AS container_count
+            """,
+            parameters_={
+                "container_id": container_id,
+                "equipment_ids": equipment_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
+
+    async def remove_held_stacks(self,
+                                 container_id: str,
+                                 stack_ids: list[str],
+                                 ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            CALL {
+                WITH container
+                UNWIND $stack_ids AS stack_id
+                OPTIONAL MATCH (container)-[hold:HOLDS]->(:ItemStack {id: stack_id})
+                DELETE hold
+                RETURN count(*) AS removed_count
+            }
+            RETURN count(container) AS container_count
+            """,
+            parameters_={
+                "container_id": container_id,
+                "stack_ids": stack_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
+
+    async def replace_held_containers(self,
+                                      container_id: str,
+                                      held_container_ids: list[str],
+                                      ) -> Container | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (container)-[existing:HOLDS]->(:Container)
+            DELETE existing
+            WITH container
+            CALL {
+                WITH container
+                UNWIND $held_container_ids AS held_container_id
+                MATCH (held:Container {id: held_container_id})
+                WHERE held <> container
+                OPTIONAL MATCH (holder)-[hold:HOLDS]->(held)
+                OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(held)
+                DELETE hold, present
+                MERGE (container)-[:HOLDS]->(held)
+                RETURN count(*) AS linked_count
+            }
+            RETURN container
+            """,
+            parameters_={
+                "container_id": container_id,
+                "held_container_ids": held_container_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.container_from_node(record["container"]) if record else None
+
+    async def remove_held_containers(self,
+                                     container_id: str,
+                                     held_container_ids: list[str],
+                                     ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            CALL {
+                WITH container
+                UNWIND $held_container_ids AS held_container_id
+                OPTIONAL MATCH (container)-[hold:HOLDS]->(:Container {id: held_container_id})
+                DELETE hold
+                RETURN count(*) AS removed_count
+            }
+            RETURN count(container) AS container_count
+            """,
+            parameters_={
+                "container_id": container_id,
+                "held_container_ids": held_container_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
+
+    async def replace_unlocking_items(self,
+                                      container_id: str,
+                                      item_ids: list[str],
+                                      ) -> Container | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            OPTIONAL MATCH (:Item)-[existing:UNLOCKS]->(container)
+            DELETE existing
+            WITH container
+            CALL {
+                WITH container
+                UNWIND $item_ids AS item_id
+                MATCH (item:Item {id: item_id})
+                MERGE (item)-[:UNLOCKS]->(container)
+                RETURN count(*) AS linked_count
+            }
+            RETURN container
+            """,
+            parameters_={
+                "container_id": container_id,
+                "item_ids": item_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.container_from_node(record["container"]) if record else None
+
+    async def remove_unlocking_items(self,
+                                     container_id: str,
+                                     item_ids: list[str],
+                                     ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $container_id})
+            CALL {
+                WITH container
+                UNWIND $item_ids AS item_id
+                OPTIONAL MATCH (:Item {id: item_id})-[unlocks:UNLOCKS]->(container)
+                DELETE unlocks
+                RETURN count(*) AS removed_count
+            }
+            RETURN count(container) AS container_count
+            """,
+            parameters_={
+                "container_id": container_id,
+                "item_ids": item_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["container_count"])
 
     async def get_unlocking_items(self,
                                   container_id: str,

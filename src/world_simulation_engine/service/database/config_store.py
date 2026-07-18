@@ -194,6 +194,22 @@ class ConfigStore:
 
         return _connection_from_node(record["c"])
 
+    async def unlink_connection(self, source_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig {
+                id: $source_id
+            })
+            OPTIONAL MATCH (source)-[uses:USES]->(:ConnectionConfig)
+            DELETE uses
+            RETURN count(source) AS source_count
+            """,
+            parameters_={"source_id": source_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["source_count"])
+
     async def update_connection(self,
                                 config_id: str,
                                 properties: dict,
@@ -385,6 +401,28 @@ class ConfigStore:
 
         return _chat_from_node(record["config"], record["config_labels"])
 
+    async def unlink_chat(self,
+                          source_id: str,
+                          component: ComponentType,
+                          ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (source)-[uses:USES {component: $component}]->(
+                :OllamaChatModelConfig|OpenAiChatModelConfig
+            )
+            DELETE uses
+            RETURN count(source) AS source_count
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["source_count"])
+
     async def update_chat(self,
                           config_id: str,
                           properties: dict,
@@ -545,6 +583,28 @@ class ConfigStore:
             return None
 
         return _embed_from_node(record["config"], record["config_labels"])
+
+    async def unlink_embed(self,
+                           source_id: str,
+                           component: ComponentType,
+                           ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (source)-[uses:USES {component: $component}]->(
+                :OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            )
+            DELETE uses
+            RETURN count(source) AS source_count
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["source_count"])
 
     async def update_embed(self,
                            config_id: str,

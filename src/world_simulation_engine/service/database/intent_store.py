@@ -181,6 +181,30 @@ class IntentStore:
 
         return self.intent_from_node(record["intent"])
 
+    async def move_intent_to_character(self,
+                                       intent_id: str,
+                                       character_id: str,
+                                       ) -> Intent | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            MATCH (character:Character {id: $character_id})
+            OPTIONAL MATCH (:Character)-[existing:HOLDS]->(intent)
+            DELETE existing
+            MERGE (character)-[:HOLDS]->(intent)
+            RETURN intent
+            """,
+            parameters_={
+                "intent_id": intent_id,
+                "character_id": character_id,
+            },
+        )
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.intent_from_node(record["intent"])
+
     async def add_event_contribution(self,
                                      event_id: str,
                                      intent_id: str,
@@ -203,6 +227,61 @@ class IntentStore:
 
         return self.intent_from_node(record["intent"])
 
+    async def replace_event_contributions(self,
+                                          intent_id: str,
+                                          event_ids: list[str],
+                                          ) -> Intent | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            OPTIONAL MATCH (:Event)-[existing:CONTRIBUTES_TO]->(intent)
+            DELETE existing
+            WITH intent
+            CALL {
+                WITH intent
+                UNWIND $event_ids AS event_id
+                MATCH (event:Event {id: event_id})
+                MERGE (event)-[:CONTRIBUTES_TO]->(intent)
+                RETURN count(*) AS linked_count
+            }
+            RETURN intent
+            """,
+            parameters_={
+                "intent_id": intent_id,
+                "event_ids": list(dict.fromkeys(event_ids)),
+            },
+        )
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.intent_from_node(record["intent"])
+
+    async def remove_event_contributions(self,
+                                         intent_id: str,
+                                         event_ids: list[str],
+                                         ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            CALL {
+                WITH intent
+                UNWIND $event_ids AS event_id
+                OPTIONAL MATCH (:Event {id: event_id})-[contributes:CONTRIBUTES_TO]->(intent)
+                DELETE contributes
+                RETURN count(*) AS removed_count
+            }
+            RETURN count(intent) AS intent_count
+            """,
+            parameters_={
+                "intent_id": intent_id,
+                "event_ids": event_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["intent_count"])
+
     async def add_event_creation(self,
                                  event_id: str,
                                  intent_id: str,
@@ -211,6 +290,8 @@ class IntentStore:
             """
             MATCH (event:Event {id: $event_id})
             MATCH (intent:Intent {id: $intent_id})
+            OPTIONAL MATCH (:Event)-[existing:CREATES]->(intent)
+            DELETE existing
             MERGE (event)-[:CREATES]->(intent)
             RETURN intent
             """,
@@ -224,6 +305,21 @@ class IntentStore:
             return None
 
         return self.intent_from_node(record["intent"])
+
+    async def remove_event_creation(self, intent_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent {id: $intent_id})
+            OPTIONAL MATCH (:Event)-[creates:CREATES]->(intent)
+            DELETE creates
+            RETURN count(intent) AS intent_count
+            """,
+            parameters_={"intent_id": intent_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["intent_count"])
+
 
     async def update_intent(self,
                             *,

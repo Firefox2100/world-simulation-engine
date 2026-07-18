@@ -245,6 +245,36 @@ def test_create_list_get_update_and_delete_stack(item_api):
     assert client.get("/stacks", params={"holder_id": item_api.holder.id}).json() == [updated_stack]
     assert client.get("/stacks", params={"location_id": item_api.location.id}).json() == []
 
+    location_response = client.put(
+        f"/stacks/{stack['id']}/location",
+        json={
+            "location_id": item_api.location.id,
+            "position": "on the counter",
+        },
+    )
+    owner_response = client.put(
+        f"/stacks/{stack['id']}/owner",
+        json={"owner_id": item_api.owner.id},
+    )
+
+    assert location_response.status_code == 200
+    located_stack = location_response.json()
+    assert client.get("/stacks", params={"location_id": item_api.location.id}).json() == [located_stack]
+    assert client.get("/stacks", params={"holder_id": item_api.holder.id}).json() == []
+    assert owner_response.status_code == 200
+    assert client.get("/stacks", params={"owner_id": item_api.owner.id}).json() == [owner_response.json()]
+
+    holder_response = client.put(
+        f"/stacks/{stack['id']}/holder",
+        json={"holder_id": item_api.holder.id},
+    )
+
+    assert holder_response.status_code == 200
+    held_stack = holder_response.json()
+    assert client.get("/stacks", params={"holder_id": item_api.holder.id}).json() == [held_stack]
+    assert client.delete(f"/stacks/{stack['id']}/owner").status_code == 204
+    assert client.get("/stacks", params={"owner_id": item_api.owner.id}).json() == []
+
     delete_response = client.delete(f"/stacks/{stack['id']}")
 
     assert delete_response.status_code == 204
@@ -285,6 +315,19 @@ def test_item_endpoints_return_404_for_missing_resources(item_api):
     assert update_stack_response.json()["detail"] == f"Stack {missing_stack_id} not found"
     assert delete_stack_response.status_code == 404
     assert delete_stack_response.json()["detail"] == f"Stack {missing_stack_id} not found"
+    assert client.put(
+        f"/stacks/{missing_stack_id}/location",
+        json={"location_id": item_api.location.id},
+    ).status_code == 404
+    assert client.put(
+        f"/stacks/{missing_stack_id}/holder",
+        json={"holder_id": item_api.holder.id},
+    ).status_code == 404
+    assert client.put(
+        f"/stacks/{missing_stack_id}/owner",
+        json={"owner_id": item_api.owner.id},
+    ).status_code == 404
+    assert client.delete(f"/stacks/{missing_stack_id}/owner").status_code == 404
 
     item_response = client.post(f"/worlds/{item_api.world.id}/items", json=item_payload())
     assert item_response.status_code == 200

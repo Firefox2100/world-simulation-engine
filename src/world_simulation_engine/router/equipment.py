@@ -98,6 +98,21 @@ class EquipmentUpdate(BaseModel):
     )
 
 
+class EquipmentLocationUpdate(BaseModel):
+    location_id: str = Field(..., description="Location where the equipment is present")
+    position: Optional[str] = Field(None, description="Optional position in the location")
+
+
+class EquipmentOwnerUpdate(BaseModel):
+    owner_id: str = Field(..., description="Entity that owns the equipment")
+
+
+class EquipmentHolderUpdate(BaseModel):
+    holder_id: str = Field(..., description="Entity that holds the equipment")
+    equipped: bool = Field(False, description="Whether the holder equips the equipment")
+    equipped_position: Optional[str] = Field(None, description="If equipped, where the equipment is worn")
+
+
 def validate_equipment_relationship_request(equipment_data: EquipmentCreate | EquipmentUpdate):
     if equipment_data.location_id and equipment_data.holder_id:
         raise HTTPException(
@@ -206,6 +221,125 @@ async def get_equipment(equipment_id: str, db: db_dep):
         )
 
     return equipment
+
+
+@equipment_router.put("/equipment/{equipment_id}/location", response_model=Equipment)
+async def set_equipment_location(
+        equipment_id: str,
+        location_data: EquipmentLocationUpdate,
+        db: db_dep,
+):
+    if not await db.equipment.get_equipment(equipment_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+    if not await db.location.get_location(location_data.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Location {location_data.location_id} not found",
+        )
+
+    equipment = await db.equipment.place_equipment_in_location(
+        equipment_id,
+        location_data.location_id,
+        location_data.position,
+    )
+    if not equipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+
+    return equipment
+
+
+@equipment_router.delete("/equipment/{equipment_id}/location", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_equipment_location(equipment_id: str, db: db_dep):
+    deleted = await db.equipment.remove_location(equipment_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+
+
+@equipment_router.put("/equipment/{equipment_id}/owner", response_model=Equipment)
+async def set_equipment_owner(equipment_id: str, owner_data: EquipmentOwnerUpdate, db: db_dep):
+    if not await db.equipment.get_equipment(equipment_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+    if not await db.item.entity_exists(owner_data.owner_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Owner {owner_data.owner_id} not found",
+        )
+
+    equipment = await db.equipment.change_owner(equipment_id, owner_data.owner_id)
+    if not equipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+
+    return equipment
+
+
+@equipment_router.delete("/equipment/{equipment_id}/owner", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_equipment_owner(equipment_id: str, db: db_dep):
+    deleted = await db.equipment.remove_owner(equipment_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+
+
+@equipment_router.put("/equipment/{equipment_id}/holder", response_model=Equipment)
+async def set_equipment_holder(equipment_id: str, holder_data: EquipmentHolderUpdate, db: db_dep):
+    if not await db.equipment.get_equipment(equipment_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+    if holder_data.equipped:
+        holder = await db.character.get_character(holder_data.holder_id)
+        if not holder:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Character {holder_data.holder_id} not found",
+            )
+    elif not await db.item.entity_exists(holder_data.holder_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Holder {holder_data.holder_id} not found",
+        )
+
+    equipment = await db.equipment.change_hold_state(
+        equipment_id,
+        holder_data.holder_id,
+        equipped=holder_data.equipped,
+        equipped_position=holder_data.equipped_position,
+    )
+    if not equipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
+
+    return equipment
+
+
+@equipment_router.delete("/equipment/{equipment_id}/holder", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_equipment_holder(equipment_id: str, db: db_dep):
+    deleted = await db.equipment.remove_holder(equipment_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Equipment {equipment_id} not found",
+        )
 
 
 @equipment_router.patch("/equipment/{equipment_id}", response_model=Equipment)

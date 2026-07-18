@@ -122,6 +122,10 @@ async def test_list_update_and_delete_stack_with_relationship_filters(clean_neo4
     assert await item_store.list_stacks(item_id=item.id) == [stack]
     assert await item_store.list_stacks(owner_id=owner.id) == [stack]
     assert await item_store.list_stacks(location_id=location.id) == [stack]
+    assert await item_store.remove_stack_owner(stack.id) is True
+    assert await item_store.list_stacks(owner_id=owner.id) == []
+    assert await item_store.remove_stack_owner(str(uuid4())) is False
+    await item_store.assign_stack(stack.id, owner_id=owner.id)
 
     updated_stack = await item_store.update_stack(
         stack.id,

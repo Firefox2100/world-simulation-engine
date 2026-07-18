@@ -120,6 +120,13 @@ async def test_add_turn_to_event(clean_neo4j):
     await turn_store.create_turn(second, source_id=world.id)
     await event_store.create_event(event, turn_ids=[first.id])
     await event_store.add_turn_to_event(event.id, second.id)
+    assert await event_store.replace_event_turns(event.id, [second.id]) == event
+    assert await event_store.list_events(turn_id=first.id) == []
+    assert await event_store.list_events(turn_id=second.id) == [event]
+    await event_store.add_turn_to_event(event.id, first.id)
+    assert await event_store.remove_event_turns(event.id, [second.id]) is True
+    assert await event_store.list_events(turn_id=second.id) == []
+    assert await event_store.remove_event_turns(event.id, [first.id]) is False
 
     result = await clean_neo4j.execute_query(
         """
@@ -129,7 +136,7 @@ async def test_add_turn_to_event(clean_neo4j):
         parameters_={"event_id": event.id},
     )
 
-    assert set(result.records[0]["turn_ids"]) == {first.id, second.id}
+    assert set(result.records[0]["turn_ids"]) == {first.id}
 
 
 async def test_add_character_involvement(clean_neo4j):
@@ -157,6 +164,15 @@ async def test_add_character_involvement(clean_neo4j):
         character.id,
         EventInvolvement.PARTICIPATE,
     )
+    assert await event_store.replace_character_involvements(
+        event.id,
+        [
+            {
+                "character_id": character.id,
+                "involvement": EventInvolvement.WITNESS,
+            }
+        ],
+    ) == event
 
     result = await clean_neo4j.execute_query(
         """
@@ -169,7 +185,10 @@ async def test_add_character_involvement(clean_neo4j):
         },
     )
 
-    assert result.records[0]["involvement"] == EventInvolvement.PARTICIPATE
+    assert result.records[0]["involvement"] == EventInvolvement.WITNESS
+    assert await event_store.remove_character_involvements(event.id, [character.id]) is True
+    assert await event_store.list_events(character_id=character.id) == []
+    assert await event_store.remove_character_involvements(str(uuid4()), [character.id]) is False
 
 
 async def test_copy_events_preserves_turn_and_character_relationships(clean_neo4j):

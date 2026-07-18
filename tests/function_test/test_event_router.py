@@ -140,6 +140,40 @@ def test_create_list_get_update_and_delete_event(event_api):
     assert updated_event["name"] == "Updated greeting"
     assert client.get("/events", params={"turn_id": event_api.second_turn.id}).json() == [updated_event]
 
+    turn_response = client.put(
+        f"/events/{event['id']}/turns",
+        json={"turn_ids": [event_api.turn.id, event_api.second_turn.id]},
+    )
+    character_response = client.put(
+        f"/events/{event['id']}/characters",
+        json={
+            "involved_characters": [
+                {
+                    "character_id": event_api.character.id,
+                    "involvement": EventInvolvement.WITNESS,
+                }
+            ],
+        },
+    )
+
+    assert turn_response.status_code == 200
+    assert client.get("/events", params={"turn_id": event_api.turn.id}).json() == [turn_response.json()]
+    assert character_response.status_code == 200
+    assert client.get("/events", params={"character_id": event_api.character.id}).json() == [
+        character_response.json()
+    ]
+    assert client.request(
+        "DELETE",
+        f"/events/{event['id']}/turns",
+        json={"turn_ids": [event_api.second_turn.id]},
+    ).status_code == 204
+    assert client.request(
+        "DELETE",
+        f"/events/{event['id']}/characters",
+        json={"character_ids": [event_api.character.id]},
+    ).status_code == 204
+    assert client.get("/events", params={"character_id": event_api.character.id}).json() == []
+
     delete_response = client.delete(f"/events/{event['id']}")
 
     assert delete_response.status_code == 204
@@ -156,6 +190,18 @@ def test_event_endpoints_return_404_for_missing_resources(event_api):
     assert client.get(f"/events/{missing_event_id}").status_code == 404
     assert client.patch(f"/events/{missing_event_id}", json={"name": "Missing"}).status_code == 404
     assert client.delete(f"/events/{missing_event_id}").status_code == 404
+    assert client.put(f"/events/{missing_event_id}/turns", json={"turn_ids": [event_api.turn.id]}).status_code == 404
+    assert client.put(
+        f"/events/{missing_event_id}/characters",
+        json={
+            "involved_characters": [
+                {
+                    "character_id": event_api.character.id,
+                    "involvement": EventInvolvement.WITNESS,
+                }
+            ],
+        },
+    ).status_code == 404
     assert client.post(
         "/events",
         json={

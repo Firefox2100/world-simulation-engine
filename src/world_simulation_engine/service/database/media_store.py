@@ -56,6 +56,64 @@ class MediaStore:
 
         return _media_from_node(record["m"])
 
+    async def list_media(self,
+                         world_id: str | None = None,
+                         simulation_id: str | None = None,
+                         media_type: str | None = None,
+                         limit: int | None = None,
+                         skip: int = 0,
+                         ) -> list[MediaFile]:
+        pagination = """
+            SKIP $skip
+        """
+        if limit is not None:
+            pagination += """
+            LIMIT $limit
+            """
+
+        if world_id is not None and simulation_id is not None:
+            source_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(root:Simulation {id: $simulation_id})
+            MATCH (root)-[:CONTAINS|HOLDS|PART_OF*0..]->(source)
+            MATCH (source)-[:HAS_COVER]->(media:Media)
+            """
+        elif world_id is not None:
+            source_match = """
+            MATCH (root:World {id: $world_id})
+            MATCH (root)-[:CONTAINS|HOLDS|PART_OF*0..]->(source)
+            MATCH (source)-[:HAS_COVER]->(media:Media)
+            """
+        elif simulation_id is not None:
+            source_match = """
+            MATCH (root:Simulation {id: $simulation_id})
+            MATCH (root)-[:CONTAINS|HOLDS|PART_OF*0..]->(source)
+            MATCH (source)-[:HAS_COVER]->(media:Media)
+            """
+        else:
+            source_match = """
+            MATCH (media:Media)
+            """
+
+        result = await self._driver.execute_query(
+            source_match + """
+            WHERE $media_type IS NULL OR media.type = $media_type
+            RETURN DISTINCT media
+            ORDER BY media.filename, media.id
+            """ + pagination,
+            parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
+                "media_type": media_type,
+                "limit": limit,
+                "skip": skip,
+            },
+        )
+
+        return [
+            _media_from_node(record["media"])
+            for record in result.records
+        ]
+
     async def set_cover_image(self,
                               source_id: str,
                               media_id: str,

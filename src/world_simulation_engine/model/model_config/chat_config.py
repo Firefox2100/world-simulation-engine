@@ -1,5 +1,5 @@
 from uuid import uuid4
-from typing import Optional, Union
+from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -49,6 +49,10 @@ class OllamaChatModelConfig(ChatModelConfig):
     The specialised configuration for using a chat model with Ollama.
     """
 
+    provider: Literal["ollama"] = Field(
+        "ollama",
+        description="Provider for this chat model config",
+    )
     mirostat: Optional[int] = Field(
         None,
         description="Enable Mirostat sampling for controlling perplexity.",
@@ -80,8 +84,15 @@ class OpenAiChatModelConfig(ChatModelConfig):
     The specialised configuration for using a chat model with OpenAI.
     """
 
+    provider: Literal["openai"] = Field(
+        "openai",
+        description="Provider for this chat model config",
+    )
 
-ChatModelConfigUnion = Union[
-    OllamaChatModelConfig,
-    OpenAiChatModelConfig,
+ChatModelConfigUnion = Annotated[
+    Union[
+        OllamaChatModelConfig,
+        OpenAiChatModelConfig,
+    ],
+    Field(discriminator="provider"),
 ]

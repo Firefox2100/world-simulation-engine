@@ -98,6 +98,15 @@ class CharacterUpdate(BaseModel):
     )
 
 
+class CharacterLocationUpdate(BaseModel):
+    location_id: str = Field(..., description="Location where the character is present")
+    position: Optional[str] = Field(None, description="Optional position in the location")
+
+
+class CharacterLandmarkUpdate(BaseModel):
+    landmark_id: str = Field(..., description="Landmark the character is anchored to")
+
+
 @character_router.get("/characters", response_model=list[Character])
 async def list_characters(db: db_dep,
                           world_id: Optional[str] = Query(None, description="Optionally filter by world"),
@@ -146,6 +155,40 @@ async def delete_character(character_id: str, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Character {character_id} not found",
         )
+
+
+@character_router.put("/characters/{character_id}/location", response_model=Character)
+async def set_character_location(character_id: str, location_data: CharacterLocationUpdate, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+    if not await db.location.get_location(location_data.location_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Location {location_data.location_id} not found")
+
+    return await db.character.move_to_location(character_id, location_data.location_id, location_data.position)
+
+
+@character_router.delete("/characters/{character_id}/location", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_character_location(character_id: str, db: db_dep):
+    deleted = await db.character.remove_character_location(character_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+
+
+@character_router.put("/characters/{character_id}/landmark", response_model=Character)
+async def set_character_landmark(character_id: str, landmark_data: CharacterLandmarkUpdate, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+    if not await db.location.get_landmark(landmark_data.landmark_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Landmark {landmark_data.landmark_id} not found")
+
+    return await db.character.anchor_to_landmark(character_id, landmark_data.landmark_id)
+
+
+@character_router.delete("/characters/{character_id}/landmark", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_character_landmark(character_id: str, db: db_dep):
+    deleted = await db.character.remove_character_landmark(character_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
 
 
 @character_router.post("/worlds/{world_id}/characters", response_model=Character)

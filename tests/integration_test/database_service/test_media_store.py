@@ -46,6 +46,12 @@ async def test_create_get_and_link_cover_images(clean_neo4j):
     assert await media_store.create_media(first_media) == first_media
     assert await media_store.create_media(second_media) == second_media
     assert await media_store.get_media(first_media.id) == first_media
+    assert await media_store.list_media() == [first_media, second_media]
+    assert await media_store.list_media(media_type=MediaType.PNG) == [first_media, second_media]
+    assert await media_store.list_media(limit=1) == [first_media]
+    assert await media_store.list_media(limit=1, skip=1) == [second_media]
+    assert await media_store.list_media(world_id=world.id) == []
+    assert await media_store.list_media(simulation_id=simulation.id) == []
 
     assert await media_store.set_cover_image(world.id, first_media.id) == first_media
     assert await media_store.get_cover_image(world.id) == first_media
@@ -55,6 +61,10 @@ async def test_create_get_and_link_cover_images(clean_neo4j):
     assert await media_store.get_cover_image(simulation.id) == first_media
     assert await media_store.set_cover_image(location.id, first_media.id) == first_media
     assert await media_store.get_cover_image(location.id) == first_media
+    assert await media_store.list_media(world_id=world.id) == [first_media, second_media]
+    assert await media_store.list_media(simulation_id=simulation.id) == [first_media]
+    assert await media_store.list_media(world_id=world.id, simulation_id=simulation.id) == [first_media]
+    assert await media_store.list_media(world_id=world.id, limit=1, skip=1) == [second_media]
     assert await media_store.remove_cover_image(location.id) is True
     assert await media_store.get_cover_image(location.id) is None
 

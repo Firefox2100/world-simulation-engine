@@ -321,6 +321,48 @@ class EquipmentStore:
 
         return self.equipment_from_node(record["e"])
 
+    async def remove_location(self, equipment_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (equipment:Equipment {id: $equipment_id})
+            OPTIONAL MATCH (equipment)-[present:PRESENT_IN]->(:Location)
+            DELETE present
+            RETURN count(equipment) AS equipment_count
+            """,
+            parameters_={"equipment_id": equipment_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["equipment_count"])
+
+    async def remove_owner(self, equipment_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (equipment:Equipment {id: $equipment_id})
+            OPTIONAL MATCH (owner)-[owns:OWNS]->(equipment)
+            DELETE owns
+            RETURN count(equipment) AS equipment_count
+            """,
+            parameters_={"equipment_id": equipment_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["equipment_count"])
+
+    async def remove_holder(self, equipment_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (equipment:Equipment {id: $equipment_id})
+            OPTIONAL MATCH (holder)-[holds:HOLDS|EQUIPS]->(equipment)
+            DELETE holds
+            RETURN count(equipment) AS equipment_count
+            """,
+            parameters_={"equipment_id": equipment_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["equipment_count"])
+
     async def copy_equipment(self,
                              source_id: str,
                              target_id: str,

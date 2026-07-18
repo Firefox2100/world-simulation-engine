@@ -113,6 +113,7 @@ async def test_list_update_and_delete_intent(clean_neo4j):
 async def test_event_relationships_to_intent(clean_neo4j):
     world = await create_world(clean_neo4j)
     character = await create_character(clean_neo4j, world.id, name="Alex")
+    second_character = await create_character(clean_neo4j, world.id, name="Blair")
     turn = Turn(
         id=str(uuid4()),
         sequence=1,
@@ -135,6 +136,10 @@ async def test_event_relationships_to_intent(clean_neo4j):
     assert await intent_store.add_event_creation(event.id, intent.id) == intent
     assert await intent_store.list_intents(event_id=event.id) == [intent]
     assert await intent_store.list_intents(character_id=character.id, event_id=event.id) == [intent]
+    assert await intent_store.move_intent_to_character(intent.id, second_character.id) == intent
+    assert await intent_store.list_intents(character_id=character.id) == []
+    assert await intent_store.list_intents(character_id=second_character.id) == [intent]
+    assert await intent_store.replace_event_contributions(intent.id, [event.id]) == intent
 
     result = await clean_neo4j.execute_query(
         """
@@ -150,6 +155,11 @@ async def test_event_relationships_to_intent(clean_neo4j):
 
     assert result.records[0]["contributes_count"] == 1
     assert result.records[0]["creates_count"] == 1
+    assert await intent_store.remove_event_creation(intent.id) is True
+    assert await intent_store.remove_event_contributions(intent.id, [event.id]) is True
+    assert await intent_store.list_intents(event_id=event.id) == []
+    assert await intent_store.remove_event_creation(str(uuid4())) is False
+    assert await intent_store.remove_event_contributions(str(uuid4()), [event.id]) is False
 
 
 async def test_copy_intents_preserves_character_and_event_relationships(clean_neo4j):

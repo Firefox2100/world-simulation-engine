@@ -1,5 +1,5 @@
 from uuid import uuid4
-from typing import Optional, Union
+from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -27,6 +27,10 @@ class OllamaEmbedModelConfig(EmbedModelConfig):
     The specialised configuration for using an embedding model with Ollama.
     """
 
+    provider: Literal["ollama"] = Field(
+        "ollama",
+        description="Provider for this embedding model config",
+    )
     context_window: Optional[int] = Field(
         None,
         description="The context window to use for embedding"
@@ -38,8 +42,15 @@ class OpenAiEmbedModelConfig(EmbedModelConfig):
     The specialised configuration for using an embedding model with OpenAI.
     """
 
+    provider: Literal["openai"] = Field(
+        "openai",
+        description="Provider for this embedding model config",
+    )
 
-EmbedModelConfigUnion = Union[
-    OllamaEmbedModelConfig,
-    OpenAiEmbedModelConfig,
+EmbedModelConfigUnion = Annotated[
+    Union[
+        OllamaEmbedModelConfig,
+        OpenAiEmbedModelConfig,
+    ],
+    Field(discriminator="provider"),
 ]

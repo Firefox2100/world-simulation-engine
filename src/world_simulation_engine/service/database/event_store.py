@@ -139,6 +139,64 @@ class EventStore:
 
         return self.event_from_node(record["event"])
 
+    async def replace_event_turns(self,
+                                  event_id: str,
+                                  turn_ids: list[str],
+                                  ) -> Event | None:
+        turn_ids = list(dict.fromkeys(turn_ids))
+        if not turn_ids:
+            raise ValueError("An event must be attached to at least one turn")
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (event:Event {id: $event_id})
+            MATCH (turn:Turn)
+            WHERE turn.id IN $turn_ids
+            WITH event, collect(turn) AS turns
+            WHERE size(turns) = size($turn_ids)
+            OPTIONAL MATCH (:Turn)-[existing:PART_OF]->(event)
+            DELETE existing
+            WITH event, turns
+            UNWIND turns AS turn
+            MERGE (turn)-[:PART_OF]->(event)
+            RETURN event
+            """,
+            parameters_={
+                "event_id": event_id,
+                "turn_ids": turn_ids,
+            },
+        )
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.event_from_node(record["event"])
+
+    async def remove_event_turns(self,
+                                 event_id: str,
+                                 turn_ids: list[str],
+                                 ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (event:Event {id: $event_id})
+            OPTIONAL MATCH (remaining_turn:Turn)-[:PART_OF]->(event)
+            WITH event, count(remaining_turn) AS existing_count
+            OPTIONAL MATCH (removed_turn:Turn)-[part:PART_OF]->(event)
+            WHERE removed_turn.id IN $turn_ids
+            WITH event, existing_count, collect(part) AS parts
+            WHERE existing_count > size(parts)
+            FOREACH (part IN parts | DELETE part)
+            RETURN count(event) AS event_count
+            """,
+            parameters_={
+                "event_id": event_id,
+                "turn_ids": list(dict.fromkeys(turn_ids)),
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["event_count"])
+
     async def update_event(self,
                            event_id: str,
                            name: str | None = None,
@@ -208,6 +266,62 @@ class EventStore:
             return None
 
         return self.event_from_node(record["event"])
+
+    async def replace_character_involvements(self,
+                                             event_id: str,
+                                             involvements: list[dict],
+                                             ) -> Event | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (event:Event {id: $event_id})
+            OPTIONAL MATCH (event)-[existing:INVOLVES]->(:Character)
+            DELETE existing
+            WITH event
+            CALL {
+                WITH event
+                UNWIND $involvements AS involvement
+                MATCH (character:Character {id: involvement.character_id})
+                MERGE (event)-[relationship:INVOLVES]->(character)
+                SET relationship.involvement = involvement.involvement
+                RETURN count(*) AS linked_count
+            }
+            RETURN event
+            """,
+            parameters_={
+                "event_id": event_id,
+                "involvements": involvements,
+            },
+        )
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.event_from_node(record["event"])
+
+    async def remove_character_involvements(self,
+                                            event_id: str,
+                                            character_ids: list[str],
+                                            ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (event:Event {id: $event_id})
+            CALL {
+                WITH event
+                UNWIND $character_ids AS character_id
+                OPTIONAL MATCH (event)-[involves:INVOLVES]->(:Character {id: character_id})
+                DELETE involves
+                RETURN count(*) AS removed_count
+            }
+            RETURN count(event) AS event_count
+            """,
+            parameters_={
+                "event_id": event_id,
+                "character_ids": character_ids,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["event_count"])
 
     async def copy_events(self,
                           turn_pairs: list[dict],

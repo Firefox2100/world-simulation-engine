@@ -110,6 +110,19 @@ class ItemStackUpdate(BaseModel):
     )
 
 
+class StackLocationUpdate(BaseModel):
+    location_id: str = Field(..., description="Location where the stack is present")
+    position: Optional[str] = Field(None, description="Optional position of the stack in the location")
+
+
+class StackHolderUpdate(BaseModel):
+    holder_id: str = Field(..., description="Entity that holds the stack")
+
+
+class StackOwnerUpdate(BaseModel):
+    owner_id: str = Field(..., description="Entity that owns the stack")
+
+
 def validate_stack_relationship_request(stack_data: ItemStackCreate | ItemStackUpdate):
     if stack_data.location_id and stack_data.holder_id:
         raise HTTPException(
@@ -293,6 +306,89 @@ async def get_stack(stack_id: str, db: db_dep):
         )
 
     return stack
+
+
+@item_router.put("/stacks/{stack_id}/location", response_model=ItemStack)
+async def set_stack_location(stack_id: str, location_data: StackLocationUpdate, db: db_dep):
+    if not await db.item.get_stack(stack_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
+    if not await db.location.get_location(location_data.location_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Location {location_data.location_id} not found",
+        )
+
+    stack = await db.item.place_stack_in_location(
+        stack_id,
+        location_data.location_id,
+        location_data.position,
+    )
+    if not stack:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
+
+    return stack
+
+
+@item_router.put("/stacks/{stack_id}/holder", response_model=ItemStack)
+async def set_stack_holder(stack_id: str, holder_data: StackHolderUpdate, db: db_dep):
+    if not await db.item.get_stack(stack_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
+    if not await db.item.entity_exists(holder_data.holder_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Holder {holder_data.holder_id} not found",
+        )
+
+    stack = await db.item.assign_stack(stack_id, holder_id=holder_data.holder_id)
+    if not stack:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
+
+    return stack
+
+
+@item_router.put("/stacks/{stack_id}/owner", response_model=ItemStack)
+async def set_stack_owner(stack_id: str, owner_data: StackOwnerUpdate, db: db_dep):
+    if not await db.item.get_stack(stack_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
+    if not await db.item.entity_exists(owner_data.owner_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Owner {owner_data.owner_id} not found",
+        )
+
+    stack = await db.item.assign_stack(stack_id, owner_id=owner_data.owner_id)
+    if not stack:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
+
+    return stack
+
+
+@item_router.delete("/stacks/{stack_id}/owner", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_stack_owner(stack_id: str, db: db_dep):
+    deleted = await db.item.remove_stack_owner(stack_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Stack {stack_id} not found",
+        )
 
 
 @item_router.patch("/stacks/{stack_id}", response_model=ItemStack)

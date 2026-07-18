@@ -237,6 +237,13 @@ async def test_container_can_hold_items_equipment_and_containers(clean_neo4j):
     assert await container_store.get_held_stacks(parent.id) == [(item, stack)]
     assert await container_store.get_held_equipment(parent.id) == [equipment]
     assert await container_store.get_held_containers(parent.id) == [child]
+    assert await container_store.remove_held_stacks(parent.id, [stack.id]) is True
+    assert await container_store.remove_held_equipment(parent.id, [equipment.id]) is True
+    assert await container_store.remove_held_containers(parent.id, [child.id]) is True
+    assert await container_store.get_held_stacks(parent.id) == []
+    assert await container_store.get_held_equipment(parent.id) == []
+    assert await container_store.get_held_containers(parent.id) == []
+    assert await container_store.remove_held_stacks(str(uuid4()), [stack.id]) is False
 
 
 async def test_item_unlocks_container(clean_neo4j):
@@ -260,6 +267,10 @@ async def test_item_unlocks_container(clean_neo4j):
     await container_store.remove_unlocking_item(key.id, container.id)
 
     assert await container_store.get_unlocking_items(container.id) == []
+    await container_store.add_unlocking_item(key.id, container.id)
+    assert await container_store.remove_unlocking_items(container.id, [key.id]) is True
+    assert await container_store.get_unlocking_items(container.id) == []
+    assert await container_store.remove_unlocking_items(str(uuid4()), [key.id]) is False
 
 
 async def test_background_character_can_hold_items_equipment_and_containers(clean_neo4j):

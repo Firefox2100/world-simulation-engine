@@ -66,6 +66,15 @@ class BackgroundCharacterUpdate(BaseModel):
     )
 
 
+class BackgroundCharacterLocationUpdate(BaseModel):
+    location_id: str = Field(..., description="Location where the background character is present")
+    position: Optional[str] = Field(None, description="Optional position in the location")
+
+
+class BackgroundCharacterLandmarkUpdate(BaseModel):
+    landmark_id: str = Field(..., description="Landmark the background character is anchored to")
+
+
 async def validate_background_character_relationships(
         character_data: BackgroundCharacterCreate | BackgroundCharacterUpdate,
         db: db_dep,
@@ -177,6 +186,58 @@ async def delete_background_character(character_id: str, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Background character {character_id} not found",
         )
+
+
+@background_character_router.put("/background-characters/{character_id}/location", response_model=BackgroundCharacter)
+async def set_background_character_location(
+        character_id: str,
+        location_data: BackgroundCharacterLocationUpdate,
+        db: db_dep,
+):
+    if not await db.character.get_background_character(character_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Background character {character_id} not found")
+    if not await db.location.get_location(location_data.location_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Location {location_data.location_id} not found")
+
+    return await db.character.move_background_character_to_location(
+        character_id,
+        location_data.location_id,
+        location_data.position,
+    )
+
+
+@background_character_router.delete(
+    "/background-characters/{character_id}/location",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_background_character_location(character_id: str, db: db_dep):
+    deleted = await db.character.remove_background_character_location(character_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Background character {character_id} not found")
+
+
+@background_character_router.put("/background-characters/{character_id}/landmark", response_model=BackgroundCharacter)
+async def set_background_character_landmark(
+        character_id: str,
+        landmark_data: BackgroundCharacterLandmarkUpdate,
+        db: db_dep,
+):
+    if not await db.character.get_background_character(character_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Background character {character_id} not found")
+    if not await db.location.get_landmark(landmark_data.landmark_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Landmark {landmark_data.landmark_id} not found")
+
+    return await db.character.anchor_background_character_to_landmark(character_id, landmark_data.landmark_id)
+
+
+@background_character_router.delete(
+    "/background-characters/{character_id}/landmark",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_background_character_landmark(character_id: str, db: db_dep):
+    deleted = await db.character.remove_background_character_landmark(character_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Background character {character_id} not found")
 
 
 @background_character_router.post("/worlds/{world_id}/background-characters", response_model=BackgroundCharacter)

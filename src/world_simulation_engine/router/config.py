@@ -205,6 +205,22 @@ async def get_chat_config_connection(config_id: str, db: db_dep):
     return connection
 
 
+@config_router.delete("/config/llm/{config_id}/connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_chat(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LLM config {config_id} not found",
+        )
+
+    deleted = await db.config.unlink_connection(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"LLM config {config_id} not found",
+        )
+
+
 @config_router.get("/config/embeddings", response_model=list[EmbedModelConfigUnion])
 async def list_embed_configs(db: db_dep):
     return await db.config.list_embeds()
@@ -291,6 +307,22 @@ async def get_embed_config_connection(config_id: str, db: db_dep):
     return connection
 
 
+@config_router.delete("/config/embeddings/{config_id}/connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_embed_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_embed(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Embedding config {config_id} not found",
+        )
+
+    deleted = await db.config.unlink_connection(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Embedding config {config_id} not found",
+        )
+
+
 @config_router.put("/simulations/{simulation_id}/llm-connection", response_model=ChatModelConfigUnion)
 async def set_simulation_llm_connection(
         simulation_id: str,
@@ -337,6 +369,26 @@ async def get_simulation_llm_connection(
     return chat_config
 
 
+@config_router.delete("/simulations/{simulation_id}/llm-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_simulation_llm_connection(
+        simulation_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The simulation component using the config"),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    deleted = await db.config.unlink_chat(simulation_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+
 @config_router.put("/simulations/{simulation_id}/embedding-connection", response_model=EmbedModelConfigUnion)
 async def set_simulation_embedding_connection(
         simulation_id: str,
@@ -381,3 +433,23 @@ async def get_simulation_embedding_connection(
         )
 
     return embed_config
+
+
+@config_router.delete("/simulations/{simulation_id}/embedding-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_simulation_embedding_connection(
+        simulation_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The simulation component using the config"),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    deleted = await db.config.unlink_embed(simulation_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )

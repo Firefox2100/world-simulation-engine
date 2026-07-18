@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -191,6 +191,24 @@ async def create_media(
     )
 
     return await db.media.create_media(media)
+
+
+@media_router.get("/media", response_model=list[MediaFile])
+async def list_media(
+        db: db_dep,
+        world_id: Optional[str] = Query(None, description="Optionally filter by world"),
+        simulation_id: Optional[str] = Query(None, description="Optionally filter by simulation"),
+        type: Optional[MediaType] = Query(None, description="Optionally filter by media type"),
+        limit: Optional[int] = Query(None, ge=1, description="Maximum number of media records to return"),
+        skip: int = Query(0, ge=0, description="Number of media records to skip"),
+):
+    return await db.media.list_media(
+        world_id=world_id,
+        simulation_id=simulation_id,
+        media_type=type,
+        limit=limit,
+        skip=skip,
+    )
 
 
 @media_router.get("/media/{media_id}")

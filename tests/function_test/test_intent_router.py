@@ -18,6 +18,7 @@ from world_simulation_engine.service import DatabaseService
 class IntentRouterTestClient:
     client: TestClient
     character: Character
+    second_character: Character
     event: Event
 
 
@@ -39,6 +40,17 @@ def intent_api(neo4j_container):
         gender="non-binary",
         appearance="A practical coat",
         description="A test character",
+        public_state="Waiting",
+        private_state="Planning",
+        current_activity=CurrentActivity(name="idle"),
+    )
+    second_character = Character(
+        id=str(uuid4()),
+        name="Blair",
+        age=31,
+        gender="non-binary",
+        appearance="A practical jacket",
+        description="A second test character",
         public_state="Waiting",
         private_state="Planning",
         current_activity=CurrentActivity(name="idle"),
@@ -69,6 +81,7 @@ def intent_api(neo4j_container):
         await database.world.create_author(author)
         await database.world.create_world(world, author.id)
         await database.character.create_character(character, world.id)
+        await database.character.create_character(second_character, world.id)
         await database.turn.create_turn(turn, world.id)
         await database.event.create_event(event, [turn.id])
         app.state.database = database
@@ -86,6 +99,7 @@ def intent_api(neo4j_container):
         yield IntentRouterTestClient(
             client=client,
             character=character,
+            second_character=second_character,
             event=event,
         )
 
@@ -155,6 +169,34 @@ def test_create_list_get_update_and_delete_intent(intent_api):
     assert updated_intent["priority"] == 0.9
     assert client.get("/intents", params={"event_id": intent_api.event.id}).json() == [updated_intent]
 
+    character_response = client.put(
+        f"/intents/{intent['id']}/character",
+        json={"character_id": intent_api.second_character.id},
+    )
+    created_by_response = client.put(
+        f"/intents/{intent['id']}/created-by",
+        json={"event_id": intent_api.event.id},
+    )
+    contributions_response = client.put(
+        f"/intents/{intent['id']}/contributing-events",
+        json={"event_ids": [intent_api.event.id]},
+    )
+
+    assert character_response.status_code == 200
+    assert client.get("/intents", params={"character_id": intent_api.character.id}).json() == []
+    assert client.get("/intents", params={"character_id": intent_api.second_character.id}).json() == [
+        character_response.json()
+    ]
+    assert created_by_response.status_code == 200
+    assert contributions_response.status_code == 200
+    assert client.delete(f"/intents/{intent['id']}/created-by").status_code == 204
+    assert client.request(
+        "DELETE",
+        f"/intents/{intent['id']}/contributing-events",
+        json={"event_ids": [intent_api.event.id]},
+    ).status_code == 204
+    assert client.get("/intents", params={"event_id": intent_api.event.id}).json() == []
+
     delete_response = client.delete(f"/intents/{intent['id']}")
 
     assert delete_response.status_code == 204
@@ -171,6 +213,18 @@ def test_intent_endpoints_return_404_for_missing_resources(intent_api):
     assert client.get(f"/intents/{missing_intent_id}").status_code == 404
     assert client.patch(f"/intents/{missing_intent_id}", json={"status": IntentStatus.PAUSED}).status_code == 404
     assert client.delete(f"/intents/{missing_intent_id}").status_code == 404
+    assert client.put(
+        f"/intents/{missing_intent_id}/character",
+        json={"character_id": intent_api.character.id},
+    ).status_code == 404
+    assert client.put(
+        f"/intents/{missing_intent_id}/created-by",
+        json={"event_id": intent_api.event.id},
+    ).status_code == 404
+    assert client.put(
+        f"/intents/{missing_intent_id}/contributing-events",
+        json={"event_ids": [intent_api.event.id]},
+    ).status_code == 404
     assert client.post(
         f"/characters/{missing_character_id}/intents",
         json=intent_payload(),

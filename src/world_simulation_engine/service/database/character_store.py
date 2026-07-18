@@ -295,8 +295,8 @@ class CharacterStore:
                                character_id: str,
                                location_id: str,
                                position: str | None = None,
-                               ):
-        await self._driver.execute_query(
+                               ) -> Character | None:
+        result = await self._driver.execute_query(
             """
             MATCH (c:Character {id: $character_id})
             OPTIONAL MATCH (:Location) <-[r:PRESENT_IN]- (c)
@@ -304,6 +304,7 @@ class CharacterStore:
             DELETE r
             MERGE (c) -[present:PRESENT_IN]-> (l)
             SET present.position = $position
+            RETURN c
             """,
             parameters_={
                 "character_id": character_id,
@@ -311,24 +312,57 @@ class CharacterStore:
                 "position": position,
             }
         )
+        record = result.records[0] if result.records else None
+        return self.character_from_node(record["c"]) if record else None
 
     async def anchor_to_landmark(self,
-                                character_id: str,
-                                landmark_id: str,
-                                ):
-        await self._driver.execute_query(
+                                 character_id: str,
+                                 landmark_id: str,
+                                 ) -> Character | None:
+        result = await self._driver.execute_query(
             """
             MATCH (c:Character {id: $character_id})
             OPTIONAL MATCH (:Landmark) <-[r:ANCHORED_TO]- (c)
             MATCH (l:Landmark {id: $landmark_id})
             DELETE r
             MERGE (c) -[:ANCHORED_TO]-> (l)
+            RETURN c
             """,
             parameters_={
                 "character_id": character_id,
                 "landmark_id": landmark_id,
             }
         )
+        record = result.records[0] if result.records else None
+        return self.character_from_node(record["c"]) if record else None
+
+    async def remove_character_location(self, character_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:Character {id: $character_id})
+            OPTIONAL MATCH (c)-[present:PRESENT_IN]->(:Location)
+            DELETE present
+            RETURN count(c) AS character_count
+            """,
+            parameters_={"character_id": character_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["character_count"])
+
+    async def remove_character_landmark(self, character_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:Character {id: $character_id})
+            OPTIONAL MATCH (c)-[anchor:ANCHORED_TO]->(:Landmark)
+            DELETE anchor
+            RETURN count(c) AS character_count
+            """,
+            parameters_={"character_id": character_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["character_count"])
 
     async def create_background_character(self,
                                           character: BackgroundCharacter,
@@ -551,6 +585,34 @@ class CharacterStore:
             return None
 
         return self.background_character_from_node(record["c"])
+
+    async def remove_background_character_location(self, character_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:BackgroundCharacter {id: $character_id})
+            OPTIONAL MATCH (c)-[present:PRESENT_IN]->(:Location)
+            DELETE present
+            RETURN count(c) AS character_count
+            """,
+            parameters_={"character_id": character_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["character_count"])
+
+    async def remove_background_character_landmark(self, character_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:BackgroundCharacter {id: $character_id})
+            OPTIONAL MATCH (c)-[anchor:ANCHORED_TO]->(:Landmark)
+            DELETE anchor
+            RETURN count(c) AS character_count
+            """,
+            parameters_={"character_id": character_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["character_count"])
 
     async def copy_background_characters(self,
                                          source_id: str,

@@ -518,6 +518,20 @@ class ItemStore:
 
         return stack
 
+    async def remove_stack_owner(self, stack_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:ItemStack {id: $stack_id})
+            OPTIONAL MATCH (owner)-[owns:OWNS]->(s)
+            DELETE owns
+            RETURN count(s) AS stack_count
+            """,
+            parameters_={"stack_id": stack_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["stack_count"])
+
     async def get_inventory(self, holder_id: str) -> list[InventoryStack]:
         result = await self._driver.execute_query(
             """
