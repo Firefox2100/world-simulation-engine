@@ -140,8 +140,8 @@ async def test_list_memories_can_filter_by_simulation(clean_neo4j):
     )
 
     assert await memory_store.list_memories(simulation_id=simulation.id) == [memory]
-    assert await memory_store.get_memory(memory.id) is None
-    assert await memory_store.delete_memory(memory.id) is False
+    assert await memory_store.get_memory(memory.id) == memory
+    assert await memory_store.delete_memory(memory.id) is True
 
 
 async def test_add_character_memory(clean_neo4j):

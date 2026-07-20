@@ -28,12 +28,17 @@ async def lifespan(app: FastAPI):
 
     app.state.database = database
     app.state.storage = storage
-    app.state.world_simulator = WorldSimulator(
+    simulator = WorldSimulator(
         database=database,
         prompt_loader=PromptLoader(database=database, storage=storage),
     )
+    app.state.world_simulator = simulator
 
-    yield
+    try:
+        yield
+    finally:
+        await simulator.shutdown()
+        await database.close()
 
 
 def create_app() -> FastAPI:

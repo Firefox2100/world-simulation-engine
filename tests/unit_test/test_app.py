@@ -9,9 +9,11 @@ async def test_lifespan_injects_database_backed_prompt_loader(monkeypatch):
     driver = object()
     database = SimpleNamespace(
         generation_job=SimpleNamespace(fail_incomplete_jobs=AsyncMock(return_value=0)),
+        close=AsyncMock(),
     )
     storage = SimpleNamespace(initialise=AsyncMock())
     captured = {}
+    simulator = SimpleNamespace(shutdown=AsyncMock())
 
     monkeypatch.setattr(app_module.AsyncGraphDatabase, "driver", Mock(return_value=driver))
     monkeypatch.setattr(app_module, "DatabaseService", Mock(return_value=database))
@@ -20,7 +22,7 @@ async def test_lifespan_injects_database_backed_prompt_loader(monkeypatch):
     def make_simulator(*, database, prompt_loader):
         captured["database"] = database
         captured["prompt_loader"] = prompt_loader
-        return object()
+        return simulator
 
     monkeypatch.setattr(app_module, "WorldSimulator", make_simulator)
     application = SimpleNamespace(state=SimpleNamespace())
@@ -34,3 +36,5 @@ async def test_lifespan_injects_database_backed_prompt_loader(monkeypatch):
     assert captured["prompt_loader"]._db is database
     assert captured["prompt_loader"]._storage is storage
     database.generation_job.fail_incomplete_jobs.assert_awaited_once()
+    simulator.shutdown.assert_awaited_once()
+    database.close.assert_awaited_once()

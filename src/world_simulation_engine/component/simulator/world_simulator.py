@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 from uuid import uuid4
@@ -40,6 +40,15 @@ class CharacterActionValidationRecord(BaseModel):
     proposal_validations: list[ActionValidationResult] = Field(default_factory=list)
 
 
+class OffSceneActivityResult(BaseModel):
+    """Non-authoritative output from the cancellable off-scene activity lane."""
+    simulation_id: str
+    character_id: str
+    simulation_time: datetime
+    proposal: ActionProposal | None = None
+    error: str | None = None
+
+
 class WorldSimulatorState(BaseModel):
     world: World
     simulation: Simulation
@@ -57,6 +66,7 @@ class WorldSimulatorState(BaseModel):
     previous_character_action_coordination: SceneCoordinationResult | None = None
     character_actions_are_reactions: bool = False
     reaction_history: list[ReactionHistoryEntry] = Field(default_factory=list)
+    perceiving_character_ids: list[str] = Field(default_factory=list)
     narration: NarrationProposal | str | None = None
     committed_turn: Turn | None = None
     state_commit_proposal: StateCommitProposal | None = None
@@ -92,6 +102,7 @@ class _SimulatorRun:
 
 class WorldSimulator:
     _MAX_VALIDATION_REWORK_ATTEMPTS = 3
+    _MAX_SCHEDULED_CHARACTERS = 8
     _RUN_DONE = object()
 
     def __init__(self,
@@ -140,6 +151,8 @@ class WorldSimulator:
         self._completed_run_registry: dict[str, _SimulatorRun] = {}
         self._simulation_run_locks: dict[str, asyncio.Lock] = {}
         self._run_registry_lock = asyncio.Lock()
+        self._off_scene_tasks: dict[str, asyncio.Task] = {}
+        self._off_scene_results: dict[str, list[OffSceneActivityResult]] = {}
 
     async def start_generation(
             self,
@@ -157,6 +170,7 @@ class WorldSimulator:
             request_type=request_type,
             regenerate_turn_sequence=regenerate_turn_sequence,
         )
+        self._cancel_off_scene_activity(state.simulation.id)
         if client_request_id:
             existing_job = await self._db.generation_job.get_job_by_client_request_id(
                 simulation_id=state.simulation.id,
@@ -317,6 +331,22 @@ class WorldSimulator:
     def is_generation_running(self, thread_id: str) -> bool:
         return thread_id in self._run_registry
 
+    def list_off_scene_activity_results(self, simulation_id: str) -> list[OffSceneActivityResult]:
+        return list(self._off_scene_results.get(simulation_id, []))
+
+    async def wait_for_off_scene_activity(self, simulation_id: str):
+        task = self._off_scene_tasks.get(simulation_id)
+        if task:
+            await task
+
+    async def shutdown(self):
+        tasks = list(self._off_scene_tasks.values())
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._off_scene_tasks.clear()
+
     def _graph_for_request_type(self, request_type: SimulationGenerationRequestType) -> CompiledStateGraph:
         if request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
             return self._user_input_graph
@@ -336,6 +366,7 @@ class WorldSimulator:
             state: WorldSimulatorState,
             simulation_lock: asyncio.Lock,
     ):
+        completed_state = None
         try:
             await self._db.generation_job.mark_running(run.thread_id, stage="starting")
             graph = self._graph_for_request_type(state.request_type)
@@ -358,6 +389,7 @@ class WorldSimulator:
                 run.thread_id,
                 final_turn_id=self._final_turn_id(run.final_state),
             )
+            completed_state = self._world_state_from_result(run.final_state)
         except BaseException as exc:
             run.error = exc
             try:
@@ -373,6 +405,84 @@ class WorldSimulator:
                     simulation_lock.release()
 
             await run.queue.put(self._RUN_DONE)
+            if completed_state and completed_state.committed_turn:
+                self._schedule_off_scene_activity(completed_state)
+
+    @staticmethod
+    def _world_state_from_result(result: Any) -> WorldSimulatorState | None:
+        try:
+            return WorldSimulatorState.model_validate(result)
+        except (TypeError, ValueError):
+            return None
+
+    def _cancel_off_scene_activity(self, simulation_id: str):
+        task = self._off_scene_tasks.pop(simulation_id, None)
+        if task and not task.done():
+            task.cancel()
+
+    def _schedule_off_scene_activity(self, state: WorldSimulatorState):
+        simulation_id = state.simulation.id
+        self._cancel_off_scene_activity(simulation_id)
+        self._off_scene_results[simulation_id] = []
+        task = asyncio.create_task(self._run_off_scene_activity(state))
+        self._off_scene_tasks[simulation_id] = task
+        task.add_done_callback(
+            lambda completed, scheduled_simulation_id=simulation_id: self._finish_off_scene_activity(
+                scheduled_simulation_id,
+                completed,
+            )
+        )
+
+    def _finish_off_scene_activity(self, simulation_id: str, task: asyncio.Task):
+        if self._off_scene_tasks.get(simulation_id) is task:
+            self._off_scene_tasks.pop(simulation_id, None)
+        if not task.cancelled():
+            task.exception()
+
+    async def _run_off_scene_activity(self, state: WorldSimulatorState):
+        excluded_ids = set(state.perceiving_character_ids)
+        characters = await self._db.character.list_characters(
+            simulation_id=state.simulation.id,
+        )
+        candidates = []
+        for character in characters:
+            if character.id in excluded_ids or character.user_controlled:
+                continue
+            if not self._character_is_available(character, state.simulation.current_time):
+                continue
+            if not await self._db.location.get_location_by_character(character.id):
+                continue
+            candidates.append(character)
+            if len(candidates) >= self._MAX_SCHEDULED_CHARACTERS:
+                break
+
+        for character in candidates:
+            try:
+                proposal = await self._character_simulator.propose_actions(
+                    world_id=state.world.id,
+                    simulation_id=state.simulation.id,
+                    character_id=character.id,
+                    user_input=(
+                        "Continue your current off-scene activity at simulation time "
+                        f"{state.simulation.current_time.isoformat()}."
+                    ),
+                )
+                result = OffSceneActivityResult(
+                    simulation_id=state.simulation.id,
+                    character_id=character.id,
+                    simulation_time=state.simulation.current_time,
+                    proposal=proposal,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                result = OffSceneActivityResult(
+                    simulation_id=state.simulation.id,
+                    character_id=character.id,
+                    simulation_time=state.simulation.current_time,
+                    error=str(exc),
+                )
+            self._off_scene_results[state.simulation.id].append(result)
 
     @staticmethod
     def _generation_request_fingerprint(
@@ -630,34 +740,20 @@ class WorldSimulator:
         }
 
     async def propose_scheduled_character_actions(self, state: WorldSimulatorState):
-        user_character = await self._db.character.get_user_character_by_simulation(
-            simulation_id=state.simulation.id
-        )
-        if not user_character:
-            raise ValueError(f"Simulation {state.simulation.id} has no user character")
+        candidates = []
+        for character_id in dict.fromkeys(state.perceiving_character_ids):
+            character = await self._db.character.get_character(character_id)
+            if (
+                    character
+                    and not character.user_controlled
+                    and self._character_is_available(character, state.simulation.current_time)
+            ):
+                candidates.append(character)
+                if len(candidates) >= self._MAX_SCHEDULED_CHARACTERS:
+                    break
 
-        location = await self._db.location.get_location_by_character(
-            character_id=user_character.id
-        )
-        if not location:
-            return {
-                "character_actions": [],
-                "character_action_validations": [],
-                "character_action_coordination": None,
-                "previous_character_action_coordination": None,
-                "character_actions_are_reactions": False,
-                "reaction_history": [],
-            }
-
-        # TODO: Replace this local-location activation with the time-based simulation scheduler.
-        nearby_characters = await self._db.get_characters_in_location(
-            root_location_id=location.id,
-        )
         proposals = []
-        for character, _, _, _ in nearby_characters:
-            if character.id == user_character.id or character.user_controlled:
-                continue
-
+        for character in candidates:
             proposal = await self._character_simulator.propose_actions(
                 world_id=state.world.id,
                 simulation_id=state.simulation.id,
@@ -679,6 +775,52 @@ class WorldSimulator:
             "character_actions_are_reactions": False,
             "reaction_history": [],
         }
+
+    async def select_user_event_observers(self, state: WorldSimulatorState):
+        coordination = await self._user_coordination_from_state(state)
+        return await self._select_event_observers(state, coordination)
+
+    async def select_character_event_observers(self, state: WorldSimulatorState):
+        if not state.character_action_coordination:
+            raise RuntimeError("No character action coordination supplied")
+        return await self._select_event_observers(state, state.character_action_coordination)
+
+    async def _select_event_observers(
+            self,
+            state: WorldSimulatorState,
+            coordination: SceneCoordinationResult,
+    ) -> dict:
+        actor_ids = [entry.actor_id for entry in coordination.accepted_actions]
+        if coordination.problem:
+            actor_ids.extend(coordination.problem.involved_actor_ids)
+        observers = await self._db.get_characters_that_can_perceive_characters(
+            simulation_id=state.simulation.id,
+            character_ids=actor_ids,
+        )
+        return {
+            "perceiving_character_ids": [character.id for character in observers],
+        }
+
+    @staticmethod
+    def _character_is_available(character, current_time) -> bool:
+        activity = character.current_activity
+        if activity.name.strip().casefold() == "idle":
+            return True
+        if activity.expected_end is not None and WorldSimulator._time_is_due(
+                activity.expected_end,
+                current_time,
+        ):
+            return True
+        return activity.interruptible
+
+    @staticmethod
+    def _time_is_due(expected_end, current_time) -> bool:
+        """Compare authored activity times safely when one timestamp omitted its offset."""
+        if expected_end.tzinfo is None and current_time.tzinfo is not None:
+            expected_end = expected_end.replace(tzinfo=current_time.tzinfo)
+        elif expected_end.tzinfo is not None and current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=expected_end.tzinfo)
+        return expected_end <= current_time
 
     async def propose_character_reactions(self, state: WorldSimulatorState | CharacterActionProposalState):
         world_id = state.world.id if isinstance(state, WorldSimulatorState) else state.world_id
@@ -1007,7 +1149,7 @@ class WorldSimulator:
             raise RuntimeError("No user action validation supplied")
 
         if all(item.allowed for item in state.user_action_validation.validations):
-            return "commit_user_actions"
+            return "select_user_event_observers"
 
         return "narrate_user_turn"
 
@@ -1615,6 +1757,7 @@ class WorldSimulator:
         graph.add_node("validate_character_actions", self.validate_character_actions)
         graph.add_node("coordinate_character_actions", self.coordinate_character_actions)
         graph.add_node("narrate_turn", self.narrate_turn)
+        graph.add_node("select_character_event_observers", self.select_character_event_observers)
         graph.add_node("commit_character_actions", self.commit_character_actions)
         graph.add_node("summarize_character_memory", self.summarize_character_memory)
 
@@ -1629,7 +1772,8 @@ class WorldSimulator:
             self.route_after_character_coordination,
         )
         graph.add_edge("propose_character_reactions", "validate_character_actions")
-        graph.add_edge("narrate_turn", "commit_character_actions")
+        graph.add_edge("narrate_turn", "select_character_event_observers")
+        graph.add_edge("select_character_event_observers", "commit_character_actions")
         graph.add_edge("commit_character_actions", "summarize_character_memory")
         graph.add_edge("summarize_character_memory", END)
 
@@ -1645,6 +1789,7 @@ class WorldSimulator:
         graph.add_node("narrate_user_turn", self.narrate_user_turn)
         graph.add_node("commit_user_actions", self.commit_user_actions)
         graph.add_node("summarize_user_memory", self.summarize_user_memory)
+        graph.add_node("select_user_event_observers", self.select_user_event_observers)
         self._add_character_round_nodes(graph)
 
         graph.add_edge(START, "interpret_user_input")
@@ -1656,6 +1801,7 @@ class WorldSimulator:
             "validate_user_action",
             self.route_after_user_action_validation,
         )
+        graph.add_edge("select_user_event_observers", "commit_user_actions")
         graph.add_edge("narrate_user_turn", "commit_user_actions")
         graph.add_edge("commit_user_actions", "summarize_user_memory")
         graph.add_conditional_edges(

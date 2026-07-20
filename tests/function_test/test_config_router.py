@@ -75,6 +75,7 @@ def connection_payload(name: str = "OpenAI") -> dict:
     return {
         "type": ConnectionType.OPENAI,
         "name": name,
+        "base_url": "http://localhost:11434",
         "api_key": "test-key",
     }
 

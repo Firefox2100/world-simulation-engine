@@ -505,7 +505,7 @@ class PerspectiveResolver(SimulatorComponent):
 
         async def route_after_start(state: ResolveGraphState):
             result = []
-            characters = await self._db.get_characters_in_location(state.location.id)
+            characters = await self._db.get_characters_perceivable_by(state.observer.id)
             for character, location, position, landmark in characters:
                 if character.id == state.observer.id:
                     continue

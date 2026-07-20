@@ -205,10 +205,6 @@ def test_create_list_get_update_and_delete_container(container_api):
         f"/containers/{simulation_container['id']}/owner",
         json={"owner_id": container_api.owner.id},
     )
-    holder_response = client.put(
-        f"/containers/{simulation_container['id']}/holder",
-        json={"holder_id": container_api.holder.id},
-    )
 
     assert location_response.status_code == 200
     assert client.get("/containers", params={"location_id": container_api.location.id}).json() == [
@@ -216,6 +212,12 @@ def test_create_list_get_update_and_delete_container(container_api):
     ]
     assert owner_response.status_code == 200
     assert client.get("/containers", params={"owner_id": container_api.owner.id}).json() == [owner_response.json()]
+
+    holder_response = client.put(
+        f"/containers/{simulation_container['id']}/holder",
+        json={"holder_id": container_api.holder.id},
+    )
+
     assert holder_response.status_code == 200
     assert client.get("/containers", params={"holder_id": container_api.holder.id}).json() == [
         holder_response.json()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { Link, NavLink, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -1435,7 +1435,7 @@ export function SimulationChatPage() {
         }
     }
 
-    async function refreshCharacters(id) {
+    const refreshCharacters = useCallback(async (id) => {
         try {
             const characters = await fetchSimulationCharacters(id);
             setCharacterCache((current) => ({
@@ -1455,9 +1455,9 @@ export function SimulationChatPage() {
             return characters;
         } catch {
             // Keep cached characters available if background refresh fails.
-            return characterCache[id] ?? emptyList;
+            return emptyList;
         }
-    }
+    }, []);
 
     async function refreshLocations(id) {
         try {
@@ -1663,7 +1663,7 @@ export function SimulationChatPage() {
             eventSourceRef.current?.close();
             eventSourceRef.current = null;
         };
-    }, [simulationId]);
+    }, [refreshCharacters, simulationId]);
 
     useEffect(() => {
         if (!detailsOpen || !simulationId) {
@@ -1673,7 +1673,7 @@ export function SimulationChatPage() {
         refreshSimulationDetails(simulationId);
         refreshCharacters(simulationId).then(() => refreshEntities(simulationId));
         refreshLocations(simulationId);
-    }, [detailsOpen, simulationId]);
+    }, [detailsOpen, refreshCharacters, simulationId]);
 
     useEffect(() => {
         if (!detailsOpen || detailsSection !== "characters") {

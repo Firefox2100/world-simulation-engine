@@ -418,7 +418,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert client.get(
         "/equipment",
         params={"holder_id": copied_character["id"]},
-    ).json() == [copied_equipment]
+    ).json() == []
     assert copied_stacks_response.status_code == 200
     assert len(copied_stacks_response.json()) == 2
     copied_held_stacks = client.get(

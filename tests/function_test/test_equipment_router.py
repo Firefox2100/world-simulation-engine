@@ -185,6 +185,14 @@ def test_create_list_get_update_and_delete_equipment(equipment_api):
         f"/equipment/{simulation_equipment['id']}/owner",
         json={"owner_id": equipment_api.owner.id},
     )
+
+    assert location_response.status_code == 200
+    assert client.get("/equipment", params={"location_id": equipment_api.location.id}).json() == [
+        location_response.json()
+    ]
+    assert owner_response.status_code == 200
+    assert client.get("/equipment", params={"owner_id": equipment_api.owner.id}).json() == [owner_response.json()]
+
     holder_response = client.put(
         f"/equipment/{simulation_equipment['id']}/holder",
         json={
@@ -194,12 +202,6 @@ def test_create_list_get_update_and_delete_equipment(equipment_api):
         },
     )
 
-    assert location_response.status_code == 200
-    assert client.get("/equipment", params={"location_id": equipment_api.location.id}).json() == [
-        location_response.json()
-    ]
-    assert owner_response.status_code == 200
-    assert client.get("/equipment", params={"owner_id": equipment_api.owner.id}).json() == [owner_response.json()]
     assert holder_response.status_code == 200
     assert client.get("/equipment", params={"holder_id": equipment_api.holder.id}).json() == [
         holder_response.json()

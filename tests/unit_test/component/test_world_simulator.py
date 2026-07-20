@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -213,7 +213,7 @@ async def test_route_after_input_interpretation_rejects_ooc_for_now():
         await simulator.route_after_input_interpretation(state)
 
 
-async def test_route_after_user_action_validation_routes_valid_actions_to_commit():
+async def test_route_after_user_action_validation_routes_valid_actions_to_observer_selection():
     action = make_action()
     state = make_state(InputInterpretation(items=[]))
     state.user_action_validation = ActionValidationResult(
@@ -228,7 +228,7 @@ async def test_route_after_user_action_validation_routes_valid_actions_to_commit
     )
     simulator = WorldSimulator(database=Mock())
 
-    assert await simulator.route_after_user_action_validation(state) == "commit_user_actions"
+    assert await simulator.route_after_user_action_validation(state) == "select_user_event_observers"
 
 
 async def test_route_after_user_action_validation_routes_invalid_actions_to_narration():
@@ -247,6 +247,220 @@ async def test_route_after_user_action_validation_routes_invalid_actions_to_narr
     simulator = WorldSimulator(database=Mock())
 
     assert await simulator.route_after_user_action_validation(state) == "narrate_user_turn"
+
+
+def test_character_availability_uses_simulation_time_and_interruptibility():
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    character = make_character()
+
+    assert WorldSimulator._character_is_available(character, now)
+    assert WorldSimulator._character_is_available(
+        character.model_copy(update={
+            "current_activity": CurrentActivity(
+                name="guarding",
+                expected_end=now - timedelta(seconds=1),
+                interruptible=False,
+            )
+        }),
+        now,
+    )
+    assert WorldSimulator._character_is_available(
+        character.model_copy(update={
+            "current_activity": CurrentActivity(
+                name="reading",
+                expected_end=now + timedelta(minutes=5),
+                interruptible=True,
+            )
+        }),
+        now,
+    )
+    assert not WorldSimulator._character_is_available(
+        character.model_copy(update={
+            "current_activity": CurrentActivity(
+                name="performing surgery",
+                expected_end=now + timedelta(minutes=5),
+                interruptible=False,
+            )
+        }),
+        now,
+    )
+    assert WorldSimulator._character_is_available(
+        character.model_copy(update={
+            "current_activity": CurrentActivity(
+                name="waiting",
+                expected_end=now.replace(tzinfo=None),
+                interruptible=False,
+            )
+        }),
+        now,
+    )
+
+
+async def test_select_event_observers_uses_accepted_actors_and_problem_actors():
+    state = make_state(InputInterpretation(items=[]))
+    action = make_action()
+    state.user_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.PROBLEM,
+        accepted_actions=[
+            AcceptedSceneAction(
+                actor_id="character_1",
+                proposal_index=0,
+                action_index=0,
+                action=action,
+                start_offset_seconds=0,
+                end_offset_seconds=2,
+                summary="Alex looks around.",
+            )
+        ],
+        problem={
+            "type": SceneCoordinationProblemType.OTHER,
+            "time_offset_seconds": 2,
+            "involved_actor_ids": ["character_1", "character_2"],
+            "involved_actions": [],
+            "description": "Clara is directly involved.",
+            "needs_user_decision": True,
+            "actors_to_react": [],
+        },
+    )
+    observer = make_character().model_copy(update={"id": "character_3"})
+    database = Mock()
+    database.get_characters_that_can_perceive_characters = AsyncMock(return_value=[observer])
+    simulator = WorldSimulator(database=database)
+
+    result = await simulator.select_user_event_observers(state)
+
+    assert result == {"perceiving_character_ids": ["character_3"]}
+    database.get_characters_that_can_perceive_characters.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        character_ids=["character_1", "character_1", "character_2"],
+    )
+
+
+async def test_scheduled_actions_only_run_for_perceivers_who_are_not_busy():
+    state = make_state(InputInterpretation(items=[]))
+    state.perceiving_character_ids = ["idle", "expired", "interruptible", "busy", "user"]
+    now = state.simulation.current_time
+    base = make_character()
+    characters = {
+        "idle": base.model_copy(update={"id": "idle", "user_controlled": False}),
+        "expired": base.model_copy(update={
+            "id": "expired",
+            "user_controlled": False,
+            "current_activity": CurrentActivity(
+                name="working",
+                expected_end=now,
+                interruptible=False,
+            ),
+        }),
+        "interruptible": base.model_copy(update={
+            "id": "interruptible",
+            "user_controlled": False,
+            "current_activity": CurrentActivity(
+                name="reading",
+                expected_end=now + timedelta(hours=1),
+                interruptible=True,
+            ),
+        }),
+        "busy": base.model_copy(update={
+            "id": "busy",
+            "user_controlled": False,
+            "current_activity": CurrentActivity(
+                name="operating",
+                expected_end=now + timedelta(hours=1),
+                interruptible=False,
+            ),
+        }),
+        "user": base.model_copy(update={"id": "user", "user_controlled": True}),
+    }
+    database = Mock()
+    database.character.get_character = AsyncMock(side_effect=characters.get)
+    simulator = WorldSimulator(database=database)
+    simulator._character_simulator.propose_actions = AsyncMock(
+        side_effect=lambda **kwargs: make_action_proposal(make_action(kwargs["character_id"]))
+    )
+
+    result = await simulator.propose_scheduled_character_actions(state)
+
+    assert [record.character_id for record in result["character_actions"]] == [
+        "idle", "expired", "interruptible"
+    ]
+    assert simulator._character_simulator.propose_actions.await_count == 3
+
+
+async def test_off_scene_activity_runs_in_background_without_committing_or_advancing_time():
+    state = make_state(InputInterpretation(items=[]))
+    state.perceiving_character_ids = ["scene"]
+    state.committed_turn = Turn(
+        id="turn_1",
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="The main scene completes.",
+        start_time=state.simulation.current_time,
+    )
+    base = make_character().model_copy(update={"user_controlled": False})
+    off_scene = base.model_copy(update={"id": "off_scene", "name": "Off Scene"})
+    busy = base.model_copy(update={
+        "id": "busy",
+        "current_activity": CurrentActivity(
+            name="surgery",
+            expected_end=state.simulation.current_time + timedelta(hours=1),
+            interruptible=False,
+        ),
+    })
+    database = Mock()
+    database.character.list_characters = AsyncMock(return_value=[off_scene, busy])
+    database.location.get_location_by_character = AsyncMock(return_value=Mock(id="elsewhere"))
+    simulator = WorldSimulator(database=database)
+    release = asyncio.Event()
+
+    async def propose(**kwargs):
+        await release.wait()
+        return make_action_proposal(make_action(kwargs["character_id"]))
+
+    simulator._character_simulator.propose_actions = AsyncMock(side_effect=propose)
+
+    simulator._schedule_off_scene_activity(state)
+    await asyncio.sleep(0)
+
+    assert simulator._off_scene_tasks["simulation_1"].done() is False
+    assert state.simulation.current_time == datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    release.set()
+    await simulator.wait_for_off_scene_activity("simulation_1")
+
+    results = simulator.list_off_scene_activity_results("simulation_1")
+    assert [result.character_id for result in results] == ["off_scene"]
+    assert results[0].proposal is not None
+    assert results[0].error is None
+    simulator._character_simulator.propose_actions.assert_awaited_once()
+    assert not hasattr(database, "state_commit") or not database.state_commit.mock_calls
+
+
+async def test_new_foreground_request_cancels_off_scene_activity():
+    state = make_state(InputInterpretation(items=[]))
+    off_scene = make_character().model_copy(update={
+        "id": "off_scene",
+        "user_controlled": False,
+    })
+    database = make_database_mock()
+    database.character.list_characters = AsyncMock(return_value=[off_scene])
+    database.location.get_location_by_character = AsyncMock(return_value=Mock(id="elsewhere"))
+    simulator = WorldSimulator(database=database)
+    started = asyncio.Event()
+
+    async def propose(**kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    simulator._character_simulator.propose_actions = AsyncMock(side_effect=propose)
+    simulator._schedule_off_scene_activity(state)
+    task = simulator._off_scene_tasks["simulation_1"]
+    await started.wait()
+
+    simulator._cancel_off_scene_activity("simulation_1")
+    await asyncio.sleep(0)
+
+    assert task.cancelled()
+    assert simulator.list_off_scene_activity_results("simulation_1") == []
 
 
 async def test_coordinate_rejected_user_actions_converts_validation_failure_to_coordination_problem():

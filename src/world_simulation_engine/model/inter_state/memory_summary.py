@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from world_simulation_engine.misc.enums import EventInvolvement, IntentHorizon, IntentStatus, IntentType, \
     MemoryStance, MemorySupportType, Salience
@@ -145,6 +145,47 @@ MemorySummaryOperation = Annotated[
 
 class MemorySummaryProposal(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_missing_operation_types(cls, value: Any) -> Any:
+        """Repair discriminator omissions that are unambiguous from operation fields."""
+        if not isinstance(value, dict) or not isinstance(value.get("operations"), list):
+            return value
+
+        inferred_operations = []
+        for operation in value["operations"]:
+            if not isinstance(operation, dict) or operation.get("type"):
+                inferred_operations.append(operation)
+                continue
+
+            inferred_type = cls._infer_operation_type(operation)
+            inferred_operations.append(
+                {"type": inferred_type, **operation}
+                if inferred_type else operation
+            )
+        return {**value, "operations": inferred_operations}
+
+    @staticmethod
+    def _infer_operation_type(operation: dict[str, Any]) -> str | None:
+        fields = set(operation)
+        if {"character_id", "intent_type", "horizon"} <= fields:
+            return "create_intent"
+        if {"name", "summary", "turn_ids", "involved_characters"} <= fields:
+            return "create_event"
+        if {"event_id", "turn_id"} <= fields:
+            return "link_turn_to_event"
+        if {"memory_id", "character_link"} <= fields:
+            return "link_existing_memory"
+        if "intent_id" in fields:
+            return "update_intent"
+        if {"event_id", "support_type", "character_links"} <= fields:
+            return "create_memory"
+        if "event_id" in fields and ({"name", "summary", "involved_characters"} & fields):
+            return "update_event"
+        if fields <= {"reason"} and "reason" in fields:
+            return "no_abstract_change"
+        return None
 
     operations: list[MemorySummaryOperation] = Field(default_factory=list)
     summarizer_notes: list[str] = Field(

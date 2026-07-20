@@ -53,6 +53,9 @@ class DatabaseService:
         self._turn = TurnStore(self._driver)
         self._world = WorldStore(self._driver)
 
+    async def close(self):
+        await self._driver.close()
+
     @property
     def character(self) -> CharacterStore:
         return self._character
@@ -127,13 +130,12 @@ class DatabaseService:
         result = await self._driver.execute_query(
             """
             MATCH (root:Location {id: $root_id})
-            MATCH path = (root) -[:CONTAINS*0..]-> (loc:Location)
+            MATCH (root) -[:CONTAINS*0..]-> (loc:Location)
             MATCH (c:Character) -[r:PRESENT_IN]-> (loc)
-            OPTIONAL MATCH (c) -[:ANCHORED_TO]-> (lm:Landmark)
-            WHERE (loc) -[:CONTAINS]-> (lm)
+            OPTIONAL MATCH (c) -[:ANCHORED_TO]-> (lm:Landmark)<-[:CONTAINS]-(loc)
             
             RETURN c as character, loc as location, r.position as position, lm as landmark
-            ORDER BY character.name
+            ORDER BY character.name, character.id
             """,
             parameters_={"root_id": root_location_id},
         )
@@ -150,3 +152,63 @@ class DatabaseService:
             entries.append((character, location, record["position"], landmark))
 
         return entries
+
+    async def get_characters_perceivable_by(
+            self,
+            observer_id: str,
+    ) -> list[tuple[Character, Location, str | None, Landmark | None]]:
+        """Return spatial perception candidates using the resolver's location rule."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (observer:Character {id: $observer_id})-[:PRESENT_IN]->(observer_location:Location)
+            MATCH (observer_location)-[:CONTAINS*0..]->(location:Location)
+            MATCH (character:Character)-[present:PRESENT_IN]->(location)
+            WHERE character.id <> observer.id
+            OPTIONAL MATCH (character)-[:ANCHORED_TO]->(landmark:Landmark)<-[:CONTAINS]-(location)
+            RETURN DISTINCT character, location, present.position AS position, landmark
+            ORDER BY character.name, character.id
+            """,
+            parameters_={"observer_id": observer_id},
+        )
+        return [
+            (
+                self.character.character_from_node(record["character"]),
+                self.location.location_from_node(record["location"]),
+                record["position"],
+                self.location.landmark_from_node(record["landmark"])
+                if record.get("landmark") else None,
+            )
+            for record in result.records
+        ]
+
+    async def get_characters_that_can_perceive_characters(
+            self,
+            *,
+            simulation_id: str,
+            character_ids: list[str],
+    ) -> list[Character]:
+        """Return simulation characters whose location scope contains any subject location."""
+        if not character_ids:
+            return []
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (simulation:Simulation {id: $simulation_id})-[:CONTAINS]->(observer:Character)
+            MATCH (observer)-[:PRESENT_IN]->(observer_location:Location)
+            MATCH (simulation)-[:CONTAINS]->(subject:Character)-[:PRESENT_IN]->(subject_location:Location)
+            WHERE subject.id IN $character_ids
+                AND EXISTS {
+                    MATCH (observer_location)-[:CONTAINS*0..]->(subject_location)
+                }
+            RETURN DISTINCT observer
+            ORDER BY observer.name, observer.id
+            """,
+            parameters_={
+                "simulation_id": simulation_id,
+                "character_ids": list(dict.fromkeys(character_ids)),
+            },
+        )
+        return [
+            self.character.character_from_node(record["observer"])
+            for record in result.records
+        ]

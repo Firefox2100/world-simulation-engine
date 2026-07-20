@@ -183,12 +183,16 @@ def test_create_list_get_update_and_delete_character(character_api):
     } == {
         world_character["id"],
         simulation_character["id"],
+        character_api.inventory_character.id,
     }
     assert world_filter_response.status_code == 200
     assert world_filter_response.json() == [world_character]
     assert client.get("/characters", params={"location_id": character_api.location.id}).json() == [world_character]
     assert simulation_filter_response.status_code == 200
-    assert simulation_filter_response.json() == [simulation_character]
+    assert {
+        character["id"]
+        for character in simulation_filter_response.json()
+    } == {simulation_character["id"], character_api.inventory_character.id}
 
     get_response = client.get(f"/characters/{world_character['id']}")
 
