@@ -171,7 +171,7 @@ class SimulationStore:
             """
             MATCH (s:Simulation {id: $id})
             WITH s, 1 AS deleted
-            OPTIONAL MATCH path = (s)-[:CONTAINS|HOLDS|PART_OF*0..]->(node)
+            OPTIONAL MATCH path = (s)-[:CONTAINS|HOLDS|PART_OF|HAS_GRAPH_STATE_SNAPSHOT|HAS_GENERATION_JOB*0..]->(node)
             WITH deleted, collect(DISTINCT s) + collect(DISTINCT node) AS nodes
             FOREACH (node IN nodes | DETACH DELETE node)
             RETURN deleted

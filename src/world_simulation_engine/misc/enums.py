@@ -123,6 +123,13 @@ class GraphStateSnapshotType(StrEnum):
     AFTER_CHARACTER_ROUND = "after_character_round"
 
 
+class GenerationJobStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class SimulationGenerationRequestType(StrEnum):
     USER_INPUT_GENERATION = "user_input_generation"
     CONTINUE_GENERATION = "continue_generation"

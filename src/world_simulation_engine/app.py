@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
+from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulator
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
     config_router, container_router, equipment_router, event_router, intent_router, item_router, landmark_router, \
@@ -21,10 +22,16 @@ async def lifespan(app: FastAPI):
     )
     storage = StorageService(CONFIG.data_folder)
     await storage.initialise()
+    await database.generation_job.fail_incomplete_jobs(
+        "Generation interrupted by application restart",
+    )
 
     app.state.database = database
     app.state.storage = storage
-    app.state.world_simulator = WorldSimulator(database=database)
+    app.state.world_simulator = WorldSimulator(
+        database=database,
+        prompt_loader=PromptLoader(database=database, storage=storage),
+    )
 
     yield
 

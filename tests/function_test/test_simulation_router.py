@@ -9,22 +9,29 @@ from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
 from world_simulation_engine.misc.enums import ContainerState, EventInvolvement, IntentHorizon, IntentStatus, \
-    IntentType, SupportedLanguage, TurnType
+    IntentType, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import Author, BackgroundCharacter, Character, Container, CurrentActivity, \
-    Equipment, Event, Intent, Item, ItemStack, Landmark, Location, Turn, World
+    Equipment, Event, GenerationJob, Intent, Item, ItemStack, Landmark, Location, Turn, World
 from world_simulation_engine.router import background_character_router, character_router, container_router, \
     equipment_router, event_router, intent_router, item_router, location_router, simulation_router
 from world_simulation_engine.service import DatabaseService
 
 
 class FakeWorldSimulator:
-    def __init__(self):
+    def __init__(self, database):
+        self.database = database
         self.started_states = []
         self.running_threads = set()
         self.streams = {}
         self.error_threads = set()
 
-    async def start_generation(self, state, request_type=None, regenerate_turn_sequence=None):
+    async def start_generation(
+            self,
+            state,
+            request_type=None,
+            regenerate_turn_sequence=None,
+            client_request_id=None,
+    ):
         thread_id = f"thread_{len(self.started_states) + 1}"
         self.started_states.append(state)
         self.streams[thread_id] = [
@@ -40,6 +47,15 @@ class FakeWorldSimulator:
             },
             {"committed_turn": {"id": "turn_1"}},
         ]
+        await self.database.generation_job.create_job(
+            GenerationJob(
+                id=thread_id,
+                simulation_id=state.simulation.id,
+                client_request_id=client_request_id,
+                request_type=request_type or SimulationGenerationRequestType.USER_INPUT_GENERATION,
+                regenerate_turn_sequence=regenerate_turn_sequence,
+            )
+        )
         return thread_id
 
     def is_generation_running(self, thread_id: str) -> bool:
@@ -272,7 +288,7 @@ def simulation_api(neo4j_container):
         await database.intent.add_event_creation(event.id, intent.id)
         await database.intent.add_event_contribution(event.id, intent.id)
         app.state.database = database
-        app.state.world_simulator = FakeWorldSimulator()
+        app.state.world_simulator = FakeWorldSimulator(database)
 
         try:
             yield
@@ -592,6 +608,31 @@ def test_start_simulation_input_schedules_generation(simulation_api):
     assert started_state.world.id == simulation_api.world.id
     assert started_state.simulation.id == simulation["id"]
     assert started_state.user_input == "I look around."
+
+
+def test_generation_run_status_is_persisted_and_scoped_to_simulation(simulation_api):
+    first = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations").json()
+    second = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations").json()
+    thread_id = simulation_api.client.post(
+        f"/simulations/{first['id']}/input",
+        json={
+            "user_input": "I look around.",
+            "client_request_id": "client-request-1",
+        },
+    ).json()["thread_id"]
+
+    response = simulation_api.client.get(
+        f"/simulations/{first['id']}/runs/{thread_id}/status",
+    )
+    wrong_simulation_response = simulation_api.client.get(
+        f"/simulations/{second['id']}/runs/{thread_id}/status",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == thread_id
+    assert response.json()["client_request_id"] == "client-request-1"
+    assert response.json()["status"] == "queued"
+    assert wrong_simulation_response.status_code == 404
 
 
 def test_start_simulation_input_accepts_null_user_input(simulation_api):

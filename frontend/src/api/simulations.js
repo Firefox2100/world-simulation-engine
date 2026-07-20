@@ -110,7 +110,7 @@ export async function deleteSimulation(simulationId) {
     });
 }
 
-export async function sendSimulationInput({ simulationId, userInput }) {
+export async function sendSimulationInput({ simulationId, userInput, clientRequestId = crypto.randomUUID() }) {
     const hasUserInput = userInput !== null && userInput !== undefined && String(userInput).trim().length > 0;
     const run = await apiRequest(`/simulations/${simulationId}/input`, {
         method: "POST",
@@ -120,6 +120,7 @@ export async function sendSimulationInput({ simulationId, userInput }) {
         body: JSON.stringify({
             request_type: hasUserInput ? "user_input_generation" : "continue_generation",
             user_input: hasUserInput ? userInput : null,
+            client_request_id: clientRequestId,
         }),
     });
 

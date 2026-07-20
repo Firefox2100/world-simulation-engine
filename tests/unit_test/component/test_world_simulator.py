@@ -12,7 +12,7 @@ from world_simulation_engine.component.simulator.world_simulator import Characte
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
-    ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GraphStateSnapshot, InputInterpretation, \
+    ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GenerationJob, GraphStateSnapshot, InputInterpretation, \
     MemorySummaryProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, \
     StateCommitProposal, Turn, World
 
@@ -79,6 +79,14 @@ def make_database_mock() -> Mock:
     database.graph_state_snapshot.get_snapshot = AsyncMock(return_value=None)
     database.graph_state_snapshot.get_latest_generation_base_snapshot = AsyncMock(return_value=None)
     database.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence = AsyncMock(return_value=None)
+    database.generation_job.get_job_by_client_request_id = AsyncMock(return_value=None)
+    database.generation_job.get_active_job = AsyncMock(return_value=None)
+    database.generation_job.create_job = AsyncMock(side_effect=lambda job: job)
+    database.generation_job.get_job = AsyncMock(return_value=None)
+    database.generation_job.mark_running = AsyncMock()
+    database.generation_job.update_job = AsyncMock()
+    database.generation_job.mark_completed = AsyncMock()
+    database.generation_job.mark_failed = AsyncMock()
     return database
 
 
@@ -968,6 +976,61 @@ async def test_start_generation_streams_graph_values_and_stores_final_state():
     assert saved_snapshot.type == GraphStateSnapshotType.BEFORE_USER_INPUT
     assert saved_snapshot.turn_id == "turn_40"
     assert saved_snapshot.turn_sequence == 40
+    created_job = database.generation_job.create_job.await_args.args[0]
+    assert created_job.id == thread_id
+    assert created_job.simulation_id == "simulation_1"
+    database.generation_job.mark_running.assert_awaited_once_with(thread_id, stage="starting")
+    database.generation_job.mark_completed.assert_awaited_once_with(
+        thread_id,
+        final_turn_id="turn_1",
+    )
+
+
+async def test_start_generation_returns_existing_job_for_same_idempotency_key():
+    database = make_database_mock()
+    state = make_state(InputInterpretation(items=[]))
+    fingerprint = WorldSimulator._generation_request_fingerprint(
+        state=state,
+        request_type=SimulationGenerationRequestType.USER_INPUT_GENERATION,
+        regenerate_turn_sequence=None,
+    )
+    existing = GenerationJob(
+        id="existing_job",
+        simulation_id=state.simulation.id,
+        client_request_id="request_1",
+        request_fingerprint=fingerprint,
+        request_type=SimulationGenerationRequestType.USER_INPUT_GENERATION,
+    )
+    database.generation_job.get_job_by_client_request_id = AsyncMock(return_value=existing)
+    simulator = WorldSimulator(database=database)
+
+    result = await simulator.start_generation(
+        state,
+        client_request_id="request_1",
+    )
+
+    assert result == existing.id
+    database.generation_job.create_job.assert_not_awaited()
+
+
+async def test_start_generation_rejects_reused_idempotency_key_for_different_request():
+    database = make_database_mock()
+    state = make_state(InputInterpretation(items=[]))
+    existing = GenerationJob(
+        id="existing_job",
+        simulation_id=state.simulation.id,
+        client_request_id="request_1",
+        request_fingerprint="different",
+        request_type=SimulationGenerationRequestType.USER_INPUT_GENERATION,
+    )
+    database.generation_job.get_job_by_client_request_id = AsyncMock(return_value=existing)
+    simulator = WorldSimulator(database=database)
+
+    with pytest.raises(ValueError, match="already used for a different"):
+        await simulator.start_generation(
+            state,
+            client_request_id="request_1",
+        )
 
 
 async def test_stream_generation_returns_final_state_after_active_run_is_cleaned_up():

@@ -1,10 +1,17 @@
+import json
+import os
 from uuid import uuid4
 
-from world_simulation_engine.misc.enums import ComponentType, MediaType
+os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
+
+from world_simulation_engine.component.prompt_loader import PromptLoader
+from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
 from world_simulation_engine.model import Location, MediaFile, PromptMediaFile, Simulation
+from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.media_store import MediaStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
+from world_simulation_engine.service.storage_service import StorageService
 from tests.integration_test.database_service.helpers import create_world
 
 
@@ -188,3 +195,61 @@ async def test_copy_prompt_media_relationships_reuses_world_prompt_media(clean_n
 
     assert result.records[0]["media_count"] == 1
     assert result.records[0]["prompt_count"] == 1
+
+
+async def test_prompt_loader_prefers_simulation_override_then_world_then_builtin(clean_neo4j, tmp_path):
+    world = await create_world(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    inherited_simulation = await simulation_store.create_simulation(
+        Simulation(name="Inherited", current_time=world.starting_time),
+        world.id,
+    )
+    builtin_simulation = await simulation_store.create_simulation(
+        Simulation(name="Builtin", current_time=world.starting_time),
+        world.id,
+    )
+    media_store = MediaStore(clean_neo4j)
+    storage = StorageService(tmp_path)
+    await storage.initialise()
+
+    async def create_prompt(content: str, title: str) -> PromptMediaFile:
+        stored = await storage.save_bytes(json.dumps([
+            {"role": "system", "content": content},
+        ]).encode("utf-8"))
+        return await media_store.create_media(PromptMediaFile(
+            title=title,
+            hash=stored.digest,
+            filename=title.lower(),
+            prompt_name="narrator",
+            language=SupportedLanguage.ENGLISH,
+            component=ComponentType.NARRATOR,
+        ))
+
+    world_prompt = await create_prompt("World override", "World")
+    simulation_prompt = await create_prompt("Simulation override", "Simulation")
+    await media_store.set_prompt_media(world.id, world_prompt.id)
+
+    loader = PromptLoader(
+        database=DatabaseService(clean_neo4j),
+        storage=storage,
+    )
+    inherited = await loader.load_prompt(
+        simulation_id=inherited_simulation.id,
+        language=SupportedLanguage.ENGLISH,
+        prompt_name="narrator",
+    )
+    await media_store.set_prompt_media(inherited_simulation.id, simulation_prompt.id)
+    overridden = await loader.load_prompt(
+        simulation_id=inherited_simulation.id,
+        language=SupportedLanguage.ENGLISH,
+        prompt_name="narrator",
+    )
+    builtin = await loader.load_prompt(
+        simulation_id=builtin_simulation.id,
+        language=SupportedLanguage.ENGLISH,
+        prompt_name="input_interpreter",
+    )
+
+    assert inherited[0].content == "World override"
+    assert overridden[0].content == "Simulation override"
+    assert len(builtin) > 1

@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 from datetime import timedelta
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
@@ -10,7 +12,8 @@ from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationGenerationRequestType, TurnType
-from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, World, Simulation, InputInterpretation, \
+from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
+    Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
     GraphStateSnapshot, MemorySummaryProposal, NarrationProposal, ReactionHistoryEntry, StateCommitProposal, Turn
 from world_simulation_engine.component.prompt_loader import PromptLoader
@@ -141,12 +144,32 @@ class WorldSimulator:
     async def start_generation(
             self,
             state: WorldSimulatorState,
-            request_type: SimulationGenerationRequestType = SimulationGenerationRequestType.USER_INPUT_GENERATION,
+            request_type: SimulationGenerationRequestType = \
+                SimulationGenerationRequestType.USER_INPUT_GENERATION,
             regenerate_turn_sequence: int | None = None,
+            client_request_id: str | None = None,
     ) -> str:
         """
         Schedule a simulator graph run in the background and return its thread id.
         """
+        request_fingerprint = self._generation_request_fingerprint(
+            state=state,
+            request_type=request_type,
+            regenerate_turn_sequence=regenerate_turn_sequence,
+        )
+        if client_request_id:
+            existing_job = await self._db.generation_job.get_job_by_client_request_id(
+                simulation_id=state.simulation.id,
+                client_request_id=client_request_id,
+            )
+            if existing_job:
+                if existing_job.request_fingerprint != request_fingerprint:
+                    raise ValueError(
+                        f"Client request id {client_request_id} was already used for a different "
+                        "generation request"
+                    )
+                return existing_job.id
+
         thread_id = str(uuid4())
         run = _SimulatorRun(
             thread_id=thread_id,
@@ -154,6 +177,30 @@ class WorldSimulator:
         )
 
         async with self._run_registry_lock:
+            if client_request_id:
+                existing_job = await self._db.generation_job.get_job_by_client_request_id(
+                    simulation_id=state.simulation.id,
+                    client_request_id=client_request_id,
+                )
+                if existing_job:
+                    if existing_job.request_fingerprint != request_fingerprint:
+                        raise ValueError(
+                            f"Client request id {client_request_id} was already used for a different "
+                            "generation request"
+                        )
+                    return existing_job.id
+
+            active_job = await self._db.generation_job.get_active_job(state.simulation.id)
+            if active_job:
+                if client_request_id:
+                    existing_job = await self._db.generation_job.get_job_by_client_request_id(
+                        simulation_id=state.simulation.id,
+                        client_request_id=client_request_id,
+                    )
+                    if existing_job and existing_job.request_fingerprint == request_fingerprint:
+                        return existing_job.id
+                raise RuntimeError(f"Simulation {state.simulation.id} already has an active generation")
+
             simulation_lock = self._simulation_run_locks.setdefault(
                 state.simulation.id,
                 asyncio.Lock(),
@@ -163,6 +210,28 @@ class WorldSimulator:
 
             try:
                 await simulation_lock.acquire()
+                try:
+                    await self._db.generation_job.create_job(
+                        GenerationJob(
+                            id=thread_id,
+                            simulation_id=state.simulation.id,
+                            client_request_id=client_request_id,
+                            request_fingerprint=request_fingerprint,
+                            request_type=request_type,
+                            regenerate_turn_sequence=regenerate_turn_sequence,
+                        )
+                    )
+                except RuntimeError:
+                    if client_request_id:
+                        existing_job = await self._db.generation_job.get_job_by_client_request_id(
+                            simulation_id=state.simulation.id,
+                            client_request_id=client_request_id,
+                        )
+                        if existing_job and existing_job.request_fingerprint == request_fingerprint:
+                            simulation_lock.release()
+                            return existing_job.id
+                    raise
+
                 state = await self._prepare_generation_state(
                     state=state,
                     request_type=request_type,
@@ -178,6 +247,15 @@ class WorldSimulator:
                     )
             except BaseException:
                 self._run_registry.pop(thread_id, None)
+                try:
+                    job = await self._db.generation_job.get_job(thread_id)
+                    if job:
+                        await self._db.generation_job.mark_failed(
+                            thread_id,
+                            "Generation failed during setup",
+                        )
+                except BaseException:
+                    pass
                 if simulation_lock.locked():
                     simulation_lock.release()
                 raise
@@ -259,16 +337,34 @@ class WorldSimulator:
             simulation_lock: asyncio.Lock,
     ):
         try:
+            await self._db.generation_job.mark_running(run.thread_id, stage="starting")
             graph = self._graph_for_request_type(state.request_type)
+            current_stage = "starting"
             async for chunk in graph.astream(
                     state,
                     config=self._graph_run_config(run.thread_id),
                     stream_mode="values",
             ):
                 run.final_state = chunk
+                next_stage = self._stage_from_chunk(chunk) or current_stage
+                if next_stage != current_stage:
+                    await self._db.generation_job.update_job(
+                        run.thread_id,
+                        {"stage": next_stage},
+                    )
+                    current_stage = next_stage
                 await run.queue.put(chunk)
+            await self._db.generation_job.mark_completed(
+                run.thread_id,
+                final_turn_id=self._final_turn_id(run.final_state),
+            )
         except BaseException as exc:
             run.error = exc
+            try:
+                await self._db.generation_job.mark_failed(run.thread_id, str(exc))
+            except BaseException:
+                # Preserve the generation error even if persistence is also unavailable.
+                pass
         finally:
             async with self._run_registry_lock:
                 self._run_registry.pop(run.thread_id, None)
@@ -277,6 +373,56 @@ class WorldSimulator:
                     simulation_lock.release()
 
             await run.queue.put(self._RUN_DONE)
+
+    @staticmethod
+    def _generation_request_fingerprint(
+            *,
+            state: WorldSimulatorState,
+            request_type: SimulationGenerationRequestType,
+            regenerate_turn_sequence: int | None,
+    ) -> str:
+        payload = json.dumps(
+            {
+                "simulation_id": state.simulation.id,
+                "request_type": request_type,
+                "user_input": state.user_input,
+                "regenerate_turn_sequence": regenerate_turn_sequence,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _stage_from_chunk(chunk: Any) -> str | None:
+        if not isinstance(chunk, dict):
+            return None
+        if chunk.get("memory_summary_proposal"):
+            return "memory_summarizer"
+        if chunk.get("committed_turn") or chunk.get("state_commit_proposal"):
+            return "state_committer"
+        if chunk.get("narration"):
+            return "narrator"
+        if chunk.get("character_action_coordination") or chunk.get("user_action_coordination"):
+            return "scene_coordinator"
+        if chunk.get("character_action_validations") or chunk.get("user_action_validation"):
+            return "action_validator"
+        if chunk.get("character_actions"):
+            return "character_simulator"
+        if chunk.get("input_interpretation"):
+            return "input_interpreter"
+        return None
+
+    @staticmethod
+    def _final_turn_id(state: Any) -> str | None:
+        if not isinstance(state, dict):
+            return None
+        turn = state.get("committed_turn")
+        if hasattr(turn, "id"):
+            return turn.id
+        if isinstance(turn, dict):
+            return turn.get("id")
+        return None
 
     def _graph_run_config(self, thread_id: str) -> dict:
         config = {

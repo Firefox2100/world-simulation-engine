@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, GraphStateSnapshotType, SimulationGenerationRequestType
-from world_simulation_engine.model import GraphStateSnapshot, Simulation
+from world_simulation_engine.model import GenerationJob, GraphStateSnapshot, Simulation
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulatorState
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 from .utils import db_dep, simulator_dep
@@ -52,6 +52,12 @@ class SimulationInput(BaseModel):
         None,
         ge=0,
         description="For regeneration, the character-round turn sequence to regenerate.",
+    )
+    client_request_id: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=200,
+        description="Optional client-generated idempotency key scoped to this simulation.",
     )
 
 
@@ -188,6 +194,7 @@ async def start_simulation_input(
             ),
             request_type=simulation_input.request_type,
             regenerate_turn_sequence=simulation_input.regenerate_turn_sequence,
+            client_request_id=simulation_input.client_request_id,
         )
     except RuntimeError as exc:
         raise HTTPException(
@@ -201,6 +208,34 @@ async def start_simulation_input(
         ) from exc
 
     return SimulationRun(thread_id=thread_id)
+
+
+@simulation_router.get(
+    "/simulations/{simulation_id}/runs/{thread_id}/status",
+    response_model=GenerationJob,
+)
+async def get_simulation_run_status(
+        simulation_id: str,
+        thread_id: str,
+        db: db_dep,
+):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    job = await db.generation_job.get_job(
+        job_id=thread_id,
+        simulation_id=simulation_id,
+    )
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Generation run {thread_id} not found",
+        )
+    return job
 
 
 @simulation_router.get("/simulations/{simulation_id}/runs/{thread_id}")

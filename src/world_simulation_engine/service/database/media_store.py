@@ -335,7 +335,7 @@ class MediaStore:
         )
 
         record = result.records[0] if result.records else None
-        if not record:
+        if not record or record["media"] is None:
             return None
 
         return PromptMediaFile.model_validate(_media_from_node(record["media"]))
