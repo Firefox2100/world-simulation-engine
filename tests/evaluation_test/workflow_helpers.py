@@ -28,6 +28,7 @@ SYNTHETIC_COORDINATION_CASES = [
             "accepted_actions": [
                 {
                     "actor_id": "character_arthur_moore",
+                    "proposal_index": 0,
                     "action_index": 0,
                     "start_offset_seconds": 0,
                     "end_offset_seconds": 4,
@@ -61,6 +62,7 @@ SYNTHETIC_COORDINATION_CASES = [
             "accepted_actions": [
                 {
                     "actor_id": "character_arthur_moore",
+                    "proposal_index": 0,
                     "action_index": 0,
                     "start_offset_seconds": 0,
                     "end_offset_seconds": 3,
@@ -79,6 +81,7 @@ SYNTHETIC_COORDINATION_CASES = [
                 },
                 {
                     "actor_id": "character_arthur_moore",
+                    "proposal_index": 0,
                     "action_index": 1,
                     "start_offset_seconds": 3,
                     "end_offset_seconds": 15,
@@ -112,6 +115,7 @@ SYNTHETIC_COORDINATION_CASES = [
             "accepted_actions": [
                 {
                     "actor_id": "character_clara_whitlock",
+                    "proposal_index": 0,
                     "action_index": 0,
                     "start_offset_seconds": 0,
                     "end_offset_seconds": 6,
@@ -142,6 +146,7 @@ SYNTHETIC_COORDINATION_CASES = [
             "accepted_actions": [
                 {
                     "actor_id": "character_clara_whitlock",
+                    "proposal_index": 0,
                     "action_index": 0,
                     "start_offset_seconds": 0,
                     "end_offset_seconds": 4,
@@ -175,6 +180,7 @@ SYNTHETIC_COORDINATION_CASES = [
             "accepted_actions": [
                 {
                     "actor_id": "character_eleanor_graves",
+                    "proposal_index": 0,
                     "action_index": 0,
                     "start_offset_seconds": 0,
                     "end_offset_seconds": 4,
@@ -199,10 +205,12 @@ SYNTHETIC_COORDINATION_CASES = [
                 "involved_actions": [
                     {
                         "actor_id": "character_clara_whitlock",
+                        "proposal_index": 0,
                         "action_index": 0,
                     },
                     {
                         "actor_id": "character_eleanor_graves",
+                        "proposal_index": 0,
                         "action_index": 0,
                     },
                 ],
@@ -214,6 +222,7 @@ SYNTHETIC_COORDINATION_CASES = [
             "pending_actions": [
                 {
                     "actor_id": "character_clara_whitlock",
+                    "proposal_index": 0,
                     "action_index": 0,
                     "reason": "Clara must decide whether to answer after Eleanor interrupts.",
                     "action": {

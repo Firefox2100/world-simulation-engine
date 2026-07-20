@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 PhysicalEntityType = Literal[
@@ -191,3 +191,10 @@ class StateCommitProposal(BaseModel):
         default_factory=list,
         description="Brief diagnostic notes. Do not include hidden chain-of-thought.",
     )
+
+    @field_validator("committer_notes", mode="before")
+    @classmethod
+    def _coerce_single_note(cls, value):
+        if isinstance(value, str):
+            return [value]
+        return value

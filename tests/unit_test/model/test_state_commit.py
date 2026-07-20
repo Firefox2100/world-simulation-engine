@@ -209,6 +209,18 @@ def test_state_commit_proposal_accepts_explicit_state_and_relationship_changes()
     assert proposal.operations[1].object.id == "character_2"
 
 
+def test_state_commit_proposal_coerces_single_committer_note():
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [],
+            "unchanged_action_refs": [],
+            "committer_notes": "Speech only; no physical state changed.",
+        }
+    )
+
+    assert proposal.committer_notes == ["Speech only; no physical state changed."]
+
+
 def test_state_commit_proposal_rejects_incomplete_operation_fragments():
     with pytest.raises(ValidationError):
         StateCommitProposal.model_validate(
