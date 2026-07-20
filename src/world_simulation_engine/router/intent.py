@@ -204,10 +204,12 @@ async def list_intents(
         db: db_dep,
         character_id: Optional[str] = Query(None, description="Optionally filter by character"),
         event_id: Optional[str] = Query(None, description="Optionally filter by event"),
+        simulation_id: Optional[str] = Query(None, description="Optionally filter by simulation"),
 ):
     return await db.intent.list_intents(
         character_id=character_id,
         event_id=event_id,
+        simulation_id=simulation_id,
     )
 
 

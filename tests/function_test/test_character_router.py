@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
-from world_simulation_engine.misc.enums import SupportedLanguage
-from world_simulation_engine.model import Author, Character, CurrentActivity, Landmark, Location, Simulation, World
+from world_simulation_engine.misc.enums import ContainerState, SupportedLanguage
+from world_simulation_engine.model import Author, Character, Container, CurrentActivity, Equipment, Item, ItemStack, Landmark, Location, Simulation, World
 from world_simulation_engine.router import character_router
 from world_simulation_engine.service import DatabaseService
 
@@ -21,6 +21,7 @@ class CharacterRouterTestClient:
     simulation: Simulation
     location: Location
     landmark: Landmark
+    inventory_character: Character
 
 
 @pytest.fixture
@@ -47,6 +48,21 @@ def character_api(neo4j_container):
     )
     location = Location(id=str(uuid4()), name="Market", description="A market")
     landmark = Landmark(id=str(uuid4()), name="Counter", description="A shop counter")
+    inventory_character = Character(
+        id=str(uuid4()),
+        name="Inventory Alex",
+        age=30,
+        gender="non-binary",
+        appearance="Short hair and a practical coat",
+        description="A test character with inventory",
+        public_state="Waiting",
+        private_state="Planning",
+        current_activity=CurrentActivity(name="observing"),
+    )
+    item = Item(id=str(uuid4()), name="Notebook", description="A pocket notebook", unique=False)
+    stack = ItemStack(id=str(uuid4()), quantity=2, quality="worn")
+    equipment = Equipment(id=str(uuid4()), name="Coat", description="A long coat", quality="good")
+    container = Container(id=str(uuid4()), name="Satchel", description="A small satchel", state=ContainerState.OPEN)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -63,6 +79,28 @@ def character_api(neo4j_container):
         await database.simulation.create_simulation(simulation, world.id)
         await database.location.create_location(location, world.id)
         await database.location.create_landmark(landmark, location.id)
+        await database.character.create_character(inventory_character, simulation.id)
+        await database.item.create_item(item, simulation.id)
+        await database.item.create_stack(
+            item.id,
+            stack,
+            source_id=simulation.id,
+            holder_id=inventory_character.id,
+            owner_id=inventory_character.id,
+        )
+        await database.equipment.create_equipment(equipment, simulation.id)
+        await database.equipment.change_hold_state(
+            equipment.id,
+            inventory_character.id,
+            equipped=True,
+            equipped_position="shoulders",
+        )
+        await database.container.create_container(container, simulation.id)
+        await database.container.assign_container(
+            container.id,
+            holder_id=inventory_character.id,
+            owner_id=inventory_character.id,
+        )
         app.state.database = database
 
         try:
@@ -81,6 +119,7 @@ def character_api(neo4j_container):
             simulation=simulation,
             location=location,
             landmark=landmark,
+            inventory_character=inventory_character,
         )
 
 
@@ -266,3 +305,24 @@ def test_character_endpoints_return_404_for_missing_resources(character_api):
     assert "Location" in missing_location_create_response.json()["detail"]
     assert missing_landmark_create_response.status_code == 404
     assert "Landmark" in missing_landmark_create_response.json()["detail"]
+
+
+def test_get_character_inventory_returns_physical_holdings(character_api):
+    response = character_api.client.get(f"/characters/{character_api.inventory_character.id}/inventory")
+
+    assert response.status_code == 200
+    inventory = response.json()
+    assert [stack["name"] for stack in inventory["stacks"]] == ["Notebook"]
+    assert inventory["stacks"][0]["quantity"] == 2
+    assert inventory["stacks"][0]["quality"] == "worn"
+    assert inventory["equipment"][0]["name"] == "Coat"
+    assert inventory["equipment"][0]["equipped"] is True
+    assert inventory["equipment"][0]["equipped_position"] == "shoulders"
+    assert inventory["containers"][0]["name"] == "Satchel"
+    assert inventory["containers"][0]["state"] == ContainerState.OPEN
+
+
+def test_get_character_inventory_returns_404_for_missing_character(character_api):
+    response = character_api.client.get(f"/characters/{uuid4()}/inventory")
+
+    assert response.status_code == 404

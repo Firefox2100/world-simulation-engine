@@ -90,18 +90,20 @@ def test_recalled_memory_from_record_preserves_source_metadata():
 def test_action_proposal_accepts_object_shaped_memory_update_suggestions():
     proposal = ActionProposal.model_validate(
         {
-            "chosen_action": {
-                "type": ActionType.OBSERVE,
-                "label": "inspect_notice_board",
-                "target_ids": ["landmark_notice_board"],
-                "utterance": None,
-                "intended_duration_seconds": 15,
-                "interruptible": True,
-                "interruption_triggers": [],
-                "required_preconditions": [],
-                "expected_effects": [],
-            },
-            "alternatives_considered": [],
+            "actions": [
+                {
+                    "type": ActionType.OBSERVE,
+                    "label": "inspect_notice_board",
+                    "target_ids": ["landmark_notice_board"],
+                    "utterance": None,
+                    "intended_duration_seconds": 15,
+                    "interruptible": True,
+                    "interruption_triggers": [],
+                    "required_preconditions": [],
+                    "expected_effects": [],
+                }
+            ],
+            "backup_proposals": [],
             "reasoning_summary": "Clara wants to check the notices.",
             "risk_flags": [],
             "memory_updates_suggested": [
@@ -146,15 +148,17 @@ def make_character_perspective() -> CharacterPerspective:
 async def test_character_simulator_repairs_speak_action_without_utterance():
     simulator = CharacterSimulator(database=Mock(), langfuse_handler=None)
     proposal = ActionProposal(
-        chosen_action={
-            "type": ActionType.SPEAK,
-            "label": "answer_room_occupancy_question",
-            "target_ids": ["character_arthur"],
-            "utterance": None,
-            "intended_duration_seconds": 6,
-            "interruptible": True,
-            "expected_effects": ["Clara answers Arthur's question about Room 7."],
-        },
+        actions=[
+            {
+                "type": ActionType.SPEAK,
+                "label": "answer_room_occupancy_question",
+                "target_ids": ["character_arthur"],
+                "utterance": None,
+                "intended_duration_seconds": 6,
+                "interruptible": True,
+                "expected_effects": ["Clara answers Arthur's question about Room 7."],
+            }
+        ],
         reasoning_summary="Clara can answer Arthur's question about Room 7.",
         memory_updates_suggested=["Room 7 was occupied before Director Harlan vanished."],
         next_review_hint_seconds=10,
@@ -172,26 +176,28 @@ async def test_character_simulator_repairs_speak_action_without_utterance():
         run_name="test.repair_speech",
     )
 
-    assert repaired.chosen_action.utterance == (
+    assert repaired.actions[0].utterance == (
         "Yes, Arthur. Room 7 was occupied before Director Harlan vanished."
     )
     llm.invoke_text.assert_awaited_once()
-    assert repaired.chosen_action.label == proposal.chosen_action.label
+    assert repaired.actions[0].label == proposal.actions[0].label
     assert repaired.reasoning_summary == proposal.reasoning_summary
 
 
 async def test_character_simulator_sanitizes_plain_text_speech_repair():
     simulator = CharacterSimulator(database=Mock(), langfuse_handler=None)
     proposal = ActionProposal(
-        chosen_action={
-            "type": ActionType.SPEAK,
-            "label": "answer_room_occupancy_question",
-            "target_ids": ["character_arthur"],
-            "utterance": None,
-            "intended_duration_seconds": 6,
-            "interruptible": True,
-            "expected_effects": ["Clara answers Arthur's question about Room 7."],
-        },
+        actions=[
+            {
+                "type": ActionType.SPEAK,
+                "label": "answer_room_occupancy_question",
+                "target_ids": ["character_arthur"],
+                "utterance": None,
+                "intended_duration_seconds": 6,
+                "interruptible": True,
+                "expected_effects": ["Clara answers Arthur's question about Room 7."],
+            }
+        ],
         reasoning_summary="Clara can answer Arthur's question about Room 7.",
         next_review_hint_seconds=10,
     )
@@ -206,21 +212,23 @@ async def test_character_simulator_sanitizes_plain_text_speech_repair():
         run_name="test.repair_speech",
     )
 
-    assert repaired.chosen_action.utterance == "Yes, Arthur."
+    assert repaired.actions[0].utterance == "Yes, Arthur."
 
 
 async def test_character_simulator_falls_back_when_speech_repair_llm_fails():
     simulator = CharacterSimulator(database=Mock(), langfuse_handler=None)
     proposal = ActionProposal(
-        chosen_action={
-            "type": ActionType.SPEAK,
-            "label": "answer_room_occupancy_question",
-            "target_ids": ["character_arthur"],
-            "utterance": None,
-            "intended_duration_seconds": 6,
-            "interruptible": True,
-            "expected_effects": ["Clara answers Arthur's question about Room 7."],
-        },
+        actions=[
+            {
+                "type": ActionType.SPEAK,
+                "label": "answer_room_occupancy_question",
+                "target_ids": ["character_arthur"],
+                "utterance": None,
+                "intended_duration_seconds": 6,
+                "interruptible": True,
+                "expected_effects": ["Clara answers Arthur's question about Room 7."],
+            }
+        ],
         reasoning_summary="Clara can answer Arthur's question about Room 7.",
         memory_updates_suggested=["Room 7 was occupied before Director Harlan vanished."],
         next_review_hint_seconds=10,
@@ -236,4 +244,4 @@ async def test_character_simulator_falls_back_when_speech_repair_llm_fails():
         run_name="test.repair_speech",
     )
 
-    assert repaired.chosen_action.utterance == "Room 7 was occupied before Director Harlan vanished."
+    assert repaired.actions[0].utterance == "Room 7 was occupied before Director Harlan vanished."

@@ -249,8 +249,8 @@ async def test_evaluate_character_simulator_outputs_action_proposal(
         user_input=case["user_input"],
     )
 
-    assert proposal.chosen_action.label
-    assert proposal.chosen_action.intended_duration_seconds >= 1
+    assert proposal.actions[0].label
+    assert proposal.actions[0].intended_duration_seconds >= 1
     assert proposal.next_review_hint_seconds >= 1
 
     _write_case_result(

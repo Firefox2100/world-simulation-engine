@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
 from world_simulation_engine.misc.enums import MemoryStance, MemorySupportType, Salience, SupportedLanguage, TurnType
-from world_simulation_engine.model import Author, Character, CurrentActivity, Event, Turn, World
+from world_simulation_engine.model import Author, Character, CurrentActivity, Event, Simulation, Turn, World
 from world_simulation_engine.router import memory_router
 from world_simulation_engine.service import DatabaseService
 
@@ -19,6 +19,7 @@ class MemoryRouterTestClient:
     client: TestClient
     character: Character
     second_character: Character
+    simulation: Simulation
     event: Event
 
 
@@ -45,6 +46,12 @@ def memory_api(neo4j_container):
         current_activity=CurrentActivity(name="idle"),
     )
     second_character = character.model_copy(update={"id": str(uuid4()), "name": "Blair"})
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Memory Simulation",
+        description="A simulation used to create memories",
+        current_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
     turn = Turn(
         id=str(uuid4()),
         sequence=1,
@@ -70,9 +77,10 @@ def memory_api(neo4j_container):
         database = DatabaseService(driver)
         await database.world.create_author(author)
         await database.world.create_world(world, author.id)
-        await database.character.create_character(character, world.id)
-        await database.character.create_character(second_character, world.id)
-        await database.turn.create_turn(turn, world.id)
+        await database.simulation.create_simulation(simulation, world.id)
+        await database.character.create_character(character, simulation.id)
+        await database.character.create_character(second_character, simulation.id)
+        await database.turn.create_turn(turn, simulation.id)
         await database.event.create_event(event, [turn.id])
         app.state.database = database
 
@@ -90,6 +98,7 @@ def memory_api(neo4j_container):
             client=client,
             character=character,
             second_character=second_character,
+            simulation=simulation,
             event=event,
         )
 
@@ -124,6 +133,7 @@ def test_create_list_get_update_relationships_and_delete_memory(memory_api):
     assert client.get("/memories").json() == [memory]
     assert client.get("/memories", params={"character_id": memory_api.character.id}).json() == [memory]
     assert client.get("/memories", params={"event_id": memory_api.event.id}).json() == [memory]
+    assert client.get("/memories", params={"simulation_id": memory_api.simulation.id}).json() == [memory]
     assert client.get(f"/memories/{memory['id']}").json() == memory
 
     update_response = client.patch(

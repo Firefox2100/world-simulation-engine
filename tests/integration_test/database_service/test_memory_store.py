@@ -2,9 +2,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from world_simulation_engine.misc.enums import MemoryStance, MemorySupportType, Salience, TurnType
-from world_simulation_engine.model import Event, MemoryAtom, Turn
+from world_simulation_engine.model import Event, MemoryAtom, Simulation, Turn
 from world_simulation_engine.service.database.event_store import EventStore
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
+from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
 from tests.integration_test.database_service.helpers import create_character, create_world
 
@@ -88,6 +89,57 @@ async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):
     assert record["behavioural_relevance"] == "May greet this person again."
     assert record["stance"] == MemoryStance.REMEMBER
     assert await memory_store.delete_memory(memory.id) is True
+
+
+async def test_list_memories_can_filter_by_simulation(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Memory Simulation",
+        description="A simulation used to list memories",
+        current_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+    character = await create_character(clean_neo4j, simulation.id, name="Alex")
+    turn_store = TurnStore(clean_neo4j)
+    event_store = EventStore(clean_neo4j)
+    memory_store = MemoryStore(clean_neo4j)
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="Hello",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    event = Event(
+        id=str(uuid4()),
+        name="Greeting",
+        summary="A greeting exchange",
+    )
+    memory = MemoryAtom(
+        id=str(uuid4()),
+        summary="Alex greeted someone.",
+        keywords=["Alex", "greeting"],
+        embedding=[0.1, 0.2, 0.3],
+    )
+
+    await turn_store.create_turn(turn, source_id=simulation.id)
+    await event_store.create_event(event, turn_ids=[turn.id])
+    await memory_store.create_memory_atom(
+        memory,
+        event_id=event.id,
+        support_type=MemorySupportType.DIRECT,
+        character_links=[
+            CharacterMemoryLink(
+                character_id=character.id,
+                confidence=0.9,
+                salience=Salience.MEDIUM,
+                stance=MemoryStance.REMEMBER,
+            )
+        ],
+    )
+
+    assert await memory_store.list_memories(simulation_id=simulation.id) == [memory]
     assert await memory_store.get_memory(memory.id) is None
     assert await memory_store.delete_memory(memory.id) is False
 

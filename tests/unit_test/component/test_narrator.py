@@ -51,6 +51,7 @@ def make_coordination() -> SceneCoordinationResult:
         accepted_actions=[
             AcceptedSceneAction(
                 actor_id="character_1",
+                proposal_index=0,
                 action_index=0,
                 action=ProposedAction(
                     type=ActionType.SPEAK,
@@ -262,6 +263,7 @@ async def test_build_context_collects_sorted_unique_actor_ids_from_accepted_pend
     coordination.pending_actions = [
         PendingSceneAction(
             actor_id="character_2",
+            proposal_index=0,
             action_index=0,
             action=ProposedAction(
                 type=ActionType.WAIT,
@@ -275,6 +277,13 @@ async def test_build_context_collects_sorted_unique_actor_ids_from_accepted_pend
         type=SceneCoordinationProblemType.REACTION_TRIGGER,
         time_offset_seconds=1,
         involved_actor_ids=["character_2", "missing_character"],
+        involved_actions=[
+            {
+                "actor_id": "character_2",
+                "proposal_index": 0,
+                "action_index": 0,
+            }
+        ],
         description="A reaction may be needed.",
         needs_user_decision=False,
     )

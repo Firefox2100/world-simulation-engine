@@ -2,9 +2,10 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from world_simulation_engine.misc.enums import IntentHorizon, IntentStatus, IntentType, TurnType
-from world_simulation_engine.model import Event, Intent, Turn
+from world_simulation_engine.model import Event, Intent, Simulation, Turn
 from world_simulation_engine.service.database.event_store import EventStore
 from world_simulation_engine.service.database.intent_store import IntentStore
+from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
 from tests.integration_test.database_service.helpers import create_character, create_world
 
@@ -108,6 +109,24 @@ async def test_list_update_and_delete_intent(clean_neo4j):
     assert await store.delete_intent(intent.id) is True
     assert await store.get_intent(intent.id) is None
     assert await store.delete_intent(intent.id) is False
+
+
+async def test_list_intents_can_filter_by_simulation(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Intent Simulation",
+        description="A simulation used to list intents",
+        current_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+    character = await create_character(clean_neo4j, simulation.id, name="Alex")
+    store = IntentStore(clean_neo4j)
+    intent = make_intent("Buy coffee")
+
+    await store.create_intent(intent, character.id)
+
+    assert await store.list_intents(simulation_id=simulation.id) == [intent]
 
 
 async def test_event_relationships_to_intent(clean_neo4j):

@@ -1029,6 +1029,7 @@ class WorldSimulator:
             accepted_actions.append(
                 AcceptedSceneAction(
                     actor_id=actor_id,
+                    proposal_index=0,
                     action_index=item.action_index,
                     action=item.action,
                     start_offset_seconds=start_offset_seconds,
@@ -1082,6 +1083,7 @@ class WorldSimulator:
                 "involved_actions": [
                     {
                         "actor_id": actor_id,
+                        "proposal_index": 0,
                         "action_index": first_rejected.action_index,
                     }
                 ],
@@ -1093,6 +1095,7 @@ class WorldSimulator:
             pending_actions=[
                 {
                     "actor_id": actor_id,
+                    "proposal_index": 0,
                     "action_index": item.action_index,
                     "action": item.action,
                     "reason": item.reason,

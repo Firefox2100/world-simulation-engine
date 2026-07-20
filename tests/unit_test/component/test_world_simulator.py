@@ -64,7 +64,7 @@ def make_action(label: str = "look_around") -> ProposedAction:
 
 def make_action_proposal(action: ProposedAction) -> ActionProposal:
     return ActionProposal(
-        chosen_action=action,
+        actions=[action],
         reasoning_summary="Look around.",
         next_review_hint_seconds=2,
     )
@@ -370,8 +370,8 @@ async def test_route_after_character_coordination_routes_non_user_problem_to_rea
             "time_offset_seconds": 1,
             "involved_actor_ids": ["character_1", "character_2"],
             "involved_actions": [
-                {"actor_id": "character_1", "action_index": 0},
-                {"actor_id": "character_2", "action_index": 0},
+                {"actor_id": "character_1", "proposal_index": 0, "action_index": 0},
+                {"actor_id": "character_2", "proposal_index": 0, "action_index": 0},
             ],
             "description": "Both actors reach for the same glass.",
             "needs_user_decision": False,
@@ -394,7 +394,7 @@ async def test_route_after_character_coordination_routes_user_decision_to_narrat
             "time_offset_seconds": 1,
             "involved_actor_ids": ["character_1", "character_2"],
             "involved_actions": [
-                {"actor_id": "character_2", "action_index": 0},
+                {"actor_id": "character_2", "proposal_index": 0, "action_index": 0},
             ],
             "description": "Bob swings at Alex, requiring Alex's response.",
             "needs_user_decision": True,
@@ -430,7 +430,7 @@ async def test_route_after_user_coordination_routes_problem_to_user_narration():
             "time_offset_seconds": 0,
             "involved_actor_ids": ["character_1"],
             "involved_actions": [
-                {"actor_id": "character_1", "action_index": 0},
+                {"actor_id": "character_1", "proposal_index": 0, "action_index": 0},
             ],
             "description": "Alex cannot reach the ladder.",
             "needs_user_decision": False,
@@ -472,7 +472,7 @@ async def test_propose_character_reactions_replaces_active_actions_and_preserves
             "time_offset_seconds": 1,
             "involved_actor_ids": ["character_1", "character_2"],
             "involved_actions": [
-                {"actor_id": "character_2", "action_index": 0},
+                {"actor_id": "character_2", "proposal_index": 0, "action_index": 0},
             ],
             "description": "The glass is already taken.",
             "needs_user_decision": False,
@@ -661,6 +661,7 @@ async def test_commit_character_actions_returns_turn_and_commit_proposal():
         accepted_actions=[
             AcceptedSceneAction(
                 actor_id="character_1",
+                proposal_index=0,
                 action_index=0,
                 action=action,
                 start_offset_seconds=0,
@@ -740,6 +741,7 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
         accepted_actions=[
             AcceptedSceneAction(
                 actor_id="character_1",
+                proposal_index=0,
                 action_index=0,
                 action=action,
                 start_offset_seconds=0,

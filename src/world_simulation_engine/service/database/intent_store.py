@@ -120,46 +120,34 @@ class IntentStore:
     async def list_intents(self,
                            character_id: str | None = None,
                            event_id: str | None = None,
+                           simulation_id: str | None = None,
                            ) -> list[Intent]:
-        if character_id is not None and event_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Character {id: $character_id})-[:HOLDS]->(intent:Intent)
-                MATCH (:Event {id: $event_id})-[:CREATES|CONTRIBUTES_TO]->(intent)
-                RETURN DISTINCT intent
-                ORDER BY intent.name
-                """,
-                parameters_={
-                    "character_id": character_id,
-                    "event_id": event_id,
-                },
-            )
-        elif character_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Character {id: $character_id})-[:HOLDS]->(intent:Intent)
-                RETURN intent
-                ORDER BY intent.name
-                """,
-                parameters_={"character_id": character_id},
-            )
-        elif event_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Event {id: $event_id})-[:CREATES|CONTRIBUTES_TO]->(intent:Intent)
-                RETURN DISTINCT intent
-                ORDER BY intent.name
-                """,
-                parameters_={"event_id": event_id},
-            )
-        else:
-            result = await self._driver.execute_query(
-                """
-                MATCH (intent:Intent)
-                RETURN intent
-                ORDER BY intent.name
-                """
-            )
+        result = await self._driver.execute_query(
+            """
+            MATCH (intent:Intent)
+            WHERE ($character_id IS NULL OR EXISTS {
+                    MATCH (:Character {id: $character_id})-[:HOLDS]->(intent)
+                })
+                AND ($event_id IS NULL OR EXISTS {
+                    MATCH (:Event {id: $event_id})-[:CREATES|CONTRIBUTES_TO]->(intent)
+                })
+                AND ($simulation_id IS NULL OR (
+                    EXISTS {
+                        MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(:Character)-[:HOLDS]->(intent)
+                    }
+                    OR EXISTS {
+                        MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(:Turn)-[:PART_OF]->(:Event)-[:CREATES|CONTRIBUTES_TO]->(intent)
+                    }
+                ))
+            RETURN DISTINCT intent
+            ORDER BY intent.name
+            """,
+            parameters_={
+                "character_id": character_id,
+                "event_id": event_id,
+                "simulation_id": simulation_id,
+            },
+        )
 
         return [
             self.intent_from_node(record["intent"])

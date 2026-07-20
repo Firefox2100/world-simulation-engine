@@ -115,6 +115,7 @@ class SceneCoordinator(SimulatorComponent):
         return [
             PendingSceneAction(
                 actor_id=plan.actor_id,
+                proposal_index=0,
                 action_index=action_index,
                 action=action,
                 reason="No coordination was performed.",

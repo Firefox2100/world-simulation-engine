@@ -32,54 +32,76 @@ export async function fetchSimulationRecords(options) {
     return fetchSimulationTurns(options);
 }
 
+function query(path, params) {
+    const search = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== "") {
+            search.set(key, String(value));
+        }
+    });
+
+    return apiRequest(`${path}?${search.toString()}`);
+}
+
 export async function fetchSimulationCharacters(simulationId) {
-    const response = await fetch(`/api/simulations/${simulationId}/characters`);
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch simulation characters: ${response.status}`);
-    }
-
-    return response.json();
+    return query("/characters", { simulation_id: simulationId });
 }
 
 export async function fetchSimulationLocations(simulationId) {
-    const response = await fetch(`/api/simulations/${simulationId}/locations`);
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch simulation locations: ${response.status}`);
-    }
-
-    return response.json();
+    return query("/locations", { simulation_id: simulationId });
 }
 
-export async function fetchSimulationFactions(simulationId) {
-    const response = await fetch(`/api/simulations/${simulationId}/factions`);
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch simulation factions: ${response.status}`);
-    }
-
-    return response.json();
+export async function fetchSimulationBackgroundCharacters(simulationId) {
+    return query("/background-characters", { simulation_id: simulationId });
 }
 
-export async function fetchSimulationWorldEntries(simulationId) {
-    const response = await fetch(`/api/simulations/${simulationId}/world-entries`);
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch simulation world entries: ${response.status}`);
-    }
-
-    return response.json();
+export async function fetchSimulationLandmarks(simulationId) {
+    return query("/landmarks", { simulation_id: simulationId });
 }
 
-export async function fetchSimulationCharacterInventory({ simulationId, characterId }) {
-    const response = await fetch(`/api/simulations/${simulationId}/characters/${characterId}/inventory`);
+export async function fetchSimulationItems(simulationId) {
+    return query("/items", { simulation_id: simulationId });
+}
 
-    if (!response.ok) {
-        throw new Error(`Failed to fetch character inventory: ${response.status}`);
-    }
+export async function fetchSimulationStacks(simulationId) {
+    return query("/stacks", { simulation_id: simulationId });
+}
 
-    return response.json();
+export async function fetchSimulationEquipment(simulationId) {
+    return query("/equipment", { simulation_id: simulationId });
+}
+
+export async function fetchSimulationContainers(simulationId) {
+    return query("/containers", { simulation_id: simulationId });
+}
+
+export async function fetchSimulationEvents(simulationId) {
+    return query("/events", { simulation_id: simulationId });
+}
+
+export async function fetchSimulationMemories(simulationId) {
+    return query("/memories", { simulation_id: simulationId });
+}
+
+export async function fetchSimulationIntents(simulationId) {
+    return query("/intents", { simulation_id: simulationId });
+}
+
+export async function fetchCharacterInventory(characterId) {
+    return apiRequest(`/characters/${characterId}/inventory`);
+}
+
+export async function fetchEventsByTurn(turnId) {
+    return query("/events", { turn_id: turnId });
+}
+
+export async function fetchMemoriesByCharacter(characterId) {
+    return query("/memories", { character_id: characterId });
+}
+
+export async function fetchIntentsByCharacter(characterId) {
+    return query("/intents", { character_id: characterId });
 }
 
 export async function deleteSimulation(simulationId) {
@@ -116,15 +138,35 @@ export function getSimulationCoverUrl(simulationId) {
 }
 
 export function getSimulationCharacterImageUrl({ simulationId, characterId }) {
-    return `/api/simulations/${simulationId}/characters/${characterId}/image`;
+    return apiUrl(`/characters/${characterId}/cover-image`);
 }
 
 export function getSimulationLocationImageUrl({ simulationId, locationId }) {
-    return `/api/simulations/${simulationId}/locations/${locationId}/image`;
+    return apiUrl(`/locations/${locationId}/cover-image`);
 }
 
-export function getSimulationFactionImageUrl({ simulationId, factionId }) {
-    return `/api/simulations/${simulationId}/factions/${factionId}/image`;
+export function getSimulationBackgroundCharacterImageUrl(characterId) {
+    return apiUrl(`/background-characters/${characterId}/cover-image`);
+}
+
+export function getSimulationLandmarkImageUrl(landmarkId) {
+    return apiUrl(`/landmarks/${landmarkId}/cover-image`);
+}
+
+export function getSimulationItemImageUrl(itemId) {
+    return apiUrl(`/items/${itemId}/cover-image`);
+}
+
+export function getSimulationStackImageUrl(stackId) {
+    return apiUrl(`/stacks/${stackId}/cover-image`);
+}
+
+export function getSimulationEquipmentImageUrl(equipmentId) {
+    return apiUrl(`/equipment/${equipmentId}/cover-image`);
+}
+
+export function getSimulationContainerImageUrl(containerId) {
+    return apiUrl(`/containers/${containerId}/cover-image`);
 }
 
 function normalizeSimulation(simulation) {

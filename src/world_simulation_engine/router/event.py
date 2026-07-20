@@ -147,10 +147,12 @@ async def list_events(
         db: db_dep,
         character_id: Optional[str] = Query(None, description="Optionally filter by character"),
         turn_id: Optional[str] = Query(None, description="Optionally filter by turn"),
+        simulation_id: Optional[str] = Query(None, description="Optionally filter by simulation"),
 ):
     return await db.event.list_events(
         character_id=character_id,
         turn_id=turn_id,
+        simulation_id=simulation_id,
     )
 
 

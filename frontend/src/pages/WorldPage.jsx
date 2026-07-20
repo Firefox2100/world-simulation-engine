@@ -1,5 +1,6 @@
 import { useEffect, useState, startTransition } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 import { createSimulationFromWorld, deleteWorld, fetchWorld, fetchWorlds } from "@/api/worlds";
 import { WorldCard } from "@/components/WorldCard";
@@ -9,6 +10,7 @@ import { useMediaQuery } from "@/shared/useMediaQuery";
 
 export function WorldPage() {
     const { t } = useTranslation();
+    const navigate = useNavigate();
     const isDesktop = useMediaQuery("(min-width: 768px)");
 
     const [worlds, setWorlds] = useState([]);
@@ -83,7 +85,8 @@ export function WorldPage() {
     async function handleCreateSimulation(world) {
         try {
             setActionError(null);
-            await createSimulationFromWorld(world.id);
+            const simulation = await createSimulationFromWorld(world.id);
+            navigate(`/simulations/${simulation.id}`);
         } catch (err) {
             setActionError(err.message);
         }

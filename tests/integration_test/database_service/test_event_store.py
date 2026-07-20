@@ -2,8 +2,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from world_simulation_engine.misc.enums import EventInvolvement, TurnType
-from world_simulation_engine.model import Event, Turn
+from world_simulation_engine.model import Event, Simulation, Turn
 from world_simulation_engine.service.database.event_store import EventStore
+from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
 from tests.integration_test.database_service.helpers import create_character, create_world
 
@@ -90,6 +91,37 @@ async def test_list_update_and_delete_event(clean_neo4j):
     assert await event_store.delete_event(event.id) is True
     assert await event_store.get_event(event.id) is None
     assert await event_store.delete_event(event.id) is False
+
+
+async def test_list_events_can_filter_by_simulation(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Event Simulation",
+        description="A simulation used to list events",
+        current_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+
+    turn_store = TurnStore(clean_neo4j)
+    event_store = EventStore(clean_neo4j)
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="Hello",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    event = Event(
+        id=str(uuid4()),
+        name="Greeting",
+        summary="A greeting exchange",
+    )
+
+    await turn_store.create_turn(turn, source_id=simulation.id)
+    await event_store.create_event(event, turn_ids=[turn.id])
+
+    assert await event_store.list_events(simulation_id=simulation.id) == [event]
 
 
 async def test_add_turn_to_event(clean_neo4j):

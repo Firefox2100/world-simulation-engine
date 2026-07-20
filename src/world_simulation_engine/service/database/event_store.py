@@ -57,45 +57,29 @@ class EventStore:
     async def list_events(self,
                           character_id: str | None = None,
                           turn_id: str | None = None,
+                          simulation_id: str | None = None,
                           ) -> list[Event]:
-        if character_id is not None and turn_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Turn {id: $turn_id})-[:PART_OF]->(event:Event)-[:INVOLVES]->(:Character {id: $character_id})
-                RETURN event
-                ORDER BY event.name
-                """,
-                parameters_={
-                    "character_id": character_id,
-                    "turn_id": turn_id,
-                },
-            )
-        elif character_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (event:Event)-[:INVOLVES]->(:Character {id: $character_id})
-                RETURN event
-                ORDER BY event.name
-                """,
-                parameters_={"character_id": character_id},
-            )
-        elif turn_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Turn {id: $turn_id})-[:PART_OF]->(event:Event)
-                RETURN event
-                ORDER BY event.name
-                """,
-                parameters_={"turn_id": turn_id},
-            )
-        else:
-            result = await self._driver.execute_query(
-                """
-                MATCH (event:Event)
-                RETURN event
-                ORDER BY event.name
-                """
-            )
+        result = await self._driver.execute_query(
+            """
+            MATCH (event:Event)
+            WHERE ($character_id IS NULL OR EXISTS {
+                    MATCH (event)-[:INVOLVES]->(:Character {id: $character_id})
+                })
+                AND ($turn_id IS NULL OR EXISTS {
+                    MATCH (:Turn {id: $turn_id})-[:PART_OF]->(event)
+                })
+                AND ($simulation_id IS NULL OR EXISTS {
+                    MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(:Turn)-[:PART_OF]->(event)
+                })
+            RETURN DISTINCT event
+            ORDER BY event.name
+            """,
+            parameters_={
+                "character_id": character_id,
+                "turn_id": turn_id,
+                "simulation_id": simulation_id,
+            },
+        )
 
         return [
             self.event_from_node(record["event"])

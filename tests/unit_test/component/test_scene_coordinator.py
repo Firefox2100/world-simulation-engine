@@ -259,6 +259,7 @@ async def test_coordinate_scene_preserves_planned_speech_when_llm_drops_utteranc
         accepted_actions=[
             {
                 "actor_id": character.id,
+                "proposal_index": 0,
                 "action_index": 0,
                 "action": {
                     "type": ActionType.SPEAK,

@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.model import Character, CurrentActivity
+from world_simulation_engine.model import Character, Container, CurrentActivity, InventoryEquipment, InventoryStack
 from .utils import db_dep
 
 
@@ -131,6 +131,21 @@ class CharacterLandmarkUpdate(BaseModel):
     landmark_id: str = Field(..., description="Landmark the character is anchored to")
 
 
+class CharacterInventory(BaseModel):
+    stacks: list[InventoryStack] = Field(
+        default_factory=list,
+        description="Physical item stacks held by the character",
+    )
+    equipment: list[InventoryEquipment] = Field(
+        default_factory=list,
+        description="Equipment held or equipped by the character",
+    )
+    containers: list[Container] = Field(
+        default_factory=list,
+        description="Containers held by the character",
+    )
+
+
 async def validate_character_relationships(
         character_data: CharacterCreate | CharacterUpdate,
         db: db_dep,
@@ -179,6 +194,21 @@ async def apply_character_relationships(
         )
 
     return character
+
+
+@character_router.get("/characters/{character_id}/inventory", response_model=CharacterInventory)
+async def get_character_inventory(character_id: str, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+
+    return CharacterInventory(
+        stacks=await db.item.get_inventory(character_id),
+        equipment=await db.equipment.get_equipment_inventory(character_id),
+        containers=await db.container.list_containers(holder_id=character_id),
+    )
 
 
 @character_router.get("/characters", response_model=list[Character])

@@ -59,11 +59,9 @@ def test_action_proposal_accepts_primary_sequence_and_backup_sequences():
 
     assert proposal.actions == [primary_first, primary_second]
     assert proposal.backup_proposals == [[backup]]
-    assert proposal.chosen_action == primary_first
-    assert proposal.alternatives_considered == [backup]
 
 
-def test_action_proposal_normalizes_legacy_single_action_shape():
+def test_action_proposal_rejects_legacy_single_action_shape():
     action = make_action()
     backup = ProposedAction(
         type=ActionType.WAIT,
@@ -71,17 +69,15 @@ def test_action_proposal_normalizes_legacy_single_action_shape():
         intended_duration_seconds=3,
     )
 
-    proposal = ActionProposal.model_validate(
-        {
-            "chosen_action": action.model_dump(),
-            "alternatives_considered": [backup.model_dump()],
-            "reasoning_summary": "Legacy shape.",
-            "next_review_hint_seconds": 5,
-        }
-    )
-
-    assert proposal.actions == [action]
-    assert proposal.backup_proposals == [[backup]]
+    with pytest.raises(ValidationError):
+        ActionProposal.model_validate(
+            {
+                "chosen_action": action.model_dump(),
+                "alternatives_considered": [backup.model_dump()],
+                "reasoning_summary": "Legacy shape.",
+                "next_review_hint_seconds": 5,
+            }
+        )
 
 
 def test_action_validation_forbids_extra_fields_and_negative_indexes():
@@ -168,158 +164,151 @@ def test_input_interpretation_filters_llm_self_correction_notes():
     assert result.parser_notes == ["Target is inferred from the visible room."]
 
 
-def test_scene_coordination_result_accepts_flat_accepted_action_fields():
-    result = SceneCoordinationResult.model_validate(
-        {
-            "status": "complete",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_1",
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 4,
-                    "summary": "Alex looks around.",
-                    "type": "look",
-                    "label": "look_around",
-                    "target_ids": [],
-                    "intended_duration_seconds": 4,
-                    "interruptible": True,
-                }
-            ],
-            "pending_actions": [],
-            "problem": None,
-        }
-    )
-
-    assert result.accepted_actions[0].action.label == "look_around"
-    assert result.accepted_actions[0].action.intended_duration_seconds == 4
-
-
-def test_scene_coordination_result_accepts_candidate_data_as_action():
-    result = SceneCoordinationResult.model_validate(
-        {
-            "status": "complete",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_1",
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 2,
-                    "summary": "Alex waits.",
-                    "candidate_data": make_action().model_dump(),
-                }
-            ],
-            "pending_actions": [],
-            "problem": None,
-            "summary": "A single action was accepted.",
-        }
-    )
-
-    assert result.accepted_actions[0].action.label == "look_around"
-    assert result.coordinator_notes == ["A single action was accepted."]
-
-
-def test_scene_coordination_result_ignores_llm_labels_on_involved_action_references():
-    result = SceneCoordinationResult.model_validate(
-        {
-            "status": "problem",
-            "accepted_actions": [],
-            "problem": {
-                "type": "exclusive_resource",
-                "time_offset_seconds": 0,
-                "involved_actor_ids": ["character_1", "character_2"],
-                "involved_actions": [
+def test_scene_coordination_result_rejects_flat_accepted_action_fields():
+    with pytest.raises(ValidationError):
+        SceneCoordinationResult.model_validate(
+            {
+                "status": "complete",
+                "accepted_actions": [
                     {
                         "actor_id": "character_1",
+                        "proposal_index": 0,
                         "action_index": 0,
+                        "start_offset_seconds": 0,
+                        "end_offset_seconds": 4,
+                        "summary": "Alex looks around.",
+                        "type": "look",
                         "label": "look_around",
+                        "target_ids": [],
+                        "intended_duration_seconds": 4,
+                        "interruptible": True,
                     }
                 ],
-                "description": "Two actors target the same object.",
-                "needs_user_decision": False,
-                "actors_to_react": ["character_1", "character_2"],
-                "resolver_required": True,
-            },
-            "pending_actions": [],
-        }
-    )
-
-    assert result.problem
-    assert result.problem.involved_actions[0].actor_id == "character_1"
-    assert result.problem.involved_actions[0].action_index == 0
+                "pending_actions": [],
+                "problem": None,
+            }
+        )
 
 
-def test_scene_coordination_result_rounds_fractional_second_offsets_from_llm():
-    result = SceneCoordinationResult.model_validate(
-        {
-            "status": "problem",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_1",
-                    "action_index": 0,
-                    "start_offset_seconds": 4.1,
-                    "end_offset_seconds": 49.1,
-                    "summary": "Alex looks around after another action.",
-                    "action": make_action().model_dump(),
-                }
-            ],
-            "problem": {
-                "type": "mutually_incompatible",
-                "time_offset_seconds": 4.1,
-                "involved_actor_ids": ["character_1"],
-                "involved_actions": [
+def test_scene_coordination_result_rejects_candidate_data_as_action():
+    with pytest.raises(ValidationError):
+        SceneCoordinationResult.model_validate(
+            {
+                "status": "complete",
+                "accepted_actions": [
                     {
                         "actor_id": "character_1",
+                        "proposal_index": 0,
                         "action_index": 0,
+                        "start_offset_seconds": 0,
+                        "end_offset_seconds": 2,
+                        "summary": "Alex waits.",
+                        "candidate_data": make_action().model_dump(),
                     }
                 ],
-                "description": "The action overlaps another actor.",
-                "needs_user_decision": False,
-                "actors_to_react": ["character_1"],
-                "resolver_required": False,
-            },
-            "pending_actions": [],
-        }
-    )
-
-    assert result.accepted_actions[0].start_offset_seconds == 4
-    assert result.accepted_actions[0].end_offset_seconds == 49
-    assert result.problem
-    assert result.problem.time_offset_seconds == 4
+                "pending_actions": [],
+                "problem": None,
+                "summary": "A single action was accepted.",
+            }
+        )
 
 
-def test_scene_coordination_result_normalizes_interruption_alias_and_string_notes():
-    result = SceneCoordinationResult.model_validate(
-        {
-            "status": "problem",
-            "accepted_actions": [],
-            "problem": {
-                "type": "simultaneous_interruption_contention",
-                "time_offset_seconds": 0,
-                "involved_actor_ids": ["character_1", "character_2"],
-                "involved_actions": [
+def test_scene_coordination_result_rejects_extra_labels_on_involved_action_references():
+    with pytest.raises(ValidationError):
+        SceneCoordinationResult.model_validate(
+            {
+                "status": "problem",
+                "accepted_actions": [],
+                "problem": {
+                    "type": "exclusive_resource",
+                    "time_offset_seconds": 0,
+                    "involved_actor_ids": ["character_1", "character_2"],
+                    "involved_actions": [
+                        {
+                            "actor_id": "character_1",
+                            "proposal_index": 0,
+                            "action_index": 0,
+                            "label": "look_around",
+                        }
+                    ],
+                    "description": "Two actors target the same object.",
+                    "needs_user_decision": False,
+                    "actors_to_react": ["character_1", "character_2"],
+                    "resolver_required": True,
+                },
+                "pending_actions": [],
+            }
+        )
+
+
+def test_scene_coordination_result_rejects_fractional_second_offsets_from_llm():
+    with pytest.raises(ValidationError):
+        SceneCoordinationResult.model_validate(
+            {
+                "status": "problem",
+                "accepted_actions": [
                     {
                         "actor_id": "character_1",
+                        "proposal_index": 0,
                         "action_index": 0,
-                    },
-                    {
-                        "actor_id": "character_2",
-                        "action_index": 0,
-                    },
+                        "start_offset_seconds": 4.1,
+                        "end_offset_seconds": 49.1,
+                        "summary": "Alex looks around after another action.",
+                        "action": make_action().model_dump(),
+                    }
                 ],
-                "description": "Two actors try to take conversational focus at the same time.",
-                "needs_user_decision": False,
-                "actors_to_react": ["character_2"],
-                "resolver_required": False,
-            },
-            "pending_actions": [],
-            "coordinator_notes": "Both actors start speaking at t=0.",
-        }
-    )
+                "problem": {
+                    "type": "mutually_incompatible",
+                    "time_offset_seconds": 4.1,
+                    "involved_actor_ids": ["character_1"],
+                    "involved_actions": [
+                        {
+                            "actor_id": "character_1",
+                            "proposal_index": 0,
+                            "action_index": 0,
+                        }
+                    ],
+                    "description": "The action overlaps another actor.",
+                    "needs_user_decision": False,
+                    "actors_to_react": ["character_1"],
+                    "resolver_required": False,
+                },
+                "pending_actions": [],
+            }
+        )
 
-    assert result.problem
-    assert result.problem.type == SceneCoordinationProblemType.INTERRUPTION
-    assert result.coordinator_notes == ["Both actors start speaking at t=0."]
+
+def test_scene_coordination_result_rejects_interruption_alias_and_string_notes():
+    with pytest.raises(ValidationError):
+        SceneCoordinationResult.model_validate(
+            {
+                "status": "problem",
+                "accepted_actions": [],
+                "problem": {
+                    "type": "simultaneous_interruption_contention",
+                    "time_offset_seconds": 0,
+                    "involved_actor_ids": ["character_1", "character_2"],
+                    "involved_actions": [
+                        {
+                            "actor_id": "character_1",
+                            "proposal_index": 0,
+                            "action_index": 0,
+                        },
+                        {
+                            "actor_id": "character_2",
+                            "proposal_index": 0,
+                            "action_index": 0,
+                        },
+                    ],
+                    "description": "Two actors try to take conversational focus at the same time.",
+                    "needs_user_decision": False,
+                    "actors_to_react": ["character_2"],
+                    "resolver_required": False,
+                },
+                "pending_actions": [],
+                "coordinator_notes": "Both actors start speaking at t=0.",
+            }
+        )
 
 
 def test_scene_coordination_schema_requires_nested_action_for_accepted_actions():

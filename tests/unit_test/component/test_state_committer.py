@@ -50,6 +50,7 @@ def make_coordination() -> SceneCoordinationResult:
         accepted_actions=[
             AcceptedSceneAction(
                 actor_id="character_1",
+                proposal_index=0,
                 action_index=0,
                 action=ProposedAction(
                     type=ActionType.TAKE,

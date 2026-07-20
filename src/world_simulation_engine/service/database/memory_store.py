@@ -148,46 +148,29 @@ class MemoryStore:
     async def list_memories(self,
                             character_id: str | None = None,
                             event_id: str | None = None,
+                            simulation_id: str | None = None,
                             ) -> list[MemoryAtom]:
-        if character_id is not None and event_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Character {id: $character_id})-[:REMEMBERS]->(memory:MemoryAtom)
-                MATCH (:Event {id: $event_id})-[:SUPPORTS]->(memory)
-                RETURN DISTINCT memory
-                ORDER BY memory.summary
-                """,
-                parameters_={
-                    "character_id": character_id,
-                    "event_id": event_id,
-                },
-            )
-        elif character_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Character {id: $character_id})-[:REMEMBERS]->(memory:MemoryAtom)
-                RETURN memory
-                ORDER BY memory.summary
-                """,
-                parameters_={"character_id": character_id},
-            )
-        elif event_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Event {id: $event_id})-[:SUPPORTS]->(memory:MemoryAtom)
-                RETURN memory
-                ORDER BY memory.summary
-                """,
-                parameters_={"event_id": event_id},
-            )
-        else:
-            result = await self._driver.execute_query(
-                """
-                MATCH (memory:MemoryAtom)
-                RETURN memory
-                ORDER BY memory.summary
-                """
-            )
+        result = await self._driver.execute_query(
+            """
+            MATCH (memory:MemoryAtom)
+            WHERE ($character_id IS NULL OR EXISTS {
+                    MATCH (:Character {id: $character_id})-[:REMEMBERS]->(memory)
+                })
+                AND ($event_id IS NULL OR EXISTS {
+                    MATCH (:Event {id: $event_id})-[:SUPPORTS]->(memory)
+                })
+                AND ($simulation_id IS NULL OR EXISTS {
+                    MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(:Turn)-[:PART_OF]->(:Event)-[:SUPPORTS]->(memory)
+                })
+            RETURN DISTINCT memory
+            ORDER BY memory.summary
+            """,
+            parameters_={
+                "character_id": character_id,
+                "event_id": event_id,
+                "simulation_id": simulation_id,
+            },
+        )
 
         return [
             self.memory_from_node(record["memory"])

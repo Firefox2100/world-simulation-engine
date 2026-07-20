@@ -12,29 +12,69 @@ import {
     simulatorComponents,
 } from "@/api/configurations";
 import {
+    fetchCharacterInventory,
     fetchSimulation,
-    fetchSimulationCharacterInventory,
+    fetchSimulationBackgroundCharacters,
     fetchSimulationCharacters,
-    fetchSimulationFactions,
+    fetchSimulationContainers,
+    fetchSimulationEquipment,
+    fetchSimulationEvents,
+    fetchSimulationItems,
+    fetchSimulationIntents,
+    fetchSimulationLandmarks,
     fetchSimulationLocations,
+    fetchSimulationMemories,
     fetchSimulationRecords,
-    fetchSimulationWorldEntries,
+    fetchSimulationStacks,
     fetchSimulations,
     getSimulationRunUrl,
+    getSimulationBackgroundCharacterImageUrl,
     getSimulationCharacterImageUrl,
+    getSimulationContainerImageUrl,
+    getSimulationEquipmentImageUrl,
+    getSimulationItemImageUrl,
+    getSimulationLandmarkImageUrl,
     getSimulationLocationImageUrl,
-    getSimulationFactionImageUrl,
+    getSimulationStackImageUrl,
     getSimulationCoverUrl,
     sendSimulationInput,
 } from "@/api/simulations";
 import placeholderImage from "@/assets/placeholder/world.svg";
 import characterPlaceholderImage from "@/assets/placeholder/character.svg";
 import locationPlaceholderImage from "@/assets/placeholder/location.svg";
-import factionPlaceholderImage from "@/assets/placeholder/banner.svg";
+import entityPlaceholderImage from "@/assets/placeholder/banner.svg";
 
 const simulationLimit = 24;
 const recordLimit = 50;
 const emptyList = [];
+const detailSections = [
+    "basic",
+    "configs",
+    "locations",
+    "landmarks",
+    "characters",
+    "background",
+    "items",
+    "stacks",
+    "equipment",
+    "containers",
+    "turns",
+    "events",
+    "memories",
+    "intents",
+];
+const entityDetailSections = [
+    "landmarks",
+    "background",
+    "items",
+    "stacks",
+    "equipment",
+    "containers",
+    "turns",
+    "events",
+    "memories",
+    "intents",
+];
 
 function useOptionalImage(imageUrl, fallbackSrc) {
     const [loadedImage, setLoadedImage] = useState({ sourceUrl: null, objectUrl: null });
@@ -307,14 +347,6 @@ function SimulationAvatar({ simulation, className = "chat-avatar" }) {
     );
 }
 
-function UserAvatar({ label }) {
-    return (
-        <div className="chat-avatar user-avatar" aria-hidden="true">
-            {label.slice(0, 1)}
-        </div>
-    );
-}
-
 function SimulationConversationItem({ simulation, preview }) {
     const { t } = useTranslation();
 
@@ -394,10 +426,10 @@ function NarrationBlocks({ blocks, simulationId, charactersById }) {
     );
 }
 
-function ChatRecord({ record, simulation, charactersById }) {
+function ChatRecord({ record, simulation, charactersById, userCharacter }) {
     const { t } = useTranslation();
     const userRecord = isUserRecord(record);
-    const authorName = userRecord ? t("simulationChat.userName") : simulation?.name;
+    const authorName = userRecord ? (userCharacter?.name ?? t("simulationChat.userCharacterFallback")) : simulation?.name;
     const blocks = !userRecord ? narrationBlocksFromValue(record.narration_blocks) : null;
 
     if (blocks?.length > 0) {
@@ -412,7 +444,15 @@ function ChatRecord({ record, simulation, charactersById }) {
 
     return (
         <article className={`chat-message${userRecord ? " user" : " simulation"}`}>
-            {userRecord ? <UserAvatar label={authorName} /> : <SimulationAvatar simulation={simulation} />}
+            {userRecord ? (
+                <CharacterAvatar
+                    simulationId={simulation?.id}
+                    character={userCharacter}
+                    label={authorName}
+                />
+            ) : (
+                <SimulationAvatar simulation={simulation} />
+            )}
             <div className="chat-message-content">
                 <div className="chat-message-author">{authorName}</div>
                 <div className="chat-bubble">
@@ -512,18 +552,16 @@ function LocationImage({ simulationId, location, className = "simulation-details
     );
 }
 
-function FactionImage({ simulationId, faction, className = "simulation-details-cover" }) {
+function EntityImage({ imageUrl, fallbackSrc = entityPlaceholderImage, alt = "", className = "simulation-details-cover" }) {
     const imageSrc = useOptionalImage(
-        simulationId && faction?.id
-            ? getSimulationFactionImageUrl({ simulationId, factionId: faction.id })
-            : null,
-        factionPlaceholderImage,
+        imageUrl,
+        fallbackSrc,
     );
 
     return (
         <img
             src={imageSrc}
-            alt={faction?.name ?? ""}
+            alt={alt}
             className={className}
         />
     );
@@ -597,6 +635,97 @@ function ObjectList({ title, values, emptyValue }) {
     );
 }
 
+function entityTitle(entity) {
+    return entity?.name || entity?.summary || entity?.content || entity?.id || "";
+}
+
+function describeEntity(entity) {
+    return entity?.description || entity?.summary || entity?.content || "";
+}
+
+function entityRows(entity, t) {
+    return Object.entries(entity ?? {})
+        .filter(([key, value]) => {
+            if (["attributes", "stats", "embedding"].includes(key)) {
+                return false;
+            }
+            return value !== null && value !== undefined && typeof value !== "object";
+        })
+        .map(([key, value]) => ({
+            label: t(`simulationDetails.genericFields.${key}`, { defaultValue: key.replaceAll("_", " ") }),
+            value: String(value),
+        }));
+}
+
+function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImage }) {
+    const { t } = useTranslation();
+
+    if (!entity) {
+        return <p className="status-text">{emptyText}</p>;
+    }
+
+    return (
+        <>
+            <div className="simulation-details-hero">
+                {imageUrl ? (
+                    <EntityImage
+                        imageUrl={imageUrl}
+                        fallbackSrc={fallbackImage}
+                        alt={entityTitle(entity)}
+                    />
+                ) : null}
+                <div className="simulation-details-summary">
+                    <h3>{entityTitle(entity)}</h3>
+                    <p>{describeEntity(entity) || t("simulationDetails.noDescription")}</p>
+                </div>
+            </div>
+
+            <div className="simulation-details-separator" />
+
+            <dl className="simulation-details-grid">
+                {entityRows(entity, t).map((row) => (
+                    <div key={`${section}-${row.label}`} className="simulation-details-row">
+                        <dt>{row.label}</dt>
+                        <dd>{row.value || t("simulationDetails.emptyValue")}</dd>
+                    </div>
+                ))}
+            </dl>
+
+            <ObjectList
+                title={t("simulationDetails.genericFields.attributes")}
+                values={entity.attributes}
+                emptyValue={t("simulationDetails.emptyValue")}
+            />
+            <ObjectList
+                title={t("simulationDetails.genericFields.stats")}
+                values={entity.stats}
+                emptyValue={t("simulationDetails.emptyValue")}
+            />
+        </>
+    );
+}
+
+function EntitySubtabs({ entities, selectedEntity, emptyText, onSelect }) {
+    if (entities.length === 0) {
+        return <p className="simulation-details-empty-line">{emptyText}</p>;
+    }
+
+    return (
+        <div className="simulation-detail-subtabs" role="tablist">
+            {entities.map((entity) => (
+                <button
+                    key={entity.id}
+                    type="button"
+                    className={`simulation-detail-subtab${selectedEntity?.id === entity.id ? " active" : ""}`}
+                    onClick={() => onSelect(entity.id)}
+                >
+                    {entityTitle(entity)}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 function InventoryList({ title, entries, emptyText, renderMeta }) {
     return (
         <section className="simulation-details-inventory-section">
@@ -606,7 +735,10 @@ function InventoryList({ title, entries, emptyText, renderMeta }) {
             ) : (
                 <div className="simulation-details-inventory-list">
                     {entries.map((entry) => (
-                        <article key={entry.id} className="simulation-details-inventory-card">
+                        <article
+                            key={entry.id ?? entry.stack_id ?? entry.item_id}
+                            className="simulation-details-inventory-card"
+                        >
                             <div className="simulation-details-inventory-card-header">
                                 <h5>{entry.name}</h5>
                                 <span>{renderMeta(entry)}</span>
@@ -627,28 +759,40 @@ function InventoryList({ title, entries, emptyText, renderMeta }) {
 
 function CharacterInventory({ inventory }) {
     const { t } = useTranslation();
-    const safeInventory = inventory ?? { items: [], equipments: [] };
+    const safeInventory = inventory ?? { stacks: [], equipment: [], containers: [] };
 
     return (
         <section className="simulation-details-inventory">
             <h4>{t("simulationDetails.characterFields.inventory")}</h4>
             <InventoryList
-                title={t("simulationDetails.inventory.items")}
-                entries={safeInventory.items ?? []}
-                emptyText={t("simulationDetails.inventory.emptyItems")}
-                renderMeta={(item) =>
-                    item.unique
+                title={t("simulationDetails.inventory.stacks")}
+                entries={safeInventory.stacks ?? []}
+                emptyText={t("simulationDetails.inventory.emptyStacks")}
+                renderMeta={(stack) =>
+                    stack.unique
                         ? t("simulationDetails.inventory.unique")
-                        : t("simulationDetails.inventory.quantity", { quantity: item.quantity })
+                        : t("simulationDetails.inventory.quantity", { quantity: stack.quantity })
                 }
             />
             <InventoryList
                 title={t("simulationDetails.inventory.equipment")}
-                entries={safeInventory.equipments ?? []}
+                entries={safeInventory.equipment ?? []}
                 emptyText={t("simulationDetails.inventory.emptyEquipment")}
                 renderMeta={(equipment) =>
-                    t(`worldCreate.enums.equipmentStatus.${equipment.status}`, {
-                        defaultValue: equipment.status,
+                    equipment.equipped
+                        ? t("simulationDetails.inventory.equipped", {
+                              position: equipment.equipped_position ?? "",
+                          })
+                        : t("simulationDetails.inventory.held")
+                }
+            />
+            <InventoryList
+                title={t("simulationDetails.inventory.containers")}
+                entries={safeInventory.containers ?? []}
+                emptyText={t("simulationDetails.inventory.emptyContainers")}
+                renderMeta={(container) =>
+                    t(`worldCreate.enums.containerState.${container.state}`, {
+                        defaultValue: container.state,
                     })
                 }
             />
@@ -690,155 +834,6 @@ function LocationEntities({ entities }) {
                 </div>
             )}
         </section>
-    );
-}
-
-function enumLabel(t, namespace, value) {
-    return t(`${namespace}.${value}`, { defaultValue: value });
-}
-
-function characterLabel(characterId, characters, t) {
-    const character = characters.find((candidate) => candidate.id === characterId);
-
-    return character?.name ?? t("simulationDetails.worldEntryFields.scopeCharacter", { id: characterId });
-}
-
-function ScopeList({ scope, characters, onCharacterClick }) {
-    const { t } = useTranslation();
-
-    if (!scope || scope.length === 0) {
-        return t("simulationDetails.emptyValue");
-    }
-
-    return (
-        <span className="simulation-inline-link-list">
-            {scope.map((entry) => {
-                if (entry === 0) {
-                    return <span key={entry}>{t("simulationDetails.worldEntryFields.scopeEveryone")}</span>;
-                }
-
-                if (entry === -1) {
-                    return <span key={entry}>{t("simulationDetails.worldEntryFields.scopeNoOne")}</span>;
-                }
-
-                return (
-                    <DetailLink key={entry} onClick={() => onCharacterClick(entry)}>
-                        {characterLabel(entry, characters, t)}
-                    </DetailLink>
-                );
-            })}
-        </span>
-    );
-}
-
-function EmbeddingSummary({ embedding }) {
-    const { t } = useTranslation();
-
-    if (!embedding) {
-        return null;
-    }
-
-    return (
-        <span className="simulation-world-entry-embedding">
-            {t("simulationDetails.worldEntryFields.embeddingDimensions", {
-                count: embedding.length,
-            })}
-        </span>
-    );
-}
-
-function WorldEntryList({ entries, characters, onCharacterClick, onWorldEntryClick }) {
-    const { t } = useTranslation();
-
-    if (entries.length === 0) {
-        return <p className="status-text">{t("simulationDetails.noWorldEntries")}</p>;
-    }
-
-    return (
-        <div className="simulation-world-entry-list">
-            {entries.map((entry) => (
-                <article
-                    key={entry.id}
-                    id={`world-entry-${entry.id}`}
-                    className="simulation-world-entry-card"
-                >
-                    <div className="simulation-world-entry-header">
-                        <h3>{t("simulationDetails.worldEntryFields.entryTitle", { id: entry.id })}</h3>
-                        <span>
-                            {enumLabel(t, "worldCreate.enums.visibility", entry.visibility)}
-                        </span>
-                    </div>
-                    <p className="simulation-world-entry-content">{entry.content}</p>
-
-                    <dl className="simulation-world-entry-meta">
-                        <div>
-                            <dt>{t("simulationDetails.worldEntryFields.scope")}</dt>
-                            <dd>
-                                <ScopeList
-                                    scope={entry.scope}
-                                    characters={characters}
-                                    onCharacterClick={onCharacterClick}
-                                />
-                            </dd>
-                        </div>
-                        <div>
-                            <dt>{t("simulationDetails.worldEntryFields.confidence")}</dt>
-                            <dd>{entry.confidence}</dd>
-                        </div>
-                        <div>
-                            <dt>{t("simulationDetails.worldEntryFields.createdAt")}</dt>
-                            <dd>{entry.created_at ?? t("simulationDetails.worldEntryFields.background")}</dd>
-                        </div>
-                        <div>
-                            <dt>{t("simulationDetails.worldEntryFields.narrationPermission")}</dt>
-                            <dd>
-                                {enumLabel(
-                                    t,
-                                    "worldCreate.enums.narration_permission",
-                                    entry.narration_permission,
-                                )}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt>{t("simulationDetails.worldEntryFields.recallType")}</dt>
-                            <dd>{enumLabel(t, "worldCreate.enums.recall_type", entry.recall_type)}</dd>
-                        </div>
-                    </dl>
-
-                    {entry.semantic_instruction || entry.embedding ? (
-                        <div className="simulation-world-entry-note">
-                            {entry.semantic_instruction ? <p>{entry.semantic_instruction}</p> : null}
-                            <EmbeddingSummary embedding={entry.embedding} />
-                        </div>
-                    ) : null}
-
-                    {entry.keywords?.length > 0 ? (
-                        <div className="simulation-world-entry-keywords">
-                            {entry.keywords.map((keyword) => (
-                                <span key={`${entry.id}-${keyword.keyword}`}>
-                                    {keyword.keyword}
-                                    <strong>{keyword.similarity}</strong>
-                                    <EmbeddingSummary embedding={keyword.embedding} />
-                                </span>
-                            ))}
-                        </div>
-                    ) : null}
-
-                    {entry.chained_ids?.length > 0 ? (
-                        <div className="simulation-world-entry-chain">
-                            {t("simulationDetails.worldEntryFields.chainedIdsLabel")}
-                            <span className="simulation-inline-link-list">
-                                {entry.chained_ids.map((id) => (
-                                    <DetailLink key={id} onClick={() => onWorldEntryClick(id)}>
-                                        {t("simulationDetails.worldEntryFields.entryTitle", { id })}
-                                    </DetailLink>
-                                ))}
-                            </span>
-                        </div>
-                    ) : null}
-                </article>
-            ))}
-        </div>
     );
 }
 
@@ -986,29 +981,32 @@ function SimulationDetailsModal({
     simulation,
     characters,
     locations,
-    factions,
-    worldEntries,
+    entities,
     inventory,
     activeSection,
     selectedCharacterId,
     selectedLocationId,
-    selectedFactionId,
+    selectedEntityIds,
     onActiveSectionChange,
     onSelectedCharacterIdChange,
     onSelectedLocationIdChange,
-    onSelectedFactionIdChange,
+    onSelectedEntityIdChange,
     onClose,
 }) {
     const { t } = useTranslation();
     const selectedCharacter =
         characters.find((character) => character.id === selectedCharacterId) ?? characters[0] ?? null;
+    const selectedCharacterLocationId = selectedCharacter?.location_id ?? selectedCharacter?.location ?? null;
     const selectedLocation = selectedCharacter
-        ? locations.find((location) => location.id === selectedCharacter.location)
+        ? locations.find((location) => location.id === selectedCharacterLocationId)
         : null;
     const selectedLocationDetail =
         locations.find((location) => location.id === selectedLocationId) ?? locations[0] ?? null;
-    const selectedFaction =
-        factions.find((faction) => faction.id === selectedFactionId) ?? factions[0] ?? null;
+    const selectedEntity = entityDetailSections.includes(activeSection)
+        ? (entities[activeSection] ?? []).find((entity) => entity.id === selectedEntityIds[activeSection]) ??
+          (entities[activeSection] ?? [])[0] ??
+          null
+        : null;
 
     useEffect(() => {
         function onKeyDown(event) {
@@ -1035,26 +1033,14 @@ function SimulationDetailsModal({
         onActiveSectionChange("locations");
     }
 
-    function selectWorldEntry(entryId) {
-        onActiveSectionChange("worldEntries");
-        window.setTimeout(() => {
-            document.getElementById(`world-entry-${entryId}`)?.scrollIntoView({
-                block: "center",
-                behavior: "smooth",
-            });
-        }, 0);
-    }
-
     const detailsTitle =
         activeSection === "characters" && selectedCharacter
             ? selectedCharacter.name
             : activeSection === "locations" && selectedLocationDetail
               ? formatLocation(selectedLocationDetail, t("simulationDetails.tabs.locations"))
-              : activeSection === "factions" && selectedFaction
-                ? selectedFaction.name
-                : activeSection === "worldEntries"
-                  ? t("simulationDetails.tabs.worldEntries")
-                  : activeSection === "configs"
+              : selectedEntity
+                ? entityTitle(selectedEntity)
+                : activeSection === "configs"
                     ? t("simulationDetails.tabs.configs")
                   : simulation.name;
 
@@ -1104,17 +1090,43 @@ function SimulationDetailsModal({
               { label: t("simulationDetails.locationFields.scene"), value: selectedLocationDetail.scene },
           ]
         : [];
-    const factionRows = selectedFaction
-        ? [
-              { label: t("simulationDetails.factionFields.id"), value: selectedFaction.id },
-              { label: t("simulationDetails.factionFields.name"), value: selectedFaction.name },
-          ]
-        : [];
+    const selectedEntityImageUrl = (() => {
+        if (!selectedEntity?.id) {
+            return null;
+        }
+
+        if (activeSection === "landmarks") {
+            return getSimulationLandmarkImageUrl(selectedEntity.id);
+        }
+        if (activeSection === "background") {
+            return getSimulationBackgroundCharacterImageUrl(selectedEntity.id);
+        }
+        if (activeSection === "items") {
+            return getSimulationItemImageUrl(selectedEntity.id);
+        }
+        if (activeSection === "stacks") {
+            return getSimulationStackImageUrl(selectedEntity.id);
+        }
+        if (activeSection === "equipment") {
+            return getSimulationEquipmentImageUrl(selectedEntity.id);
+        }
+        if (activeSection === "containers") {
+            return getSimulationContainerImageUrl(selectedEntity.id);
+        }
+        return null;
+    })();
+
+    const selectedEntityFallback =
+        activeSection === "background"
+            ? characterPlaceholderImage
+            : activeSection === "landmarks"
+              ? locationPlaceholderImage
+              : entityPlaceholderImage;
 
     return (
         <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
             <div
-                className="simulation-details-modal"
+                className="simulation-details-modal world-editor-modal"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="simulation-details-title"
@@ -1124,48 +1136,18 @@ function SimulationDetailsModal({
                     <div className="simulation-details-nav-title">
                         {t("simulationDetails.title")}
                     </div>
-                    <button
-                        type="button"
-                        className={`simulation-details-nav-item${activeSection === "basic" ? " active" : ""}`}
-                        onClick={() => onActiveSectionChange("basic")}
-                    >
-                        {t("simulationDetails.tabs.basic")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`simulation-details-nav-item${activeSection === "characters" ? " active" : ""}`}
-                        onClick={() => onActiveSectionChange("characters")}
-                    >
-                        {t("simulationDetails.tabs.characters")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`simulation-details-nav-item${activeSection === "locations" ? " active" : ""}`}
-                        onClick={() => onActiveSectionChange("locations")}
-                    >
-                        {t("simulationDetails.tabs.locations")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`simulation-details-nav-item${activeSection === "factions" ? " active" : ""}`}
-                        onClick={() => onActiveSectionChange("factions")}
-                    >
-                        {t("simulationDetails.tabs.factions")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`simulation-details-nav-item${activeSection === "worldEntries" ? " active" : ""}`}
-                        onClick={() => onActiveSectionChange("worldEntries")}
-                    >
-                        {t("simulationDetails.tabs.worldEntries")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`simulation-details-nav-item${activeSection === "configs" ? " active" : ""}`}
-                        onClick={() => onActiveSectionChange("configs")}
-                    >
-                        {t("simulationDetails.tabs.configs")}
-                    </button>
+                    {detailSections.map((section) => (
+                        <button
+                            key={section}
+                            type="button"
+                            className={`simulation-details-nav-item${activeSection === section ? " active" : ""}`}
+                            onClick={() => onActiveSectionChange(section)}
+                        >
+                            {t(`simulationDetails.tabs.${section}`, {
+                                defaultValue: t(`worldCreate.newEditor.tabs.${section}`, { defaultValue: section }),
+                            })}
+                        </button>
+                    ))}
                 </aside>
 
                 <section className="simulation-details-content">
@@ -1219,74 +1201,29 @@ function SimulationDetailsModal({
                                 ))}
                             </div>
                         ) : null}
-                        {activeSection === "factions" ? (
-                            <div className="simulation-detail-subtabs" role="tablist">
-                                {factions.map((faction) => (
-                                    <button
-                                        key={faction.id}
-                                        type="button"
-                                        className={`simulation-detail-subtab${
-                                            selectedFaction?.id === faction.id ? " active" : ""
-                                        }`}
-                                        onClick={() => onSelectedFactionIdChange(faction.id)}
-                                    >
-                                        {faction.name}
-                                    </button>
-                                ))}
-                            </div>
+                        {entityDetailSections.includes(activeSection) ? (
+                            <EntitySubtabs
+                                entities={entities[activeSection] ?? []}
+                                selectedEntity={selectedEntity}
+                                emptyText={t(`simulationDetails.empty.${activeSection}`, {
+                                    defaultValue: t("simulationDetails.emptySection"),
+                                })}
+                                onSelect={(entityId) => onSelectedEntityIdChange(activeSection, entityId)}
+                            />
                         ) : null}
 
                         {activeSection === "configs" ? (
                             <SimulationConfigEditor simulationId={simulation.id} />
-                        ) : activeSection === "worldEntries" ? (
-                            <WorldEntryList
-                                entries={worldEntries}
-                                characters={characters}
-                                onCharacterClick={selectCharacter}
-                                onWorldEntryClick={selectWorldEntry}
+                        ) : entityDetailSections.includes(activeSection) ? (
+                            <GenericEntityPanel
+                                section={activeSection}
+                                entity={selectedEntity}
+                                emptyText={t(`simulationDetails.empty.${activeSection}`, {
+                                    defaultValue: t("simulationDetails.emptySection"),
+                                })}
+                                imageUrl={selectedEntityImageUrl}
+                                fallbackImage={selectedEntityFallback}
                             />
-                        ) : activeSection === "factions" ? (
-                            selectedFaction ? (
-                                <>
-                                    <div className="simulation-details-hero">
-                                        <FactionImage
-                                            simulationId={simulation.id}
-                                            faction={selectedFaction}
-                                        />
-                                        <div className="simulation-details-summary">
-                                            <h3>{selectedFaction.name}</h3>
-                                            <p>
-                                                {selectedFaction.description ||
-                                                    t("simulationDetails.noDescription")}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="simulation-details-separator" />
-
-                                    <dl className="simulation-details-grid">
-                                        {factionRows.map((row) => (
-                                            <div key={row.label} className="simulation-details-row">
-                                                <dt>{row.label}</dt>
-                                                <dd>{row.value ?? t("simulationDetails.emptyValue")}</dd>
-                                            </div>
-                                        ))}
-                                    </dl>
-
-                                    <ObjectList
-                                        title={t("simulationDetails.factionFields.attributes")}
-                                        values={selectedFaction.attributes}
-                                        emptyValue={t("simulationDetails.emptyValue")}
-                                    />
-                                    <ObjectList
-                                        title={t("simulationDetails.factionFields.stats")}
-                                        values={selectedFaction.stats}
-                                        emptyValue={t("simulationDetails.emptyValue")}
-                                    />
-                                </>
-                            ) : (
-                                <p className="status-text">{t("simulationDetails.noFactions")}</p>
-                            )
                         ) : activeSection === "locations" ? (
                             selectedLocationDetail ? (
                                 <>
@@ -1441,8 +1378,7 @@ export function SimulationChatPage() {
     const [simulationDetails, setSimulationDetails] = useState({});
     const [characterCache, setCharacterCache] = useState({});
     const [locationCache, setLocationCache] = useState({});
-    const [factionCache, setFactionCache] = useState({});
-    const [worldEntryCache, setWorldEntryCache] = useState({});
+    const [entityCache, setEntityCache] = useState({});
     const [inventoryCache, setInventoryCache] = useState({});
     const [previews, setPreviews] = useState({});
     const [records, setRecords] = useState([]);
@@ -1458,7 +1394,7 @@ export function SimulationChatPage() {
     const [detailsSection, setDetailsSection] = useState("basic");
     const [selectedCharacterIds, setSelectedCharacterIds] = useState({});
     const [selectedLocationIds, setSelectedLocationIds] = useState({});
-    const [selectedFactionIds, setSelectedFactionIds] = useState({});
+    const [selectedEntityIds, setSelectedEntityIds] = useState({});
 
     const listedSimulation = useMemo(
         () => simulations.find((simulation) => String(simulation.id) === String(simulationId)),
@@ -1471,11 +1407,12 @@ export function SimulationChatPage() {
         [selectedCharacters],
     );
     const selectedLocations = locationCache[simulationId] ?? [];
-    const selectedFactions = factionCache[simulationId] ?? [];
-    const selectedWorldEntries = worldEntryCache[simulationId] ?? [];
+    const selectedEntities = entityCache[simulationId] ?? {};
+    const userCharacter =
+        selectedCharacters.find((character) => character.user_controlled) ?? selectedCharacters[0] ?? null;
     const selectedCharacterId = selectedCharacterIds[simulationId] ?? selectedCharacters[0]?.id ?? null;
     const selectedLocationId = selectedLocationIds[simulationId] ?? selectedLocations[0]?.id ?? null;
-    const selectedFactionId = selectedFactionIds[simulationId] ?? selectedFactions[0]?.id ?? null;
+    const selectedEntityIdsForSimulation = selectedEntityIds[simulationId] ?? {};
     const selectedInventory = selectedCharacterId
         ? inventoryCache[`${simulationId}:${selectedCharacterId}`]
         : null;
@@ -1514,8 +1451,10 @@ export function SimulationChatPage() {
                     [id]: characters[0].id,
                 };
             });
+            return characters;
         } catch {
             // Keep cached characters available if background refresh fails.
+            return characterCache[id] ?? emptyList;
         }
     }
 
@@ -1541,37 +1480,70 @@ export function SimulationChatPage() {
         }
     }
 
-    async function refreshFactions(id) {
+    async function refreshEntities(id) {
         try {
-            const factions = await fetchSimulationFactions(id);
-            setFactionCache((current) => ({
+            const [
+                background,
+                landmarks,
+                items,
+                stacks,
+                equipment,
+                containers,
+                turns,
+                events,
+                memories,
+                intents,
+            ] = await Promise.all([
+                fetchSimulationBackgroundCharacters(id),
+                fetchSimulationLandmarks(id),
+                fetchSimulationItems(id),
+                fetchSimulationStacks(id),
+                fetchSimulationEquipment(id),
+                fetchSimulationContainers(id),
+                fetchSimulationRecords({ simulationId: id, limit: recordLimit }),
+                fetchSimulationEvents(id),
+                fetchSimulationMemories(id),
+                fetchSimulationIntents(id),
+            ]);
+
+            const nextEntities = {
+                background,
+                landmarks,
+                items,
+                stacks,
+                equipment,
+                containers,
+                turns,
+                events,
+                memories,
+                intents,
+            };
+
+            setEntityCache((current) => ({
                 ...current,
-                [id]: factions,
+                [id]: nextEntities,
             }));
-            setSelectedFactionIds((current) => {
-                if (current[id] || factions.length === 0) {
+            setSelectedEntityIds((current) => {
+                const currentSelection = current[id] ?? {};
+                const nextSelection = { ...currentSelection };
+                for (const section of entityDetailSections) {
+                    if (nextSelection[section] || (nextEntities[section] ?? []).length === 0) {
+                        continue;
+                    }
+                    nextSelection[section] = nextEntities[section][0].id;
+                }
+
+                if (Object.keys(nextSelection).length === Object.keys(currentSelection).length) {
                     return current;
                 }
 
                 return {
                     ...current,
-                    [id]: factions[0].id,
+                    [id]: nextSelection,
                 };
             });
         } catch {
-            // Keep cached factions available if background refresh fails.
-        }
-    }
-
-    async function refreshWorldEntries(id) {
-        try {
-            const worldEntries = await fetchSimulationWorldEntries(id);
-            setWorldEntryCache((current) => ({
-                ...current,
-                [id]: worldEntries,
-            }));
-        } catch {
-            // Keep cached world entries available if background refresh fails.
+            // Keep cached entities available if background refresh fails.
         }
     }
 
@@ -1581,16 +1553,16 @@ export function SimulationChatPage() {
         }
 
         try {
-            const inventory = await fetchSimulationCharacterInventory({
-                simulationId: id,
-                characterId,
-            });
+            const inventory = await fetchCharacterInventory(characterId);
             setInventoryCache((current) => ({
                 ...current,
                 [`${id}:${characterId}`]: inventory,
             }));
         } catch {
-            // Keep cached inventory available if background refresh fails.
+            setInventoryCache((current) => ({
+                ...current,
+                [`${id}:${characterId}`]: { stacks: [], equipment: [], containers: [] },
+            }));
         }
     }
 
@@ -1680,10 +1652,8 @@ export function SimulationChatPage() {
             startTransition(() => {
                 loadInitialRecords();
                 refreshSimulationDetails(simulationId);
-                refreshCharacters(simulationId);
+                refreshCharacters(simulationId).then(() => refreshEntities(simulationId));
                 refreshLocations(simulationId);
-                refreshFactions(simulationId);
-                refreshWorldEntries(simulationId);
             });
         }
 
@@ -1700,19 +1670,17 @@ export function SimulationChatPage() {
         }
 
         refreshSimulationDetails(simulationId);
-        refreshCharacters(simulationId);
+        refreshCharacters(simulationId).then(() => refreshEntities(simulationId));
         refreshLocations(simulationId);
-        refreshFactions(simulationId);
-        refreshWorldEntries(simulationId);
     }, [detailsOpen, simulationId]);
 
     useEffect(() => {
-        if (!simulationId || !selectedCharacterId) {
+        if (!detailsOpen || detailsSection !== "characters") {
             return;
         }
 
         refreshCharacterInventory(simulationId, selectedCharacterId);
-    }, [simulationId, selectedCharacterId]);
+    }, [detailsOpen, detailsSection, simulationId, selectedCharacterId]);
 
     useEffect(() => {
         recordsEndRef.current?.scrollIntoView({ block: "end" });
@@ -2042,6 +2010,7 @@ export function SimulationChatPage() {
                                     record={record}
                                     simulation={selectedSimulation}
                                     charactersById={selectedCharactersById}
+                                    userCharacter={userCharacter}
                                 />
                             ))
                         )}
@@ -2103,13 +2072,12 @@ export function SimulationChatPage() {
                     simulation={selectedSimulation}
                     characters={selectedCharacters}
                     locations={selectedLocations}
-                    factions={selectedFactions}
-                    worldEntries={selectedWorldEntries}
+                    entities={selectedEntities}
                     inventory={selectedInventory}
                     activeSection={detailsSection}
                     selectedCharacterId={selectedCharacterId}
                     selectedLocationId={selectedLocationId}
-                    selectedFactionId={selectedFactionId}
+                    selectedEntityIds={selectedEntityIdsForSimulation}
                     onActiveSectionChange={setDetailsSection}
                     onSelectedCharacterIdChange={(characterId) =>
                         setSelectedCharacterIds((current) => ({
@@ -2123,10 +2091,13 @@ export function SimulationChatPage() {
                             [simulationId]: locationId,
                         }))
                     }
-                    onSelectedFactionIdChange={(factionId) =>
-                        setSelectedFactionIds((current) => ({
+                    onSelectedEntityIdChange={(section, entityId) =>
+                        setSelectedEntityIds((current) => ({
                             ...current,
-                            [simulationId]: factionId,
+                            [simulationId]: {
+                                ...(current[simulationId] ?? {}),
+                                [section]: entityId,
+                            },
                         }))
                     }
                     onClose={() => setDetailsOpen(false)}

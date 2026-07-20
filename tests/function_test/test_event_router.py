@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
 from world_simulation_engine.misc.enums import EventInvolvement, SupportedLanguage, TurnType
-from world_simulation_engine.model import Author, Character, CurrentActivity, Turn, World
+from world_simulation_engine.model import Author, Character, CurrentActivity, Simulation, Turn, World
 from world_simulation_engine.router import event_router
 from world_simulation_engine.service import DatabaseService
 
@@ -18,6 +18,7 @@ from world_simulation_engine.service import DatabaseService
 class EventRouterTestClient:
     client: TestClient
     character: Character
+    simulation: Simulation
     turn: Turn
     second_turn: Turn
 
@@ -43,6 +44,12 @@ def event_api(neo4j_container):
         public_state="Waiting",
         private_state="Planning",
         current_activity=CurrentActivity(name="idle"),
+    )
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Event Simulation",
+        description="A simulation used to create events",
+        current_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
     )
     turn = Turn(
         id=str(uuid4()),
@@ -71,9 +78,10 @@ def event_api(neo4j_container):
         database = DatabaseService(driver)
         await database.world.create_author(author)
         await database.world.create_world(world, author.id)
-        await database.character.create_character(character, world.id)
-        await database.turn.create_turn(turn, world.id)
-        await database.turn.create_turn(second_turn, world.id, previous_turn_id=turn.id)
+        await database.simulation.create_simulation(simulation, world.id)
+        await database.character.create_character(character, simulation.id)
+        await database.turn.create_turn(turn, simulation.id)
+        await database.turn.create_turn(second_turn, simulation.id, previous_turn_id=turn.id)
         app.state.database = database
 
         try:
@@ -89,6 +97,7 @@ def event_api(neo4j_container):
         yield EventRouterTestClient(
             client=client,
             character=character,
+            simulation=simulation,
             turn=turn,
             second_turn=second_turn,
         )
@@ -119,10 +128,12 @@ def test_create_list_get_update_and_delete_event(event_api):
     list_response = client.get("/events")
     character_filter_response = client.get("/events", params={"character_id": event_api.character.id})
     turn_filter_response = client.get("/events", params={"turn_id": event_api.turn.id})
+    simulation_filter_response = client.get("/events", params={"simulation_id": event_api.simulation.id})
 
     assert list_response.json() == [event]
     assert character_filter_response.json() == [event]
     assert turn_filter_response.json() == [event]
+    assert simulation_filter_response.json() == [event]
     assert client.get(f"/events/{event['id']}").json() == event
 
     update_response = client.patch(

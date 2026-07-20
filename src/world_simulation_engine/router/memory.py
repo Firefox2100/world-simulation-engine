@@ -91,10 +91,12 @@ async def list_memories(
         db: db_dep,
         character_id: Optional[str] = Query(None, description="Optionally filter by character"),
         event_id: Optional[str] = Query(None, description="Optionally filter by event"),
+        simulation_id: Optional[str] = Query(None, description="Optionally filter by simulation"),
 ):
     return await db.memory.list_memories(
         character_id=character_id,
         event_id=event_id,
+        simulation_id=simulation_id,
     )
 
 
