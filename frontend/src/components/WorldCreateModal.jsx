@@ -43,8 +43,9 @@ import {
     updateWorldAuthor,
 } from "@/api/worldEntities";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
+import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
 
-const sections = ["world", "configs", "locations", "characters", "background", "items", "equipment", "containers", "stacks"];
+const sections = ["world", "configs", "prompts", "locations", "characters", "background", "items", "equipment", "containers", "stacks"];
 const entitySections = ["locations", "characters", "background", "items", "equipment", "containers", "stacks"];
 
 const entityDependencies = {
@@ -758,6 +759,14 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                                     </button>
                                 </div>
                             </section>
+                        ) : null}
+
+                        {activeSection === "prompts" ? (
+                            <PromptAssignmentEditor
+                                sourceType="world"
+                                sourceId={worldId}
+                                language={worldForm.language}
+                            />
                         ) : null}
 
                         {["locations", "characters", "background", "items", "equipment", "containers", "stacks"].includes(activeSection) ? (

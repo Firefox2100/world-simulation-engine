@@ -205,7 +205,8 @@ class StateCommitter(SimulatorComponent):
             source=source,
             user_input=user_input,
         )
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id,
             language=context.world.language,
             prompt_name="state_committer",
         )

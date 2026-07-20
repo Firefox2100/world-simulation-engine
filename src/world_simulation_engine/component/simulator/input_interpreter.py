@@ -354,7 +354,8 @@ class InputInterpreter(SimulatorComponent):
             input_segments=segments,
         )
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id,
             language=context.world.language,
             prompt_name="input_interpreter",
         )

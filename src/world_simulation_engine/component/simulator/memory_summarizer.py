@@ -114,7 +114,8 @@ class MemorySummarizer(SimulatorComponent):
             user_input=user_input,
             narration=narration,
         )
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id,
             language=context.world.language,
             prompt_name="memory_summarizer",
         )

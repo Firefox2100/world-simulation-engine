@@ -39,6 +39,7 @@ import {
     getSimulationCoverUrl,
     sendSimulationInput,
 } from "@/api/simulations";
+import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
 import placeholderImage from "@/assets/placeholder/world.svg";
 import characterPlaceholderImage from "@/assets/placeholder/character.svg";
 import locationPlaceholderImage from "@/assets/placeholder/location.svg";
@@ -50,6 +51,7 @@ const emptyList = [];
 const detailSections = [
     "basic",
     "configs",
+    "prompts",
     "locations",
     "landmarks",
     "characters",
@@ -1023,11 +1025,6 @@ function SimulationDetailsModal({
         return null;
     }
 
-    function selectCharacter(characterId) {
-        onSelectedCharacterIdChange(characterId);
-        onActiveSectionChange("characters");
-    }
-
     function selectLocation(locationId) {
         onSelectedLocationIdChange(locationId);
         onActiveSectionChange("locations");
@@ -1042,6 +1039,8 @@ function SimulationDetailsModal({
                 ? entityTitle(selectedEntity)
                 : activeSection === "configs"
                     ? t("simulationDetails.tabs.configs")
+                    : activeSection === "prompts"
+                      ? t("simulationDetails.tabs.prompts")
                   : simulation.name;
 
     const basicRows = [
@@ -1214,6 +1213,8 @@ function SimulationDetailsModal({
 
                         {activeSection === "configs" ? (
                             <SimulationConfigEditor simulationId={simulation.id} />
+                        ) : activeSection === "prompts" ? (
+                            <PromptAssignmentEditor sourceType="simulation" sourceId={simulation.id} />
                         ) : entityDetailSections.includes(activeSection) ? (
                             <GenericEntityPanel
                                 section={activeSection}

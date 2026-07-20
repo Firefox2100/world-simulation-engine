@@ -162,12 +162,13 @@ def media_api(neo4j_container, tmp_path):
 
 
 def _upload_media(client: TestClient, filename: str = "cover.png"):
+    media_filename = "cover-image" if filename == "cover.png" else filename.rsplit(".", 1)[0]
     return client.post(
         "/media",
         data={
             "type": "image/png",
             "title": "Cover Image",
-            "filename": "cover-image",
+            "filename": media_filename,
         },
         files={
             "file": (filename, PNG_BYTES, "image/png"),
@@ -242,6 +243,47 @@ def test_upload_fetch_and_select_cover_images(media_api):
     assert get_simulation_cover_response.content == PNG_BYTES
 
 
+def test_upload_and_attach_generic_media(media_api):
+    client = media_api.client
+    world_upload_response = client.post(
+        f"/worlds/{media_api.world.id}/media",
+        data={
+            "title": "World image",
+            "filename": "world-image",
+        },
+        files={
+            "file": ("world.png", PNG_BYTES, "image/png"),
+        },
+    )
+    existing_media = _upload_media(client, filename="character.png").json()
+    attach_response = client.post(
+        f"/characters/{media_api.character.id}/media-connections",
+        json={"media_id": existing_media["id"]},
+    )
+    duplicate_attach_response = client.post(
+        f"/characters/{media_api.character.id}/media-connections",
+        json={"media_id": existing_media["id"]},
+    )
+    character_media_response = client.get(f"/characters/{media_api.character.id}/media")
+    delete_response = client.delete(f"/characters/{media_api.character.id}/media/{existing_media['id']}")
+    character_media_after_delete_response = client.get(f"/characters/{media_api.character.id}/media")
+
+    assert world_upload_response.status_code == 200
+    world_media = world_upload_response.json()
+    assert world_media["type"] == "image/png"
+    assert world_media["title"] == "World image"
+    assert world_media["filename"] == "world-image"
+    assert client.get(f"/worlds/{media_api.world.id}/media").json() == [world_media]
+    assert client.get("/media", params={"world_id": media_api.world.id}).json() == [world_media]
+    assert attach_response.status_code == 200
+    assert attach_response.json() == existing_media
+    assert duplicate_attach_response.status_code == 200
+    assert character_media_response.json() == [existing_media]
+    assert delete_response.status_code == 204
+    assert character_media_after_delete_response.json() == []
+    assert client.get(f"/media/{existing_media['id']}").status_code == 200
+
+
 def test_concrete_entities_can_select_and_remove_cover_images(media_api):
     client = media_api.client
     media = _upload_media(client).json()
@@ -308,6 +350,7 @@ def test_cover_image_replaces_previous_media(media_api):
     assert second_cover_response.status_code == 200
     assert second_cover_response.json() == second_media
     assert client.get(f"/worlds/{media_api.world.id}/cover-image").content == PNG_BYTES + b"1"
+    assert client.get(f"/worlds/{media_api.world.id}/media").json() == [first_media, second_media]
 
 
 def test_delete_media_removes_file_only_when_hash_is_unreferenced(media_api):
@@ -320,12 +363,13 @@ def test_delete_media_removes_file_only_when_hash_is_unreferenced(media_api):
     assert media_api.storage.path_for(first_media["hash"]).exists()
 
     first_delete_response = client.delete(f"/media/{first_media['id']}")
+    assert first_delete_response.status_code == 204
+    assert media_api.storage.path_for(first_media["hash"]).exists()
+
     second_fetch_response = client.get(f"/media/{second_media['id']}")
     second_delete_response = client.delete(f"/media/{second_media['id']}")
     missing_media_response = client.get(f"/media/{second_media['id']}")
 
-    assert first_delete_response.status_code == 204
-    assert media_api.storage.path_for(first_media["hash"]).exists()
     assert second_fetch_response.status_code == 200
     assert second_fetch_response.content == PNG_BYTES
     assert second_delete_response.status_code == 204

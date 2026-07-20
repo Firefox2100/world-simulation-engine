@@ -8,6 +8,7 @@
       "connections": "连接配置",
       "authors": "作者",
       "media": "媒体",
+      "prompts": "提示词",
       "configurations": "配置"
     }
   },
@@ -110,7 +111,8 @@
       "intents": "意图",
       "factions": "阵营",
       "worldEntries": "世界条目",
-      "configs": "配置"
+      "configs": "配置",
+      "prompts": "提示词"
     },
     "empty": {
       "landmarks": "该模拟暂无地标。",
@@ -400,6 +402,70 @@
       "error": "无法保存作者：{{error}}"
     }
   },
+  "prompts": {
+    "title": "提示词",
+    "subtitle": "创建和维护作为媒体存储的提示词 JSON 文件。",
+    "loading": "正在加载提示词...",
+    "empty": "暂无提示词。",
+    "error": "无法加载提示词：{{error}}",
+    "actionError": "无法完成提示词操作：{{error}}",
+    "confirmDelete": "删除 {{name}}？",
+    "actions": {
+      "create": "创建提示词",
+      "edit": "编辑",
+      "delete": "删除"
+    },
+    "fields": {
+      "title": "标题",
+      "filename": "文件名",
+      "language": "语言",
+      "component": "组件",
+      "usage": "用途",
+      "prompt": "提示词",
+      "messages": "消息 JSON"
+    },
+    "languages": {
+      "en": "英文",
+      "zh": "中文"
+    },
+    "usages": {
+      "action_proposal": "行动提案",
+      "action_reaction": "行动反应",
+      "action_validator": "行动校验",
+      "input_interpreter": "输入解析",
+      "memory_summarizer": "记忆总结",
+      "narrator": "叙述",
+      "scene_coordinator": "场景协调",
+      "speech_repair": "台词修复",
+      "state_committer": "状态提交",
+      "resolve_perceived_character": "解析可感知角色",
+      "resolve_perceived_background_characters": "解析可感知背景角色",
+      "resolve_perceived_items": "解析可感知物品",
+      "resolve_perceived_equipment": "解析可感知装备",
+      "resolve_perceived_containers": "解析可感知容器",
+      "resolve_perceived_landmarks": "解析可感知地标"
+    },
+    "modal": {
+      "createTitle": "创建提示词",
+      "editTitle": "编辑提示词",
+      "close": "关闭提示词对话框",
+      "cancel": "取消",
+      "submit": "创建",
+      "update": "更新",
+      "saving": "正在保存...",
+      "loading": "正在加载提示词...",
+      "loadBuiltin": "加载内置提示词",
+      "error": "无法保存提示词：{{error}}"
+    },
+    "assignment": {
+      "loading": "正在加载提示词分配...",
+      "saving": "正在保存...",
+      "save": "保存提示词",
+      "saved": "提示词已保存。",
+      "saveSourceFirst": "保存后再分配提示词。",
+      "error": "无法加载提示词分配：{{error}}"
+    }
+  },
   "worldCreate": {
     "title": "创建世界",
     "editTitle": "编辑世界",
@@ -454,6 +520,7 @@
         "world": "世界",
         "author": "作者",
         "configs": "配置",
+        "prompts": "提示词",
         "locations": "地点",
         "characters": "角色",
         "background": "背景角色",

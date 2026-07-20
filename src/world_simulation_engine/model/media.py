@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import MediaType
+from world_simulation_engine.misc.enums import ComponentType, SupportedLanguage
 
 
 class MediaFile(BaseModel):
@@ -25,4 +26,23 @@ class MediaFile(BaseModel):
     filename: str = Field(
         ...,
         description="Filename of the media file, no format suffix",
+    )
+
+
+class PromptMediaFile(MediaFile):
+    type: MediaType = Field(
+        MediaType.JSON,
+        description="Type of the prompt media file",
+    )
+    prompt_name: str = Field(
+        ...,
+        description="Name of the prompt in package prompt data",
+    )
+    language: SupportedLanguage = Field(
+        ...,
+        description="Language of the prompt",
+    )
+    component: Optional[ComponentType] = Field(
+        None,
+        description="Simulator component this prompt is intended for",
     )

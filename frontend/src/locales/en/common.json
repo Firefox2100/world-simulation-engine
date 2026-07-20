@@ -8,6 +8,7 @@
       "connections": "Connections",
       "authors": "Authors",
       "media": "Media",
+      "prompts": "Prompts",
       "configurations": "Configurations"
     }
   },
@@ -110,7 +111,8 @@
       "intents": "Intents",
       "factions": "Factions",
       "worldEntries": "World entries",
-      "configs": "Configurations"
+      "configs": "Configurations",
+      "prompts": "Prompts"
     },
     "empty": {
       "landmarks": "No landmarks are available for this simulation.",
@@ -400,6 +402,70 @@
       "error": "Unable to save author: {{error}}"
     }
   },
+  "prompts": {
+    "title": "Prompts",
+    "subtitle": "Create and maintain prompt JSON files stored as media.",
+    "loading": "Loading prompts...",
+    "empty": "No prompts are available.",
+    "error": "Unable to load prompts: {{error}}",
+    "actionError": "Unable to complete prompt action: {{error}}",
+    "confirmDelete": "Delete {{name}}?",
+    "actions": {
+      "create": "Create prompt",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "fields": {
+      "title": "Title",
+      "filename": "Filename",
+      "language": "Language",
+      "component": "Component",
+      "usage": "Usage",
+      "prompt": "Prompt",
+      "messages": "Messages JSON"
+    },
+    "languages": {
+      "en": "English",
+      "zh": "Chinese"
+    },
+    "usages": {
+      "action_proposal": "Action proposal",
+      "action_reaction": "Action reaction",
+      "action_validator": "Action validator",
+      "input_interpreter": "Input interpreter",
+      "memory_summarizer": "Memory summarizer",
+      "narrator": "Narrator",
+      "scene_coordinator": "Scene coordinator",
+      "speech_repair": "Speech repair",
+      "state_committer": "State committer",
+      "resolve_perceived_character": "Resolve perceived character",
+      "resolve_perceived_background_characters": "Resolve perceived background characters",
+      "resolve_perceived_items": "Resolve perceived items",
+      "resolve_perceived_equipment": "Resolve perceived equipment",
+      "resolve_perceived_containers": "Resolve perceived containers",
+      "resolve_perceived_landmarks": "Resolve perceived landmarks"
+    },
+    "modal": {
+      "createTitle": "Create prompt",
+      "editTitle": "Edit prompt",
+      "close": "Close prompt dialog",
+      "cancel": "Cancel",
+      "submit": "Create",
+      "update": "Update",
+      "saving": "Saving...",
+      "loading": "Loading prompt...",
+      "loadBuiltin": "Load built-in prompt",
+      "error": "Unable to save prompt: {{error}}"
+    },
+    "assignment": {
+      "loading": "Loading prompt assignments...",
+      "saving": "Saving...",
+      "save": "Save prompts",
+      "saved": "Prompts saved.",
+      "saveSourceFirst": "Save before assigning prompts.",
+      "error": "Unable to load prompt assignments: {{error}}"
+    }
+  },
   "worldCreate": {
     "title": "Create world",
     "editTitle": "Edit world",
@@ -454,6 +520,7 @@
         "world": "World",
         "author": "Author",
         "configs": "Configurations",
+        "prompts": "Prompts",
         "locations": "Locations",
         "characters": "Characters",
         "background": "Background characters",

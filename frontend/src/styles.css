@@ -1031,6 +1031,15 @@ body {
     border-top: 1px solid #e5e7eb;
 }
 
+.prompt-assignment-matrix .world-editor-config-matrix-header,
+.prompt-assignment-matrix .world-editor-config-row {
+    grid-template-columns:
+        minmax(140px, 0.9fr)
+        minmax(160px, 1fr)
+        minmax(80px, 110px)
+        minmax(180px, 1.4fr);
+}
+
 .world-editor-component-name {
     color: #111827;
     font-weight: 800;
@@ -1770,6 +1779,15 @@ body {
     justify-content: flex-end;
     border-top: 1px solid #e5e7eb;
     border-bottom: 0;
+}
+
+.prompt-modal-panel {
+    width: min(760px, calc(100vw - 32px));
+}
+
+.prompt-json-editor {
+    min-height: 320px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 .world-create-form-content {

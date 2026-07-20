@@ -137,11 +137,11 @@ export function getSimulationCoverUrl(simulationId) {
     return apiUrl(`/simulations/${simulationId}/cover-image`);
 }
 
-export function getSimulationCharacterImageUrl({ simulationId, characterId }) {
+export function getSimulationCharacterImageUrl({ characterId }) {
     return apiUrl(`/characters/${characterId}/cover-image`);
 }
 
-export function getSimulationLocationImageUrl({ simulationId, locationId }) {
+export function getSimulationLocationImageUrl({ locationId }) {
     return apiUrl(`/locations/${locationId}/cover-image`);
 }
 

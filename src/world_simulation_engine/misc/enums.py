@@ -98,6 +98,7 @@ class SceneCoordinationStatus(StrEnum):
 
 class MediaType(StrEnum):
     PNG = "image/png"
+    JSON = "application/json"
 
 
 class MessageRole(StrEnum):

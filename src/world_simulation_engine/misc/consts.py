@@ -25,6 +25,25 @@ class Prompts(TypedDict, total=False):
     resolve_perceived_landmarks: list[dict]
 
 
+PROMPT_NAMES = [
+    "action_proposal",
+    "action_reaction",
+    "action_validator",
+    "input_interpreter",
+    "memory_summarizer",
+    "narrator",
+    "scene_coordinator",
+    "speech_repair",
+    "state_committer",
+    "resolve_perceived_character",
+    "resolve_perceived_background_characters",
+    "resolve_perceived_items",
+    "resolve_perceived_equipment",
+    "resolve_perceived_containers",
+    "resolve_perceived_landmarks",
+]
+
+
 def _load_builtin_prompt(language: str, name: str) -> list[dict]:
     file_path = importlib.resources.files("world_simulation_engine.data.prompts") / language / f"{name}.json"
 
@@ -55,28 +74,10 @@ def _load_prompt(language: str, name: str) -> list[dict]:
 def load_prompt() -> dict["SupportedLanguage", Prompts]:
     from .enums import SupportedLanguage
 
-    prompt_names = [
-        "action_proposal",
-        "action_reaction",
-        "action_validator",
-        "input_interpreter",
-        "memory_summarizer",
-        "narrator",
-        "scene_coordinator",
-        "speech_repair",
-        "state_committer",
-        "resolve_perceived_character",
-        "resolve_perceived_background_characters",
-        "resolve_perceived_items",
-        "resolve_perceived_equipment",
-        "resolve_perceived_containers",
-        "resolve_perceived_landmarks",
-    ]
-
     result = {}
     for language in SupportedLanguage:
         result[language] = Prompts()
-        for prompt_name in prompt_names:
+        for prompt_name in PROMPT_NAMES:
             try:
                 result[language][prompt_name] = _load_prompt(language.value, prompt_name)
             except FileNotFoundError:

@@ -11,6 +11,7 @@ from world_simulation_engine.misc.enums import ComponentType, Visibility
 from world_simulation_engine.model import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, \
     PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, Character, BackgroundCharacter, Location, \
     World, Simulation, Landmark, Item, ItemStack, Equipment, Container
+from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from .simulator_component import SimulatorComponent
 
@@ -189,9 +190,13 @@ class PerspectiveResolver(SimulatorComponent):
 
     def __init__(self,
                  database: DatabaseService,
-                 langfuse_handler: CallbackHandler | None,
+                 prompt_loader: PromptLoader | None = None,
+                 langfuse_handler: CallbackHandler | None = None,
                  ):
-        super().__init__(database)
+        super().__init__(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
         self._langfuse_handler = langfuse_handler
 
         self._resolve_graph = self._graph_resolve_graph()
@@ -206,7 +211,8 @@ class PerspectiveResolver(SimulatorComponent):
             "target_landmark": state.target_landmark,
         }
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
             language=state.world.language,
             prompt_name="resolve_perceived_character",
         )
@@ -256,7 +262,8 @@ class PerspectiveResolver(SimulatorComponent):
             "background_characters": state.characters,
         }
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
             language=state.world.language,
             prompt_name="resolve_perceived_background_characters",
         )
@@ -303,7 +310,8 @@ class PerspectiveResolver(SimulatorComponent):
             "items": state.items,
         }
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
             language=state.world.language,
             prompt_name="resolve_perceived_items",
         )
@@ -351,7 +359,8 @@ class PerspectiveResolver(SimulatorComponent):
             "equipment": state.equipment,
         }
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
             language=state.world.language,
             prompt_name="resolve_perceived_equipment",
         )
@@ -398,7 +407,8 @@ class PerspectiveResolver(SimulatorComponent):
             "containers": state.containers,
         }
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
             language=state.world.language,
             prompt_name="resolve_perceived_containers",
         )
@@ -445,7 +455,8 @@ class PerspectiveResolver(SimulatorComponent):
             "landmarks": state.landmarks,
         }
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
             language=state.world.language,
             prompt_name="resolve_perceived_landmarks",
         )

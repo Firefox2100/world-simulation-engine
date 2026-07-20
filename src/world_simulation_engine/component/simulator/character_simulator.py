@@ -35,6 +35,7 @@ from world_simulation_engine.model import (
 )
 from world_simulation_engine.service import DatabaseService, EmbedService
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
+from ..prompt_loader import PromptLoader
 from .simulator_component import SimulatorComponent
 from .perspective_resolver import PerspectiveResolver
 
@@ -146,8 +147,12 @@ class CharacterSimulator(SimulatorComponent):
     def __init__(self,
                  database: DatabaseService,
                  langfuse_handler: CallbackHandler | None,
+                 prompt_loader: PromptLoader | None = None,
                  ):
-        super().__init__(database)
+        super().__init__(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
 
         self._perspective_resolver = PerspectiveResolver(
             database=database,
@@ -408,7 +413,8 @@ class CharacterSimulator(SimulatorComponent):
             thread_id=thread_id,
         )
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id,
             language=world.language,
             prompt_name="action_proposal",
         )
@@ -432,6 +438,7 @@ class CharacterSimulator(SimulatorComponent):
         return await self._ensure_speak_actions_have_utterance(
             proposal=result,
             perspective=perspective,
+            simulation_id=simulation_id,
             language=world.language,
             llm=llm,
             run_name="character.repair_proposed_speech",
@@ -442,12 +449,14 @@ class CharacterSimulator(SimulatorComponent):
             *,
             proposal: ActionProposal,
             perspective: CharacterPerspective,
+            simulation_id: str | None = None,
             language: SupportedLanguage,
             action: ProposedAction,
             llm,
             run_name: str,
     ) -> str:
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id or "",
             language=language,
             prompt_name="speech_repair",
         )
@@ -534,6 +543,7 @@ class CharacterSimulator(SimulatorComponent):
             *,
             proposal: ActionProposal,
             perspective: CharacterPerspective,
+            simulation_id: str | None = None,
             language: SupportedLanguage,
             llm,
             run_name: str,
@@ -550,6 +560,7 @@ class CharacterSimulator(SimulatorComponent):
                                 "utterance": await self._repair_missing_speech(
                                     proposal=proposal,
                                     perspective=perspective,
+                                    simulation_id=simulation_id,
                                     language=language,
                                     action=action,
                                     llm=llm,
@@ -618,7 +629,8 @@ class CharacterSimulator(SimulatorComponent):
             reaction_history=reaction_history or [],
         )
 
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id,
             language=world.language,
             prompt_name="action_reaction",
         )
@@ -643,6 +655,7 @@ class CharacterSimulator(SimulatorComponent):
         return await self._ensure_speak_actions_have_utterance(
             proposal=result,
             perspective=perspective,
+            simulation_id=simulation_id,
             language=world.language,
             llm=llm,
             run_name="character.repair_reaction_speech",

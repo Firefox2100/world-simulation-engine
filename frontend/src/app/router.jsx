@@ -37,6 +37,12 @@ export const router = createBrowserRouter([
                 }),
             },
             {
+                path: "prompts",
+                lazy: async () => ({
+                    Component: (await import("@/pages/PromptsPage.jsx")).PromptsPage,
+                }),
+            },
+            {
                 path: "connections",
                 lazy: async () => ({
                     Component: (await import("@/pages/ConfigurationsPage.jsx")).ConfigurationsPage,

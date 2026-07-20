@@ -23,6 +23,9 @@ export function HeaderBar() {
                 <NavLink to="/media" className="app-nav-link">
                     {t("app.nav.media")}
                 </NavLink>
+                <NavLink to="/prompts" className="app-nav-link">
+                    {t("app.nav.prompts")}
+                </NavLink>
                 <NavLink to="/configurations" className="app-nav-link">
                     {t("app.nav.configurations")}
                 </NavLink>

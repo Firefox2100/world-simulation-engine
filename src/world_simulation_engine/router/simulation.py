@@ -334,6 +334,11 @@ async def create_simulation(world_id: str, db: db_dep):
         if embed_config:
             await db.config.link_embed(created_simulation.id, embed_config.id, component)
 
+    await db.media.copy_prompt_media_relationships(
+        world_id=world_id,
+        simulation_id=created_simulation.id,
+    )
+
     _, turn_pairs = await db.turn.copy_turns(
         world_id,
         created_simulation.id,

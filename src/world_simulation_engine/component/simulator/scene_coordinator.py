@@ -338,7 +338,8 @@ class SceneCoordinator(SimulatorComponent):
             reaction_history=reaction_history,
             accepted_history=accepted_history,
         )
-        prompt = self._prepare_prompt(
+        prompt = await self._prepare_prompt(
+            simulation_id=simulation_id,
             language=context.world.language,
             prompt_name="scene_coordinator",
         )

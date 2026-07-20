@@ -2,6 +2,7 @@ from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import SupportedLanguage, ComponentType
 from world_simulation_engine.model import PromptMessage
 from world_simulation_engine.service import DatabaseService, LlmService
+from ..prompt_loader import PromptLoader
 
 
 class SimulatorComponent:
@@ -9,17 +10,26 @@ class SimulatorComponent:
 
     def __init__(self,
                  database: DatabaseService,
+                 prompt_loader: PromptLoader | None = None,
                  ):
         self._db = database
+        self._prompt_loader = prompt_loader
 
-    @staticmethod
-    def _prepare_prompt(language: SupportedLanguage,
-                        prompt_name: str,
-                        ) -> list[PromptMessage]:
+    async def _prepare_prompt(self,
+                              *,
+                              simulation_id: str,
+                              language: SupportedLanguage,
+                              prompt_name: str,
+                              ) -> list[PromptMessage]:
+        if self._prompt_loader:
+            return await self._prompt_loader.load_prompt(
+                simulation_id=simulation_id,
+                language=language,
+                prompt_name=prompt_name,
+            )
+
         prompt_data = PROMPTS[language][prompt_name]
-        prompt = [PromptMessage.model_validate(p) for p in prompt_data]
-
-        return prompt
+        return [PromptMessage.model_validate(p) for p in prompt_data]
 
     async def _prepare_llm_service(self,
                                    simulation_id: str,

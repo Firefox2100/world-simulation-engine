@@ -19,6 +19,10 @@ class CoverImageUpdate(BaseModel):
     media_id: str = Field(..., description="Media file to use as the cover image")
 
 
+class MediaConnectionUpdate(BaseModel):
+    media_id: str = Field(..., description="Media file to connect to the source")
+
+
 async def _get_source(source_type: str, source_id: str, db: db_dep):
     if source_type == "World":
         return await db.world.get_world(source_id)
@@ -128,6 +132,133 @@ async def _set_cover_image(source_type: str,
     return linked
 
 
+async def _create_media_record(file: UploadFile,
+                               media_type: MediaType,
+                               title: str | None,
+                               filename: str | None,
+                               db: db_dep,
+                               storage: storage_dep,
+                               ) -> MediaFile:
+    try:
+        stored = await storage.save(_upload_chunks(file))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    finally:
+        await file.close()
+
+    media = MediaFile(
+        type=media_type,
+        title=title,
+        hash=stored.digest,
+        filename=_filename_without_suffix(file, filename),
+    )
+
+    return await db.media.create_media(media)
+
+
+async def _add_media(source_type: str,
+                     source_id: str,
+                     media_connection: MediaConnectionUpdate,
+                     db: db_dep,
+                     ):
+    source = await _get_source(source_type, source_id, db)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{source_type} {source_id} not found",
+        )
+
+    media = await db.media.get_media(media_connection.media_id)
+    if not media:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Media {media_connection.media_id} not found",
+        )
+
+    linked = await db.media.add_media(source_id, media_connection.media_id)
+    if not linked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{source_type} {source_id} or media {media_connection.media_id} not found",
+        )
+
+    return linked
+
+
+async def _upload_media_for_source(source_type: str,
+                                   source_id: str,
+                                   db: db_dep,
+                                   storage: storage_dep,
+                                   file: UploadFile,
+                                   title: str | None,
+                                   filename: str | None,
+                                   ):
+    source = await _get_source(source_type, source_id, db)
+    if not source:
+        await file.close()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{source_type} {source_id} not found",
+        )
+
+    media = await _create_media_record(
+        file=file,
+        media_type=MediaType.PNG,
+        title=title,
+        filename=filename,
+        db=db,
+        storage=storage,
+    )
+
+    linked = await db.media.add_media(source_id, media.id)
+    if not linked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{source_type} {source_id} or media {media.id} not found",
+        )
+
+    return linked
+
+
+async def _list_source_media(source_type: str,
+                             source_id: str,
+                             db: db_dep,
+                             ):
+    source = await _get_source(source_type, source_id, db)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{source_type} {source_id} not found",
+        )
+
+    return await db.media.list_source_media(source_id, media_type=MediaType.PNG)
+
+
+async def _delete_media_connection(source_type: str,
+                                   source_id: str,
+                                   media_id: str,
+                                   db: db_dep,
+                                   ):
+    source = await _get_source(source_type, source_id, db)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{source_type} {source_id} not found",
+        )
+
+    media = await db.media.get_media(media_id)
+    if not media:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Media {media_id} not found",
+        )
+
+    await db.media.remove_media(source_id, media_id)
+
+
 async def _get_cover_image(source_type: str,
                            source_id: str,
                            db: db_dep,
@@ -173,24 +304,7 @@ async def create_media(
         title: Optional[str] = Form(None),
         filename: Optional[str] = Form(None),
 ):
-    try:
-        stored = await storage.save(_upload_chunks(file))
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-    finally:
-        await file.close()
-
-    media = MediaFile(
-        type=type,
-        title=title,
-        hash=stored.digest,
-        filename=_filename_without_suffix(file, filename),
-    )
-
-    return await db.media.create_media(media)
+    return await _create_media_record(file, type, title, filename, db, storage)
 
 
 @media_router.get("/media", response_model=list[MediaFile])
@@ -230,6 +344,32 @@ async def delete_media(media_id: str, db: db_dep, storage: storage_dep):
         await storage.delete(media.hash, missing_ok=True)
 
 
+@media_router.post("/worlds/{world_id}/media", response_model=MediaFile)
+async def upload_world_media(world_id: str,
+                             db: db_dep,
+                             storage: storage_dep,
+                             file: UploadFile = File(...),
+                             title: Optional[str] = Form(None),
+                             filename: Optional[str] = Form(None),
+                             ):
+    return await _upload_media_for_source("World", world_id, db, storage, file, title, filename)
+
+
+@media_router.get("/worlds/{world_id}/media", response_model=list[MediaFile])
+async def list_world_media(world_id: str, db: db_dep):
+    return await _list_source_media("World", world_id, db)
+
+
+@media_router.post("/worlds/{world_id}/media-connections", response_model=MediaFile)
+async def add_world_media(world_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("World", world_id, media_connection, db)
+
+
+@media_router.delete("/worlds/{world_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_world_media(world_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("World", world_id, media_id, db)
+
+
 @media_router.post("/worlds/{world_id}/cover-image", response_model=MediaFile)
 async def set_world_cover_image(world_id: str,
                                 cover_image: CoverImageUpdate,
@@ -246,6 +386,32 @@ async def get_world_cover_image(world_id: str, db: db_dep, storage: storage_dep)
 @media_router.delete("/worlds/{world_id}/cover-image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_world_cover_image(world_id: str, db: db_dep):
     await _delete_cover_image("World", world_id, db)
+
+
+@media_router.post("/simulations/{simulation_id}/media", response_model=MediaFile)
+async def upload_simulation_media(simulation_id: str,
+                                  db: db_dep,
+                                  storage: storage_dep,
+                                  file: UploadFile = File(...),
+                                  title: Optional[str] = Form(None),
+                                  filename: Optional[str] = Form(None),
+                                  ):
+    return await _upload_media_for_source("Simulation", simulation_id, db, storage, file, title, filename)
+
+
+@media_router.get("/simulations/{simulation_id}/media", response_model=list[MediaFile])
+async def list_simulation_media(simulation_id: str, db: db_dep):
+    return await _list_source_media("Simulation", simulation_id, db)
+
+
+@media_router.post("/simulations/{simulation_id}/media-connections", response_model=MediaFile)
+async def add_simulation_media(simulation_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Simulation", simulation_id, media_connection, db)
+
+
+@media_router.delete("/simulations/{simulation_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_simulation_media(simulation_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Simulation", simulation_id, media_id, db)
 
 
 @media_router.post("/simulations/{simulation_id}/cover-image", response_model=MediaFile)
@@ -266,6 +432,32 @@ async def delete_simulation_cover_image(simulation_id: str, db: db_dep):
     await _delete_cover_image("Simulation", simulation_id, db)
 
 
+@media_router.post("/characters/{character_id}/media", response_model=MediaFile)
+async def upload_character_media(character_id: str,
+                                 db: db_dep,
+                                 storage: storage_dep,
+                                 file: UploadFile = File(...),
+                                 title: Optional[str] = Form(None),
+                                 filename: Optional[str] = Form(None),
+                                 ):
+    return await _upload_media_for_source("Character", character_id, db, storage, file, title, filename)
+
+
+@media_router.get("/characters/{character_id}/media", response_model=list[MediaFile])
+async def list_character_media(character_id: str, db: db_dep):
+    return await _list_source_media("Character", character_id, db)
+
+
+@media_router.post("/characters/{character_id}/media-connections", response_model=MediaFile)
+async def add_character_media(character_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Character", character_id, media_connection, db)
+
+
+@media_router.delete("/characters/{character_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_character_media(character_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Character", character_id, media_id, db)
+
+
 @media_router.post("/characters/{character_id}/cover-image", response_model=MediaFile)
 async def set_character_cover_image(character_id: str, cover_image: CoverImageUpdate, db: db_dep):
     return await _set_cover_image("Character", character_id, cover_image, db)
@@ -279,6 +471,32 @@ async def get_character_cover_image(character_id: str, db: db_dep, storage: stor
 @media_router.delete("/characters/{character_id}/cover-image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_character_cover_image(character_id: str, db: db_dep):
     await _delete_cover_image("Character", character_id, db)
+
+
+@media_router.post("/background-characters/{character_id}/media", response_model=MediaFile)
+async def upload_background_character_media(character_id: str,
+                                            db: db_dep,
+                                            storage: storage_dep,
+                                            file: UploadFile = File(...),
+                                            title: Optional[str] = Form(None),
+                                            filename: Optional[str] = Form(None),
+                                            ):
+    return await _upload_media_for_source("BackgroundCharacter", character_id, db, storage, file, title, filename)
+
+
+@media_router.get("/background-characters/{character_id}/media", response_model=list[MediaFile])
+async def list_background_character_media(character_id: str, db: db_dep):
+    return await _list_source_media("BackgroundCharacter", character_id, db)
+
+
+@media_router.post("/background-characters/{character_id}/media-connections", response_model=MediaFile)
+async def add_background_character_media(character_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("BackgroundCharacter", character_id, media_connection, db)
+
+
+@media_router.delete("/background-characters/{character_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_background_character_media(character_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("BackgroundCharacter", character_id, media_id, db)
 
 
 @media_router.post("/background-characters/{character_id}/cover-image", response_model=MediaFile)
@@ -296,6 +514,32 @@ async def delete_background_character_cover_image(character_id: str, db: db_dep)
     await _delete_cover_image("BackgroundCharacter", character_id, db)
 
 
+@media_router.post("/locations/{location_id}/media", response_model=MediaFile)
+async def upload_location_media(location_id: str,
+                                db: db_dep,
+                                storage: storage_dep,
+                                file: UploadFile = File(...),
+                                title: Optional[str] = Form(None),
+                                filename: Optional[str] = Form(None),
+                                ):
+    return await _upload_media_for_source("Location", location_id, db, storage, file, title, filename)
+
+
+@media_router.get("/locations/{location_id}/media", response_model=list[MediaFile])
+async def list_location_media(location_id: str, db: db_dep):
+    return await _list_source_media("Location", location_id, db)
+
+
+@media_router.post("/locations/{location_id}/media-connections", response_model=MediaFile)
+async def add_location_media(location_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Location", location_id, media_connection, db)
+
+
+@media_router.delete("/locations/{location_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_location_media(location_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Location", location_id, media_id, db)
+
+
 @media_router.post("/locations/{location_id}/cover-image", response_model=MediaFile)
 async def set_location_cover_image(location_id: str, cover_image: CoverImageUpdate, db: db_dep):
     return await _set_cover_image("Location", location_id, cover_image, db)
@@ -309,6 +553,32 @@ async def get_location_cover_image(location_id: str, db: db_dep, storage: storag
 @media_router.delete("/locations/{location_id}/cover-image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_location_cover_image(location_id: str, db: db_dep):
     await _delete_cover_image("Location", location_id, db)
+
+
+@media_router.post("/landmarks/{landmark_id}/media", response_model=MediaFile)
+async def upload_landmark_media(landmark_id: str,
+                                db: db_dep,
+                                storage: storage_dep,
+                                file: UploadFile = File(...),
+                                title: Optional[str] = Form(None),
+                                filename: Optional[str] = Form(None),
+                                ):
+    return await _upload_media_for_source("Landmark", landmark_id, db, storage, file, title, filename)
+
+
+@media_router.get("/landmarks/{landmark_id}/media", response_model=list[MediaFile])
+async def list_landmark_media(landmark_id: str, db: db_dep):
+    return await _list_source_media("Landmark", landmark_id, db)
+
+
+@media_router.post("/landmarks/{landmark_id}/media-connections", response_model=MediaFile)
+async def add_landmark_media(landmark_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Landmark", landmark_id, media_connection, db)
+
+
+@media_router.delete("/landmarks/{landmark_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_landmark_media(landmark_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Landmark", landmark_id, media_id, db)
 
 
 @media_router.post("/landmarks/{landmark_id}/cover-image", response_model=MediaFile)
@@ -326,6 +596,32 @@ async def delete_landmark_cover_image(landmark_id: str, db: db_dep):
     await _delete_cover_image("Landmark", landmark_id, db)
 
 
+@media_router.post("/items/{item_id}/media", response_model=MediaFile)
+async def upload_item_media(item_id: str,
+                            db: db_dep,
+                            storage: storage_dep,
+                            file: UploadFile = File(...),
+                            title: Optional[str] = Form(None),
+                            filename: Optional[str] = Form(None),
+                            ):
+    return await _upload_media_for_source("Item", item_id, db, storage, file, title, filename)
+
+
+@media_router.get("/items/{item_id}/media", response_model=list[MediaFile])
+async def list_item_media(item_id: str, db: db_dep):
+    return await _list_source_media("Item", item_id, db)
+
+
+@media_router.post("/items/{item_id}/media-connections", response_model=MediaFile)
+async def add_item_media(item_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Item", item_id, media_connection, db)
+
+
+@media_router.delete("/items/{item_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_item_media(item_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Item", item_id, media_id, db)
+
+
 @media_router.post("/items/{item_id}/cover-image", response_model=MediaFile)
 async def set_item_cover_image(item_id: str, cover_image: CoverImageUpdate, db: db_dep):
     return await _set_cover_image("Item", item_id, cover_image, db)
@@ -339,6 +635,32 @@ async def get_item_cover_image(item_id: str, db: db_dep, storage: storage_dep):
 @media_router.delete("/items/{item_id}/cover-image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_item_cover_image(item_id: str, db: db_dep):
     await _delete_cover_image("Item", item_id, db)
+
+
+@media_router.post("/stacks/{stack_id}/media", response_model=MediaFile)
+async def upload_stack_media(stack_id: str,
+                             db: db_dep,
+                             storage: storage_dep,
+                             file: UploadFile = File(...),
+                             title: Optional[str] = Form(None),
+                             filename: Optional[str] = Form(None),
+                             ):
+    return await _upload_media_for_source("ItemStack", stack_id, db, storage, file, title, filename)
+
+
+@media_router.get("/stacks/{stack_id}/media", response_model=list[MediaFile])
+async def list_stack_media(stack_id: str, db: db_dep):
+    return await _list_source_media("ItemStack", stack_id, db)
+
+
+@media_router.post("/stacks/{stack_id}/media-connections", response_model=MediaFile)
+async def add_stack_media(stack_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("ItemStack", stack_id, media_connection, db)
+
+
+@media_router.delete("/stacks/{stack_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_stack_media(stack_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("ItemStack", stack_id, media_id, db)
 
 
 @media_router.post("/stacks/{stack_id}/cover-image", response_model=MediaFile)
@@ -356,6 +678,32 @@ async def delete_stack_cover_image(stack_id: str, db: db_dep):
     await _delete_cover_image("ItemStack", stack_id, db)
 
 
+@media_router.post("/equipment/{equipment_id}/media", response_model=MediaFile)
+async def upload_equipment_media(equipment_id: str,
+                                 db: db_dep,
+                                 storage: storage_dep,
+                                 file: UploadFile = File(...),
+                                 title: Optional[str] = Form(None),
+                                 filename: Optional[str] = Form(None),
+                                 ):
+    return await _upload_media_for_source("Equipment", equipment_id, db, storage, file, title, filename)
+
+
+@media_router.get("/equipment/{equipment_id}/media", response_model=list[MediaFile])
+async def list_equipment_media(equipment_id: str, db: db_dep):
+    return await _list_source_media("Equipment", equipment_id, db)
+
+
+@media_router.post("/equipment/{equipment_id}/media-connections", response_model=MediaFile)
+async def add_equipment_media(equipment_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Equipment", equipment_id, media_connection, db)
+
+
+@media_router.delete("/equipment/{equipment_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_equipment_media(equipment_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Equipment", equipment_id, media_id, db)
+
+
 @media_router.post("/equipment/{equipment_id}/cover-image", response_model=MediaFile)
 async def set_equipment_cover_image(equipment_id: str, cover_image: CoverImageUpdate, db: db_dep):
     return await _set_cover_image("Equipment", equipment_id, cover_image, db)
@@ -369,6 +717,32 @@ async def get_equipment_cover_image(equipment_id: str, db: db_dep, storage: stor
 @media_router.delete("/equipment/{equipment_id}/cover-image", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_equipment_cover_image(equipment_id: str, db: db_dep):
     await _delete_cover_image("Equipment", equipment_id, db)
+
+
+@media_router.post("/containers/{container_id}/media", response_model=MediaFile)
+async def upload_container_media(container_id: str,
+                                 db: db_dep,
+                                 storage: storage_dep,
+                                 file: UploadFile = File(...),
+                                 title: Optional[str] = Form(None),
+                                 filename: Optional[str] = Form(None),
+                                 ):
+    return await _upload_media_for_source("Container", container_id, db, storage, file, title, filename)
+
+
+@media_router.get("/containers/{container_id}/media", response_model=list[MediaFile])
+async def list_container_media(container_id: str, db: db_dep):
+    return await _list_source_media("Container", container_id, db)
+
+
+@media_router.post("/containers/{container_id}/media-connections", response_model=MediaFile)
+async def add_container_media(container_id: str, media_connection: MediaConnectionUpdate, db: db_dep):
+    return await _add_media("Container", container_id, media_connection, db)
+
+
+@media_router.delete("/containers/{container_id}/media/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_container_media(container_id: str, media_id: str, db: db_dep):
+    await _delete_media_connection("Container", container_id, media_id, db)
 
 
 @media_router.post("/containers/{container_id}/cover-image", response_model=MediaFile)

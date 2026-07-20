@@ -13,6 +13,7 @@ from world_simulation_engine.misc.enums import GraphStateSnapshotType, SceneCoor
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, World, Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
     GraphStateSnapshot, MemorySummaryProposal, NarrationProposal, ReactionHistoryEntry, StateCommitProposal, Turn
+from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from .action_validator import ActionValidator
 from .character_simulator import CharacterSimulator
@@ -92,21 +93,42 @@ class WorldSimulator:
 
     def __init__(self,
                  database: DatabaseService,
+                 prompt_loader: PromptLoader | None = None,
                  langfuse_handler: CallbackHandler | None = None,
                  ):
         self._db = database
+        self._prompt_loader = prompt_loader
         self._langfuse_handler = langfuse_handler
 
-        self._action_validator = ActionValidator(database=database)
+        self._action_validator = ActionValidator(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
         self._character_simulator = CharacterSimulator(
             database=database,
+            prompt_loader=prompt_loader,
             langfuse_handler=self._langfuse_handler
         )
-        self._input_interpreter = InputInterpreter(database=database)
-        self._memory_summarizer = MemorySummarizer(database=database)
-        self._narrator = Narrator(database=database)
-        self._scene_coordinator = SceneCoordinator(database=database)
-        self._state_committer = StateCommitter(database=database)
+        self._input_interpreter = InputInterpreter(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._memory_summarizer = MemorySummarizer(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._narrator = Narrator(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._scene_coordinator = SceneCoordinator(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._state_committer = StateCommitter(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
 
         self._user_input_graph = self._build_user_input_generation_graph()
         self._character_round_graph = self._build_character_round_generation_graph()
