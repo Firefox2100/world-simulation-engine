@@ -120,15 +120,22 @@ class MemorySummarizer(SimulatorComponent):
         )
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
-        return await llm.invoke_structured_with_repair(
+        proposal = await llm.invoke_structured_with_repair(
             output_model=MemorySummaryProposal,
             messages=prompt,
             data=context.model_dump(),
             repair_instruction=(
-                "Return a valid MemorySummaryProposal only. Do not propose physical state changes, narration, "
-                "validation records, or scheduler records."
+                "Return one valid MemorySummaryProposal JSON object only. Keep it small: 0-4 operations, no repeats. "
+                "Every operation must use type, never name as the operation kind. create_memory needs event_id, "
+                "support_type, and character_links; never involved_characters. create_intent needs exact character_id. "
+                "Skip weak/uncertain records with no_abstract_change. Do not include physical state, relationships, "
+                "narration, validation, scheduler, database instructions, prose, or markdown."
             ),
             run_name=run_name,
+        )
+        return self._normalize_proposal_references(
+            proposal=proposal,
+            context=context,
         )
 
     async def summarize_user_actions(self,
@@ -172,3 +179,155 @@ class MemorySummarizer(SimulatorComponent):
             narration=narration,
             run_name="memory_summarizer.summarize_character_actions",
         )
+
+    @classmethod
+    def _normalize_proposal_references(cls,
+                                       *,
+                                       proposal: MemorySummaryProposal,
+                                       context: MemorySummarizerContext,
+                                       ) -> MemorySummaryProposal:
+        actor_ids = {
+            actor.actor.id
+            for actor in context.actors
+        }
+        actor_ids_by_name = {
+            actor.actor.name.lower(): actor.actor.id
+            for actor in context.actors
+        }
+        event_ids_by_name = {}
+        event_ids = set()
+        for operation in proposal.operations:
+            if operation.type != "create_event":
+                continue
+
+            event_ids.add(operation.proposed_id)
+            event_ids_by_name[operation.name.lower()] = operation.proposed_id
+            event_ids_by_name[operation.summary.lower()] = operation.proposed_id
+
+        normalized = proposal.model_dump(mode="json")
+        for operation in normalized["operations"]:
+            operation_type = operation.get("type")
+            if operation_type in {"create_event", "update_event"}:
+                cls._resolve_character_list(
+                    operation.get("involved_characters", []),
+                    actor_ids=actor_ids,
+                    actor_ids_by_name=actor_ids_by_name,
+                )
+
+            if operation_type == "create_memory":
+                cls._resolve_event_reference(
+                    operation,
+                    field_name="event_id",
+                    event_ids=event_ids,
+                    event_ids_by_name=event_ids_by_name,
+                )
+                cls._resolve_character_list(
+                    operation.get("character_links", []),
+                    actor_ids=actor_ids,
+                    actor_ids_by_name=actor_ids_by_name,
+                )
+                operation["character_links"] = [
+                    link
+                    for link in operation.get("character_links", [])
+                    if link.get("character_id") in actor_ids
+                ]
+                if not operation["character_links"]:
+                    operation.clear()
+                    operation.update({
+                        "type": "no_abstract_change",
+                        "reason": "Skipped memory proposal because no valid character links remained.",
+                    })
+
+            elif operation_type == "link_existing_memory":
+                cls._resolve_character_id(
+                    operation.get("character_link", {}),
+                    actor_ids=actor_ids,
+                    actor_ids_by_name=actor_ids_by_name,
+                )
+                if operation.get("character_link", {}).get("character_id") not in actor_ids:
+                    operation.clear()
+                    operation.update({
+                        "type": "no_abstract_change",
+                        "reason": "Skipped existing-memory link because the character id was not known.",
+                    })
+
+            elif operation_type == "create_intent":
+                cls._resolve_character_id(
+                    operation,
+                    actor_ids=actor_ids,
+                    actor_ids_by_name=actor_ids_by_name,
+                )
+                cls._resolve_event_reference(
+                    operation,
+                    field_name="created_by_event_id",
+                    event_ids=event_ids,
+                    event_ids_by_name=event_ids_by_name,
+                )
+                if operation.get("character_id") not in actor_ids:
+                    operation.clear()
+                    operation.update({
+                        "type": "no_abstract_change",
+                        "reason": "Skipped intent proposal because the character id was not known.",
+                    })
+
+            elif operation_type == "update_intent":
+                cls._resolve_event_reference(
+                    operation,
+                    field_name="event_id",
+                    event_ids=event_ids,
+                    event_ids_by_name=event_ids_by_name,
+                )
+
+            elif operation_type == "link_turn_to_event":
+                cls._resolve_event_reference(
+                    operation,
+                    field_name="event_id",
+                    event_ids=event_ids,
+                    event_ids_by_name=event_ids_by_name,
+                )
+
+        return MemorySummaryProposal.model_validate(normalized)
+
+    @classmethod
+    def _resolve_character_list(cls,
+                                entries: list[dict],
+                                *,
+                                actor_ids: set[str],
+                                actor_ids_by_name: dict[str, str],
+                                ):
+        for entry in entries:
+            if isinstance(entry, dict):
+                cls._resolve_character_id(
+                    entry,
+                    actor_ids=actor_ids,
+                    actor_ids_by_name=actor_ids_by_name,
+                )
+
+    @staticmethod
+    def _resolve_character_id(entry: dict,
+                              *,
+                              actor_ids: set[str],
+                              actor_ids_by_name: dict[str, str],
+                              ):
+        character_id = entry.get("character_id")
+        if not isinstance(character_id, str) or character_id in actor_ids:
+            return
+
+        normalized_id = actor_ids_by_name.get(character_id.strip().lower())
+        if normalized_id:
+            entry["character_id"] = normalized_id
+
+    @staticmethod
+    def _resolve_event_reference(entry: dict,
+                                 *,
+                                 field_name: str,
+                                 event_ids: set[str | None],
+                                 event_ids_by_name: dict[str, str | None],
+                                 ):
+        event_id = entry.get(field_name)
+        if not isinstance(event_id, str) or event_id in event_ids:
+            return
+
+        normalized_id = event_ids_by_name.get(event_id.strip().lower())
+        if normalized_id:
+            entry[field_name] = normalized_id

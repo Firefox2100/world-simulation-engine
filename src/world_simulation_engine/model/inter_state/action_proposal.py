@@ -48,11 +48,21 @@ class ProposedAction(BaseModel):
 class ActionProposal(BaseModel):
     @model_validator(mode="before")
     @classmethod
-    def normalize_llm_memory_updates(cls, value: Any) -> Any:
+    def normalize_llm_shape(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
 
         normalized = dict(value)
+
+        if "actions" not in normalized and "chosen_action" in normalized:
+            normalized["actions"] = [normalized["chosen_action"]]
+
+        if "backup_proposals" not in normalized and "alternatives_considered" in normalized:
+            normalized["backup_proposals"] = [
+                [action]
+                for action in normalized["alternatives_considered"] or []
+            ]
+
         updates = normalized.get("memory_updates_suggested")
         if not isinstance(updates, list):
             return normalized
@@ -84,13 +94,17 @@ class ActionProposal(BaseModel):
 
         return "; ".join(parts) if parts else str(update)
 
-    chosen_action: ProposedAction = Field(
+    actions: list[ProposedAction] = Field(
         ...,
-        description="The action to be performed"
+        min_length=1,
+        description="Primary ordered sequence of atomic actions proposed by the character."
     )
-    alternatives_considered: list[ProposedAction] = Field(
+    backup_proposals: list[list[ProposedAction]] = Field(
         default_factory=list,
-        description="When the original action is not available or possible, try these in order"
+        description=(
+            "Ordered fallback action sequences. Each backup proposal is a complete alternative sequence, "
+            "not an individual action to splice into the primary proposal."
+        )
     )
 
     reasoning_summary: str = Field(
@@ -110,3 +124,15 @@ class ActionProposal(BaseModel):
         le=7200,
         description="When the scheduler should re-evaluate this actor if uninterrupted"
     )
+
+    @property
+    def chosen_action(self) -> ProposedAction:
+        return self.actions[0]
+
+    @property
+    def alternatives_considered(self) -> list[ProposedAction]:
+        return [
+            proposal[0]
+            for proposal in self.backup_proposals
+            if proposal
+        ]

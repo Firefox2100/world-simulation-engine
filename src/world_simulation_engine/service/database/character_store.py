@@ -36,10 +36,18 @@ class CharacterStore:
     async def create_character(self,
                                character: Character,
                                source_id: str,
+                               location_id: str | None = None,
+                               position: str | None = None,
+                               landmark_id: str | None = None,
                                ) -> Character | None:
         result = await self._driver.execute_query(
             """
             MATCH (s:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (loc:Location {id: $location_id})
+            OPTIONAL MATCH (landmark:Landmark {id: $landmark_id})
+            WITH s, loc, landmark
+            WHERE ($location_id IS NULL OR loc IS NOT NULL)
+                AND ($landmark_id IS NULL OR landmark IS NOT NULL)
             CREATE (c:Character {
                 id: $id,
                 user_controlled: $user_controlled,
@@ -53,6 +61,21 @@ class CharacterStore:
                 current_activity: $current_activity
             })
             MERGE (s) -[:CONTAINS]-> (c)
+            FOREACH (_ IN CASE
+                WHEN $location_id IS NOT NULL AND loc IS NOT NULL
+                THEN [1]
+                ELSE []
+            END |
+                MERGE (c)-[present:PRESENT_IN]->(loc)
+                    SET present.position = $position
+            )
+            FOREACH (_ IN CASE
+                WHEN $landmark_id IS NOT NULL AND landmark IS NOT NULL
+                THEN [1]
+                ELSE []
+            END |
+                MERGE (c)-[:ANCHORED_TO]->(landmark)
+            )
             RETURN c
             """,
             parameters_={
@@ -67,6 +90,9 @@ class CharacterStore:
                 "private_state": character.private_state,
                 "current_activity": character.current_activity.model_dump_json(),
                 "source_id": source_id,
+                "location_id": location_id,
+                "position": position,
+                "landmark_id": landmark_id,
             }
         )
 
@@ -79,45 +105,39 @@ class CharacterStore:
     async def list_characters(self,
                               world_id: str | None = None,
                               simulation_id: str | None = None,
+                              location_id: str | None = None,
                               ) -> list[Character]:
         if world_id is not None and simulation_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(c:Character)
-                RETURN c
-                ORDER BY c.name
-                """,
-                parameters_={
-                    "world_id": world_id,
-                    "simulation_id": simulation_id,
-                },
-            )
+            source_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(c:Character)
+            """
         elif world_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:World {id: $world_id})-[:CONTAINS]->(c:Character)
-                RETURN c
-                ORDER BY c.name
-                """,
-                parameters_={"world_id": world_id},
-            )
+            source_match = """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(c:Character)
+            """
         elif simulation_id is not None:
-            result = await self._driver.execute_query(
-                """
-                MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(c:Character)
-                RETURN c
-                ORDER BY c.name
-                """,
-                parameters_={"simulation_id": simulation_id},
-            )
+            source_match = """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(c:Character)
+            """
         else:
-            result = await self._driver.execute_query(
-                """
-                MATCH (c:Character)
-                RETURN c
-                ORDER BY c.name
-                """
-            )
+            source_match = """
+            MATCH (c:Character)
+            """
+
+        result = await self._driver.execute_query(
+            source_match + """
+            OPTIONAL MATCH (c)-[:PRESENT_IN]->(location:Location)
+            WITH DISTINCT c, location
+            WHERE ($location_id IS NULL OR location.id = $location_id)
+            RETURN c
+            ORDER BY c.name
+            """,
+            parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
+                "location_id": location_id,
+            },
+        )
 
         return [
             self.character_from_node(record["c"])

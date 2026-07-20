@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "你负责修复一个不完整的角色说话行动。\n\n只返回角色实际说出的原话，纯文本。\n\n不要返回 JSON。不要加引号，除非角色真的说出引号。不要加说话人姓名、对白标签、旁白、markdown、解释或内部标签。\n\n规则：\n- 原 action type 是 speak，所以角色正在说话。\n- speak action 必须有具体台词。utterance 只有在角色没有说话、只做动作时才能为 null。\n- 写一句角色此刻合理会说的台词。\n- 使用提供的视角和原始 ActionProposal 作为上下文。\n- 不要编造上下文之外的新事实。若角色不确定，就把台词写成不确定。\n- 保持简短，通常一句话。"
+  },
+  {
+    "role": "user",
+    "content": "## 角色\n\n- id: {{ perspective.actor.id }}\n- 姓名: {{ perspective.actor.name }}\n- 描述: {{ perspective.actor.description }}\n- 公开状态: {{ perspective.actor.public_state }}\n- 私有状态: {{ perspective.actor.private_state }}\n- 当前活动: {{ perspective.actor.current_activity.name }}\n\n## 触发回应的用户输入\n\n{{ perspective.user_input }}\n\n## 地点\n\n- id: {{ perspective.location.id }}\n- 名称: {{ perspective.location.name }}\n- 描述: {{ perspective.location.description }}\n\n## 相关持有物\n\n{% for entry in perspective.inventory %}\n- stack id: {{ entry.stack_id }}; item id: {{ entry.item_id }}; {{ entry.name }} x{{ entry.quantity }}; 描述: {{ entry.description }}{% if entry.quality %}; quality: {{ entry.quality }}{% endif %}\n{% else %}\n- 无\n{% endfor %}\n\n## 可感知角色\n\n{% for entry in perspective.perceived_characters %}\n- id: {{ entry.character.id }}; 姓名: {{ entry.character.name }}; 状态: {{ entry.character.public_state }}; affordances: {{ entry.affordances }}{% if entry.notes %}; notes: {{ entry.notes }}{% endif %}\n{% else %}\n- 无\n{% endfor %}\n\n## 回忆\n\n{% for entry in perspective.relevant_memories %}\n- memory id: {{ entry.memory.id }}; 摘要: {{ entry.memory.summary }}; event: {{ entry.event_name }}; support: {{ entry.support_type }}; confidence: {{ entry.confidence }}; stance: {{ entry.stance }}\n{% else %}\n- 无\n{% endfor %}\n\n## 原始 ActionProposal\n\n{{ proposal }}\n\n## 不完整的 speak action\n\n- label: {{ action.label }}\n- target ids: {{ action.target_ids }}\n- expected effects: {{ action.expected_effects }}\n- required preconditions: {{ action.required_preconditions }}\n\n## 提案理由\n\n{{ reasoning_summary }}\n\n## 建议记忆更新\n\n{% for update in memory_updates_suggested %}\n- {{ update }}\n{% else %}\n- 无\n{% endfor %}\n\n只返回台词文本。"
+  }
+]

@@ -171,7 +171,9 @@ async def test_create_stack_can_assign_physical_stack_to_simulation(clean_neo4j)
     result = await clean_neo4j.execute_query(
         """
         MATCH (:World {id: $world_id})-[:CONTAINS]->(:Item {id: $item_id})
-        MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(:ItemStack {id: $stack_id})-[:OF_TYPE]->(:Item {id: $item_id})
+        MATCH (:Simulation {id: $simulation_id})
+            -[:CONTAINS]->(:ItemStack {id: $stack_id})
+            -[:OF_TYPE]->(:Item {id: $item_id})
         RETURN count(*) AS link_count
         """,
         parameters_={
@@ -183,6 +185,95 @@ async def test_create_stack_can_assign_physical_stack_to_simulation(clean_neo4j)
     )
 
     assert result.records[0]["link_count"] == 1
+
+
+async def test_copy_stacks_preserves_location_holder_owner_and_item_type(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    item_store = ItemStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    item = Item(id=str(uuid4()), name="Apple", description="Fresh fruit", unique=False)
+    located_stack = ItemStack(id=str(uuid4()), quantity=3, quality="fresh")
+    held_stack = ItemStack(id=str(uuid4()), quantity=1, quality="polished")
+    location = Location(id=str(uuid4()), name="Market", description="A busy market")
+    holder = await create_character(clean_neo4j, world.id, name="Holder")
+    owner = await create_character(clean_neo4j, world.id, name="Owner")
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Test Simulation",
+        description="A test simulation",
+        current_time=world.starting_time,
+    )
+
+    await item_store.create_item(item, source_id=world.id)
+    await location_store.create_location(location, source_id=world.id)
+    await simulation_store.create_simulation(simulation, world.id)
+    copied_holder = await create_character(clean_neo4j, simulation.id, name="Copied Holder")
+    copied_owner = await create_character(clean_neo4j, simulation.id, name="Copied Owner")
+    _, location_pairs, _ = await location_store.copy_locations(world.id, simulation.id)
+    await item_store.create_stack(
+        item.id,
+        located_stack,
+        source_id=world.id,
+        location_id=location.id,
+        position="on the stall",
+    )
+    await item_store.create_stack(
+        item.id,
+        held_stack,
+        source_id=world.id,
+        holder_id=holder.id,
+        owner_id=owner.id,
+    )
+    copied_stacks, stack_pairs = await item_store.copy_stacks(
+        world.id,
+        simulation.id,
+        location_pairs=location_pairs,
+        entity_pairs=[
+            {"source_id": holder.id, "copy_id": copied_holder.id},
+            {"source_id": owner.id, "copy_id": copied_owner.id},
+        ],
+    )
+
+    assert len(copied_stacks) == 2
+    assert [
+        stack.model_copy(update={"id": source_stack.id})
+        for stack, source_stack in zip(
+            sorted(copied_stacks, key=lambda entry: entry.quantity),
+            sorted([held_stack, located_stack], key=lambda entry: entry.quantity),
+        )
+    ] == sorted([held_stack, located_stack], key=lambda entry: entry.quantity)
+    assert {
+        pair["source_id"]
+        for pair in stack_pairs
+    } == {located_stack.id, held_stack.id}
+
+    held_pair = next(pair for pair in stack_pairs if pair["source_id"] == held_stack.id)
+    located_pair = next(pair for pair in stack_pairs if pair["source_id"] == located_stack.id)
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:Simulation {id: $simulation_id})
+            -[:CONTAINS]->(held_copy:ItemStack {id: $held_copy_id})
+            -[:OF_TYPE]->(:Item {id: $item_id})
+        MATCH (:Simulation {id: $simulation_id})
+            -[:CONTAINS]->(located_copy:ItemStack {id: $located_copy_id})
+            -[:OF_TYPE]->(:Item {id: $item_id})
+        MATCH (:Character {id: $holder_id})-[:HOLDS]->(held_copy)
+        MATCH (:Character {id: $owner_id})-[:OWNS]->(held_copy)
+        MATCH (located_copy)-[present:PRESENT_IN]->(:Location {id: $location_id})
+        RETURN present.position AS position
+        """,
+        parameters_={
+            "simulation_id": simulation.id,
+            "held_copy_id": held_pair["copy_id"],
+            "located_copy_id": located_pair["copy_id"],
+            "item_id": item.id,
+            "holder_id": copied_holder.id,
+            "owner_id": copied_owner.id,
+            "location_id": location_pairs[0]["copy_id"],
+        },
+    )
+    assert result.records[0]["position"] == "on the stall"
 
 
 async def test_create_stack_returns_none_for_missing_source_or_item(clean_neo4j):

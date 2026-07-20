@@ -135,9 +135,42 @@ function normalizeSimulation(simulation) {
 }
 
 function normalizeTurn(turn) {
+    const narrationBlocks = parseNarrationBlocks(turn.content);
     return {
         ...turn,
         turn_number: turn.sequence,
-        narration: turn.content,
+        narration: narrationBlocks ? narrationTextFromBlocks(narrationBlocks) : turn.content,
+        narration_blocks: narrationBlocks,
     };
+}
+
+function parseNarrationBlocks(content) {
+    if (typeof content !== "string") {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed?.blocks)) {
+            return parsed.blocks;
+        }
+    } catch {
+        // Legacy turns store plain text.
+    }
+
+    return null;
+}
+
+function narrationTextFromBlocks(blocks) {
+    return blocks
+        .map((block) => {
+            if (block.type === "speech") {
+                const speaker = block.character_name || block.character_id || "";
+                return speaker ? `${speaker}: "${block.text}"` : block.text;
+            }
+
+            return block.text;
+        })
+        .filter(Boolean)
+        .join("\n\n");
 }

@@ -72,11 +72,20 @@ async def test_chat_config_crud_and_connection_link(clean_neo4j):
     assert await store.list_chats() == [ollama_chat, openai_chat]
     assert await store.get_chat(ollama_chat.id) == ollama_chat
     assert await store.link_connection(ollama_chat.id, connection.id) == connection
+    ollama_chat_with_connection = OllamaChatModelConfig(
+        **{
+            **ollama_chat.model_dump(),
+            "connection": connection,
+        },
+    )
+    assert await store.get_chat(ollama_chat.id) == ollama_chat_with_connection
+    assert await store.list_chats() == [ollama_chat_with_connection, openai_chat]
     assert await store.get_connection_by_source(ollama_chat.id) == connection
     assert await store.unlink_connection(ollama_chat.id) is True
     assert await store.get_connection_by_source(ollama_chat.id) is None
     assert await store.unlink_connection(str(uuid4())) is False
     assert await store.link_connection(ollama_chat.id, connection.id) == connection
+    assert await store.get_chat(ollama_chat.id) == ollama_chat_with_connection
 
     updated_chat = await store.update_chat(
         ollama_chat.id,
@@ -91,6 +100,7 @@ async def test_chat_config_crud_and_connection_link(clean_neo4j):
             **ollama_chat.model_dump(),
             "temperature": 0.7,
             "repeat_penalty": 1.1,
+            "connection": connection,
         },
     )
     assert await store.delete_chat(ollama_chat.id) is True
@@ -123,10 +133,19 @@ async def test_embed_config_crud_and_connection_link(clean_neo4j):
     assert await store.list_embeds() == [ollama_embed, openai_embed]
     assert await store.get_embed(ollama_embed.id) == ollama_embed
     assert await store.link_connection(ollama_embed.id, connection.id) == connection
+    ollama_embed_with_connection = OllamaEmbedModelConfig(
+        **{
+            **ollama_embed.model_dump(),
+            "connection": connection,
+        },
+    )
+    assert await store.get_embed(ollama_embed.id) == ollama_embed_with_connection
+    assert await store.list_embeds() == [ollama_embed_with_connection, openai_embed]
     assert await store.get_connection_by_embed_source(ollama_embed.id) == connection
     assert await store.unlink_connection(ollama_embed.id) is True
     assert await store.get_connection_by_embed_source(ollama_embed.id) is None
     assert await store.link_connection(ollama_embed.id, connection.id) == connection
+    assert await store.get_embed(ollama_embed.id) == ollama_embed_with_connection
 
     updated_embed = await store.update_embed(
         ollama_embed.id,
@@ -139,6 +158,7 @@ async def test_embed_config_crud_and_connection_link(clean_neo4j):
         **{
             **ollama_embed.model_dump(),
             "dimension": 1024,
+            "connection": connection,
         },
     )
     assert await store.delete_embed(ollama_embed.id) is True
@@ -154,6 +174,12 @@ async def test_simulation_links_to_chat_and_embed_configs_by_component(clean_neo
         current_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
     )
     store = ConfigStore(clean_neo4j)
+    connection = ConnectionConfig(
+        id=str(uuid4()),
+        type=ConnectionType.OPENAI,
+        name="OpenAI",
+        api_key="test-key",
+    )
     chat_config = OpenAiChatModelConfig(
         id=str(uuid4()),
         name="Narrator Chat",
@@ -170,19 +196,27 @@ async def test_simulation_links_to_chat_and_embed_configs_by_component(clean_neo
     )
 
     await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+    await store.create_connection(connection)
     await store.create_chat(chat_config)
     await store.create_chat(replacement_chat_config)
     await store.create_embed(embed_config)
+    await store.link_connection(replacement_chat_config.id, connection.id)
+    replacement_chat_config_with_connection = OpenAiChatModelConfig(
+        **{
+            **replacement_chat_config.model_dump(),
+            "connection": connection,
+        },
+    )
 
     assert await store.link_chat(simulation.id, chat_config.id, ComponentType.NARRATOR) == chat_config
     assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) == chat_config
     assert await store.link_chat(simulation.id, replacement_chat_config.id, ComponentType.NARRATOR) == \
-        replacement_chat_config
-    assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) == replacement_chat_config
+        replacement_chat_config_with_connection
+    assert await store.get_chat_by_source(simulation.id, ComponentType.NARRATOR) == replacement_chat_config_with_connection
     assert await store.link_embed(simulation.id, embed_config.id, ComponentType.CHARACTER_SIMULATOR) == embed_config
     assert await store.get_embed_by_source(simulation.id, ComponentType.CHARACTER_SIMULATOR) == embed_config
     assert await store.list_chats_by_source(simulation.id) == {
-        ComponentType.NARRATOR: replacement_chat_config,
+        ComponentType.NARRATOR: replacement_chat_config_with_connection,
     }
     assert await store.list_embeds_by_source(simulation.id) == {
         ComponentType.CHARACTER_SIMULATOR: embed_config,

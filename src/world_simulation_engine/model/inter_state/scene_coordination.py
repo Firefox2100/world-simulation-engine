@@ -21,21 +21,44 @@ class SceneActionReference(BaseModel):
         return normalized
 
     actor_id: str
+    proposal_index: int = Field(
+        default=0,
+        ge=0,
+        description="Selected proposal sequence index: 0 is primary, 1+ are backup proposals.",
+    )
     action_index: int = Field(ge=0)
 
 
 class ActionCandidateSet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    action_index: int = Field(
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_shape(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        normalized.setdefault("proposal_index", 0)
+        normalized.setdefault("action_index", 0)
+        return normalized
+
+    proposal_index: int = Field(
+        default=0,
         ge=0,
-        description="The action index these candidates may satisfy.",
+        description="Candidate proposal sequence index: 0 is primary, 1+ are backup proposals.",
+    )
+
+    action_index: int = Field(
+        default=0,
+        ge=0,
+        description="Legacy field retained for compatibility; sequence candidates start at action_index 0.",
     )
     actions: list[ProposedAction] = Field(
         default_factory=list,
         description=(
-            "Allowed candidate actions for this action index, in preference order. "
-            "The first item is the initially chosen action when it passed validation; later items are backups."
+            "A complete validator-approved proposal sequence. These actions must be accepted/rejected as an "
+            "ordered sequence; they are not individual alternatives to splice into another proposal."
         ),
     )
 
@@ -48,8 +71,8 @@ class CharacterActionPlan(BaseModel):
     action_proposals: list[ActionProposal] = Field(
         default_factory=list,
         description=(
-            "Original action proposals, preserving chosen_action and alternatives_considered. "
-            "This is context only; the coordinator should use candidate_sets for allowed options."
+            "Original action proposals, preserving primary actions and backup proposals. "
+            "This is context only; the coordinator should use candidate_sets for validator-approved sequences."
         ),
     )
     candidate_sets: list[ActionCandidateSet] = Field(
@@ -151,6 +174,11 @@ class AcceptedSceneAction(BaseModel):
         return normalized
 
     actor_id: str
+    proposal_index: int = Field(
+        default=0,
+        ge=0,
+        description="Accepted proposal sequence index: 0 is primary, 1+ are backup proposals.",
+    )
     action_index: int = Field(ge=0)
     action: ProposedAction
     start_offset_seconds: int = Field(ge=0)
@@ -199,6 +227,11 @@ class PendingSceneAction(BaseModel):
         return normalized
 
     actor_id: str
+    proposal_index: int = Field(
+        default=0,
+        ge=0,
+        description="Pending proposal sequence index: 0 is primary, 1+ are backup proposals.",
+    )
     action_index: int = Field(ge=0)
     action: ProposedAction
     reason: str = Field(

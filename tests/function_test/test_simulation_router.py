@@ -8,12 +8,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
-from world_simulation_engine.misc.enums import EventInvolvement, IntentHorizon, IntentStatus, IntentType, \
-    SupportedLanguage, TurnType
-from world_simulation_engine.model import Author, BackgroundCharacter, Character, CurrentActivity, Equipment, \
-    Event, Intent, Landmark, Location, Turn, World
-from world_simulation_engine.router import background_character_router, character_router, equipment_router, \
-    event_router, intent_router, location_router, simulation_router
+from world_simulation_engine.misc.enums import ContainerState, EventInvolvement, IntentHorizon, IntentStatus, \
+    IntentType, SupportedLanguage, TurnType
+from world_simulation_engine.model import Author, BackgroundCharacter, Character, Container, CurrentActivity, \
+    Equipment, Event, Intent, Item, ItemStack, Landmark, Location, Turn, World
+from world_simulation_engine.router import background_character_router, character_router, container_router, \
+    equipment_router, event_router, intent_router, item_router, location_router, simulation_router
 from world_simulation_engine.service import DatabaseService
 
 
@@ -28,7 +28,16 @@ class FakeWorldSimulator:
         thread_id = f"thread_{len(self.started_states) + 1}"
         self.started_states.append(state)
         self.streams[thread_id] = [
-            {"narration": "The room settles."},
+            {
+                "narration": {
+                    "blocks": [
+                        {
+                            "type": "narration",
+                            "text": "The room settles.",
+                        }
+                    ]
+                }
+            },
             {"committed_turn": {"id": "turn_1"}},
         ]
         return thread_id
@@ -55,7 +64,11 @@ class SimulationRouterTestClient:
     other_world: World
     world_character: Character
     background_character: BackgroundCharacter
+    item: Item
+    stack: ItemStack
+    contained_stack: ItemStack
     equipment: Equipment
+    container: Container
     event: Event
     intent: Intent
     city: Location
@@ -111,11 +124,33 @@ def simulation_api(neo4j_container):
         name="Shopkeeper",
         description="A busy shopkeeper",
     )
+    item = Item(
+        id=str(uuid4()),
+        name="Market apple",
+        description="A crisp apple",
+        unique=False,
+    )
+    stack = ItemStack(
+        id=str(uuid4()),
+        quantity=3,
+        quality="fresh",
+    )
+    contained_stack = ItemStack(
+        id=str(uuid4()),
+        quantity=1,
+        quality="boxed",
+    )
     equipment = Equipment(
         id=str(uuid4()),
         name="Lantern",
         description="A brass lantern",
         quality="worn",
+    )
+    container = Container(
+        id=str(uuid4()),
+        name="Supply crate",
+        description="A crate for market supplies",
+        state=ContainerState.UNLOCKED,
     )
     turn = Turn(
         id=str(uuid4()),
@@ -194,6 +229,21 @@ def simulation_api(neo4j_container):
             position="behind the counter",
             landmark_id=landmark.id,
         )
+        await database.item.create_item(item, world.id)
+        await database.item.create_stack(
+            item.id,
+            stack,
+            source_id=world.id,
+            holder_id=world_character.id,
+            owner_id=world_character.id,
+        )
+        await database.item.create_stack(
+            item.id,
+            contained_stack,
+            source_id=world.id,
+            location_id=market.id,
+            position="inside the crate",
+        )
         await database.equipment.create_equipment(equipment, world.id)
         await database.equipment.change_owner(equipment.id, world_character.id)
         await database.equipment.change_hold_state(
@@ -202,6 +252,15 @@ def simulation_api(neo4j_container):
             equipped=True,
             equipped_position="left hand",
         )
+        await database.container.create_container(
+            container,
+            world.id,
+            location_id=market.id,
+            position="beside the stall",
+        )
+        await database.container.put_stack_in_container(contained_stack.id, container.id)
+        await database.container.put_equipment_in_container(equipment.id, container.id)
+        await database.container.add_unlocking_item(item.id, container.id)
         await database.turn.create_turn(turn, world.id)
         await database.event.create_event(event, [turn.id])
         await database.event.add_character_involvement(
@@ -225,9 +284,11 @@ def simulation_api(neo4j_container):
     app.include_router(background_character_router)
     app.include_router(simulation_router)
     app.include_router(character_router)
+    app.include_router(container_router)
     app.include_router(equipment_router)
     app.include_router(event_router)
     app.include_router(intent_router)
+    app.include_router(item_router)
     app.include_router(location_router)
 
     with TestClient(app) as client:
@@ -239,7 +300,11 @@ def simulation_api(neo4j_container):
             other_world=other_world,
             world_character=world_character,
             background_character=background_character,
+            item=item,
+            stack=stack,
+            contained_stack=contained_stack,
             equipment=equipment,
+            container=container,
             event=event,
             intent=intent,
             city=city,
@@ -277,6 +342,14 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "/equipment",
         params={"simulation_id": created_simulation["id"]},
     )
+    copied_stacks_response = client.get(
+        "/stacks",
+        params={"simulation_id": created_simulation["id"]},
+    )
+    copied_containers_response = client.get(
+        "/containers",
+        params={"simulation_id": created_simulation["id"]},
+    )
     assert copied_characters_response.status_code == 200
     assert len(copied_characters_response.json()) == 1
     copied_character = copied_characters_response.json()[0]
@@ -302,6 +375,10 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         for location in copied_locations_response.json()
         if location["name"] == simulation_api.market.name
     )
+    assert client.get(
+        "/characters",
+        params={"location_id": copied_market["id"]},
+    ).json() == [copied_character]
     assert copied_background_characters_response.status_code == 200
     assert len(copied_background_characters_response.json()) == 1
     copied_background_character = copied_background_characters_response.json()[0]
@@ -326,6 +403,44 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "/equipment",
         params={"holder_id": copied_character["id"]},
     ).json() == [copied_equipment]
+    assert copied_stacks_response.status_code == 200
+    assert len(copied_stacks_response.json()) == 2
+    copied_held_stacks = client.get(
+        "/stacks",
+        params={"holder_id": copied_character["id"]},
+    ).json()
+    assert len(copied_held_stacks) == 1
+    copied_held_stack = copied_held_stacks[0]
+    assert copied_held_stack["id"] != simulation_api.stack.id
+    assert copied_held_stack == {
+        **simulation_api.stack.model_dump(mode="json"),
+        "id": copied_held_stack["id"],
+    }
+    assert client.get(
+        "/stacks",
+        params={"owner_id": copied_character["id"]},
+    ).json() == [copied_held_stack]
+    assert copied_containers_response.status_code == 200
+    assert len(copied_containers_response.json()) == 1
+    copied_container = copied_containers_response.json()[0]
+    assert copied_container["id"] != simulation_api.container.id
+    assert copied_container == {
+        **simulation_api.container.model_dump(mode="json"),
+        "id": copied_container["id"],
+    }
+    held_stack_entries = client.get(f"/containers/{copied_container['id']}/stacks").json()
+    assert len(held_stack_entries) == 1
+    held_item, copied_contained_stack = held_stack_entries[0]
+    assert held_item == simulation_api.item.model_dump(mode="json")
+    assert copied_contained_stack["id"] != simulation_api.contained_stack.id
+    assert copied_contained_stack == {
+        **simulation_api.contained_stack.model_dump(mode="json"),
+        "id": copied_contained_stack["id"],
+    }
+    assert client.get(f"/containers/{copied_container['id']}/equipment").json() == [copied_equipment]
+    assert client.get(f"/containers/{copied_container['id']}/unlocking-items").json() == [
+        simulation_api.item.model_dump(mode="json")
+    ]
     copied_events_response = client.get(
         "/events",
         params={"character_id": copied_character["id"]},
@@ -492,6 +607,19 @@ def test_start_simulation_input_accepts_null_user_input(simulation_api):
     assert simulation_api.simulator.started_states[0].user_input is None
 
 
+def test_start_simulation_input_rejects_malformed_user_markup(simulation_api):
+    create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+
+    response = simulation_api.client.post(
+        f"/simulations/{simulation['id']}/input",
+        json={"user_input": 'I ask "Room 7?'},
+    )
+
+    assert response.status_code == 400
+    assert simulation_api.simulator.started_states == []
+
+
 def test_stream_simulation_run_streams_sse_chunks(simulation_api):
     create_response = simulation_api.client.post(f"/worlds/{simulation_api.world.id}/simulations")
     simulation = create_response.json()
@@ -506,8 +634,10 @@ def test_stream_simulation_run_streams_sse_chunks(simulation_api):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: chunk" in body
-    assert 'data: {"narration": "The room settles."}' in body
+    assert '"narration": {"blocks": [{"type": "narration", "text": "The room settles."}]}' in body
     assert 'data: {"committed_turn": {"id": "turn_1"}}' in body
+    assert "event: done" in body
+    assert '"code": "done"' in body
 
 
 def test_stream_simulation_run_tells_reconnecting_client_to_wait(simulation_api):

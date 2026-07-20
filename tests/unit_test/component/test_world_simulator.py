@@ -12,9 +12,9 @@ from world_simulation_engine.component.simulator.world_simulator import Characte
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
-    CurrentActivity, Character, CharacterActionPlan, GraphStateSnapshot, InputInterpretation, MemorySummaryProposal, \
-    OOCCommand, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, StateCommitProposal, Turn, \
-    World
+    ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GraphStateSnapshot, InputInterpretation, \
+    MemorySummaryProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, \
+    StateCommitProposal, Turn, World
 
 
 def make_state(input_interpretation: InputInterpretation) -> WorldSimulatorState:
@@ -124,6 +124,7 @@ async def test_validate_user_action_validates_interpreted_actions():
     )
     database = Mock()
     database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.location.get_location_by_character = AsyncMock(return_value=None)
     simulator = WorldSimulator(database=database)
     expected = ActionValidationResult(validations=[])
     simulator._action_validator.validate_actions = AsyncMock(return_value=expected)
@@ -139,6 +140,51 @@ async def test_validate_user_action_validates_interpreted_actions():
         character_id="character_1",
         actions=[action],
     )
+
+
+async def test_validate_user_action_rejects_other_character_control_without_ooc():
+    action = make_action("clara_answers")
+    state = make_state(
+        InputInterpretation(
+            items=[
+                {
+                    "type": "action",
+                    "action": action,
+                    "source_text": "Clara answers Arthur.",
+                }
+            ],
+        )
+    )
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.location.get_location_by_character = AsyncMock(return_value=Mock(id="location_1"))
+    database.get_characters_in_location = AsyncMock(
+        return_value=[
+            (
+                Character(
+                    id="character_2",
+                    name="Clara Whitlock",
+                    age=42,
+                    gender="female",
+                    appearance="Plain",
+                    description="The innkeeper",
+                    public_state="Behind the bar",
+                    private_state="Careful",
+                    current_activity=CurrentActivity(name="serving"),
+                ),
+                None,
+                None,
+                None,
+            )
+        ]
+    )
+    simulator = WorldSimulator(database=database)
+    simulator._action_validator.validate_actions = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="only describe actions attempted by the user character"):
+        await simulator.validate_user_action(state)
+
+    simulator._action_validator.validate_actions.assert_not_awaited()
 
 
 async def test_route_after_input_interpretation_rejects_ooc_for_now():
@@ -159,7 +205,25 @@ async def test_route_after_input_interpretation_rejects_ooc_for_now():
         await simulator.route_after_input_interpretation(state)
 
 
-async def test_route_after_user_action_validation_routes_invalid_actions_to_rejected_coordination():
+async def test_route_after_user_action_validation_routes_valid_actions_to_commit():
+    action = make_action()
+    state = make_state(InputInterpretation(items=[]))
+    state.user_action_validation = ActionValidationResult(
+        validations=[
+            ActionValidation(
+                action_index=0,
+                action=action,
+                allowed=True,
+                reason="The action is allowed.",
+            )
+        ],
+    )
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_user_action_validation(state) == "commit_user_actions"
+
+
+async def test_route_after_user_action_validation_routes_invalid_actions_to_narration():
     action = make_action()
     state = make_state(InputInterpretation(items=[]))
     state.user_action_validation = ActionValidationResult(
@@ -174,7 +238,7 @@ async def test_route_after_user_action_validation_routes_invalid_actions_to_reje
     )
     simulator = WorldSimulator(database=Mock())
 
-    assert await simulator.route_after_user_action_validation(state) == "coordinate_rejected_user_actions"
+    assert await simulator.route_after_user_action_validation(state) == "narrate_user_turn"
 
 
 async def test_coordinate_rejected_user_actions_converts_validation_failure_to_coordination_problem():
@@ -484,12 +548,83 @@ async def test_propose_character_reactions_replaces_active_actions_and_preserves
             actions=[original_action],
             action_proposals=[make_action_proposal(original_action)],
             candidate_sets=[
-                {
-                    "action_index": 0,
-                    "actions": [original_action],
-                }
+                ActionCandidateSet(
+                    proposal_index=0,
+                    actions=[original_action],
+                )
             ],
             is_reaction=True,
+        )
+    ]
+
+
+def test_character_action_plans_use_valid_backup_proposal_as_sequence_candidate():
+    primary_action = make_action("inspect_locked_door")
+    backup_first = make_action("step_back")
+    backup_second = make_action("wait_for_opening")
+    proposal = ActionProposal(
+        actions=[primary_action],
+        backup_proposals=[[backup_first, backup_second]],
+        reasoning_summary="Try the door, otherwise wait.",
+        next_review_hint_seconds=2,
+    )
+    record = CharacterActionValidationRecord(
+        character_id="character_1",
+        proposal=proposal,
+        validation=ActionValidationResult(
+            validations=[
+                ActionValidation(
+                    action_index=0,
+                    action=primary_action,
+                    allowed=False,
+                    reason="The door is locked.",
+                )
+            ]
+        ),
+        proposal_validations=[
+            ActionValidationResult(
+                validations=[
+                    ActionValidation(
+                        action_index=0,
+                        action=primary_action,
+                        allowed=False,
+                        reason="The door is locked.",
+                    )
+                ]
+            ),
+            ActionValidationResult(
+                validations=[
+                    ActionValidation(
+                        action_index=0,
+                        action=backup_first,
+                        allowed=True,
+                        reason="Can step back.",
+                    ),
+                    ActionValidation(
+                        action_index=1,
+                        action=backup_second,
+                        allowed=True,
+                        reason="Can wait.",
+                    ),
+                ]
+            ),
+        ],
+    )
+    simulator = WorldSimulator(database=Mock())
+
+    plans = simulator._character_action_plans_from_validations([record])
+
+    assert plans == [
+        CharacterActionPlan(
+            actor_id="character_1",
+            actions=[backup_first, backup_second],
+            action_proposals=[proposal],
+            candidate_sets=[
+                ActionCandidateSet(
+                    proposal_index=1,
+                    actions=[backup_first, backup_second],
+                )
+            ],
         )
     ]
 
@@ -614,7 +749,16 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
         ],
     )
     state = make_state(InputInterpretation(items=[]))
-    state.user_action_coordination = coordination
+    state.user_action_validation = ActionValidationResult(
+        validations=[
+            ActionValidation(
+                action_index=0,
+                action=action,
+                allowed=True,
+                reason="Allowed.",
+            )
+        ],
+    )
     simulator = WorldSimulator(database=Mock())
     proposal = StateCommitProposal()
     updated_simulation = Simulation(
@@ -624,6 +768,7 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
         current_time=datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
     )
     simulator._state_committer.commit_user_actions = AsyncMock(return_value=proposal)
+    simulator._db.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
     turn = Turn(
         id="turn_1",
         sequence=1,
@@ -637,15 +782,15 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
 
     result = await simulator.commit_user_actions(state)
 
-    assert result == {
-        "committed_turn": turn,
-        "state_commit_proposal": proposal,
-        "simulation": updated_simulation,
-    }
+    assert result["committed_turn"] == turn
+    assert result["state_commit_proposal"] == proposal
+    assert result["simulation"] == updated_simulation
+    assert result["user_action_coordination"].status == SceneCoordinationStatus.COMPLETE
+    assert result["user_action_coordination"].accepted_actions[0].action == action
     simulator._state_committer.commit_user_actions.assert_awaited_once_with(
         world_id="world_1",
         simulation_id="simulation_1",
-        coordination_result=coordination,
+        coordination_result=result["user_action_coordination"],
         user_input="I look around.",
     )
     created_turn = simulator._db.turn.create_next_turn.await_args.kwargs["turn"]

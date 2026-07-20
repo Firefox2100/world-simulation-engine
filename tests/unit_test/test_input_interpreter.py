@@ -35,6 +35,28 @@ def test_split_ooc_markers_requires_closed_exact_marker():
     assert segments[0].source_text == raw_input
 
 
+def test_validate_markup_extracts_speech_and_internal_dialog():
+    markup = InputInterpreter.validate_markup('Arthur thinks *steady now*, then says "Room 7?"')
+
+    assert markup.internal_dialog == ["steady now"]
+    assert markup.speech == ["Room 7?"]
+
+
+@pytest.mark.parametrize(
+    "raw_input",
+    [
+        'Arthur says "Room 7?',
+        "Arthur thinks *steady now",
+        "Arthur uses **emphasis",
+        'Arthur thinks *"not aloud"*',
+        'Arthur says "this is *not thought*"',
+    ],
+)
+def test_validate_markup_rejects_malformed_input(raw_input):
+    with pytest.raises(ValueError):
+        InputInterpreter.validate_markup(raw_input)
+
+
 def test_input_interpretation_accepts_ooc_sequence_item():
     interpretation = InputInterpretation(
         items=[
@@ -214,6 +236,61 @@ def test_input_interpretation_wraps_flattened_action_payload():
     assert interpretation.items[0].action.type == ActionType.OTHER
     assert interpretation.items[0].action.label == "show_letter_and_ask_handwriting"
     assert interpretation.items[0].action.target_ids == ["character_clara_whitlock"]
+
+
+def test_ensure_quoted_speech_actions_repairs_missing_utterance():
+    interpretation = InputInterpretation(
+        items=[
+            {
+                "type": "action",
+                "source_text": 'Arthur asks Clara, "Was Room 7 occupied?"',
+                "action": {
+                    "type": "speak",
+                    "label": "ask_clara_room_7",
+                    "target_ids": [],
+                    "utterance": None,
+                    "intended_duration_seconds": 4,
+                    "interruptible": True,
+                },
+            }
+        ],
+    )
+    markup = InputInterpreter.validate_markup('Arthur asks Clara, "Was Room 7 occupied?"')
+
+    repaired = InputInterpreter._ensure_quoted_speech_actions(
+        interpretation=interpretation,
+        markup=markup,
+    )
+
+    assert repaired.items[0].action.utterance == "Was Room 7 occupied?"
+
+
+def test_ensure_quoted_speech_actions_adds_missing_speak_action():
+    interpretation = InputInterpretation(
+        items=[
+            {
+                "type": "action",
+                "source_text": "Arthur leans on the bar.",
+                "action": {
+                    "type": "change_posture",
+                    "label": "lean_on_bar",
+                    "target_ids": [],
+                    "utterance": None,
+                    "intended_duration_seconds": 2,
+                    "interruptible": True,
+                },
+            }
+        ],
+    )
+    markup = InputInterpreter.validate_markup('Arthur leans on the bar. "Was Room 7 occupied?"')
+
+    repaired = InputInterpreter._ensure_quoted_speech_actions(
+        interpretation=interpretation,
+        markup=markup,
+    )
+
+    assert repaired.items[-1].action.type == ActionType.SPEAK
+    assert repaired.items[-1].action.utterance == "Was Room 7 occupied?"
 
 
 def test_input_interpretation_still_rejects_unknown_extra_fields():

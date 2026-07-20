@@ -178,7 +178,7 @@ def create_landmarks(api: Api, setup, location_ids: dict[str, str]) -> dict[str,
 def create_characters(
     api: Api,
     setup,
-    simulation_id: str,
+    world_id: str,
     location_ids: dict[str, str],
     landmark_ids: dict[str, str],
 ) -> dict[str, str]:
@@ -195,7 +195,20 @@ def create_characters(
             payload["position"] = placement.position
             if placement.landmark_id:
                 payload["landmark_id"] = landmark_ids[placement.landmark_id]
-        created = api.post(f"/simulations/{simulation_id}/characters", json=payload)
+        created = api.post(f"/worlds/{world_id}/characters", json=payload)
+        if placement:
+            api.put(
+                f"/characters/{created['id']}/location",
+                json={
+                    "location_id": location_ids[placement.location_id],
+                    "position": placement.position,
+                },
+            )
+            if placement.landmark_id:
+                api.put(
+                    f"/characters/{created['id']}/landmark",
+                    json={"landmark_id": landmark_ids[placement.landmark_id]},
+                )
         character_ids[character.id] = created["id"]
     return character_ids
 
@@ -203,7 +216,7 @@ def create_characters(
 def create_background_characters(
     api: Api,
     setup,
-    simulation_id: str,
+    world_id: str,
     location_ids: dict[str, str],
     landmark_ids: dict[str, str],
 ) -> dict[str, str]:
@@ -220,23 +233,95 @@ def create_background_characters(
             payload["position"] = placement.position
             if placement.landmark_id:
                 payload["landmark_id"] = landmark_ids[placement.landmark_id]
-        created = api.post(f"/simulations/{simulation_id}/background-characters", json=payload)
+        created = api.post(f"/worlds/{world_id}/background-characters", json=payload)
+        if placement:
+            api.put(
+                f"/background-characters/{created['id']}/location",
+                json={
+                    "location_id": location_ids[placement.location_id],
+                    "position": placement.position,
+                },
+            )
+            if placement.landmark_id:
+                api.put(
+                    f"/background-characters/{created['id']}/landmark",
+                    json={"landmark_id": landmark_ids[placement.landmark_id]},
+                )
         character_ids[character.id] = created["id"]
     return character_ids
+
+
+def map_simulation_entities_by_name(
+    api: Api,
+    path: str,
+    simulation_id: str,
+    source_entities,
+) -> dict[str, str]:
+    copied_entities = api.get(path, params={"simulation_id": simulation_id})
+    copied_ids_by_identity = {
+        (entity["name"], entity["description"]): entity["id"]
+        for entity in copied_entities
+    }
+    return {
+        entity.id: copied_ids_by_identity[(entity.name, entity.description)]
+        for entity in source_entities
+    }
+
+
+def map_simulation_turns_by_sequence(api: Api, simulation_id: str, source_turns) -> dict[str, str]:
+    copied_turns = api.get(
+        "/turns",
+        params={
+            "simulation_id": simulation_id,
+            "limit": max(len(source_turns), 1),
+        },
+    )
+    copied_ids_by_sequence = {
+        turn["sequence"]: turn["id"]
+        for turn in copied_turns
+    }
+    return {
+        turn.id: copied_ids_by_sequence[turn.sequence if turn.sequence >= 1 else index + 1]
+        for index, turn in enumerate(source_turns)
+    }
+
+
+def assert_characters_are_located(
+    api: Api,
+    source_name: str,
+    character_ids: dict[str, str],
+    location_ids: dict[str, str],
+):
+    located_character_ids = set()
+    for location_id in location_ids.values():
+        for character in api.get("/characters", params={"location_id": location_id}):
+            located_character_ids.add(character["id"])
+
+    missing = {
+        fixture_id: character_id
+        for fixture_id, character_id in character_ids.items()
+        if character_id not in located_character_ids
+    }
+    if missing:
+        raise RuntimeError(
+            f"{source_name} characters missing location relationships: {missing}"
+        )
 
 
 def create_items_and_stacks(
     api: Api,
     setup,
-    world_id: str,
-    simulation_id: str,
+    source_path: str,
+    source_id: str,
     location_ids: dict[str, str],
     entity_ids: dict[str, str],
+    existing_item_ids: dict[str, str] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    item_ids = {}
-    for item in setup.items:
-        created = api.post(f"/worlds/{world_id}/items", json=model_payload(item))
-        item_ids[item.id] = created["id"]
+    item_ids = existing_item_ids or {}
+    if not existing_item_ids:
+        for item in setup.items:
+            created = api.post(f"{source_path}/{source_id}/items", json=model_payload(item))
+            item_ids[item.id] = created["id"]
 
     stack_ids = {}
     for placement in setup.item_stack_placements:
@@ -251,7 +336,7 @@ def create_items_and_stacks(
         if placement.owner_id:
             payload["owner_id"] = entity_ids[placement.owner_id]
         created = api.post(
-            f"/simulations/{simulation_id}/items/{item_ids[placement.item_id]}/stacks",
+            f"{source_path}/{source_id}/items/{item_ids[placement.item_id]}/stacks",
             json=payload,
         )
         stack_ids[placement.stack.id] = created["id"]
@@ -262,7 +347,8 @@ def create_items_and_stacks(
 def create_equipment(
     api: Api,
     setup,
-    simulation_id: str,
+    source_path: str,
+    source_id: str,
     location_ids: dict[str, str],
     entity_ids: dict[str, str],
 ) -> dict[str, str]:
@@ -283,7 +369,7 @@ def create_equipment(
             payload["holder_id"] = entity_ids[placement.holder_id]
             payload["equipped"] = placement.equipped
             payload["equipped_position"] = placement.equipped_position
-        created = api.post(f"/simulations/{simulation_id}/equipment", json=payload)
+        created = api.post(f"{source_path}/{source_id}/equipment", json=payload)
         equipment_ids[equipment.id] = created["id"]
     return equipment_ids
 
@@ -291,7 +377,8 @@ def create_equipment(
 def create_containers(
     api: Api,
     setup,
-    simulation_id: str,
+    source_path: str,
+    source_id: str,
     location_ids: dict[str, str],
     item_ids: dict[str, str],
 ) -> dict[str, str]:
@@ -305,7 +392,7 @@ def create_containers(
         payload = model_payload(container)
         payload["location_id"] = location_ids[placement.location_id]
         payload["position"] = placement.position
-        created = api.post(f"/simulations/{simulation_id}/containers", json=payload)
+        created = api.post(f"{source_path}/{source_id}/containers", json=payload)
         container_ids[container.id] = created["id"]
 
     for placement in setup.container_placements:
@@ -414,44 +501,105 @@ def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
         world_payload = model_payload(setup.world)
         world_payload["author_id"] = author["id"]
         world = api.post("/worlds", json=world_payload)
-        simulation = api.post(f"/worlds/{world['id']}/simulations")
 
         location_ids = create_locations(api, setup, world["id"])
         landmark_ids = create_landmarks(api, setup, location_ids)
         turn_ids = create_turns(api, setup, world["id"])
-        character_ids = create_characters(api, setup, simulation["id"], location_ids, landmark_ids)
-        background_character_ids = create_background_characters(
-            api,
-            setup,
-            simulation["id"],
-            location_ids,
-            landmark_ids,
-        )
-        entity_ids = {**character_ids, **background_character_ids}
-        item_ids, stack_ids = create_items_and_stacks(
+        world_character_ids = create_characters(api, setup, world["id"], location_ids, landmark_ids)
+        world_background_character_ids = create_background_characters(
             api,
             setup,
             world["id"],
-            simulation["id"],
             location_ids,
-            entity_ids,
+            landmark_ids,
+        )
+        assert_characters_are_located(
+            api,
+            "World",
+            world_character_ids,
+            location_ids,
+        )
+        item_ids = {}
+        for item in setup.items:
+            created = api.post(f"/worlds/{world['id']}/items", json=model_payload(item))
+            item_ids[item.id] = created["id"]
+        _, stack_ids = create_items_and_stacks(
+            api,
+            setup,
+            "/worlds",
+            world["id"],
+            location_ids,
+            {**world_character_ids, **world_background_character_ids},
+            existing_item_ids=item_ids,
         )
         equipment_ids = create_equipment(
             api,
             setup,
-            simulation["id"],
+            "/worlds",
+            world["id"],
             location_ids,
-            entity_ids,
+            {**world_character_ids, **world_background_character_ids},
         )
         container_ids = create_containers(
             api,
             setup,
-            simulation["id"],
+            "/worlds",
+            world["id"],
             location_ids,
             item_ids,
         )
+
+        simulation = api.post(f"/worlds/{world['id']}/simulations")
+
+        simulation_location_ids = map_simulation_entities_by_name(
+            api,
+            "/locations",
+            simulation["id"],
+            setup.locations,
+        )
+        simulation_landmark_ids = map_simulation_entities_by_name(
+            api,
+            "/landmarks",
+            simulation["id"],
+            [
+                landmark
+                for landmarks in setup.landmarks_by_location.values()
+                for landmark in landmarks
+            ],
+        )
+        simulation_turn_ids = map_simulation_turns_by_sequence(api, simulation["id"], [setup.initial_turn])
+        character_ids = map_simulation_entities_by_name(
+            api,
+            "/characters",
+            simulation["id"],
+            setup.characters,
+        )
+        background_character_ids = map_simulation_entities_by_name(
+            api,
+            "/background-characters",
+            simulation["id"],
+            setup.background_characters,
+        )
+        assert_characters_are_located(
+            api,
+            "Simulation",
+            character_ids,
+            simulation_location_ids,
+        )
+        simulation_equipment_ids = map_simulation_entities_by_name(
+            api,
+            "/equipment",
+            simulation["id"],
+            setup.equipment,
+        )
+        simulation_container_ids = map_simulation_entities_by_name(
+            api,
+            "/containers",
+            simulation["id"],
+            setup.containers,
+        )
         intent_ids = create_intents(api, setup, character_ids)
-        event_ids = create_events(api, setup, turn_ids, character_ids)
+        event_ids = create_events(api, setup, simulation_turn_ids, character_ids)
         memory_ids = create_memories(api, setup, event_ids, character_ids)
 
         return {
@@ -463,8 +611,8 @@ def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
                 "locations": len(location_ids),
                 "landmarks": len(landmark_ids),
                 "turns": len(turn_ids),
-                "characters": len(character_ids),
-                "background_characters": len(background_character_ids),
+                "characters": len(world_character_ids),
+                "background_characters": len(world_background_character_ids),
                 "items": len(item_ids),
                 "stacks": len(stack_ids),
                 "equipment": len(equipment_ids),
@@ -477,8 +625,15 @@ def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
                 "locations": location_ids,
                 "landmarks": landmark_ids,
                 "turns": turn_ids,
-                "characters": character_ids,
-                "background_characters": background_character_ids,
+                "characters": world_character_ids,
+                "background_characters": world_background_character_ids,
+                "simulation_locations": simulation_location_ids,
+                "simulation_landmarks": simulation_landmark_ids,
+                "simulation_turns": simulation_turn_ids,
+                "simulation_characters": character_ids,
+                "simulation_background_characters": background_character_ids,
+                "simulation_equipment": simulation_equipment_ids,
+                "simulation_containers": simulation_container_ids,
                 "items": item_ids,
                 "stacks": stack_ids,
                 "equipment": equipment_ids,

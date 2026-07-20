@@ -6,8 +6,9 @@ os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.simulator.narrator import Narrator
 from world_simulation_engine.misc.enums import ActionType, SceneCoordinationStatus, SupportedLanguage
-from world_simulation_engine.model import AcceptedSceneAction, Character, CurrentActivity, Location, ProposedAction, \
-    SceneCoordinationResult, Simulation, World
+from world_simulation_engine.model import AcceptedSceneAction, Character, CurrentActivity, Location, NarrationBlock, \
+    NarrationInsertionProposal, NarrationProposal, ProposedAction, SceneCoordinationResult, Simulation, SpeechBlock, \
+    World
 
 
 def make_world() -> World:
@@ -87,7 +88,7 @@ async def test_narrate_turn_invokes_plain_text_llm_with_context():
     narrator = Narrator(database=database)
     narrator._prepare_llm_service = AsyncMock()
     llm = Mock()
-    llm.invoke_text = AsyncMock(return_value='Alex says, "Hello."')
+    llm.invoke_structured_with_repair = AsyncMock(return_value=NarrationInsertionProposal(insertions=[]))
     narrator._prepare_llm_service.return_value = llm
 
     result = await narrator.narrate_turn(
@@ -97,11 +98,141 @@ async def test_narrate_turn_invokes_plain_text_llm_with_context():
         user_input="I greet everyone.",
     )
 
-    assert result == 'Alex says, "Hello."'
-    llm.invoke_text.assert_awaited_once()
-    data = llm.invoke_text.await_args.kwargs["data"]
+    assert result == NarrationProposal(
+        blocks=[
+            SpeechBlock(
+                type="speech",
+                character_id="character_1",
+                character_name="Alex",
+                text="Hello.",
+            )
+        ]
+    )
+    llm.invoke_structured_with_repair.assert_awaited_once()
+    data = llm.invoke_structured_with_repair.await_args.kwargs["data"]
     assert data["coordination_result"]["accepted_actions"][0]["action"]["utterance"] == "Hello."
     assert data["actors"][0]["character"]["name"] == "Alex"
+    assert data["speech_anchors"][0]["text"] == "Hello."
+
+
+async def test_narrate_turn_inserts_narration_around_fixed_speech():
+    world = make_world()
+    simulation = make_simulation()
+    character = make_character()
+    coordination = make_coordination()
+
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=world)
+    database.simulation.get_simulation = AsyncMock(return_value=simulation)
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
+    database.character.get_character = AsyncMock(return_value=character)
+    database.location.get_location_by_character = AsyncMock(return_value=None)
+    narrator = Narrator(database=database)
+    narrator._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(
+        return_value=NarrationInsertionProposal(
+            insertions=[
+                {
+                    "position": 0,
+                    "text": "Alex turns toward the room.",
+                },
+                {
+                    "position": 1,
+                    "text": "The greeting hangs briefly in the air.",
+                },
+            ],
+        )
+    )
+    narrator._prepare_llm_service.return_value = llm
+
+    result = await narrator.narrate_turn(
+        world_id=world.id,
+        simulation_id=simulation.id,
+        coordination_result=coordination,
+        user_input="I greet everyone.",
+    )
+
+    assert result.blocks == [
+        NarrationBlock(type="narration", text="Alex turns toward the room."),
+        SpeechBlock(type="speech", character_id="character_1", character_name="Alex", text="Hello."),
+        NarrationBlock(type="narration", text="The greeting hangs briefly in the air."),
+    ]
+
+
+async def test_narrate_turn_clamps_narration_insertions_after_final_speech():
+    world = make_world()
+    simulation = make_simulation()
+    character = make_character()
+    coordination = make_coordination()
+
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=world)
+    database.simulation.get_simulation = AsyncMock(return_value=simulation)
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
+    database.character.get_character = AsyncMock(return_value=character)
+    database.location.get_location_by_character = AsyncMock(return_value=None)
+    narrator = Narrator(database=database)
+    narrator._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(
+        return_value=NarrationInsertionProposal(
+            insertions=[
+                {
+                    "position": 99,
+                    "text": "The room settles again.",
+                },
+            ],
+        )
+    )
+    narrator._prepare_llm_service.return_value = llm
+
+    result = await narrator.narrate_turn(
+        world_id=world.id,
+        simulation_id=simulation.id,
+        coordination_result=coordination,
+        user_input="I greet everyone.",
+    )
+
+    assert result.blocks == [
+        SpeechBlock(type="speech", character_id="character_1", character_name="Alex", text="Hello."),
+        NarrationBlock(type="narration", text="The room settles again."),
+    ]
+
+
+async def test_narrate_turn_includes_accepted_speech_when_model_returns_only_narration():
+    world = make_world()
+    simulation = make_simulation()
+    character = make_character()
+    coordination = make_coordination()
+
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=world)
+    database.simulation.get_simulation = AsyncMock(return_value=simulation)
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
+    database.character.get_character = AsyncMock(return_value=character)
+    database.location.get_location_by_character = AsyncMock(return_value=None)
+    narrator = Narrator(database=database)
+    narrator._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(return_value=NarrationInsertionProposal(insertions=[]))
+    narrator._prepare_llm_service.return_value = llm
+
+    result = await narrator.narrate_turn(
+        world_id=world.id,
+        simulation_id=simulation.id,
+        coordination_result=coordination,
+        user_input="I greet everyone.",
+    )
+
+    assert result.blocks == [
+        SpeechBlock(
+            type="speech",
+            character_id="character_1",
+            character_name="Alex",
+            text="Hello.",
+        )
+    ]
 
 
 async def test_build_context_collects_sorted_unique_actor_ids_from_accepted_pending_and_problem():

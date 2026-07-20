@@ -2,6 +2,8 @@ from uuid import uuid4
 from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
+from .connection_config import ConnectionConfig
+
 
 class EmbedModelConfig(BaseModel):
     """
@@ -19,6 +21,10 @@ class EmbedModelConfig(BaseModel):
     dimension: Optional[int] = Field(
         None,
         description="The dimensionality of the model. Not all models support this parameter",
+    )
+    connection: Optional[ConnectionConfig] = Field(
+        None,
+        description="The provider connection used by this embedding model config",
     )
 
 

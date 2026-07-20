@@ -202,7 +202,7 @@ class ActionValidator(SimulatorComponent):
         )
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
-        return await llm.invoke_structured_with_repair(
+        result = await llm.invoke_structured_with_repair(
             output_model=ActionValidationResult,
             messages=prompt,
             data=context.model_dump(),
@@ -211,4 +211,33 @@ class ActionValidator(SimulatorComponent):
                 "Do not decide contested success or multi-character conflicts."
             ),
             run_name="action_validator.validate_actions",
+        )
+        return self._restore_input_actions(
+            result=result,
+            actions=actions,
+        )
+
+    @staticmethod
+    def _restore_input_actions(
+            *,
+            result: ActionValidationResult,
+            actions: list[ProposedAction],
+    ) -> ActionValidationResult:
+        validations = []
+        for validation in result.validations:
+            if validation.action_index < len(actions):
+                validations.append(
+                    validation.model_copy(
+                        update={
+                            "action": actions[validation.action_index],
+                        }
+                    )
+                )
+            else:
+                validations.append(validation)
+
+        return result.model_copy(
+            update={
+                "validations": validations,
+            }
         )

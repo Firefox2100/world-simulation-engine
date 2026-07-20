@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from world_simulation_engine.component.simulator.character_simulator import CharacterSimulator
-from world_simulation_engine.misc.enums import ActionType, MemoryStance, MemorySupportType, Salience
-from world_simulation_engine.model import ActionProposal, Event, MemoryAtom
+from world_simulation_engine.component.simulator.character_simulator import CharacterPerspective, CharacterSimulator
+from world_simulation_engine.misc.enums import ActionType, MemoryStance, MemorySupportType, Salience, SupportedLanguage
+from world_simulation_engine.model import ActionProposal, Character, CurrentActivity, Event, Location, MemoryAtom
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
 
@@ -118,3 +119,121 @@ def test_action_proposal_accepts_object_shaped_memory_update_suggestions():
     assert proposal.memory_updates_suggested == [
         "notice_board_older_papers; Found papers related to Harlan.; confidence=0.8"
     ]
+
+
+def make_character_perspective() -> CharacterPerspective:
+    return CharacterPerspective(
+        actor=Character(
+            id="character_clara",
+            name="Clara Whitlock",
+            age=42,
+            gender="female",
+            appearance="Plain",
+            description="The innkeeper",
+            public_state="Behind the bar",
+            private_state="Careful with what she says",
+            current_activity=CurrentActivity(name="listening to Arthur"),
+        ),
+        world_time=datetime(1912, 9, 21, 19, 30, 0),
+        location=Location(
+            id="location_bar",
+            name="Iron Stag Inn - Bar",
+            description="A busy inn bar",
+        ),
+    )
+
+
+async def test_character_simulator_repairs_speak_action_without_utterance():
+    simulator = CharacterSimulator(database=Mock(), langfuse_handler=None)
+    proposal = ActionProposal(
+        chosen_action={
+            "type": ActionType.SPEAK,
+            "label": "answer_room_occupancy_question",
+            "target_ids": ["character_arthur"],
+            "utterance": None,
+            "intended_duration_seconds": 6,
+            "interruptible": True,
+            "expected_effects": ["Clara answers Arthur's question about Room 7."],
+        },
+        reasoning_summary="Clara can answer Arthur's question about Room 7.",
+        memory_updates_suggested=["Room 7 was occupied before Director Harlan vanished."],
+        next_review_hint_seconds=10,
+    )
+    llm = Mock()
+    llm.invoke_text = AsyncMock(
+        return_value="Yes, Arthur. Room 7 was occupied before Director Harlan vanished."
+    )
+
+    repaired = await simulator._ensure_speak_actions_have_utterance(
+        proposal=proposal,
+        perspective=make_character_perspective(),
+        language=SupportedLanguage.ENGLISH,
+        llm=llm,
+        run_name="test.repair_speech",
+    )
+
+    assert repaired.chosen_action.utterance == (
+        "Yes, Arthur. Room 7 was occupied before Director Harlan vanished."
+    )
+    llm.invoke_text.assert_awaited_once()
+    assert repaired.chosen_action.label == proposal.chosen_action.label
+    assert repaired.reasoning_summary == proposal.reasoning_summary
+
+
+async def test_character_simulator_sanitizes_plain_text_speech_repair():
+    simulator = CharacterSimulator(database=Mock(), langfuse_handler=None)
+    proposal = ActionProposal(
+        chosen_action={
+            "type": ActionType.SPEAK,
+            "label": "answer_room_occupancy_question",
+            "target_ids": ["character_arthur"],
+            "utterance": None,
+            "intended_duration_seconds": 6,
+            "interruptible": True,
+            "expected_effects": ["Clara answers Arthur's question about Room 7."],
+        },
+        reasoning_summary="Clara can answer Arthur's question about Room 7.",
+        next_review_hint_seconds=10,
+    )
+    llm = Mock()
+    llm.invoke_text = AsyncMock(return_value='utterance: "Yes, Arthur."')
+
+    repaired = await simulator._ensure_speak_actions_have_utterance(
+        proposal=proposal,
+        perspective=make_character_perspective(),
+        language=SupportedLanguage.ENGLISH,
+        llm=llm,
+        run_name="test.repair_speech",
+    )
+
+    assert repaired.chosen_action.utterance == "Yes, Arthur."
+
+
+async def test_character_simulator_falls_back_when_speech_repair_llm_fails():
+    simulator = CharacterSimulator(database=Mock(), langfuse_handler=None)
+    proposal = ActionProposal(
+        chosen_action={
+            "type": ActionType.SPEAK,
+            "label": "answer_room_occupancy_question",
+            "target_ids": ["character_arthur"],
+            "utterance": None,
+            "intended_duration_seconds": 6,
+            "interruptible": True,
+            "expected_effects": ["Clara answers Arthur's question about Room 7."],
+        },
+        reasoning_summary="Clara can answer Arthur's question about Room 7.",
+        memory_updates_suggested=["Room 7 was occupied before Director Harlan vanished."],
+        next_review_hint_seconds=10,
+    )
+    llm = Mock()
+    llm.invoke_text = AsyncMock(side_effect=RuntimeError("bad local output"))
+
+    repaired = await simulator._ensure_speak_actions_have_utterance(
+        proposal=proposal,
+        perspective=make_character_perspective(),
+        language=SupportedLanguage.ENGLISH,
+        llm=llm,
+        run_name="test.repair_speech",
+    )
+
+    assert repaired.chosen_action.utterance == "Room 7 was occupied before Director Harlan vanished."

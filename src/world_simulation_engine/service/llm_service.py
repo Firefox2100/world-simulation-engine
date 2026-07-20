@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from typing import Union, Any, TypeVar, Type, TYPE_CHECKING, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -18,6 +19,9 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class LlmService:
+    _REPAIR_ERROR_LIMIT = 2000
+    _REPAIR_RAW_LIMIT = 2000
+
     def __init__(self,
                  model_config: ChatModelConfigUnion,
                  connection_config: ConnectionConfig,
@@ -230,6 +234,78 @@ class LlmService:
 
         return self._message_postprocess(messages)
 
+    @classmethod
+    def _truncate_for_repair(cls, value: Any, limit: int) -> str:
+        text = str(value)
+        if len(text) <= limit:
+            return text
+
+        return f"{text[:limit]}... [truncated {len(text) - limit} chars]"
+
+    @classmethod
+    def _parse_raw_with_output_model(cls,
+                                     output_model: Type[T],
+                                     raw: Any,
+                                     ) -> T | None:
+        for candidate in cls._raw_structured_candidates(raw):
+            try:
+                if isinstance(candidate, output_model):
+                    return candidate
+                if isinstance(candidate, dict):
+                    return output_model.model_validate(candidate)
+                if isinstance(candidate, str):
+                    try:
+                        return output_model.model_validate_json(candidate)
+                    except Exception:
+                        parsed_candidate = cls._first_json_object(candidate)
+                        if parsed_candidate is not None:
+                            return output_model.model_validate(parsed_candidate)
+            except Exception:
+                continue
+
+        return None
+
+    @classmethod
+    def _raw_structured_candidates(cls, raw: Any) -> list[Any]:
+        candidates = []
+        content = getattr(raw, "content", raw)
+        if content not in (None, ""):
+            candidates.append(content)
+
+        tool_calls = getattr(raw, "tool_calls", None)
+        additional_kwargs = getattr(raw, "additional_kwargs", None)
+        if not tool_calls and isinstance(additional_kwargs, dict):
+            tool_calls = additional_kwargs.get("tool_calls")
+
+        if isinstance(tool_calls, list):
+            for tool_call in tool_calls:
+                if not isinstance(tool_call, dict):
+                    continue
+
+                args = tool_call.get("args")
+                if args is not None:
+                    candidates.append(args)
+
+                function = tool_call.get("function")
+                if isinstance(function, dict) and function.get("arguments") is not None:
+                    candidates.append(function["arguments"])
+
+        return candidates
+
+    @staticmethod
+    def _first_json_object(value: str) -> Any | None:
+        start = value.find("{")
+        if start == -1:
+            return None
+
+        decoder = json.JSONDecoder()
+        try:
+            parsed, _ = decoder.raw_decode(value[start:])
+        except json.JSONDecodeError:
+            return None
+
+        return parsed
+
     async def invoke_structured_with_repair(self,
                                             *,
                                             output_model: Type[T],
@@ -264,9 +340,15 @@ class LlmService:
                 last_raw = raw
 
                 if parsing_error is not None:
+                    fallback_parsed = self._parse_raw_with_output_model(output_model, raw)
+                    if fallback_parsed is not None:
+                        return fallback_parsed
                     raise parsing_error
 
                 if parsed is None:
+                    fallback_parsed = self._parse_raw_with_output_model(output_model, raw)
+                    if fallback_parsed is not None:
+                        return fallback_parsed
                     raw_content = getattr(raw, "content", None)
                     raise ValueError(
                         f"Structured output parsed=None. Raw content: {raw_content!r}"
@@ -276,6 +358,7 @@ class LlmService:
 
             except Exception as exc:
                 last_error = exc
+                raw_content = getattr(last_raw, "content", None)
 
                 current_messages = [
                     *base_messages,
@@ -284,7 +367,8 @@ class LlmService:
                             f"{repair_instruction}\n\n"
                             f"The previous structured-output attempt failed.\n"
                             f"Error type: {type(exc).__name__}\n"
-                            f"Error message: {exc}\n\n"
+                            f"Error message: {self._truncate_for_repair(exc, self._REPAIR_ERROR_LIMIT)}\n"
+                            f"Raw content excerpt: {self._truncate_for_repair(raw_content, self._REPAIR_RAW_LIMIT)}\n\n"
                             "Return the required structured output only. "
                             "Do not return prose. Do not return an empty response."
                         )

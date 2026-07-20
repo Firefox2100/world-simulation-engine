@@ -1,6 +1,7 @@
-from typing import Annotated, Any, Literal
+import json
+from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 PhysicalEntityType = Literal[
@@ -181,6 +182,7 @@ class StateCommitProposal(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
+    _MAX_OPERATIONS: ClassVar[int] = 24
 
     operations: list[StateCommitOperation] = Field(default_factory=list)
     unchanged_action_refs: list[str] = Field(
@@ -191,3 +193,156 @@ class StateCommitProposal(BaseModel):
         default_factory=list,
         description="Brief diagnostic notes. Do not include hidden chain-of-thought.",
     )
+
+    @staticmethod
+    def _operation_key(operation: dict[str, Any]) -> str:
+        if operation.get("type") == "state_change":
+            key = {
+                "type": operation.get("type"),
+                "entity": operation.get("entity"),
+                "field_changes": operation.get("field_changes"),
+                "source_action_refs": operation.get("source_action_refs", []),
+            }
+        else:
+            key = operation
+
+        return json.dumps(key, sort_keys=True, default=str)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_model_output(cls, data: Any):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                return data
+
+        if not isinstance(data, dict):
+            return data
+
+        operations = data.get("operations")
+        if not isinstance(operations, list):
+            return data
+
+        normalized_operations = []
+        seen_operation_keys = set()
+
+        for operation in operations:
+            if not isinstance(operation, dict):
+                normalized_operations.append(operation)
+                continue
+
+            nested_relationships = operation.get("relationship_changes")
+            if (
+                "type" not in operation
+                and isinstance(nested_relationships, list)
+                and nested_relationships
+            ):
+                for nested_relationship in nested_relationships:
+                    if not isinstance(nested_relationship, dict):
+                        normalized_operations.append(nested_relationship)
+                        continue
+
+                    normalized_relationship = dict(nested_relationship)
+                    normalized_relationship.setdefault("type", "relationship_change")
+                    if not normalized_relationship.get("source_action_refs"):
+                        normalized_relationship["source_action_refs"] = operation.get("source_action_refs", [])
+                    operation_key = cls._operation_key(normalized_relationship)
+                    if operation_key in seen_operation_keys:
+                        continue
+
+                    seen_operation_keys.add(operation_key)
+                    normalized_operations.append(normalized_relationship)
+                continue
+
+            normalized_operation = dict(operation)
+            if (
+                "type" not in normalized_operation
+                and "entity" in normalized_operation
+                and "field_changes" in normalized_operation
+            ):
+                normalized_operation["type"] = "state_change"
+            elif (
+                "type" not in normalized_operation
+                and "relationship_type" in normalized_operation
+                and "subject" in normalized_operation
+            ):
+                normalized_operation["type"] = "relationship_change"
+
+            for split_operation in cls._split_relationship_field_changes(normalized_operation):
+                if "type" not in split_operation:
+                    continue
+
+                operation_key = cls._operation_key(split_operation)
+                if operation_key in seen_operation_keys:
+                    continue
+
+                seen_operation_keys.add(operation_key)
+                normalized_operations.append(split_operation)
+
+        return {
+            **data,
+            "operations": normalized_operations[:cls._MAX_OPERATIONS],
+        }
+
+    @classmethod
+    def _split_relationship_field_changes(cls, operation: dict[str, Any]) -> list[dict[str, Any]]:
+        if operation.get("type") != "state_change":
+            return [operation]
+
+        entity = operation.get("entity")
+        field_changes = operation.get("field_changes")
+        if not isinstance(entity, dict) or not isinstance(field_changes, list):
+            return [operation]
+
+        state_field_changes = []
+        relationship_operations = []
+        for field_change in field_changes:
+            if not isinstance(field_change, dict):
+                state_field_changes.append(field_change)
+                continue
+
+            field_path = field_change.get("field_path")
+            if field_path in cls._relationship_field_paths():
+                relationship_operations.append(
+                    {
+                        "type": "relationship_change",
+                        "relationship_type": field_path,
+                        "subject": entity,
+                        "object": field_change.get("new_value"),
+                        "old_object": field_change.get("old_value"),
+                        "properties": {},
+                        "ended": field_change.get("new_value") is None,
+                        "source_action_refs": operation.get("source_action_refs", []),
+                        "reason": field_change.get("reason") or operation.get("reason") or "Relationship changed.",
+                    }
+                )
+            else:
+                state_field_changes.append(field_change)
+
+        split_operations = []
+        if state_field_changes:
+            state_operation = dict(operation)
+            state_operation["field_changes"] = state_field_changes
+            split_operations.append(state_operation)
+        split_operations.extend(relationship_operations)
+        return split_operations
+
+    @staticmethod
+    def _relationship_field_paths() -> set[str]:
+        return {
+            "located_at",
+            "inside",
+            "held_by",
+            "owned_by",
+            "equipped_by",
+            "wearing",
+            "attached_to",
+            "near",
+            "part_of",
+            "derived_from",
+            "interacting_with",
+            "emotion_toward",
+            "state_toward",
+            "other",
+        }

@@ -193,11 +193,10 @@ def _action_plan(actor_id: str, actions: list[ProposedAction]) -> CharacterActio
         actions=actions,
         candidate_sets=[
             ActionCandidateSet(
-                action_index=action_index,
-                actions=[action],
+                proposal_index=0,
+                actions=actions,
             )
-            for action_index, action in enumerate(actions)
-        ],
+        ] if actions else [],
     )
 
 

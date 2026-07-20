@@ -53,6 +53,18 @@ class CharacterCreate(BaseModel):
         ...,
         description="Current activity of the character",
     )
+    location_id: Optional[str] = Field(
+        None,
+        description="Optional location where the character is present",
+    )
+    position: Optional[str] = Field(
+        None,
+        description="Optional position in the location",
+    )
+    landmark_id: Optional[str] = Field(
+        None,
+        description="Optional landmark the character is anchored to",
+    )
 
 
 class CharacterUpdate(BaseModel):
@@ -96,6 +108,18 @@ class CharacterUpdate(BaseModel):
         None,
         description="Current activity of the character",
     )
+    location_id: Optional[str] = Field(
+        None,
+        description="Optional location where the character is present",
+    )
+    position: Optional[str] = Field(
+        None,
+        description="Optional position in the location",
+    )
+    landmark_id: Optional[str] = Field(
+        None,
+        description="Optional landmark the character is anchored to",
+    )
 
 
 class CharacterLocationUpdate(BaseModel):
@@ -107,16 +131,71 @@ class CharacterLandmarkUpdate(BaseModel):
     landmark_id: str = Field(..., description="Landmark the character is anchored to")
 
 
+async def validate_character_relationships(
+        character_data: CharacterCreate | CharacterUpdate,
+        db: db_dep,
+):
+    if character_data.location_id:
+        location = await db.location.get_location(character_data.location_id)
+        if not location:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Location {character_data.location_id} not found",
+            )
+
+    if character_data.landmark_id:
+        landmark = await db.location.get_landmark(character_data.landmark_id)
+        if not landmark:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Landmark {character_data.landmark_id} not found",
+            )
+
+
+async def apply_character_relationships(
+        character_id: str,
+        character_data: CharacterCreate | CharacterUpdate,
+        db: db_dep,
+) -> Character:
+    character = await db.character.get_character(character_id)
+
+    if character_data.location_id:
+        character = await db.character.move_to_location(
+            character_id,
+            character_data.location_id,
+            character_data.position,
+        )
+
+    if character_data.landmark_id:
+        character = await db.character.anchor_to_landmark(
+            character_id,
+            character_data.landmark_id,
+        )
+
+    if not character:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+
+    return character
+
+
 @character_router.get("/characters", response_model=list[Character])
 async def list_characters(db: db_dep,
                           world_id: Optional[str] = Query(None, description="Optionally filter by world"),
                           simulation_id: Optional[str] = Query(
                               None,
                               description="Optionally filter by simulation"
+                          ),
+                          location_id: Optional[str] = Query(
+                              None,
+                              description="Optionally filter by location",
                           )):
     return await db.character.list_characters(
         world_id=world_id,
         simulation_id=simulation_id,
+        location_id=location_id,
     )
 
 
@@ -134,9 +213,14 @@ async def get_character(character_id: str, db: db_dep):
 
 @character_router.patch("/characters/{character_id}", response_model=Character)
 async def update_character(character_id: str, character_data: CharacterUpdate, db: db_dep):
+    await validate_character_relationships(character_data, db)
+
     character = await db.character.update_character(
         character_id,
-        character_data.model_dump(exclude_unset=True),
+        character_data.model_dump(
+            exclude_unset=True,
+            exclude={"location_id", "position", "landmark_id"},
+        ),
     )
     if not character:
         raise HTTPException(
@@ -144,7 +228,7 @@ async def update_character(character_id: str, character_data: CharacterUpdate, d
             detail=f"Character {character_id} not found",
         )
 
-    return character
+    return await apply_character_relationships(character_id, character_data, db)
 
 
 @character_router.delete("/characters/{character_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -160,9 +244,15 @@ async def delete_character(character_id: str, db: db_dep):
 @character_router.put("/characters/{character_id}/location", response_model=Character)
 async def set_character_location(character_id: str, location_data: CharacterLocationUpdate, db: db_dep):
     if not await db.character.get_character(character_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
     if not await db.location.get_location(location_data.location_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Location {location_data.location_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Location {location_data.location_id} not found",
+        )
 
     return await db.character.move_to_location(character_id, location_data.location_id, location_data.position)
 
@@ -171,15 +261,24 @@ async def set_character_location(character_id: str, location_data: CharacterLoca
 async def delete_character_location(character_id: str, db: db_dep):
     deleted = await db.character.remove_character_location(character_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
 
 
 @character_router.put("/characters/{character_id}/landmark", response_model=Character)
 async def set_character_landmark(character_id: str, landmark_data: CharacterLandmarkUpdate, db: db_dep):
     if not await db.character.get_character(character_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
     if not await db.location.get_landmark(landmark_data.landmark_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Landmark {landmark_data.landmark_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Landmark {landmark_data.landmark_id} not found",
+        )
 
     return await db.character.anchor_to_landmark(character_id, landmark_data.landmark_id)
 
@@ -188,7 +287,10 @@ async def set_character_landmark(character_id: str, landmark_data: CharacterLand
 async def delete_character_landmark(character_id: str, db: db_dep):
     deleted = await db.character.remove_character_landmark(character_id)
     if not deleted:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Character {character_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
 
 
 @character_router.post("/worlds/{world_id}/characters", response_model=Character)
@@ -200,8 +302,16 @@ async def create_character_in_world(world_id: str, character_data: CharacterCrea
             detail=f"World {world_id} not found",
         )
 
-    character = Character(**character_data.model_dump())
-    created_character = await db.character.create_character(character, world_id)
+    await validate_character_relationships(character_data, db)
+
+    character = Character(**character_data.model_dump(exclude={"location_id", "position", "landmark_id"}))
+    created_character = await db.character.create_character(
+        character,
+        world_id,
+        location_id=character_data.location_id,
+        position=character_data.position,
+        landmark_id=character_data.landmark_id,
+    )
     if not created_character:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -220,8 +330,16 @@ async def create_character_in_simulation(simulation_id: str, character_data: Cha
             detail=f"Simulation {simulation_id} not found",
         )
 
-    character = Character(**character_data.model_dump())
-    created_character = await db.character.create_character(character, simulation_id)
+    await validate_character_relationships(character_data, db)
+
+    character = Character(**character_data.model_dump(exclude={"location_id", "position", "landmark_id"}))
+    created_character = await db.character.create_character(
+        character,
+        simulation_id,
+        location_id=character_data.location_id,
+        position=character_data.position,
+        landmark_id=character_data.landmark_id,
+    )
     if not created_character:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

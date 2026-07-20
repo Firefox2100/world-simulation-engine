@@ -61,7 +61,7 @@ def character_api(neo4j_container):
         await database.world.create_author(author)
         await database.world.create_world(world, author.id)
         await database.simulation.create_simulation(simulation, world.id)
-        await database.location.create_location(location, simulation.id)
+        await database.location.create_location(location, world.id)
         await database.location.create_landmark(landmark, location.id)
         app.state.database = database
 
@@ -109,7 +109,12 @@ def test_create_list_get_update_and_delete_character(character_api):
 
     world_create_response = client.post(
         f"/worlds/{character_api.world.id}/characters",
-        json=character_payload("Alex"),
+        json={
+            **character_payload("Alex"),
+            "location_id": character_api.location.id,
+            "position": "near the counter",
+            "landmark_id": character_api.landmark.id,
+        },
     )
     simulation_create_response = client.post(
         f"/simulations/{character_api.simulation.id}/characters",
@@ -142,6 +147,7 @@ def test_create_list_get_update_and_delete_character(character_api):
     }
     assert world_filter_response.status_code == 200
     assert world_filter_response.json() == [world_character]
+    assert client.get("/characters", params={"location_id": character_api.location.id}).json() == [world_character]
     assert simulation_filter_response.status_code == 200
     assert simulation_filter_response.json() == [simulation_character]
 
@@ -227,6 +233,20 @@ def test_character_endpoints_return_404_for_missing_resources(character_api):
         f"/simulations/{missing_simulation_id}/characters",
         json=character_payload(),
     )
+    missing_location_create_response = client.post(
+        f"/worlds/{character_api.world.id}/characters",
+        json={
+            **character_payload(),
+            "location_id": str(uuid4()),
+        },
+    )
+    missing_landmark_create_response = client.post(
+        f"/worlds/{character_api.world.id}/characters",
+        json={
+            **character_payload(),
+            "landmark_id": str(uuid4()),
+        },
+    )
 
     assert get_response.status_code == 404
     assert get_response.json()["detail"] == f"Character {missing_character_id} not found"
@@ -242,3 +262,7 @@ def test_character_endpoints_return_404_for_missing_resources(character_api):
     assert world_create_response.json()["detail"] == f"World {missing_world_id} not found"
     assert simulation_create_response.status_code == 404
     assert simulation_create_response.json()["detail"] == f"Simulation {missing_simulation_id} not found"
+    assert missing_location_create_response.status_code == 404
+    assert "Location" in missing_location_create_response.json()["detail"]
+    assert missing_landmark_create_response.status_code == 404
+    assert "Landmark" in missing_landmark_create_response.json()["detail"]

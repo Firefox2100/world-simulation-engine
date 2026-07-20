@@ -6,8 +6,8 @@ os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.simulator.scene_coordinator import SceneCoordinator
 from world_simulation_engine.misc.enums import ActionType, SceneCoordinationStatus, SupportedLanguage
-from world_simulation_engine.model import Character, CharacterActionPlan, CurrentActivity, Landmark, Location, \
-    ProposedAction, Simulation, World
+from world_simulation_engine.model import ActionCandidateSet, Character, CharacterActionPlan, CurrentActivity, Landmark, \
+    Location, ProposedAction, SceneCoordinationResult, Simulation, World
 
 
 def make_world() -> World:
@@ -52,6 +52,38 @@ def make_action() -> ProposedAction:
         intended_duration_seconds=2,
         interruptible=True,
     )
+
+
+def make_database(
+        *,
+        world: World | None = None,
+        simulation: Simulation | None = None,
+        character: Character | None = None,
+        location: Location | None = None,
+) -> Mock:
+    world = world or make_world()
+    simulation = simulation or make_simulation()
+    character = character or make_character()
+    location = location or Location(
+        id="location_1",
+        name="Room",
+        description="A small room",
+    )
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=world)
+    database.simulation.get_simulation = AsyncMock(return_value=simulation)
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
+    database.character.get_character = AsyncMock(return_value=character)
+    database.location.get_location_by_character = AsyncMock(return_value=location)
+    database.item.get_inventory = AsyncMock(return_value=[])
+    database.equipment.get_equipment_inventory = AsyncMock(return_value=[])
+    database.get_characters_in_location = AsyncMock(return_value=[])
+    database.character.get_background_characters_by_location = AsyncMock(return_value=[])
+    database.item.get_stacks_by_location = AsyncMock(return_value=[])
+    database.equipment.get_equipment_by_location = AsyncMock(return_value=[])
+    database.container.get_containers_by_location = AsyncMock(return_value=[])
+    database.location.get_landmarks_by_location = AsyncMock(return_value=[])
+    return database
 
 
 async def test_coordinate_scene_returns_complete_without_llm_for_no_plans():
@@ -210,3 +242,252 @@ async def test_build_context_deduplicates_landmarks_and_excludes_planned_charact
     assert [actor.actor.id for actor in context.actors] == ["character_1", "character_2"]
     assert {entry.character.id for entry in context.perceived_characters} == {"observer_1"}
     assert [entry.id for entry in context.perceived_landmarks] == ["landmark_1"]
+
+
+async def test_coordinate_scene_preserves_planned_speech_when_llm_drops_utterance():
+    character = make_character("character_clara")
+    speech_action = ProposedAction(
+        type=ActionType.SPEAK,
+        label="respond_to_room7_inquiry",
+        target_ids=["character_arthur"],
+        utterance="Yes, Room Seven was certainly occupied before he disappeared.",
+        intended_duration_seconds=12,
+        interruptible=True,
+    )
+    llm_result = SceneCoordinationResult(
+        status=SceneCoordinationStatus.COMPLETE,
+        accepted_actions=[
+            {
+                "actor_id": character.id,
+                "action_index": 0,
+                "action": {
+                    "type": ActionType.SPEAK,
+                    "label": "respond_to_room7_inquiry",
+                    "target_ids": [],
+                    "utterance": None,
+                    "intended_duration_seconds": 12,
+                    "interruptible": True,
+                    "interruption_triggers": [],
+                    "required_preconditions": [],
+                    "expected_effects": [],
+                },
+                "start_offset_seconds": 0,
+                "end_offset_seconds": 12,
+                "summary": "Clara speaks to Arthur about Room Seven.",
+            }
+        ],
+    )
+    database = make_database(character=character)
+    coordinator = SceneCoordinator(database=database)
+    coordinator._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(return_value=llm_result)
+    coordinator._prepare_llm_service.return_value = llm
+
+    result = await coordinator.coordinate_scene(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        action_plans=[
+            CharacterActionPlan(
+                actor_id=character.id,
+                actions=[speech_action],
+            )
+        ],
+    )
+
+    assert result.accepted_actions[0].action == speech_action
+    assert result.accepted_actions[0].summary == "Clara speaks to Arthur about Room Seven."
+
+
+def test_hydrate_result_actions_preserves_selected_backup_candidate():
+    primary_action = ProposedAction(
+        type=ActionType.SPEAK,
+        label="respond_to_room7_inquiry",
+        target_ids=["character_arthur"],
+        utterance="Yes, Room Seven was occupied.",
+        intended_duration_seconds=12,
+        interruptible=True,
+    )
+    backup_action = ProposedAction(
+        type=ActionType.LOOK,
+        label="verify_room7_record",
+        target_ids=["landmark_ledger"],
+        intended_duration_seconds=5,
+        interruptible=True,
+    )
+    result = SceneCoordinationResult(
+        status=SceneCoordinationStatus.COMPLETE,
+        accepted_actions=[
+            {
+                "actor_id": "character_clara",
+                "proposal_index": 1,
+                "action_index": 0,
+                "action": {
+                    "type": ActionType.LOOK,
+                    "label": "verify_room7_record",
+                    "target_ids": [],
+                    "utterance": None,
+                    "intended_duration_seconds": 5,
+                    "interruptible": True,
+                    "interruption_triggers": [],
+                    "required_preconditions": [],
+                    "expected_effects": [],
+                },
+                "start_offset_seconds": 0,
+                "end_offset_seconds": 5,
+                "summary": "Clara checks the ledger instead of answering immediately.",
+            }
+        ],
+    )
+
+    hydrated = SceneCoordinator._hydrate_result_actions(
+        result,
+        [
+            CharacterActionPlan(
+                actor_id="character_clara",
+                actions=[primary_action],
+                candidate_sets=[
+                        ActionCandidateSet(
+                            proposal_index=0,
+                            actions=[primary_action],
+                        ),
+                        ActionCandidateSet(
+                            proposal_index=1,
+                            actions=[backup_action],
+                        )
+                    ],
+                )
+        ],
+    )
+
+    assert hydrated.accepted_actions[0].action == backup_action
+
+
+def test_hydrate_result_actions_restores_actions_from_selected_multi_action_sequence():
+    first_action = ProposedAction(
+        type=ActionType.LOOK,
+        label="check_ledger",
+        target_ids=["landmark_ledger"],
+        intended_duration_seconds=5,
+        interruptible=True,
+    )
+    second_action = ProposedAction(
+        type=ActionType.SPEAK,
+        label="answer_room7_question",
+        target_ids=["character_arthur"],
+        utterance="The ledger says Room Seven was occupied.",
+        intended_duration_seconds=8,
+        interruptible=True,
+    )
+    result = SceneCoordinationResult(
+        status=SceneCoordinationStatus.COMPLETE,
+        accepted_actions=[
+            {
+                "actor_id": "character_clara",
+                "proposal_index": 0,
+                "action_index": 0,
+                "action": {
+                    "type": ActionType.LOOK,
+                    "label": "check_ledger",
+                    "target_ids": [],
+                    "utterance": None,
+                    "intended_duration_seconds": 5,
+                    "interruptible": True,
+                    "interruption_triggers": [],
+                    "required_preconditions": [],
+                    "expected_effects": [],
+                },
+                "start_offset_seconds": 0,
+                "end_offset_seconds": 5,
+                "summary": "Clara checks the ledger.",
+            },
+            {
+                "actor_id": "character_clara",
+                "proposal_index": 0,
+                "action_index": 1,
+                "action": {
+                    "type": ActionType.SPEAK,
+                    "label": "answer_room7_question",
+                    "target_ids": [],
+                    "utterance": None,
+                    "intended_duration_seconds": 8,
+                    "interruptible": True,
+                    "interruption_triggers": [],
+                    "required_preconditions": [],
+                    "expected_effects": [],
+                },
+                "start_offset_seconds": 5,
+                "end_offset_seconds": 13,
+                "summary": "Clara answers after checking.",
+            },
+        ],
+    )
+
+    hydrated = SceneCoordinator._hydrate_result_actions(
+        result,
+        [
+            CharacterActionPlan(
+                actor_id="character_clara",
+                actions=[first_action, second_action],
+                candidate_sets=[
+                    ActionCandidateSet(
+                        proposal_index=0,
+                        actions=[first_action, second_action],
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert [accepted.action for accepted in hydrated.accepted_actions] == [first_action, second_action]
+
+
+def test_hydrate_result_actions_drops_unmatched_coordinator_authored_action():
+    authored_action = ProposedAction(
+        type=ActionType.LOOK,
+        label="check_ledger",
+        target_ids=["landmark_ledger"],
+        intended_duration_seconds=5,
+        interruptible=True,
+    )
+    invented_action = ProposedAction(
+        type=ActionType.SPEAK,
+        label="invented_answer",
+        target_ids=["character_arthur"],
+        utterance="Something the character did not propose.",
+        intended_duration_seconds=5,
+        interruptible=True,
+    )
+    result = SceneCoordinationResult(
+        status=SceneCoordinationStatus.COMPLETE,
+        accepted_actions=[
+            {
+                "actor_id": "character_clara",
+                "proposal_index": 0,
+                "action_index": 9,
+                "action": invented_action,
+                "start_offset_seconds": 0,
+                "end_offset_seconds": 5,
+                "summary": "Invented action.",
+            }
+        ],
+    )
+
+    hydrated = SceneCoordinator._hydrate_result_actions(
+        result,
+        [
+            CharacterActionPlan(
+                actor_id="character_clara",
+                actions=[authored_action],
+                candidate_sets=[
+                    ActionCandidateSet(
+                        proposal_index=0,
+                        actions=[authored_action],
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert hydrated.accepted_actions == []
+    assert "Dropped coordinator-authored accepted action" in hydrated.coordinator_notes[0]

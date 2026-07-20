@@ -395,6 +395,107 @@ class ItemStore:
 
         return self.stack_from_node(record["stack"])
 
+    async def copy_stacks(self,
+                          source_id: str,
+                          target_id: str,
+                          location_pairs: list[dict] | None = None,
+                          entity_pairs: list[dict] | None = None,
+                          ) -> tuple[list[ItemStack], list[dict]]:
+        location_pairs = location_pairs or []
+        entity_pairs = entity_pairs or []
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(source_stack:ItemStack)-[:OF_TYPE]->(item:Item)
+            MATCH (target:World|Simulation {id: $target_id})
+            CREATE (stack:ItemStack {
+                id: randomUUID(),
+                quantity: source_stack.quantity,
+                quality: source_stack.quality
+            })
+            MERGE (target)-[:CONTAINS]->(stack)
+            MERGE (stack)-[:OF_TYPE]->(item)
+            RETURN source_stack.id AS source_id, stack.id AS copy_id, stack
+            ORDER BY stack.id
+            """,
+            parameters_={
+                "source_id": source_id,
+                "target_id": target_id,
+            },
+        )
+        stack_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+        if stack_pairs and location_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $stack_pairs AS stack_pair
+                MATCH (source_stack:ItemStack {id: stack_pair.source_id})
+                    -[source_present:PRESENT_IN]->(source_location:Location)
+                WITH stack_pair, source_present, [
+                    location_pair IN $location_pairs
+                    WHERE location_pair.source_id = source_location.id
+                ][0] AS location_pair
+                WHERE location_pair IS NOT NULL
+                MATCH (copy_stack:ItemStack {id: stack_pair.copy_id})
+                MATCH (copy_location:Location {id: location_pair.copy_id})
+                MERGE (copy_stack)-[present:PRESENT_IN]->(copy_location)
+                SET present.position = source_present.position
+                """,
+                parameters_={
+                    "stack_pairs": stack_pairs,
+                    "location_pairs": location_pairs,
+                },
+            )
+        if stack_pairs and entity_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $stack_pairs AS stack_pair
+                MATCH (source_owner)-[:OWNS]->(:ItemStack {id: stack_pair.source_id})
+                WITH stack_pair, [
+                    entity_pair IN $entity_pairs
+                    WHERE entity_pair.source_id = source_owner.id
+                ][0] AS owner_pair
+                WHERE owner_pair IS NOT NULL
+                MATCH (copy_owner {id: owner_pair.copy_id})
+                MATCH (copy_stack:ItemStack {id: stack_pair.copy_id})
+                MERGE (copy_owner)-[:OWNS]->(copy_stack)
+                """,
+                parameters_={
+                    "stack_pairs": stack_pairs,
+                    "entity_pairs": entity_pairs,
+                },
+            )
+            await self._driver.execute_query(
+                """
+                UNWIND $stack_pairs AS stack_pair
+                MATCH (source_holder)-[:HOLDS]->(:ItemStack {id: stack_pair.source_id})
+                WITH stack_pair, [
+                    entity_pair IN $entity_pairs
+                    WHERE entity_pair.source_id = source_holder.id
+                ][0] AS holder_pair
+                WHERE holder_pair IS NOT NULL
+                MATCH (copy_holder {id: holder_pair.copy_id})
+                MATCH (copy_stack:ItemStack {id: stack_pair.copy_id})
+                MERGE (copy_holder)-[:HOLDS]->(copy_stack)
+                """,
+                parameters_={
+                    "stack_pairs": stack_pairs,
+                    "entity_pairs": entity_pairs,
+                },
+            )
+
+        return (
+            [
+                self.stack_from_node(record["stack"])
+                for record in result.records
+            ],
+            stack_pairs,
+        )
+
     async def update_stack(self,
                            stack_id: str,
                            properties: dict,

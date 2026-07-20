@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from world_simulation_engine.model import StateCommitEntityRef, StateCommitProposal
+from world_simulation_engine.model import StateCommitEntityRef, StateCommitFieldChange, StateCommitProposal
 from world_simulation_engine.service.database.state_commit_store import StateCommitStore
 
 
@@ -136,6 +136,48 @@ async def test_change_entity_state_skips_missing_id_and_empty_field_changes():
     )
 
     driver.execute_query.assert_not_called()
+
+
+async def test_change_entity_state_updates_character_current_activity_json():
+    driver = SimpleNamespace(
+        execute_query=AsyncMock(
+            side_effect=[
+                SimpleNamespace(
+                    records=[
+                        {
+                            "current_activity": (
+                                '{"name":"waiting","started_at":null,"expected_end":null,'
+                                '"interruptible":true,"constraints":[]}'
+                            ),
+                        }
+                    ],
+                ),
+                SimpleNamespace(records=[]),
+            ],
+        )
+    )
+    store = StateCommitStore(driver)
+
+    await store.change_entity_state(
+        entity=StateCommitEntityRef(type="character", id="character_1"),
+        field_changes=[
+            StateCommitFieldChange(
+                field_path="current_activity.name",
+                old_value=None,
+                new_value="asking about Room 7",
+                reason="The character is now asking about Room 7.",
+            ),
+        ],
+        turn_id="turn_1",
+    )
+
+    assert driver.execute_query.await_count == 2
+    update_call = driver.execute_query.await_args_list[1]
+    parameters = update_call.kwargs["parameters_"]
+    assert parameters["entity_id"] == "character_1"
+    assert parameters["turn_id"] == "turn_1"
+    assert '"name":"asking about Room 7"' in parameters["current_activity"]
+    assert "current_activity.name" not in parameters["current_activity"]
 
 
 async def test_change_relationship_marks_existing_relationship_ended_without_creating_new_one():

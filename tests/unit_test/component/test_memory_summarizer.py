@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, Mock
 os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.simulator.memory_summarizer import MemorySummarizer
-from world_simulation_engine.misc.enums import ActionType, SceneCoordinationStatus, SupportedLanguage, TurnType
+from world_simulation_engine.misc.enums import ActionType, EventInvolvement, IntentHorizon, IntentStatus, IntentType, \
+    MemoryStance, MemorySupportType, Salience, SceneCoordinationStatus, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, Character, CurrentActivity, Location, MemorySummaryProposal, \
     ProposedAction, SceneCoordinationResult, Simulation, StateCommitProposal, Turn, World
 
@@ -112,6 +113,89 @@ async def test_summarize_character_actions_invokes_structured_llm_with_context()
     data = llm.invoke_structured_with_repair.await_args.kwargs["data"]
     assert data["turn"]["id"] == "turn_1"
     assert data["coordination_result"]["accepted_actions"][0]["summary"] == "Alex takes the glass."
+
+
+async def test_summarize_character_actions_normalizes_character_names_and_created_event_references():
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=make_world())
+    database.simulation.get_simulation = AsyncMock(return_value=make_simulation())
+    database.character.get_character = AsyncMock(return_value=make_character())
+    database.memory.get_recent_turn_memory_candidates = AsyncMock(return_value=[])
+    database.intent.get_active_intent_candidates = AsyncMock(return_value=[])
+    summarizer = MemorySummarizer(database=database)
+    summarizer._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(
+        return_value=MemorySummaryProposal.model_validate(
+            {
+                "operations": [
+                    {
+                        "type": "create_event",
+                        "proposed_id": "evt_glass_taken",
+                        "name": "Glass Taken",
+                        "summary": "Alex takes the glass.",
+                        "involved_characters": [
+                            {
+                                "character_id": "Alex",
+                                "involvement": EventInvolvement.PARTICIPATE,
+                            }
+                        ],
+                        "reason": "The action is durable.",
+                    },
+                    {
+                        "type": "create_memory",
+                        "proposed_id": "mem_glass_taken",
+                        "event_id": "Glass Taken",
+                        "summary": "Alex took the glass.",
+                        "support_type": MemorySupportType.DIRECT,
+                        "character_links": [
+                            {
+                                "character_id": "Alex",
+                                "confidence": 0.8,
+                                "salience": Salience.MEDIUM,
+                                "stance": MemoryStance.REMEMBER,
+                            }
+                        ],
+                        "reason": "Alex should remember this.",
+                    },
+                    {
+                        "type": "create_intent",
+                        "proposed_id": "int_keep_glass",
+                        "character_id": "Alex",
+                        "intent_type": IntentType.AGENDA,
+                        "name": "Keep the glass",
+                        "description": "Keep holding the glass.",
+                        "priority": 0.4,
+                        "urgency": 0.2,
+                        "status": IntentStatus.ACTIVE,
+                        "horizon": IntentHorizon.SHORT,
+                        "created_by_event_id": "Glass Taken",
+                        "reason": "The action creates a small agenda.",
+                    },
+                ],
+            }
+        )
+    )
+    summarizer._prepare_llm_service.return_value = llm
+
+    result = await summarizer.summarize_character_actions(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        turn=make_turn(),
+        coordination_result=make_coordination(),
+        state_commit=StateCommitProposal(),
+        user_input="Continue.",
+        narration="Alex takes the glass.",
+    )
+
+    event_operation = result.operations[0]
+    memory_operation = result.operations[1]
+    intent_operation = result.operations[2]
+    assert event_operation.involved_characters[0].character_id == "character_1"
+    assert memory_operation.event_id == "evt_glass_taken"
+    assert memory_operation.character_links[0].character_id == "character_1"
+    assert intent_operation.character_id == "character_1"
+    assert intent_operation.created_by_event_id == "evt_glass_taken"
 
 
 async def test_build_context_collects_sorted_unique_actors_and_skips_missing_characters():

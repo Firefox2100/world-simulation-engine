@@ -15,6 +15,7 @@ class Prompts(TypedDict, total=False):
     memory_summarizer: list[dict]
     narrator: list[dict]
     scene_coordinator: list[dict]
+    speech_repair: list[dict]
     state_committer: list[dict]
     resolve_perceived_character: list[dict]
     resolve_perceived_background_characters: list[dict]
@@ -62,6 +63,7 @@ def load_prompt() -> dict["SupportedLanguage", Prompts]:
         "memory_summarizer",
         "narrator",
         "scene_coordinator",
+        "speech_repair",
         "state_committer",
         "resolve_perceived_character",
         "resolve_perceived_background_characters",

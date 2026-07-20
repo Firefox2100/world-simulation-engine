@@ -73,7 +73,7 @@
     "selectedFallback": "模拟",
     "selectedDescriptionFallback": "选择一个模拟以查看消息。",
     "userName": "你",
-    "inputPlaceholder": "输入消息...",
+    "inputPlaceholder": "行动文本、*内心*、**强调**、\"台词\"...",
     "send": "发送",
     "sendError": "无法发送消息：{{error}}",
     "cancelled": "生成已取消。"
@@ -265,6 +265,8 @@
       "ollama": "Ollama"
     },
     "details": {
+      "connection": "连接 {{name}}",
+      "noConnection": "未配置提供商连接",
       "dimension": "{{value}} 维",
       "contextWindow": "{{value}} 上下文",
       "temperature": "温度 {{value}}"
@@ -280,6 +282,8 @@
     },
     "fields": {
       "provider": "提供商",
+      "connection": "连接配置",
+      "noConnection": "无连接",
       "name": "名称",
       "baseUrl": "Base URL",
       "apiKey": "API key",

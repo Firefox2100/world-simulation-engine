@@ -18,6 +18,7 @@ from world_simulation_engine.model import (
     ActionValidation,
     ActionValidationResult,
     AcceptedSceneAction,
+    ActionProposal,
     InputInterpretation,
     Intent,
     MemorySummaryProposal,
@@ -33,6 +34,54 @@ def make_action() -> ProposedAction:
         label="look_around",
         intended_duration_seconds=2,
     )
+
+
+def test_action_proposal_accepts_primary_sequence_and_backup_sequences():
+    primary_first = make_action()
+    primary_second = ProposedAction(
+        type=ActionType.SPEAK,
+        label="answer_question",
+        utterance="Yes.",
+        intended_duration_seconds=2,
+    )
+    backup = ProposedAction(
+        type=ActionType.WAIT,
+        label="wait",
+        intended_duration_seconds=3,
+    )
+
+    proposal = ActionProposal(
+        actions=[primary_first, primary_second],
+        backup_proposals=[[backup]],
+        reasoning_summary="Act, then speak.",
+        next_review_hint_seconds=5,
+    )
+
+    assert proposal.actions == [primary_first, primary_second]
+    assert proposal.backup_proposals == [[backup]]
+    assert proposal.chosen_action == primary_first
+    assert proposal.alternatives_considered == [backup]
+
+
+def test_action_proposal_normalizes_legacy_single_action_shape():
+    action = make_action()
+    backup = ProposedAction(
+        type=ActionType.WAIT,
+        label="wait",
+        intended_duration_seconds=3,
+    )
+
+    proposal = ActionProposal.model_validate(
+        {
+            "chosen_action": action.model_dump(),
+            "alternatives_considered": [backup.model_dump()],
+            "reasoning_summary": "Legacy shape.",
+            "next_review_hint_seconds": 5,
+        }
+    )
+
+    assert proposal.actions == [action]
+    assert proposal.backup_proposals == [[backup]]
 
 
 def test_action_validation_forbids_extra_fields_and_negative_indexes():

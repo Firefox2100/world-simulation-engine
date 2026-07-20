@@ -73,7 +73,7 @@
     "selectedFallback": "Simulation",
     "selectedDescriptionFallback": "Select a simulation to view its messages.",
     "userName": "You",
-    "inputPlaceholder": "Type a message...",
+    "inputPlaceholder": "Action text, *thought*, **emphasis**, \"speech\"...",
     "send": "Send",
     "sendError": "Unable to send message: {{error}}",
     "cancelled": "Generation was cancelled."
@@ -265,6 +265,8 @@
       "ollama": "Ollama"
     },
     "details": {
+      "connection": "connection {{name}}",
+      "noConnection": "no provider connection",
       "dimension": "{{value}} dimensions",
       "contextWindow": "{{value}} context",
       "temperature": "temperature {{value}}"
@@ -280,6 +282,8 @@
     },
     "fields": {
       "provider": "Provider",
+      "connection": "Connection",
+      "noConnection": "No connection",
       "name": "Name",
       "baseUrl": "Base URL",
       "apiKey": "API key",

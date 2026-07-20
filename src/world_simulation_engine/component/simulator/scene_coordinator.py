@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, SceneCoordinationStatus
 from world_simulation_engine.model import BackgroundCharacter, Character, CharacterActionPlan, Container, Equipment, \
-    InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, PendingSceneAction, ReactionHistoryEntry, \
-    SceneCoordinationResult, Simulation, World
+    InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, PendingSceneAction, ProposedAction, \
+    ReactionHistoryEntry, SceneCoordinationResult, Simulation, World
 
 from .simulator_component import SimulatorComponent
 
@@ -73,6 +73,44 @@ class SceneCoordinator(SimulatorComponent):
     COMPONENT_TYPE = ComponentType.SCENE_COORDINATOR
 
     @staticmethod
+    def _planned_action_candidates_by_ref(
+            action_plans: list[CharacterActionPlan],
+    ) -> dict[tuple[str, int], list[ProposedAction]]:
+        planned_actions = {}
+        for plan in action_plans:
+            if plan.candidate_sets:
+                for candidate_set in plan.candidate_sets:
+                    planned_actions[(plan.actor_id, candidate_set.proposal_index)] = candidate_set.actions
+            elif plan.actions:
+                planned_actions[(plan.actor_id, 0)] = plan.actions
+
+        return planned_actions
+
+    @staticmethod
+    def _hydrate_result_action(
+            action: ProposedAction,
+            sequence: list[ProposedAction] | None,
+            action_index: int,
+            all_sequences: dict[int, list[ProposedAction]] | None = None,
+    ) -> ProposedAction | None:
+        if sequence and action_index < len(sequence):
+            planned_action = sequence[action_index]
+            if planned_action.type == action.type and planned_action.label == action.label:
+                return planned_action
+
+        for candidate_sequence in (all_sequences or {}).values():
+            if action_index >= len(candidate_sequence):
+                continue
+            candidate = candidate_sequence[action_index]
+            if candidate.type == action.type and candidate.label == action.label:
+                return candidate
+
+        if sequence and action_index < len(sequence):
+            return sequence[action_index]
+
+        return None
+
+    @staticmethod
     def _pending_actions_for_empty_coordination(action_plans: list[CharacterActionPlan]) -> list[PendingSceneAction]:
         return [
             PendingSceneAction(
@@ -84,6 +122,76 @@ class SceneCoordinator(SimulatorComponent):
             for plan in action_plans
             for action_index, action in enumerate(plan.actions)
         ]
+
+    @classmethod
+    def _hydrate_result_actions(cls,
+                                result: SceneCoordinationResult,
+                                action_plans: list[CharacterActionPlan],
+                                ) -> SceneCoordinationResult:
+        planned_actions = cls._planned_action_candidates_by_ref(action_plans)
+        accepted_actions = []
+        pending_actions = []
+        notes = list(result.coordinator_notes)
+        for accepted in result.accepted_actions:
+            actor_sequences = {
+                proposal_index: sequence
+                for (actor_id, proposal_index), sequence in planned_actions.items()
+                if actor_id == accepted.actor_id
+            }
+            action = cls._hydrate_result_action(
+                accepted.action,
+                planned_actions.get((accepted.actor_id, accepted.proposal_index)),
+                accepted.action_index,
+                actor_sequences,
+            )
+            if action is None:
+                notes.append(
+                    f"Dropped coordinator-authored accepted action for {accepted.actor_id} "
+                    f"proposal {accepted.proposal_index} action {accepted.action_index}."
+                )
+                continue
+
+            accepted_actions.append(
+                accepted.model_copy(update={"action": action})
+            )
+
+        for pending in result.pending_actions:
+            actor_sequences = {
+                proposal_index: sequence
+                for (actor_id, proposal_index), sequence in planned_actions.items()
+                if actor_id == pending.actor_id
+            }
+            action = cls._hydrate_result_action(
+                pending.action,
+                planned_actions.get((pending.actor_id, pending.proposal_index)),
+                pending.action_index,
+                actor_sequences,
+            )
+            if action is None:
+                notes.append(
+                    f"Dropped coordinator-authored pending action for {pending.actor_id} "
+                    f"proposal {pending.proposal_index} action {pending.action_index}."
+                )
+                continue
+
+            pending_actions.append(
+                pending.model_copy(update={"action": action})
+            )
+
+        if (
+                accepted_actions == result.accepted_actions
+                and pending_actions == result.pending_actions
+                and notes == result.coordinator_notes
+        ):
+            return result
+
+        return result.model_copy(
+            update={
+                "accepted_actions": accepted_actions,
+                "pending_actions": pending_actions,
+                "coordinator_notes": notes,
+            }
+        )
 
     async def _build_context(self,
                              *,
@@ -235,13 +343,15 @@ class SceneCoordinator(SimulatorComponent):
         )
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
-        return await llm.invoke_structured_with_repair(
+        result = await llm.invoke_structured_with_repair(
             output_model=SceneCoordinationResult,
             messages=prompt,
             data=context.model_dump(),
             repair_instruction=(
-                "Return a valid SceneCoordinationResult. Preserve action references by actor_id and action_index. "
+                "Return a valid SceneCoordinationResult. Preserve action references by actor_id, proposal_index, "
+                "and action_index. Do not rewrite nested action payloads. "
                 "Do not call for character reactions or continue the loop inside this component."
             ),
             run_name="scene_coordinator.coordinate_scene",
         )
+        return self._hydrate_result_actions(result, action_plans)

@@ -475,41 +475,51 @@ def _action_plan(actor_id: str, actions: list[ProposedAction]) -> CharacterActio
         actions=actions,
         candidate_sets=[
             ActionCandidateSet(
-                action_index=action_index,
-                actions=[action],
+                proposal_index=0,
+                actions=actions,
             )
-            for action_index, action in enumerate(actions)
-        ],
+        ] if actions else [],
     )
 
 
 def _proposal_candidates(proposal) -> list[ProposedAction]:
     return [
-        proposal.chosen_action,
-        *proposal.alternatives_considered,
+        action
+        for sequence in [proposal.actions, *proposal.backup_proposals]
+        for action in sequence
     ]
 
 
 def _character_action_plans_from_validation_records(records: list[dict]) -> list[CharacterActionPlan]:
     plans_by_actor: dict[str, CharacterActionPlan] = {}
     for record in records:
-        allowed_candidates = _allowed_actions_from_validation(record["validation"])
-        if not allowed_candidates:
+        validations = record.get("proposal_validations") or [record["validation"]]
+        proposal_sequences = [record["proposal"].actions, *record["proposal"].backup_proposals]
+        valid_sequences = [
+            (proposal_index, proposal_sequences[proposal_index])
+            for proposal_index, validation in enumerate(validations)
+            if proposal_index < len(proposal_sequences)
+            and validation.validations
+            and all(item.allowed for item in validation.validations)
+        ]
+        if not valid_sequences:
             continue
 
         plan = plans_by_actor.setdefault(
             record["character_id"],
-            CharacterActionPlan(actor_id=record["character_id"]),
+            CharacterActionPlan(
+                actor_id=record["character_id"],
+                actions=valid_sequences[0][1],
+            ),
         )
-        action_index = len(plan.actions)
-        plan.actions.append(allowed_candidates[0])
         plan.action_proposals.append(record["proposal"])
-        plan.candidate_sets.append(
-            ActionCandidateSet(
-                action_index=action_index,
-                actions=allowed_candidates,
+        for proposal_index, sequence in valid_sequences:
+            plan.candidate_sets.append(
+                ActionCandidateSet(
+                    proposal_index=proposal_index,
+                    actions=sequence,
+                )
             )
-        )
 
     return list(plans_by_actor.values())
 

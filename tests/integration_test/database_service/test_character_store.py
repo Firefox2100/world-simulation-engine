@@ -1,7 +1,14 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from world_simulation_engine.model import BackgroundCharacter, Character, CurrentActivity, Location, Landmark, Simulation
+from world_simulation_engine.model import (
+    BackgroundCharacter,
+    Character,
+    CurrentActivity,
+    Landmark,
+    Location,
+    Simulation,
+)
 from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
@@ -17,6 +24,9 @@ async def test_missing_character_returns_none(clean_neo4j):
 async def test_create_character(clean_neo4j):
     world = await create_world(clean_neo4j)
     store = CharacterStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    location = Location(id=str(uuid4()), name="Market", description="A market")
+    landmark = Landmark(id=str(uuid4()), name="Counter", description="A shop counter")
     character = Character(
         id=str(uuid4()),
         name="Alex",
@@ -35,9 +45,32 @@ async def test_create_character(clean_neo4j):
         ),
     )
 
-    await store.create_character(character, world.id)
+    await location_store.create_location(location, source_id=world.id)
+    await location_store.create_landmark(landmark, location.id)
+    await store.create_character(
+        character,
+        world.id,
+        location_id=location.id,
+        position="near the counter",
+        landmark_id=landmark.id,
+    )
 
     assert await store.get_character(character.id) == character
+    assert await store.list_characters(location_id=location.id) == [character]
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:Character {id: $character_id})-[present:PRESENT_IN]->(:Location {id: $location_id})
+        MATCH (:Character {id: $character_id})-[:ANCHORED_TO]->(:Landmark {id: $landmark_id})
+        RETURN present.position AS position
+        """,
+        parameters_={
+            "character_id": character.id,
+            "location_id": location.id,
+            "landmark_id": landmark.id,
+        },
+    )
+    assert result.records[0]["position"] == "near the counter"
 
 
 async def test_create_character_returns_none_when_source_is_missing(clean_neo4j):
@@ -56,6 +89,36 @@ async def test_create_character_returns_none_when_source_is_missing(clean_neo4j)
 
     assert await store.create_character(character, str(uuid4())) is None
     assert await store.get_character(character.id) is None
+
+
+async def test_create_character_returns_none_when_relationship_target_is_missing(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    store = CharacterStore(clean_neo4j)
+    missing_location_character = Character(
+        id=str(uuid4()),
+        name="Alex",
+        age=30,
+        gender="non-binary",
+        appearance="Short hair and a practical coat",
+        description="A test character",
+        public_state="Waiting",
+        private_state="Planning",
+        current_activity=CurrentActivity(name="observing"),
+    )
+    missing_landmark_character = missing_location_character.model_copy(update={"id": str(uuid4())})
+
+    assert await store.create_character(
+        missing_location_character,
+        source_id=world.id,
+        location_id=str(uuid4()),
+    ) is None
+    assert await store.create_character(
+        missing_landmark_character,
+        source_id=world.id,
+        landmark_id=str(uuid4()),
+    ) is None
+    assert await store.get_character(missing_location_character.id) is None
+    assert await store.get_character(missing_landmark_character.id) is None
 
 
 async def test_list_update_and_delete_character(clean_neo4j):

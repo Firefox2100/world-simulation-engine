@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from neo4j import AsyncDriver
 
-from world_simulation_engine.model import StateCommitProposal, StateCommitEntityRef, StateCommitFieldChange
+from world_simulation_engine.model import CurrentActivity, StateCommitProposal, StateCommitEntityRef, StateCommitFieldChange
 
 
 class StateCommitStore:
@@ -67,6 +67,21 @@ class StateCommitStore:
             for key, value in properties.items()
             if value is not None
         }
+
+    @staticmethod
+    def _split_current_activity_changes(
+            field_changes: list[StateCommitFieldChange],
+    ) -> tuple[list[StateCommitFieldChange], list[StateCommitFieldChange]]:
+        current_activity_changes = []
+        other_changes = []
+
+        for change in field_changes:
+            if change.field_path.startswith("current_activity."):
+                current_activity_changes.append(change)
+            else:
+                other_changes.append(change)
+
+        return other_changes, current_activity_changes
 
     @staticmethod
     def _node_id(ref: StateCommitEntityRef | None) -> str | None:
@@ -220,6 +235,15 @@ class StateCommitStore:
             return
 
         label = self._label_for_type(entity.type)
+        field_changes, current_activity_changes = self._split_current_activity_changes(field_changes)
+
+        if entity.type == "character" and current_activity_changes:
+            await self.change_character_current_activity(
+                entity_id=entity.id,
+                field_changes=current_activity_changes,
+                turn_id=turn_id,
+            )
+
         properties = self._safe_properties({
             change.field_path: change.new_value
             for change in field_changes
@@ -238,6 +262,45 @@ class StateCommitStore:
                 "entity_id": entity.id,
                 "turn_id": turn_id,
                 "properties": properties,
+            },
+        )
+
+    async def change_character_current_activity(self,
+                                                *,
+                                                entity_id: str,
+                                                field_changes: list[StateCommitFieldChange],
+                                                turn_id: str,
+                                                ):
+        result = await self._driver.execute_query(
+            """
+            MATCH (entity:Character {id: $entity_id})
+            RETURN entity.current_activity AS current_activity
+            LIMIT 1
+            """,
+            parameters_={"entity_id": entity_id},
+        )
+        record = result.records[0] if result.records else None
+        if not record:
+            return
+
+        current_activity = CurrentActivity.model_validate_json(record["current_activity"]).model_dump()
+        for change in field_changes:
+            field_name = change.field_path.removeprefix("current_activity.")
+            if field_name in current_activity and change.new_value is not None:
+                current_activity[field_name] = change.new_value
+
+        serialized_activity = CurrentActivity.model_validate(current_activity).model_dump_json()
+        await self._driver.execute_query(
+            """
+            MATCH (entity:Character {id: $entity_id})
+            MATCH (turn:Turn {id: $turn_id})
+            SET entity.current_activity = $current_activity
+            MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(entity)
+            """,
+            parameters_={
+                "entity_id": entity_id,
+                "turn_id": turn_id,
+                "current_activity": serialized_activity,
             },
         )
 

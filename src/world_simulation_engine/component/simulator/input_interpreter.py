@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import difflib
 import re
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from world_simulation_engine.misc.enums import ComponentType
+from world_simulation_engine.misc.enums import ActionType, ComponentType
 from world_simulation_engine.model import BackgroundCharacter, Character, Container, Equipment, InventoryEquipment, \
-    InventoryStack, Item, ItemStack, Landmark, Location, OOCCommand, Simulation, World, InputInterpretation
+    InventoryStack, Item, ItemStack, Landmark, Location, OOCCommand, Simulation, World, InputInterpretation, \
+    ProposedAction, UserActionSequenceItem
 
 from .simulator_component import SimulatorComponent
 
@@ -77,10 +80,93 @@ class InputInterpreterContext(BaseModel):
     user_input: str
 
 
+@dataclass(frozen=True)
+class InputMarkup:
+    speech: list[str]
+    internal_dialog: list[str]
+
+
 class InputInterpreter(SimulatorComponent):
     COMPONENT_TYPE = ComponentType.INPUT_INTERPRETER
 
     _OOC_MARKER_PATTERN = re.compile(r"\[/OOC:(.*?)\]", flags=re.DOTALL)
+    _SPEECH_SIMILARITY_THRESHOLD = 0.82
+
+    @staticmethod
+    def validate_markup(user_input: str) -> InputMarkup:
+        speeches = []
+        internal_dialog = []
+        mode: str | None = None
+        emphasis_open = False
+        buffer = []
+        index = 0
+
+        while index < len(user_input):
+            char = user_input[index]
+            next_two = user_input[index:index + 2]
+
+            if char == "\\":
+                if mode:
+                    buffer.append(char)
+                if index + 1 < len(user_input):
+                    if mode:
+                        buffer.append(user_input[index + 1])
+                    index += 2
+                    continue
+
+            if next_two == "**":
+                emphasis_open = not emphasis_open
+                if mode:
+                    buffer.append(next_two)
+                index += 2
+                continue
+
+            if char == '"':
+                if mode == "internal":
+                    raise ValueError("Internal dialog cannot contain speech quotes.")
+                if mode == "speech":
+                    speeches.append("".join(buffer))
+                    buffer = []
+                    mode = None
+                else:
+                    mode = "speech"
+                    buffer = []
+                index += 1
+                continue
+
+            if char == "*":
+                if mode == "speech":
+                    raise ValueError("Speech cannot contain internal-dialog markers.")
+                if mode == "internal":
+                    internal_dialog.append("".join(buffer))
+                    buffer = []
+                    mode = None
+                else:
+                    mode = "internal"
+                    buffer = []
+                index += 1
+                continue
+
+            if mode:
+                buffer.append(char)
+            index += 1
+
+        if mode == "speech":
+            raise ValueError('Speech quote is not closed with ".')
+        if mode == "internal":
+            raise ValueError("Internal dialog is not closed with *.")
+        if emphasis_open:
+            raise ValueError("Emphasis is not closed with **.")
+
+        if any(not speech.strip() for speech in speeches):
+            raise ValueError("Speech quotes cannot be empty.")
+        if any(not thought.strip() for thought in internal_dialog):
+            raise ValueError("Internal dialog markers cannot be empty.")
+
+        return InputMarkup(
+            speech=[speech.strip() for speech in speeches],
+            internal_dialog=[thought.strip() for thought in internal_dialog],
+        )
 
     @classmethod
     def _split_ooc_markers(cls, user_input: str) -> list[InputSegment]:
@@ -246,6 +332,7 @@ class InputInterpreter(SimulatorComponent):
                         character_id: str,
                         user_input: str,
                         ) -> InputInterpretation:
+        markup = self.validate_markup(user_input)
         segments = self._split_ooc_markers(user_input)
         has_in_world_text = any(segment.type == "in_world" for segment in segments)
 
@@ -273,13 +360,144 @@ class InputInterpreter(SimulatorComponent):
         )
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
-        return await llm.invoke_structured_with_repair(
+        interpretation = await llm.invoke_structured_with_repair(
             output_model=InputInterpretation,
             messages=prompt,
             data=context.model_dump(),
             repair_instruction=(
                 "Return a valid InputInterpretation. Preserve deterministic OOC "
-                "segments exactly and keep all items in source order."
+                "segments exactly and keep all items in source order. Any text inside double quotes must be copied "
+                "exactly into a speak action utterance."
             ),
             run_name="input_interpreter.interpret",
         )
+
+        self._ensure_no_other_character_control(
+            interpretation=interpretation,
+            context=context,
+        )
+        return self._ensure_quoted_speech_actions(
+            interpretation=interpretation,
+            markup=markup,
+        )
+
+    @classmethod
+    def _ensure_quoted_speech_actions(cls,
+                                      *,
+                                      interpretation: InputInterpretation,
+                                      markup: InputMarkup,
+                                      ) -> InputInterpretation:
+        if not markup.speech:
+            return interpretation
+
+        updated_items = list(interpretation.items)
+        action_items = [
+            item
+            for item in updated_items
+            if item.type == "action"
+        ]
+        changed = False
+        used_action_indices: set[int] = set()
+
+        for speech in markup.speech:
+            match_index = cls._matching_speech_action_index(
+                speech=speech,
+                action_items=action_items,
+                used_action_indices=used_action_indices,
+            )
+            if match_index is None:
+                updated_items.append(
+                    UserActionSequenceItem(
+                        action=ProposedAction(
+                            type=ActionType.SPEAK,
+                            label="speak_quoted_input",
+                            target_ids=[],
+                            utterance=speech,
+                            intended_duration_seconds=max(1, min(30, len(speech.split()) // 3 + 2)),
+                            interruptible=True,
+                        ),
+                        source_text=f'"{speech}"',
+                    )
+                )
+                changed = True
+                continue
+
+            used_action_indices.add(match_index)
+            item = action_items[match_index]
+            if item.action.utterance != speech:
+                item.action = item.action.model_copy(update={"utterance": speech})
+                changed = True
+
+        if not changed:
+            return interpretation
+
+        return interpretation.model_copy(
+            update={
+                "items": updated_items,
+                "parser_notes": [
+                    *interpretation.parser_notes,
+                    "Quoted speech was normalized into speak action utterance.",
+                ],
+            }
+        )
+
+    @classmethod
+    def _matching_speech_action_index(cls,
+                                      *,
+                                      speech: str,
+                                      action_items: list,
+                                      used_action_indices: set[int],
+                                      ) -> int | None:
+        empty_speech_index = None
+        for index, item in enumerate(action_items):
+            if index in used_action_indices or item.action.type != ActionType.SPEAK:
+                continue
+            utterance = (item.action.utterance or "").strip()
+            if not utterance:
+                if empty_speech_index is None:
+                    empty_speech_index = index
+                continue
+            if utterance == speech:
+                return index
+            if difflib.SequenceMatcher(None, utterance, speech).ratio() >= cls._SPEECH_SIMILARITY_THRESHOLD:
+                return index
+
+        return empty_speech_index
+
+    @staticmethod
+    def _ensure_no_other_character_control(
+            *,
+            interpretation: InputInterpretation,
+            context: InputInterpreterContext,
+    ):
+        other_names = []
+        for entry in context.perceived_characters:
+            name = entry.character.name.strip()
+            if name:
+                other_names.append(name)
+                other_names.append(name.split()[0])
+
+        action_verbs = (
+            "answers",
+            "asks",
+            "decides",
+            "does",
+            "goes",
+            "moves",
+            "says",
+            "speaks",
+            "takes",
+            "tells",
+            "walks",
+        )
+        for item in interpretation.items:
+            if item.type != "action":
+                continue
+            source = item.source_text.strip().lower()
+            for name in other_names:
+                normalized_name = name.lower()
+                if any(source.startswith(f"{normalized_name} {verb}") for verb in action_verbs):
+                    raise ValueError(
+                        "User input may only describe actions attempted by the user character. "
+                        f"Other character action was found in: {item.source_text}"
+                    )

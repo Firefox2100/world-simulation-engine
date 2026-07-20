@@ -65,6 +65,24 @@ export async function updateLlmConfig(configId, config) {
     });
 }
 
+export async function setLlmConfigConnection(configId, connectionId) {
+    return apiRequest(`/config/llm/${configId}/connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            connection_id: connectionId,
+        }),
+    });
+}
+
+export async function deleteLlmConfigConnection(configId) {
+    await apiRequest(`/config/llm/${configId}/connection`, {
+        method: "DELETE",
+    });
+}
+
 export async function deleteLlmConfig(configId) {
     await apiRequest(`/config/llm/${configId}`, {
         method: "DELETE",
@@ -92,6 +110,24 @@ export async function updateEmbeddingConfig(configId, config) {
             "Content-Type": "application/json",
         },
         body: JSON.stringify(config),
+    });
+}
+
+export async function setEmbeddingConfigConnection(configId, connectionId) {
+    return apiRequest(`/config/embeddings/${configId}/connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            connection_id: connectionId,
+        }),
+    });
+}
+
+export async function deleteEmbeddingConfigConnection(configId) {
+    await apiRequest(`/config/embeddings/${configId}/connection`, {
+        method: "DELETE",
     });
 }
 

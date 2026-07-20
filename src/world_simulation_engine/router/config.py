@@ -214,22 +214,22 @@ async def delete_connection(connection_id: str, db: db_dep):
         )
 
 
-@config_router.get("/config/llm", response_model=list[ChatModelConfigUnion])
+@config_router.get("/config/llm", response_model=list[ChatModelConfigUnion], response_model_exclude_none=True)
 async def list_chat_configs(db: db_dep):
     return await db.config.list_chats()
 
 
-@config_router.post("/config/llm/ollama", response_model=OllamaChatModelConfig)
+@config_router.post("/config/llm/ollama", response_model=OllamaChatModelConfig, response_model_exclude_none=True)
 async def create_ollama_chat_config(chat_config: OllamaChatModelConfig, db: db_dep):
     return await db.config.create_chat(chat_config)
 
 
-@config_router.post("/config/llm/openai", response_model=OpenAiChatModelConfig)
+@config_router.post("/config/llm/openai", response_model=OpenAiChatModelConfig, response_model_exclude_none=True)
 async def create_openai_chat_config(chat_config: OpenAiChatModelConfig, db: db_dep):
     return await db.config.create_chat(chat_config)
 
 
-@config_router.get("/config/llm/{config_id}", response_model=ChatModelConfigUnion)
+@config_router.get("/config/llm/{config_id}", response_model=ChatModelConfigUnion, response_model_exclude_none=True)
 async def get_chat_config(config_id: str, db: db_dep):
     chat_config = await db.config.get_chat(config_id)
     if not chat_config:
@@ -241,7 +241,7 @@ async def get_chat_config(config_id: str, db: db_dep):
     return chat_config
 
 
-@config_router.patch("/config/llm/{config_id}", response_model=ChatModelConfigUnion)
+@config_router.patch("/config/llm/{config_id}", response_model=ChatModelConfigUnion, response_model_exclude_none=True)
 async def update_chat_config(config_id: str, chat_update: ChatConfigUpdate, db: db_dep):
     chat_config = await db.config.update_chat(
         config_id,
@@ -316,22 +316,26 @@ async def delete_chat_config_connection(config_id: str, db: db_dep):
         )
 
 
-@config_router.get("/config/embeddings", response_model=list[EmbedModelConfigUnion])
+@config_router.get("/config/embeddings", response_model=list[EmbedModelConfigUnion], response_model_exclude_none=True)
 async def list_embed_configs(db: db_dep):
     return await db.config.list_embeds()
 
 
-@config_router.post("/config/embeddings/ollama", response_model=OllamaEmbedModelConfig)
+@config_router.post("/config/embeddings/ollama", response_model=OllamaEmbedModelConfig, response_model_exclude_none=True)
 async def create_ollama_embed_config(embed_config: OllamaEmbedModelConfig, db: db_dep):
     return await db.config.create_embed(embed_config)
 
 
-@config_router.post("/config/embeddings/openai", response_model=OpenAiEmbedModelConfig)
+@config_router.post("/config/embeddings/openai", response_model=OpenAiEmbedModelConfig, response_model_exclude_none=True)
 async def create_openai_embed_config(embed_config: OpenAiEmbedModelConfig, db: db_dep):
     return await db.config.create_embed(embed_config)
 
 
-@config_router.get("/config/embeddings/{config_id}", response_model=EmbedModelConfigUnion)
+@config_router.get(
+    "/config/embeddings/{config_id}",
+    response_model=EmbedModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def get_embed_config(config_id: str, db: db_dep):
     embed_config = await db.config.get_embed(config_id)
     if not embed_config:
@@ -343,7 +347,11 @@ async def get_embed_config(config_id: str, db: db_dep):
     return embed_config
 
 
-@config_router.patch("/config/embeddings/{config_id}", response_model=EmbedModelConfigUnion)
+@config_router.patch(
+    "/config/embeddings/{config_id}",
+    response_model=EmbedModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def update_embed_config(config_id: str, embed_update: EmbedConfigUpdate, db: db_dep):
     embed_config = await db.config.update_embed(
         config_id,
@@ -418,7 +426,11 @@ async def delete_embed_config_connection(config_id: str, db: db_dep):
         )
 
 
-@config_router.put("/simulations/{simulation_id}/llm-connection", response_model=ChatModelConfigUnion)
+@config_router.put(
+    "/simulations/{simulation_id}/llm-connection",
+    response_model=ChatModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def set_simulation_llm_connection(
         simulation_id: str,
         config_update: SimulationModelConfigUpdate,
@@ -442,13 +454,21 @@ async def set_simulation_llm_connection(
     )
 
 
-@config_router.get("/simulations/{simulation_id}/llm-connections", response_model=list[ComponentChatConfig])
+@config_router.get(
+    "/simulations/{simulation_id}/llm-connections",
+    response_model=list[ComponentChatConfig],
+    response_model_exclude_none=True,
+)
 async def list_simulation_llm_connections(simulation_id: str, db: db_dep):
     await _validate_simulation(simulation_id, db)
     return await _list_chat_assignments(simulation_id, db)
 
 
-@config_router.put("/simulations/{simulation_id}/llm-connections", response_model=list[ComponentChatConfig])
+@config_router.put(
+    "/simulations/{simulation_id}/llm-connections",
+    response_model=list[ComponentChatConfig],
+    response_model_exclude_none=True,
+)
 async def set_simulation_llm_connections(
         simulation_id: str,
         config_update: ComponentModelConfigBatchUpdate,
@@ -459,7 +479,11 @@ async def set_simulation_llm_connections(
     return await _list_chat_assignments(simulation_id, db)
 
 
-@config_router.get("/simulations/{simulation_id}/llm-connection", response_model=ChatModelConfigUnion)
+@config_router.get(
+    "/simulations/{simulation_id}/llm-connection",
+    response_model=ChatModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def get_simulation_llm_connection(
         simulation_id: str,
         db: db_dep,
@@ -501,7 +525,11 @@ async def delete_simulation_llm_connection(
         )
 
 
-@config_router.put("/simulations/{simulation_id}/embedding-connection", response_model=EmbedModelConfigUnion)
+@config_router.put(
+    "/simulations/{simulation_id}/embedding-connection",
+    response_model=EmbedModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def set_simulation_embedding_connection(
         simulation_id: str,
         config_update: SimulationModelConfigUpdate,
@@ -525,13 +553,21 @@ async def set_simulation_embedding_connection(
     )
 
 
-@config_router.get("/simulations/{simulation_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+@config_router.get(
+    "/simulations/{simulation_id}/embedding-connections",
+    response_model=list[ComponentEmbedConfig],
+    response_model_exclude_none=True,
+)
 async def list_simulation_embedding_connections(simulation_id: str, db: db_dep):
     await _validate_simulation(simulation_id, db)
     return await _list_embed_assignments(simulation_id, db)
 
 
-@config_router.put("/simulations/{simulation_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+@config_router.put(
+    "/simulations/{simulation_id}/embedding-connections",
+    response_model=list[ComponentEmbedConfig],
+    response_model_exclude_none=True,
+)
 async def set_simulation_embedding_connections(
         simulation_id: str,
         config_update: ComponentModelConfigBatchUpdate,
@@ -542,7 +578,11 @@ async def set_simulation_embedding_connections(
     return await _list_embed_assignments(simulation_id, db)
 
 
-@config_router.get("/simulations/{simulation_id}/embedding-connection", response_model=EmbedModelConfigUnion)
+@config_router.get(
+    "/simulations/{simulation_id}/embedding-connection",
+    response_model=EmbedModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def get_simulation_embedding_connection(
         simulation_id: str,
         db: db_dep,
@@ -584,7 +624,11 @@ async def delete_simulation_embedding_connection(
         )
 
 
-@config_router.put("/worlds/{world_id}/llm-connection", response_model=ChatModelConfigUnion)
+@config_router.put(
+    "/worlds/{world_id}/llm-connection",
+    response_model=ChatModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def set_world_llm_connection(
         world_id: str,
         config_update: SimulationModelConfigUpdate,
@@ -608,13 +652,21 @@ async def set_world_llm_connection(
     )
 
 
-@config_router.get("/worlds/{world_id}/llm-connections", response_model=list[ComponentChatConfig])
+@config_router.get(
+    "/worlds/{world_id}/llm-connections",
+    response_model=list[ComponentChatConfig],
+    response_model_exclude_none=True,
+)
 async def list_world_llm_connections(world_id: str, db: db_dep):
     await _validate_world(world_id, db)
     return await _list_chat_assignments(world_id, db)
 
 
-@config_router.put("/worlds/{world_id}/llm-connections", response_model=list[ComponentChatConfig])
+@config_router.put(
+    "/worlds/{world_id}/llm-connections",
+    response_model=list[ComponentChatConfig],
+    response_model_exclude_none=True,
+)
 async def set_world_llm_connections(
         world_id: str,
         config_update: ComponentModelConfigBatchUpdate,
@@ -625,7 +677,11 @@ async def set_world_llm_connections(
     return await _list_chat_assignments(world_id, db)
 
 
-@config_router.get("/worlds/{world_id}/llm-connection", response_model=ChatModelConfigUnion)
+@config_router.get(
+    "/worlds/{world_id}/llm-connection",
+    response_model=ChatModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def get_world_llm_connection(
         world_id: str,
         db: db_dep,
@@ -667,7 +723,11 @@ async def delete_world_llm_connection(
         )
 
 
-@config_router.put("/worlds/{world_id}/embedding-connection", response_model=EmbedModelConfigUnion)
+@config_router.put(
+    "/worlds/{world_id}/embedding-connection",
+    response_model=EmbedModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def set_world_embedding_connection(
         world_id: str,
         config_update: SimulationModelConfigUpdate,
@@ -691,13 +751,21 @@ async def set_world_embedding_connection(
     )
 
 
-@config_router.get("/worlds/{world_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+@config_router.get(
+    "/worlds/{world_id}/embedding-connections",
+    response_model=list[ComponentEmbedConfig],
+    response_model_exclude_none=True,
+)
 async def list_world_embedding_connections(world_id: str, db: db_dep):
     await _validate_world(world_id, db)
     return await _list_embed_assignments(world_id, db)
 
 
-@config_router.put("/worlds/{world_id}/embedding-connections", response_model=list[ComponentEmbedConfig])
+@config_router.put(
+    "/worlds/{world_id}/embedding-connections",
+    response_model=list[ComponentEmbedConfig],
+    response_model_exclude_none=True,
+)
 async def set_world_embedding_connections(
         world_id: str,
         config_update: ComponentModelConfigBatchUpdate,
@@ -708,7 +776,11 @@ async def set_world_embedding_connections(
     return await _list_embed_assignments(world_id, db)
 
 
-@config_router.get("/worlds/{world_id}/embedding-connection", response_model=EmbedModelConfigUnion)
+@config_router.get(
+    "/worlds/{world_id}/embedding-connection",
+    response_model=EmbedModelConfigUnion,
+    response_model_exclude_none=True,
+)
 async def get_world_embedding_connection(
         world_id: str,
         db: db_dep,

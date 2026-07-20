@@ -5,6 +5,8 @@ from .memory_summary import EventInvolvementProposal, MemoryCharacterLinkProposa
     MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, ProposedExistingMemoryLink, \
     ProposedIntentCreation, ProposedIntentUpdate, ProposedMemoryCreation, ProposedNoAbstractChange, \
     ProposedTurnEventLink
+from .narration import NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, \
+    NarrationProposal, SpeechAnchor, SpeechBlock
 from .perceived_entity import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, PerceivedItem, \
     PerceivedEquipment, PerceivedLandmark, PerceivedContainer
 from .scene_coordination import AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, \

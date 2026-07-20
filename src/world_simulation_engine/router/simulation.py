@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.misc.enums import ComponentType, GraphStateSnapshotType, SimulationGenerationRequestType
 from world_simulation_engine.model import GraphStateSnapshot, Simulation
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulatorState
+from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 from .utils import db_dep, simulator_dep
 
 
@@ -165,6 +166,18 @@ async def start_simulation_input(
             detail=f"World for simulation {simulation_id} not found",
         )
 
+    if (
+            simulation_input.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION
+            and simulation_input.user_input is not None
+    ):
+        try:
+            InputInterpreter.validate_markup(simulation_input.user_input)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
     try:
         thread_id = await simulator.start_generation(
             WorldSimulatorState(
@@ -179,6 +192,11 @@ async def start_simulation_input(
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
 
@@ -225,6 +243,13 @@ async def stream_simulation_run(
                     data=chunk,
                 )
                 event_index += 1
+            yield _sse_event(
+                event="done",
+                data={
+                    "code": "done",
+                    "thread_id": thread_id,
+                },
+            )
         except KeyError:
             yield _sse_event(
                 event="status",
@@ -330,6 +355,12 @@ async def create_simulation(world_id: str, db: db_dep):
         location_pairs=location_pairs,
         landmark_pairs=landmark_pairs,
     )
+    _, stack_pairs = await db.item.copy_stacks(
+        world_id,
+        created_simulation.id,
+        location_pairs=location_pairs,
+        entity_pairs=character_pairs + background_character_pairs,
+    )
     _, equipment_pairs = await db.equipment.copy_equipment(
         world_id,
         created_simulation.id,
@@ -341,6 +372,7 @@ async def create_simulation(world_id: str, db: db_dep):
         created_simulation.id,
         location_pairs=location_pairs,
         entity_pairs=character_pairs + background_character_pairs,
+        stack_pairs=stack_pairs,
         equipment_pairs=equipment_pairs,
     )
     _, event_pairs = await db.event.copy_events(

@@ -61,9 +61,11 @@ async def test_evaluate_narrator_outputs_text(
         user_input=case["user_input"],
     )
 
-    assert narration.strip()
-    assert "accepted_actions" not in narration
-    assert "coordination_result" not in narration
+    rendered_narration = Narrator.render_text(narration)
+    assert narration.blocks
+    assert rendered_narration.strip()
+    assert "accepted_actions" not in rendered_narration
+    assert "coordination_result" not in rendered_narration
 
     _write_narration_result(
         output_path=_synthetic_output_path(),
@@ -75,7 +77,8 @@ async def test_evaluate_narrator_outputs_text(
             "source": case["source"],
             "user_input": case["user_input"],
             "coordination": coordination.model_dump(mode="json"),
-            "narration": narration,
+            "narration": rendered_narration,
+            "narration_blocks": narration.model_dump(mode="json")["blocks"],
         },
     )
 
@@ -120,9 +123,11 @@ async def test_evaluate_input_to_narrator_outputs_text(
         user_input=case["user_input"],
     )
 
-    assert narration.strip()
-    assert "accepted_actions" not in narration
-    assert "coordination_result" not in narration
+    rendered_narration = Narrator.render_text(narration)
+    assert narration.blocks
+    assert rendered_narration.strip()
+    assert "accepted_actions" not in rendered_narration
+    assert "coordination_result" not in rendered_narration
 
     _write_narration_result(
         output_path=_pipeline_output_path(),
@@ -158,7 +163,8 @@ async def test_evaluate_input_to_narrator_outputs_text(
                 for plan in pipeline["character_action_plans"]
             ],
             "character_coordination": pipeline["character_coordination"].model_dump(mode="json"),
-            "narration": narration,
+            "narration": rendered_narration,
+            "narration_blocks": narration.model_dump(mode="json")["blocks"],
         },
     )
 

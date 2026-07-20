@@ -5,6 +5,8 @@ from .inter_state import ActionValidation, ActionValidationResult, PerceivedEnti
     PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
     ProposedAction, ActionProposal, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem, \
     AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, ReactionHistoryEntry, \
+    NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, NarrationProposal, \
+    SpeechAnchor, SpeechBlock, \
     SceneActionReference, SceneCoordinationProblem, SceneCoordinationResult, PhysicalEntityType, \
     ProposedEntityCreation, ProposedEntityPromotion, ProposedEntityStateChange, ProposedNoPhysicalChange, \
     ProposedRelationshipChange, RelationshipType, StateCommitEntityRef, StateCommitFieldChange, \

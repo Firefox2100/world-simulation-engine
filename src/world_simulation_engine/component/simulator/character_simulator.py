@@ -4,11 +4,35 @@ from typing import Optional
 from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType, MemoryStance, MemorySupportType, Salience
-from world_simulation_engine.model import Intent, ActionProposal, Character, CharacterActionPlan, Location, \
-    InventoryStack, InventoryEquipment, ReactionHistoryEntry, SceneCoordinationResult, Simulation, World, MemoryAtom, \
-    PerceivedBackgroundCharacter, PerceivedCharacter, PerceivedContainer, PerceivedEquipment, PerceivedItem, \
-    PerceivedLandmark
+from world_simulation_engine.misc.enums import (
+    ActionType,
+    ComponentType,
+    MemoryStance,
+    MemorySupportType,
+    Salience,
+    SupportedLanguage,
+)
+from world_simulation_engine.model import (
+    Intent,
+    ActionProposal,
+    Character,
+    CharacterActionPlan,
+    Location,
+    InventoryStack,
+    InventoryEquipment,
+    ReactionHistoryEntry,
+    SceneCoordinationResult,
+    Simulation,
+    World,
+    MemoryAtom,
+    PerceivedBackgroundCharacter,
+    PerceivedCharacter,
+    PerceivedContainer,
+    PerceivedEquipment,
+    PerceivedItem,
+    ProposedAction,
+    PerceivedLandmark,
+)
 from world_simulation_engine.service import DatabaseService, EmbedService
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 from .simulator_component import SimulatorComponent
@@ -106,6 +130,14 @@ class CharacterReactionContext(BaseModel):
         default_factory=list,
         description="Previously attempted reactions in this scene."
     )
+
+
+class SpeechRepairContext(BaseModel):
+    perspective: CharacterPerspective
+    proposal: ActionProposal
+    action: ProposedAction
+    reasoning_summary: str
+    memory_updates_suggested: list[str] = Field(default_factory=list)
 
 
 class CharacterSimulator(SimulatorComponent):
@@ -389,11 +421,166 @@ class CharacterSimulator(SimulatorComponent):
             output_model=ActionProposal,
             messages=prompt,
             data=perspective.model_dump(),
-            repair_instruction="",
+            repair_instruction=(
+                "Return a valid ActionProposal. If any action type is speak, "
+                "that action utterance must be the exact line the actor says and must not be null. "
+                "utterance may be null only for non-speech actions where the character acts without speaking."
+            ),
             run_name="character.propose_actions",
         )
 
-        return result
+        return await self._ensure_speak_actions_have_utterance(
+            proposal=result,
+            perspective=perspective,
+            language=world.language,
+            llm=llm,
+            run_name="character.repair_proposed_speech",
+        )
+
+    async def _repair_missing_speech(
+            self,
+            *,
+            proposal: ActionProposal,
+            perspective: CharacterPerspective,
+            language: SupportedLanguage,
+            action: ProposedAction,
+            llm,
+            run_name: str,
+    ) -> str:
+        prompt = self._prepare_prompt(
+            language=language,
+            prompt_name="speech_repair",
+        )
+        try:
+            raw_utterance = await llm.invoke_text(
+                messages=prompt,
+                data=SpeechRepairContext(
+                    perspective=perspective,
+                    proposal=proposal,
+                    action=action,
+                    reasoning_summary=proposal.reasoning_summary,
+                    memory_updates_suggested=proposal.memory_updates_suggested,
+                ).model_dump(),
+                run_name=run_name,
+            )
+            utterance = self._sanitize_repaired_utterance(raw_utterance)
+            if utterance:
+                return utterance
+        except Exception:
+            pass
+
+        return self._fallback_speech_utterance(
+            proposal=proposal,
+            action=action,
+            actor_name=perspective.actor.name,
+        )
+
+    @staticmethod
+    def _sanitize_repaired_utterance(value: str) -> str:
+        utterance = value.strip()
+        for prefix in ("utterance:", "speech:", "line:", "dialogue:", "dialog:"):
+            if utterance.lower().startswith(prefix):
+                utterance = utterance[len(prefix):].strip()
+
+        if utterance.startswith("{") or utterance.startswith("["):
+            return ""
+
+        if (
+                len(utterance) >= 2
+                and utterance[0] == utterance[-1]
+                and utterance[0] in {'"', "'"}
+        ):
+            utterance = utterance[1:-1].strip()
+
+        lines = [
+            line.strip()
+            for line in utterance.splitlines()
+            if line.strip()
+        ]
+        if len(lines) == 1:
+            utterance = lines[0]
+
+        return utterance
+
+    @staticmethod
+    def _fallback_speech_utterance(
+            *,
+            proposal: ActionProposal,
+            action: ProposedAction,
+            actor_name: str | None = None,
+    ) -> str:
+        candidates = [
+            *proposal.memory_updates_suggested,
+            *action.expected_effects,
+            proposal.reasoning_summary,
+            action.label.replace("_", " "),
+        ]
+        for candidate in candidates:
+            cleaned = " ".join(str(candidate).strip().split())
+            if not cleaned:
+                continue
+            if actor_name:
+                cleaned = cleaned.removeprefix(f"{actor_name} ")
+            for prefix in ("confirms ", "answers ", "states ", "says ", "publicly clarifies "):
+                cleaned = cleaned.removeprefix(prefix).removeprefix(prefix.capitalize())
+            if not cleaned.endswith((".", "!", "?")):
+                cleaned = f"{cleaned}."
+            return cleaned
+
+        return "I have something to say."
+
+    async def _ensure_speak_actions_have_utterance(
+            self,
+            *,
+            proposal: ActionProposal,
+            perspective: CharacterPerspective,
+            language: SupportedLanguage,
+            llm,
+            run_name: str,
+    ) -> ActionProposal:
+        async def repair_sequence(sequence: list[ProposedAction], sequence_name: str) -> tuple[list[ProposedAction], bool]:
+            repaired = []
+            changed = False
+            for action_index, action in enumerate(sequence):
+                if action.type == ActionType.SPEAK and not (action.utterance or "").strip():
+                    changed = True
+                    repaired.append(
+                        action.model_copy(
+                            update={
+                                "utterance": await self._repair_missing_speech(
+                                    proposal=proposal,
+                                    perspective=perspective,
+                                    language=language,
+                                    action=action,
+                                    llm=llm,
+                                    run_name=f"{run_name}_{sequence_name}_{action_index}",
+                                )
+                            }
+                        )
+                    )
+                else:
+                    repaired.append(action)
+
+            return repaired, changed
+
+        actions, actions_changed = await repair_sequence(proposal.actions, "primary")
+
+        backup_proposals = []
+        backups_changed = False
+        for proposal_index, backup in enumerate(proposal.backup_proposals):
+            repaired_backup, backup_changed = await repair_sequence(backup, f"backup_{proposal_index}")
+            backup_proposals.append(repaired_backup)
+            backups_changed = backups_changed or backup_changed
+
+        if not actions_changed and not backups_changed:
+            return proposal
+
+        return proposal.model_copy(
+            update={
+                "actions": actions,
+                "backup_proposals": backup_proposals,
+            }
+        )
 
     async def propose_reaction(self,
                                world_id: str,
@@ -440,13 +627,23 @@ class CharacterSimulator(SimulatorComponent):
             simulation_id=simulation_id,
         )
 
-        return await llm.invoke_structured_with_repair(
+        result = await llm.invoke_structured_with_repair(
             output_model=ActionProposal,
             messages=prompt,
             data=context.model_dump(),
             repair_instruction=(
                 "Return a valid ActionProposal for the reacting character only. "
-                "Do not narrate, coordinate, or decide final outcomes."
+                "Do not narrate, coordinate, or decide final outcomes. If any action type is speak, "
+                "that action utterance must be the exact line the actor says and must not be null. "
+                "utterance may be null only for non-speech actions where the character acts without speaking."
             ),
             run_name="character.propose_reaction",
+        )
+
+        return await self._ensure_speak_actions_have_utterance(
+            proposal=result,
+            perspective=perspective,
+            language=world.language,
+            llm=llm,
+            run_name="character.repair_reaction_speech",
         )

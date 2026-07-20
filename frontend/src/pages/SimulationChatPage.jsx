@@ -34,6 +34,7 @@ import factionPlaceholderImage from "@/assets/placeholder/banner.svg";
 
 const simulationLimit = 24;
 const recordLimit = 50;
+const emptyList = [];
 
 function useOptionalImage(imageUrl, fallbackSrc) {
     const [loadedImage, setLoadedImage] = useState({ sourceUrl: null, objectUrl: null });
@@ -86,6 +87,177 @@ function sortRecords(records) {
 
 function isUserRecord(record) {
     return record.type === "user_input";
+}
+
+function narrationBlocksFromValue(value) {
+    if (Array.isArray(value?.blocks)) {
+        return value.blocks;
+    }
+
+    if (Array.isArray(value)) {
+        return value;
+    }
+
+    return null;
+}
+
+function narrationTextFromBlocks(blocks) {
+    return (blocks ?? [])
+        .map((block) => {
+            if (block.type === "speech") {
+                const speaker = block.character_name || block.character_id || "";
+                return speaker ? `${speaker}: "${block.text}"` : block.text;
+            }
+
+            return block.text;
+        })
+        .filter(Boolean)
+        .join("\n\n");
+}
+
+function validateInputMarkup(value) {
+    let mode = null;
+    let emphasisOpen = false;
+    let buffer = "";
+
+    for (let index = 0; index < value.length; index += 1) {
+        const char = value[index];
+        const nextTwo = value.slice(index, index + 2);
+
+        if (char === "\\") {
+            if (mode) {
+                buffer += char;
+            }
+            if (index + 1 < value.length) {
+                if (mode) {
+                    buffer += value[index + 1];
+                }
+                index += 1;
+            }
+            continue;
+        }
+
+        if (nextTwo === "**") {
+            emphasisOpen = !emphasisOpen;
+            if (mode) {
+                buffer += nextTwo;
+            }
+            index += 1;
+            continue;
+        }
+
+        if (char === '"') {
+            if (mode === "internal") {
+                return "Internal dialog cannot contain speech quotes.";
+            }
+            if (mode === "speech") {
+                if (buffer.trim().length === 0) {
+                    return "Speech quotes cannot be empty.";
+                }
+                mode = null;
+                buffer = "";
+            } else {
+                mode = "speech";
+                buffer = "";
+            }
+            continue;
+        }
+
+        if (char === "*") {
+            if (mode === "speech") {
+                return "Speech cannot contain internal-dialog markers.";
+            }
+            if (mode === "internal") {
+                if (buffer.trim().length === 0) {
+                    return "Internal dialog markers cannot be empty.";
+                }
+                mode = null;
+                buffer = "";
+            } else {
+                mode = "internal";
+                buffer = "";
+            }
+            continue;
+        }
+
+        if (mode) {
+            buffer += char;
+        }
+    }
+
+    if (mode === "speech") {
+        return 'Speech quote is not closed with ".';
+    }
+    if (mode === "internal") {
+        return "Internal dialog is not closed with *.";
+    }
+    if (emphasisOpen) {
+        return "Emphasis is not closed with **.";
+    }
+
+    return null;
+}
+
+function formatUserText(text) {
+    const parts = [];
+    let mode = null;
+    let buffer = "";
+
+    function pushBuffer(kind) {
+        if (!buffer) {
+            return;
+        }
+        parts.push({ kind, text: buffer });
+        buffer = "";
+    }
+
+    for (let index = 0; index < text.length; index += 1) {
+        const char = text[index];
+        const nextTwo = text.slice(index, index + 2);
+
+        if (nextTwo === "**" && mode !== "speech" && mode !== "internal") {
+            pushBuffer("text");
+            mode = mode === "emphasis" ? null : "emphasis";
+            index += 1;
+            continue;
+        }
+
+        if (char === '"' && mode !== "internal") {
+            pushBuffer(mode || "text");
+            mode = mode === "speech" ? null : "speech";
+            continue;
+        }
+
+        if (char === "*" && mode !== "speech" && text[index + 1] !== "*") {
+            pushBuffer(mode || "text");
+            mode = mode === "internal" ? null : "internal";
+            continue;
+        }
+
+        buffer += char;
+    }
+
+    pushBuffer(mode || "text");
+    return parts;
+}
+
+function FormattedUserText({ text }) {
+    return (
+        <p>
+            {formatUserText(text).map((part, index) => {
+                if (part.kind === "speech") {
+                    return <q key={`${part.kind}-${index}`}>{part.text}</q>;
+                }
+                if (part.kind === "internal") {
+                    return <em key={`${part.kind}-${index}`}>{part.text}</em>;
+                }
+                if (part.kind === "emphasis") {
+                    return <strong key={`${part.kind}-${index}`}>{part.text}</strong>;
+                }
+                return <span key={`${part.kind}-${index}`}>{part.text}</span>;
+            })}
+        </p>
+    );
 }
 
 function stageFromStateChunk(chunk) {
@@ -162,10 +334,81 @@ function SimulationConversationItem({ simulation, preview }) {
     );
 }
 
-function ChatRecord({ record, simulation }) {
+function CharacterAvatar({ simulationId, character, label }) {
+    const imageSrc = useOptionalImage(
+        simulationId && character?.id
+            ? getSimulationCharacterImageUrl({ simulationId, characterId: character.id })
+            : null,
+        characterPlaceholderImage,
+    );
+
+    return (
+        <img
+            src={imageSrc}
+            alt={label ?? ""}
+            className="chat-avatar"
+        />
+    );
+}
+
+function NarrationBlocks({ blocks, simulationId, charactersById }) {
+    return (
+        <>
+            {blocks.map((block, index) => {
+                if (block.type === "speech") {
+                    const character = charactersById[String(block.character_id)];
+                    const authorName = block.character_name || character?.name || block.character_id;
+
+                    return (
+                        <article
+                            key={`${block.type}-${block.character_id}-${index}`}
+                            className="chat-message character"
+                        >
+                            <CharacterAvatar
+                                simulationId={simulationId}
+                                character={character}
+                                label={authorName}
+                            />
+                            <div className="chat-message-content">
+                                <div className="chat-message-author">{authorName}</div>
+                                <div className="chat-bubble character-speech">
+                                    <p>{block.text}</p>
+                                </div>
+                            </div>
+                        </article>
+                    );
+                }
+
+                return (
+                    <article
+                        key={`${block.type}-${index}`}
+                        className="chat-message narration-block"
+                    >
+                        <div className="chat-narration-card">
+                            <p>{block.text}</p>
+                        </div>
+                    </article>
+                );
+            })}
+        </>
+    );
+}
+
+function ChatRecord({ record, simulation, charactersById }) {
     const { t } = useTranslation();
     const userRecord = isUserRecord(record);
     const authorName = userRecord ? t("simulationChat.userName") : simulation?.name;
+    const blocks = !userRecord ? narrationBlocksFromValue(record.narration_blocks) : null;
+
+    if (blocks?.length > 0) {
+        return (
+            <NarrationBlocks
+                blocks={blocks}
+                simulationId={simulation?.id}
+                charactersById={charactersById}
+            />
+        );
+    }
 
     return (
         <article className={`chat-message${userRecord ? " user" : " simulation"}`}>
@@ -173,23 +416,16 @@ function ChatRecord({ record, simulation }) {
             <div className="chat-message-content">
                 <div className="chat-message-author">{authorName}</div>
                 <div className="chat-bubble">
-                    <p>{record.narration}</p>
+                    {userRecord ? <FormattedUserText text={record.narration} /> : <p>{record.narration}</p>}
                 </div>
             </div>
         </article>
     );
 }
 
-function TypingIndicator({ stageName }) {
-    const { t } = useTranslation();
-
+function TypingIndicator() {
     return (
         <span className="typing-state">
-            {stageName ? (
-                <span className="typing-stage">
-                    {t(`worldCreate.newEditor.components.${stageName}`, { defaultValue: stageName })}
-                </span>
-            ) : null}
             <span className="typing-indicator" aria-label="Typing">
                 <span />
                 <span />
@@ -199,9 +435,29 @@ function TypingIndicator({ stageName }) {
     );
 }
 
-function StreamingChatRecord({ message, error, active, stageName, simulation }) {
+function StreamingChatRecord({ message, blocks = [], error, active, stageName, simulation, charactersById }) {
     const { t } = useTranslation();
-    const hasMessage = message.length > 0;
+    const hasBlocks = blocks.length > 0;
+    const hasMessage = message.length > 0 || hasBlocks;
+    const stageLabel = stageName
+        ? t(`worldCreate.newEditor.components.${stageName}`, { defaultValue: stageName })
+        : null;
+
+    if (hasBlocks) {
+        return (
+            <>
+                <NarrationBlocks
+                    blocks={blocks}
+                    simulationId={simulation?.id}
+                    charactersById={charactersById}
+                />
+                {active && stageLabel ? (
+                    <div className="chat-stage-line streaming-stage-line">{stageLabel}</div>
+                ) : null}
+                {!active && error ? <p className="chat-stream-error">{error}</p> : null}
+            </>
+        );
+    }
 
     return (
         <article className="chat-message simulation">
@@ -211,9 +467,12 @@ function StreamingChatRecord({ message, error, active, stageName, simulation }) 
                     {simulation?.name ?? t("simulationChat.selectedFallback")}
                 </div>
                 <div className="chat-bubble">
-                    {hasMessage ? <p>{message}</p> : active ? <TypingIndicator stageName={stageName} /> : null}
+                    {hasMessage ? <p>{message}</p> : active ? <TypingIndicator /> : null}
                     {!active && error ? <p className="chat-stream-error">{error}</p> : null}
                 </div>
+                {active && stageLabel ? (
+                    <div className="chat-stage-line">{stageLabel}</div>
+                ) : null}
             </div>
         </article>
     );
@@ -1177,6 +1436,7 @@ export function SimulationChatPage() {
     const eventSourceRef = useRef(null);
     const composerInputRef = useRef(null);
     const streamErrorRef = useRef(null);
+    const streamReceivedNarrationRef = useRef(false);
     const [simulations, setSimulations] = useState([]);
     const [simulationDetails, setSimulationDetails] = useState({});
     const [characterCache, setCharacterCache] = useState({});
@@ -1205,7 +1465,11 @@ export function SimulationChatPage() {
         [simulationId, simulations],
     );
     const selectedSimulation = simulationDetails[simulationId] ?? listedSimulation;
-    const selectedCharacters = characterCache[simulationId] ?? [];
+    const selectedCharacters = characterCache[simulationId] ?? emptyList;
+    const selectedCharactersById = useMemo(
+        () => Object.fromEntries(selectedCharacters.map((character) => [String(character.id), character])),
+        [selectedCharacters],
+    );
     const selectedLocations = locationCache[simulationId] ?? [];
     const selectedFactions = factionCache[simulationId] ?? [];
     const selectedWorldEntries = worldEntryCache[simulationId] ?? [];
@@ -1215,6 +1479,11 @@ export function SimulationChatPage() {
     const selectedInventory = selectedCharacterId
         ? inventoryCache[`${simulationId}:${selectedCharacterId}`]
         : null;
+    const inputFormatError = useMemo(
+        () => (input.trim().length > 0 ? validateInputMarkup(input) : null),
+        [input],
+    );
+    const sendDisabled = sending || streamingRecord?.active || Boolean(inputFormatError);
 
     async function refreshSimulationDetails(id) {
         try {
@@ -1447,7 +1716,14 @@ export function SimulationChatPage() {
 
     useEffect(() => {
         recordsEndRef.current?.scrollIntoView({ block: "end" });
-    }, [records, streamingRecord?.message, streamingRecord?.error, streamingRecord?.stageName, recordLoading]);
+    }, [
+        records,
+        streamingRecord?.message,
+        streamingRecord?.blocks,
+        streamingRecord?.error,
+        streamingRecord?.stageName,
+        recordLoading,
+    ]);
 
     useEffect(() => {
         const inputElement = composerInputRef.current;
@@ -1514,6 +1790,7 @@ export function SimulationChatPage() {
     function connectRunEvents(runId) {
         closeRunStream();
         streamErrorRef.current = null;
+        streamReceivedNarrationRef.current = false;
 
         const eventSource = new EventSource(getSimulationRunUrl({ simulationId, threadId: runId }));
         eventSourceRef.current = eventSource;
@@ -1522,6 +1799,7 @@ export function SimulationChatPage() {
             try {
                 const chunk = JSON.parse(event.data);
                 const stageName = stageFromStateChunk(chunk);
+                const blocks = narrationBlocksFromValue(chunk.narration_blocks ?? chunk.narration);
 
                 if (stageName) {
                     setStreamingRecord((current) => {
@@ -1532,9 +1810,14 @@ export function SimulationChatPage() {
                         return {
                             ...current,
                             stageName,
-                            message: chunk.narration ?? current.message,
+                            blocks: blocks ?? current.blocks,
+                            message: blocks ? narrationTextFromBlocks(blocks) : chunk.narration ?? current.message,
                         };
                     });
+                }
+
+                if (chunk?.narration || chunk?.narration_blocks) {
+                    streamReceivedNarrationRef.current = true;
                 }
             } catch (err) {
                 streamErrorRef.current = err.message;
@@ -1554,6 +1837,21 @@ export function SimulationChatPage() {
         eventSource.addEventListener("status", (event) => {
             try {
                 const payload = JSON.parse(event.data);
+                if (payload.code === "still_generating") {
+                    setStreamingRecord((current) => {
+                        if (!current || current.runId !== runId) {
+                            return current;
+                        }
+
+                        return {
+                            ...current,
+                            stageName: current.stageName || "narrator",
+                            pendingError: payload.message,
+                        };
+                    });
+                    return;
+                }
+
                 streamErrorRef.current = payload.message;
                 finishRunStream({
                     runId,
@@ -1585,6 +1883,11 @@ export function SimulationChatPage() {
                 return;
             }
 
+            if (streamReceivedNarrationRef.current) {
+                finishRunStream({ runId });
+                return;
+            }
+
             if (eventSource.readyState === EventSource.CLOSED || streamErrorRef.current) {
                 finishRunStream({
                     runId,
@@ -1606,7 +1909,10 @@ export function SimulationChatPage() {
     }
 
     async function handleSend() {
-        if (sending || streamingRecord?.active) {
+        if (sendDisabled) {
+            if (inputFormatError) {
+                setSendError(inputFormatError);
+            }
             return;
         }
 
@@ -1640,6 +1946,7 @@ export function SimulationChatPage() {
             setStreamingRecord({
                 runId: data.run_id,
                 message: "",
+                blocks: [],
                 stageName: "",
                 pendingError: null,
                 error: null,
@@ -1658,6 +1965,10 @@ export function SimulationChatPage() {
 
     function handleComposerKeyDown(event) {
         if (event.key !== "Enter" || event.shiftKey) {
+            return;
+        }
+
+        if (sendDisabled) {
             return;
         }
 
@@ -1730,6 +2041,7 @@ export function SimulationChatPage() {
                                     key={record.id}
                                     record={record}
                                     simulation={selectedSimulation}
+                                    charactersById={selectedCharactersById}
                                 />
                             ))
                         )}
@@ -1737,10 +2049,12 @@ export function SimulationChatPage() {
                         {streamingRecord ? (
                             <StreamingChatRecord
                                 message={streamingRecord.message}
+                                blocks={streamingRecord.blocks}
                                 error={streamingRecord.error}
                                 active={streamingRecord.active}
                                 stageName={streamingRecord.stageName}
                                 simulation={selectedSimulation}
+                                charactersById={selectedCharactersById}
                             />
                         ) : null}
                         <div ref={recordsEndRef} />
@@ -1760,19 +2074,20 @@ export function SimulationChatPage() {
                             className="chat-composer-input"
                             value={input}
                             rows={2}
-                            disabled={sending || streamingRecord?.active}
                             placeholder={t("simulationChat.inputPlaceholder")}
                             onChange={(event) => setInput(event.target.value)}
                             onKeyDown={handleComposerKeyDown}
                         />
-                        {sendError ? (
+                        {inputFormatError ? (
+                            <p className="chat-send-error">{inputFormatError}</p>
+                        ) : sendError ? (
                             <p className="chat-send-error">{t("simulationChat.sendError", { error: sendError })}</p>
                         ) : null}
                     </div>
                     <button
                         type="submit"
                         className="chat-send-button"
-                        disabled={sending || streamingRecord?.active}
+                        disabled={sendDisabled}
                         aria-label={t("simulationChat.send")}
                         title={t("simulationChat.send")}
                     >

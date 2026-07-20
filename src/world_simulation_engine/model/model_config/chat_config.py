@@ -2,6 +2,8 @@ from uuid import uuid4
 from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
+from .connection_config import ConnectionConfig
+
 
 class ChatModelConfig(BaseModel):
     """
@@ -41,6 +43,10 @@ class ChatModelConfig(BaseModel):
     stop_tokens: Optional[list[str]] = Field(
         None,
         description="The stop tokens to use for the chat",
+    )
+    connection: Optional[ConnectionConfig] = Field(
+        None,
+        description="The provider connection used by this chat model config",
     )
 
 

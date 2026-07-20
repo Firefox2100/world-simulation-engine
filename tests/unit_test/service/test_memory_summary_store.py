@@ -30,7 +30,7 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
             "operations": [
                 {
                     "type": "create_event",
-                    "proposed_id": "event_1",
+                    "proposed_id": "evt_event_1",
                     "name": "Glass Taken",
                     "summary": "Alex takes the glass.",
                     "turn_ids": ["turn_1"],
@@ -45,7 +45,7 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
                 {
                     "type": "create_memory",
                     "proposed_id": "memory_1",
-                    "event_id": "event_1",
+                    "event_id": "evt_event_1",
                     "summary": "Alex took the glass.",
                     "keywords": ["glass"],
                     "support_type": MemorySupportType.DIRECT,
@@ -61,7 +61,7 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
                 },
                 {
                     "type": "create_intent",
-                    "proposed_id": "intent_1",
+                    "proposed_id": "int_intent_1",
                     "character_id": "character_1",
                     "intent_type": IntentType.AGENDA,
                     "name": "Keep the glass",
@@ -70,7 +70,7 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
                     "urgency": 0.2,
                     "status": IntentStatus.ACTIVE,
                     "horizon": IntentHorizon.SHORT,
-                    "created_by_event_id": "event_1",
+                    "created_by_event_id": "evt_event_1",
                     "reason": "The action created a small agenda.",
                 },
             ],
@@ -81,13 +81,58 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
 
     event_store.create_event.assert_awaited_once()
     event_store.add_character_involvement.assert_awaited_once_with(
-        event_id="event_1",
+        event_id="evt_event_1",
         character_id="character_1",
         involvement=EventInvolvement.PARTICIPATE,
     )
     memory_store.create_memory_atom.assert_awaited_once()
     intent_store.create_intent.assert_awaited_once()
     intent_store.add_event_creation.assert_awaited_once_with(
-        event_id="event_1",
-        intent_id="intent_1",
+        event_id="evt_event_1",
+        intent_id="int_intent_1",
     )
+
+
+async def test_apply_memory_summary_proposal_skips_unresolvable_memory_creation():
+    event_store = Mock()
+    memory_store = Mock()
+    memory_store.create_memory_atom = AsyncMock(
+        side_effect=ValueError("Could not create memory atom because the event or one or more characters were not found")
+    )
+    memory_store.add_character_memory = AsyncMock()
+    intent_store = Mock()
+    store = MemorySummaryStore(
+        event_store=event_store,
+        memory_store=memory_store,
+        intent_store=intent_store,
+    )
+    proposal = MemorySummaryProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "type": "create_memory",
+                    "proposed_id": "memory_1",
+                    "event_id": "event_1",
+                    "summary": "Alex took the glass.",
+                    "support_type": MemorySupportType.DIRECT,
+                    "character_links": [
+                        {
+                            "character_id": "missing_character",
+                            "confidence": 1,
+                            "salience": Salience.MEDIUM,
+                            "stance": MemoryStance.REMEMBER,
+                        }
+                    ],
+                    "reason": "Alex should remember taking the glass.",
+                },
+                {
+                    "type": "no_abstract_change",
+                    "reason": "No further changes.",
+                },
+            ],
+        }
+    )
+
+    await store.apply_memory_summary_proposal(proposal=proposal, turn_id="turn_1")
+
+    memory_store.create_memory_atom.assert_awaited_once()

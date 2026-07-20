@@ -11,6 +11,8 @@ import {
     fetchConnections,
     fetchEmbeddingConfigs,
     fetchLlmConfigs,
+    setEmbeddingConfigConnection,
+    setLlmConfigConnection,
     updateConnection,
     updateEmbeddingConfig,
     updateLlmConfig,
@@ -74,6 +76,7 @@ function makeFormState(kind, item = null) {
     if (kind === "embeddings") {
         return {
             provider: item ? inferEmbeddingProvider(item) : "openai",
+            connection_id: item?.connection?.id ?? "",
             model: item?.model ?? "",
             dimension: item?.dimension == null ? "" : String(item.dimension),
             context_window: item?.context_window == null ? "" : String(item.context_window),
@@ -82,6 +85,7 @@ function makeFormState(kind, item = null) {
 
     return {
         provider: item ? inferLlmProvider(item) : "openai",
+        connection_id: item?.connection?.id ?? "",
         name: item?.name ?? "",
         model: item?.model ?? "",
         temperature: item?.temperature == null ? "1" : String(item.temperature),
@@ -155,10 +159,14 @@ function isConfigFormValid(kind, form) {
     }
 
     if (kind === "embeddings") {
-        return hasValue(form.provider) && hasValue(form.model);
+        return hasValue(form.provider) && hasValue(form.connection_id) && hasValue(form.model);
     }
 
-    return hasValue(form.provider) && hasValue(form.name) && hasValue(form.model);
+    if (kind === "llms") {
+        return hasValue(form.provider) && hasValue(form.connection_id) && hasValue(form.name) && hasValue(form.model);
+    }
+
+    return hasValue(form.provider) && hasValue(form.model);
 }
 
 function titleFor(kind, item) {
@@ -227,6 +235,9 @@ function detailText(kind, item, t) {
     if (kind === "embeddings") {
         return [
             t(`configurations.providers.${providerFor(kind, item)}`, { defaultValue: providerFor(kind, item) }),
+            item.connection
+                ? t("configurations.details.connection", { name: item.connection.name })
+                : t("configurations.details.noConnection"),
             item.dimension ? t("configurations.details.dimension", { value: item.dimension }) : null,
             item.context_window
                 ? t("configurations.details.contextWindow", { value: item.context_window })
@@ -238,6 +249,9 @@ function detailText(kind, item, t) {
 
     return [
         t(`configurations.providers.${providerFor(kind, item)}`, { defaultValue: providerFor(kind, item) }),
+        item.connection
+            ? t("configurations.details.connection", { name: item.connection.name })
+            : t("configurations.details.noConnection"),
         item.model,
         item.context_window ? t("configurations.details.contextWindow", { value: item.context_window }) : null,
         item.temperature != null ? t("configurations.details.temperature", { value: item.temperature }) : null,
@@ -246,7 +260,7 @@ function detailText(kind, item, t) {
         .join(" · ");
 }
 
-function ConfigurationModal({ kind, item, onClose, onSaved }) {
+function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
     const { t } = useTranslation();
     const editing = Boolean(item);
     const [form, setForm] = useState(() => makeFormState(kind, item));
@@ -266,7 +280,11 @@ function ConfigurationModal({ kind, item, onClose, onSaved }) {
     }, [onClose]);
 
     function updateField(field, value) {
-        setForm((current) => ({ ...current, [field]: value }));
+        setForm((current) => ({
+            ...current,
+            [field]: value,
+            ...(field === "provider" ? { connection_id: "" } : {}),
+        }));
     }
 
     async function handleSubmit(event) {
@@ -277,14 +295,18 @@ function ConfigurationModal({ kind, item, onClose, onSaved }) {
             setSaving(true);
             const payload = buildPayload(kind, form, editing);
 
+            let savedConfig = null;
+
             if (kind === "connections") {
                 editing ? await updateConnection(item.id, payload) : await createConnection(payload);
             } else if (kind === "embeddings") {
-                editing
+                savedConfig = editing
                     ? await updateEmbeddingConfig(item.id, payload)
                     : await createEmbeddingConfig(form.provider, payload);
+                await setEmbeddingConfigConnection(savedConfig.id, form.connection_id);
             } else {
-                editing ? await updateLlmConfig(item.id, payload) : await createLlmConfig(form.provider, payload);
+                savedConfig = editing ? await updateLlmConfig(item.id, payload) : await createLlmConfig(form.provider, payload);
+                await setLlmConfigConnection(savedConfig.id, form.connection_id);
             }
 
             setSaving(false);
@@ -324,6 +346,7 @@ function ConfigurationModal({ kind, item, onClose, onSaved }) {
                             kind={kind}
                             editing={editing}
                             form={form}
+                            connections={connections}
                             onChange={updateField}
                         />
 
@@ -346,7 +369,7 @@ function ConfigurationModal({ kind, item, onClose, onSaved }) {
     );
 }
 
-function ConfigurationFields({ kind, editing, form, onChange }) {
+function ConfigurationFields({ kind, editing, form, connections, onChange }) {
     const { t } = useTranslation();
     const providerField = kind === "connections" ? "type" : "provider";
 
@@ -396,17 +419,40 @@ function ConfigurationFields({ kind, editing, form, onChange }) {
                     />
                 </>
             ) : (
-                <ModelFields kind={kind} form={form} onChange={onChange} t={t} />
+                <ModelFields kind={kind} form={form} connections={connections} onChange={onChange} t={t} />
             )}
         </>
     );
 }
 
-function ModelFields({ kind, form, onChange, t }) {
+function ModelFields({ kind, form, connections, onChange, t }) {
     const showOllamaFields = form.provider === "ollama";
+    const matchingConnections = connections.filter((connection) => connection.type === form.provider);
 
     return (
         <>
+            <div className="form-field inline-field modal-form-field">
+                <FieldLabel
+                    htmlFor="configuration-provider-connection"
+                    label={t("configurations.fields.connection")}
+                    required
+                />
+                <select
+                    id="configuration-provider-connection"
+                    className="single-line-input"
+                    value={form.connection_id}
+                    required
+                    onChange={(event) => onChange("connection_id", event.target.value)}
+                >
+                    <option value="">{t("configurations.fields.noConnection")}</option>
+                    {matchingConnections.map((connection) => (
+                        <option key={connection.id} value={connection.id}>
+                            {connection.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
             <TextField
                 id="configuration-model"
                 label={t("configurations.fields.model")}
@@ -651,6 +697,7 @@ export function ConfigurationsPage() {
                 <ConfigurationModal
                     kind={modalState.kind}
                     item={modalState.item}
+                    connections={connections}
                     onClose={() => setModalState(null)}
                     onSaved={handleSaved}
                 />

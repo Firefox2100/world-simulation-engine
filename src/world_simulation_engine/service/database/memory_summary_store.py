@@ -54,26 +54,29 @@ class MemorySummaryStore:
                         involvement=involvement.involvement,
                     )
             elif operation.type == "create_memory":
-                await self._memory.create_memory_atom(
-                    memory=MemoryAtom(
-                        id=operation.proposed_id or str(uuid4()),
-                        summary=operation.summary,
-                        keywords=operation.keywords,
-                        embedding=None,
-                    ),
-                    event_id=operation.event_id,
-                    support_type=operation.support_type,
-                    character_links=[
-                        CharacterMemoryLink(
-                            character_id=link.character_id,
-                            confidence=link.confidence,
-                            salience=link.salience,
-                            behavioural_relevance=link.behavioural_relevance,
-                            stance=link.stance,
-                        )
-                        for link in operation.character_links
-                    ],
-                )
+                try:
+                    await self._memory.create_memory_atom(
+                        memory=MemoryAtom(
+                            id=operation.proposed_id or str(uuid4()),
+                            summary=operation.summary,
+                            keywords=operation.keywords,
+                            embedding=None,
+                        ),
+                        event_id=operation.event_id,
+                        support_type=operation.support_type,
+                        character_links=[
+                            CharacterMemoryLink(
+                                character_id=link.character_id,
+                                confidence=link.confidence,
+                                salience=link.salience,
+                                behavioural_relevance=link.behavioural_relevance,
+                                stance=link.stance,
+                            )
+                            for link in operation.character_links
+                        ],
+                    )
+                except ValueError:
+                    continue
             elif operation.type == "link_existing_memory":
                 await self._memory.add_character_memory(
                     memory_id=operation.memory_id,
@@ -108,15 +111,18 @@ class MemorySummaryStore:
                     blockers=operation.blockers,
                     open_threads=operation.open_threads,
                 )
-                await self._intent.create_intent(
-                    intent=intent,
-                    character_id=operation.character_id,
-                )
-                if operation.created_by_event_id:
-                    await self._intent.add_event_creation(
-                        event_id=operation.created_by_event_id,
-                        intent_id=intent.id,
+                try:
+                    await self._intent.create_intent(
+                        intent=intent,
+                        character_id=operation.character_id,
                     )
+                    if operation.created_by_event_id:
+                        await self._intent.add_event_creation(
+                            event_id=operation.created_by_event_id,
+                            intent_id=intent.id,
+                        )
+                except ValueError:
+                    continue
             elif operation.type == "update_intent":
                 await self._intent.update_intent(
                     intent_id=operation.intent_id,

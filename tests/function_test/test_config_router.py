@@ -169,12 +169,27 @@ def test_llm_config_crud_and_connection_link(config_api):
     assert link_response.status_code == 200
     assert link_response.json() == connection
     assert client.get(f"/config/llm/{ollama_chat['id']}/connection").json() == connection
+    assert client.get(f"/config/llm/{ollama_chat['id']}").json() == {
+        **ollama_chat,
+        "connection": connection,
+    }
+    assert client.get("/config/llm").json() == [
+        {
+            **ollama_chat,
+            "connection": connection,
+        },
+        openai_chat,
+    ]
     assert client.delete(f"/config/llm/{ollama_chat['id']}/connection").status_code == 204
     assert client.get(f"/config/llm/{ollama_chat['id']}/connection").status_code == 404
     assert client.put(
         f"/config/llm/{ollama_chat['id']}/connection",
         json={"connection_id": connection["id"]},
     ).status_code == 200
+    linked_ollama_chat = {
+        **ollama_chat,
+        "connection": connection,
+    }
 
     update_response = client.patch(
         f"/config/llm/{ollama_chat['id']}",
@@ -186,7 +201,7 @@ def test_llm_config_crud_and_connection_link(config_api):
 
     assert update_response.status_code == 200
     assert update_response.json() == {
-        **ollama_chat,
+        **linked_ollama_chat,
         "temperature": 0.7,
         "repeat_penalty": 1.1,
     }
@@ -218,12 +233,27 @@ def test_embedding_config_crud_and_connection_link(config_api):
     assert link_response.status_code == 200
     assert link_response.json() == connection
     assert client.get(f"/config/embeddings/{ollama_embed['id']}/connection").json() == connection
+    assert client.get(f"/config/embeddings/{ollama_embed['id']}").json() == {
+        **ollama_embed,
+        "connection": connection,
+    }
+    assert client.get("/config/embeddings").json() == [
+        {
+            **ollama_embed,
+            "connection": connection,
+        },
+        openai_embed,
+    ]
     assert client.delete(f"/config/embeddings/{ollama_embed['id']}/connection").status_code == 204
     assert client.get(f"/config/embeddings/{ollama_embed['id']}/connection").status_code == 404
     assert client.put(
         f"/config/embeddings/{ollama_embed['id']}/connection",
         json={"connection_id": connection["id"]},
     ).status_code == 200
+    linked_ollama_embed = {
+        **ollama_embed,
+        "connection": connection,
+    }
 
     update_response = client.patch(
         f"/config/embeddings/{ollama_embed['id']}",
@@ -232,7 +262,7 @@ def test_embedding_config_crud_and_connection_link(config_api):
 
     assert update_response.status_code == 200
     assert update_response.json() == {
-        **ollama_embed,
+        **linked_ollama_embed,
         "dimension": 1024,
     }
 
@@ -244,9 +274,18 @@ def test_embedding_config_crud_and_connection_link(config_api):
 
 def test_simulation_model_config_links(config_api):
     client = config_api.client
+    connection = client.post("/config/connections", json=connection_payload()).json()
     chat = client.post("/config/llm/openai", json=openai_chat_payload()).json()
     replacement_chat = client.post("/config/llm/openai", json=openai_chat_payload("Replacement Chat")).json()
     embed = client.post("/config/embeddings/openai", json=openai_embed_payload()).json()
+    assert client.put(
+        f"/config/llm/{replacement_chat['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
+    linked_replacement_chat = {
+        **replacement_chat,
+        "connection": connection,
+    }
 
     chat_link_response = client.put(
         f"/simulations/{config_api.simulation.id}/llm-connection",
@@ -273,11 +312,11 @@ def test_simulation_model_config_links(config_api):
     assert chat_link_response.status_code == 200
     assert chat_link_response.json() == chat
     assert replacement_chat_link_response.status_code == 200
-    assert replacement_chat_link_response.json() == replacement_chat
+    assert replacement_chat_link_response.json() == linked_replacement_chat
     assert client.get(
         f"/simulations/{config_api.simulation.id}/llm-connection",
         params={"component": ComponentType.NARRATOR},
-    ).json() == replacement_chat
+    ).json() == linked_replacement_chat
     assert embed_link_response.status_code == 200
     assert embed_link_response.json() == embed
     assert client.get(
@@ -304,9 +343,18 @@ def test_simulation_model_config_links(config_api):
 
 def test_component_model_config_batch_links(config_api):
     client = config_api.client
+    connection = client.post("/config/connections", json=connection_payload()).json()
     narrator_chat = client.post("/config/llm/openai", json=openai_chat_payload("Narrator Chat")).json()
     character_chat = client.post("/config/llm/openai", json=openai_chat_payload("Character Chat")).json()
     embed = client.post("/config/embeddings/openai", json=openai_embed_payload()).json()
+    assert client.put(
+        f"/config/llm/{narrator_chat['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
+    narrator_chat_with_connection = {
+        **narrator_chat,
+        "connection": connection,
+    }
 
     world_chat_response = client.put(
         f"/worlds/{config_api.world.id}/llm-connections",
@@ -343,7 +391,7 @@ def test_component_model_config_batch_links(config_api):
         },
         {
             "component": ComponentType.NARRATOR,
-            "config": narrator_chat,
+            "config": narrator_chat_with_connection,
         },
     ]
     assert client.get(f"/worlds/{config_api.world.id}/llm-connections").json() == world_chat_response.json()
@@ -389,7 +437,7 @@ def test_component_model_config_batch_links(config_api):
     assert client.get(f"/simulations/{config_api.simulation.id}/llm-connections").json() == [
         {
             "component": ComponentType.NARRATOR,
-            "config": narrator_chat,
+            "config": narrator_chat_with_connection,
         },
     ]
 
