@@ -9,7 +9,8 @@ from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulator
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
     config_router, container_router, equipment_router, event_router, intent_router, item_router, landmark_router, \
-    location_router, media_router, memory_router, prompt_router, simulation_router, turn_router, world_router
+    location_router, media_router, memory_router, prompt_router, simulation_router, turn_router, workflow_router, \
+    world_router
 
 
 @asynccontextmanager
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     app.include_router(prompt_router)
     app.include_router(simulation_router)
     app.include_router(turn_router)
+    app.include_router(workflow_router)
     app.include_router(world_router)
 
     return app

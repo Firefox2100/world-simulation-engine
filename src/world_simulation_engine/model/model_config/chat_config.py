@@ -2,6 +2,7 @@ from uuid import uuid4
 from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.misc.enums import ConnectionType
 from .connection_config import ConnectionConfig
 
 
@@ -55,8 +56,8 @@ class OllamaChatModelConfig(ChatModelConfig):
     The specialised configuration for using a chat model with Ollama.
     """
 
-    provider: Literal["ollama"] = Field(
-        "ollama",
+    provider: Literal[ConnectionType.OLLAMA] = Field(
+        ConnectionType.OLLAMA,
         description="Provider for this chat model config",
     )
     mirostat: Optional[int] = Field(
@@ -90,10 +91,11 @@ class OpenAiChatModelConfig(ChatModelConfig):
     The specialised configuration for using a chat model with OpenAI.
     """
 
-    provider: Literal["openai"] = Field(
-        "openai",
+    provider: Literal[ConnectionType.OPENAI] = Field(
+        ConnectionType.OPENAI,
         description="Provider for this chat model config",
     )
+
 
 ChatModelConfigUnion = Annotated[
     Union[

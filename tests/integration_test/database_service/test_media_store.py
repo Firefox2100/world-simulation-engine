@@ -5,8 +5,9 @@ from uuid import uuid4
 os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.prompt_loader import PromptLoader
+from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
-from world_simulation_engine.model import Location, MediaFile, PromptMediaFile, Simulation
+from world_simulation_engine.model import Location, MediaFile, PromptMediaFile, Simulation, WorkflowMediaFile
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.media_store import MediaStore
@@ -197,6 +198,49 @@ async def test_copy_prompt_media_relationships_reuses_world_prompt_media(clean_n
     assert result.records[0]["prompt_count"] == 1
 
 
+async def test_copy_workflow_media_relationships_reuses_world_workflow_media(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    media_store = MediaStore(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    simulation = await simulation_store.create_simulation(
+        Simulation(
+            id=str(uuid4()),
+            name="Simulation",
+            description="A simulation",
+            current_time=world.starting_time,
+        ),
+        world.id,
+    )
+    workflow_media = WorkflowMediaFile(
+        id=str(uuid4()),
+        title="Character workflow",
+        hash="e" * 64,
+        filename="character",
+        workflow_name="character",
+    )
+
+    await media_store.create_media(workflow_media)
+    assert await media_store.set_workflow_media(world.id, workflow_media.id) == (workflow_media, None)
+    assert await media_store.copy_workflow_media_relationships(world.id, simulation.id) == [workflow_media]
+    assert await media_store.copy_workflow_media_relationships(world.id, simulation.id) == [workflow_media]
+    assert await media_store.list_workflow_media(simulation_id=simulation.id) == [workflow_media]
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (media:Media {id: $media_id})
+        OPTIONAL MATCH (:Simulation {id: $simulation_id})-[workflow:USE_WORKFLOW]->(media)
+        RETURN count(DISTINCT media) AS media_count, count(workflow) AS workflow_count
+        """,
+        parameters_={
+            "media_id": workflow_media.id,
+            "simulation_id": simulation.id,
+        },
+    )
+
+    assert result.records[0]["media_count"] == 1
+    assert result.records[0]["workflow_count"] == 1
+
+
 async def test_prompt_loader_prefers_simulation_override_then_world_then_builtin(clean_neo4j, tmp_path):
     world = await create_world(clean_neo4j)
     simulation_store = SimulationStore(clean_neo4j)
@@ -253,3 +297,57 @@ async def test_prompt_loader_prefers_simulation_override_then_world_then_builtin
     assert inherited[0].content == "World override"
     assert overridden[0].content == "Simulation override"
     assert len(builtin) > 1
+
+
+async def test_workflow_loader_prefers_simulation_override_then_world_then_builtin(clean_neo4j, tmp_path):
+    world = await create_world(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    inherited_simulation = await simulation_store.create_simulation(
+        Simulation(name="Inherited", current_time=world.starting_time),
+        world.id,
+    )
+    builtin_simulation = await simulation_store.create_simulation(
+        Simulation(name="Builtin", current_time=world.starting_time),
+        world.id,
+    )
+    media_store = MediaStore(clean_neo4j)
+    storage = StorageService(tmp_path)
+    await storage.initialise()
+
+    async def create_workflow(content: str, title: str) -> WorkflowMediaFile:
+        stored = await storage.save_bytes(json.dumps({
+            "version": content,
+            "positive_prompt": "/10/inputs/text",
+        }).encode("utf-8"))
+        return await media_store.create_media(WorkflowMediaFile(
+            title=title,
+            hash=stored.digest,
+            filename=title.lower(),
+            workflow_name="character",
+        ))
+
+    world_workflow = await create_workflow("World override", "World")
+    simulation_workflow = await create_workflow("Simulation override", "Simulation")
+    await media_store.set_workflow_media(world.id, world_workflow.id)
+
+    loader = WorkflowLoader(
+        database=DatabaseService(clean_neo4j),
+        storage=storage,
+    )
+    inherited = await loader.load_workflow(
+        simulation_id=inherited_simulation.id,
+        workflow_name="character",
+    )
+    await media_store.set_workflow_media(inherited_simulation.id, simulation_workflow.id)
+    overridden = await loader.load_workflow(
+        simulation_id=inherited_simulation.id,
+        workflow_name="character",
+    )
+    builtin = await loader.load_workflow(
+        simulation_id=builtin_simulation.id,
+        workflow_name="character",
+    )
+
+    assert inherited["version"] == "World override"
+    assert overridden["version"] == "Simulation override"
+    assert "positive_prompt" in builtin

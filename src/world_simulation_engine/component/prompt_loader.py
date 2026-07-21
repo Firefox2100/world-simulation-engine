@@ -5,8 +5,7 @@ from pydantic import TypeAdapter
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import SupportedLanguage
 from world_simulation_engine.model import PromptMessage
-from world_simulation_engine.service import DatabaseService
-from world_simulation_engine.service.storage_service import StorageService
+from world_simulation_engine.service import DatabaseService, StorageService
 
 
 class PromptLoader:

@@ -1,3 +1,4 @@
 from .chat_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion
 from .connection_config import ConnectionConfig
 from .embed_config import OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion
+from .image_config import ComfyUiImageModelConfig, ImageModelConfigUnion

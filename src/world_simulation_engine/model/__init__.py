@@ -21,9 +21,10 @@ from .event import Event
 from .graph_state_snapshot import GraphStateSnapshot
 from .generation_job import GenerationJob
 from .intent import Intent
-from .media import MediaFile, PromptMediaFile
+from .media import MediaFile, PromptMediaFile, WorkflowMediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig, \
-    OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion
+    OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, ComfyUiImageModelConfig, \
+    ImageModelConfigUnion
 from .prompt_message import PromptMessage
 from .simulation import Simulation
 from .turn import Turn

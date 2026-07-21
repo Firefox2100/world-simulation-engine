@@ -1,0 +1,139 @@
+{
+  "model": "/7/inputs/model",
+  "vae": "/1/inputs/vae_name",
+  "clip": "/3/inputs/clip_name",
+  "positive_prompt": "/4/inputs/text",
+  "negative_prompt": "/5/inputs/text",
+  "image_width": "/6/inputs/width",
+  "image_height": "/6/inputs/height",
+  "seed": "/8/inputs/seed",
+  "steps": "/8/inputs/steps",
+  "cfg": "/8/inputs/cfg",
+  "workflow": {
+    "1": {
+      "inputs": {
+        "vae_name": "qwen_image_vae.safetensors"
+      },
+      "class_type": "VAELoader",
+      "_meta": {
+        "title": "Load VAE"
+      }
+    },
+    "2": {
+      "inputs": {
+        "samples": [
+          "8",
+          0
+        ],
+        "vae": [
+          "1",
+          0
+        ]
+      },
+      "class_type": "VAEDecode",
+      "_meta": {
+        "title": "VAE Decode"
+      }
+    },
+    "3": {
+      "inputs": {
+        "clip_name": "qwen_3_06b_base.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      },
+      "class_type": "CLIPLoader",
+      "_meta": {
+        "title": "Load CLIP"
+      }
+    },
+    "4": {
+      "inputs": {
+        "text": "",
+        "clip": [
+          "3",
+          0
+        ]
+      },
+      "class_type": "CLIPTextEncode",
+      "_meta": {
+        "title": "CLIP Text Encode (Prompt)"
+      }
+    },
+    "5": {
+      "inputs": {
+        "text": "",
+        "clip": [
+          "3",
+          0
+        ]
+      },
+      "class_type": "CLIPTextEncode",
+      "_meta": {
+        "title": "CLIP Text Encode (Prompt)"
+      }
+    },
+    "6": {
+      "inputs": {
+        "width": 1920,
+        "height": 1128,
+        "batch_size": 1
+      },
+      "class_type": "EmptyLatentImage",
+      "_meta": {
+        "title": "Empty Latent Image"
+      }
+    },
+    "7": {
+      "inputs": {
+        "unet_name": "anima-base-v1.0.safetensors",
+        "weight_dtype": "default"
+      },
+      "class_type": "UNETLoader",
+      "_meta": {
+        "title": "Load Diffusion Model"
+      }
+    },
+    "8": {
+      "inputs": {
+        "seed": 0,
+        "steps": 31,
+        "cfg": 5,
+        "sampler_name": "er_sde",
+        "scheduler": "beta",
+        "denoise": 1,
+        "model": [
+          "7",
+          0
+        ],
+        "positive": [
+          "4",
+          0
+        ],
+        "negative": [
+          "5",
+          0
+        ],
+        "latent_image": [
+          "6",
+          0
+        ]
+      },
+      "class_type": "KSampler",
+      "_meta": {
+        "title": "KSampler"
+      }
+    },
+    "9": {
+      "inputs": {
+        "images": [
+          "2",
+          0
+        ]
+      },
+      "class_type": "PreviewImage",
+      "_meta": {
+        "title": "Preview Image"
+      }
+    }
+  }
+}

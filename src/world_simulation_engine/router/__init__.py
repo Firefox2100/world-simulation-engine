@@ -14,4 +14,5 @@ from .memory import memory_router
 from .prompt import prompt_router
 from .simulation import simulation_router
 from .turn import turn_router
+from .workflow import workflow_router
 from .world import world_router

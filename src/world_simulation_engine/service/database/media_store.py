@@ -1,7 +1,7 @@
 from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
-from world_simulation_engine.model import MediaFile, PromptMediaFile
+from world_simulation_engine.model import MediaFile, PromptMediaFile, WorkflowMediaFile
 
 
 def _media_from_node(media_node) -> MediaFile:
@@ -19,6 +19,11 @@ def _media_from_node(media_node) -> MediaFile:
             language=media_node["language"],
             component=media_node.get("component"),
         )
+    if media_node.get("workflow_name") is not None:
+        return WorkflowMediaFile(
+            **data,
+            workflow_name=media_node["workflow_name"],
+        )
 
     return MediaFile(**data)
 
@@ -27,6 +32,7 @@ class MediaStore:
     _COVER_SOURCE_LABELS = "World|Simulation|Character|BackgroundCharacter|Location|Landmark|Item|ItemStack|Equipment|Container"
     _MEDIA_SOURCE_LABELS = "World|Simulation|Character|BackgroundCharacter|Location|Landmark|Item|ItemStack|Equipment|Container"
     _PROMPT_SOURCE_LABELS = "World|Simulation"
+    _WORKFLOW_SOURCE_LABELS = "World|Simulation"
 
     def __init__(self,
                  driver: AsyncDriver,
@@ -44,7 +50,8 @@ class MediaStore:
                 filename: $filename,
                 prompt_name: $prompt_name,
                 language: $language,
-                component: $component
+                component: $component,
+                workflow_name: $workflow_name
             })
             RETURN m
             """,
@@ -57,6 +64,7 @@ class MediaStore:
                 "prompt_name": getattr(media, "prompt_name", None),
                 "language": getattr(media, "language", None),
                 "component": getattr(media, "component", None),
+                "workflow_name": getattr(media, "workflow_name", None),
             },
         )
 
@@ -480,6 +488,210 @@ class MediaStore:
 
         return (
             PromptMediaFile.model_validate(_media_from_node(record["media_properties"])),
+            record["remaining_hash_references"],
+        )
+
+    async def list_workflow_media(self,
+                                  world_id: str | None = None,
+                                  simulation_id: str | None = None,
+                                  workflow_name: str | None = None,
+                                  ) -> list[WorkflowMediaFile]:
+        if world_id is not None and simulation_id is not None:
+            workflow_match = """
+            MATCH (:World {id: $world_id})<-[:BASED_ON]-(source:Simulation {id: $simulation_id})
+            MATCH (source)-[:USE_WORKFLOW]->(media:Media)
+            """
+        elif world_id is not None:
+            workflow_match = """
+            MATCH (source:World {id: $world_id})
+            MATCH (source)-[:USE_WORKFLOW]->(media:Media)
+            """
+        elif simulation_id is not None:
+            workflow_match = """
+            MATCH (source:Simulation {id: $simulation_id})
+            MATCH (source)-[:USE_WORKFLOW]->(media:Media)
+            """
+        else:
+            workflow_match = """
+            MATCH (media:Media)
+            """
+
+        result = await self._driver.execute_query(
+            workflow_match + """
+            WHERE media.type = $media_type
+                AND media.workflow_name IS NOT NULL
+                AND ($workflow_name IS NULL OR media.workflow_name = $workflow_name)
+            RETURN DISTINCT media
+            ORDER BY media.workflow_name, media.id
+            """,
+            parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
+                "workflow_name": workflow_name,
+                "media_type": MediaType.JSON,
+            },
+        )
+
+        return [
+            WorkflowMediaFile.model_validate(_media_from_node(record["media"]))
+            for record in result.records
+        ]
+
+    async def get_workflow_media(self,
+                                 simulation_id: str,
+                                 workflow_name: str,
+                                 ) -> WorkflowMediaFile | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (simulation:Simulation {id: $simulation_id})
+            OPTIONAL MATCH (simulation)-[:USE_WORKFLOW]->(simulation_media:Media {
+                type: $media_type,
+                workflow_name: $workflow_name
+            })
+            OPTIONAL MATCH (simulation)-[:BASED_ON]->(:World)-[:USE_WORKFLOW]->(world_media:Media {
+                type: $media_type,
+                workflow_name: $workflow_name
+            })
+            RETURN coalesce(simulation_media, world_media) AS media LIMIT 1
+            """,
+            parameters_={
+                "simulation_id": simulation_id,
+                "workflow_name": workflow_name,
+                "media_type": MediaType.JSON,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record or record["media"] is None:
+            return None
+
+        return WorkflowMediaFile.model_validate(_media_from_node(record["media"]))
+
+    async def get_source_workflow_media(self,
+                                        source_id: str,
+                                        workflow_name: str,
+                                        ) -> WorkflowMediaFile | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (source:{self._WORKFLOW_SOURCE_LABELS} {{id: $source_id}})
+            MATCH (source)-[:USE_WORKFLOW]->(media:Media {{
+                type: $media_type,
+                workflow_name: $workflow_name
+            }})
+            RETURN media LIMIT 1
+            """,
+            parameters_={
+                "source_id": source_id,
+                "workflow_name": workflow_name,
+                "media_type": MediaType.JSON,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return WorkflowMediaFile.model_validate(_media_from_node(record["media"]))
+
+    async def set_workflow_media(self,
+                                 source_id: str,
+                                 media_id: str,
+                                 ) -> tuple[WorkflowMediaFile, WorkflowMediaFile | None] | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (source:{self._WORKFLOW_SOURCE_LABELS} {{id: $source_id}})
+            MATCH (media:Media {{id: $media_id}})
+            WHERE media.type = $media_type
+                AND media.workflow_name IS NOT NULL
+            OPTIONAL MATCH (source)-[previous:USE_WORKFLOW]->(old:Media)
+            WHERE old.type = $media_type
+                AND old.workflow_name = media.workflow_name
+            DELETE previous
+            MERGE (source)-[:USE_WORKFLOW]->(media)
+            RETURN media, old LIMIT 1
+            """,
+            parameters_={
+                "source_id": source_id,
+                "media_id": media_id,
+                "media_type": MediaType.JSON,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        old = record["old"]
+        return (
+            WorkflowMediaFile.model_validate(_media_from_node(record["media"])),
+            WorkflowMediaFile.model_validate(_media_from_node(old)) if old else None,
+        )
+
+    async def copy_workflow_media_relationships(self,
+                                                world_id: str,
+                                                simulation_id: str,
+                                                ) -> list[WorkflowMediaFile]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (world:World {id: $world_id})<-[:BASED_ON]-(simulation:Simulation {id: $simulation_id})
+            MATCH (world)-[:USE_WORKFLOW]->(media:Media)
+            MERGE (simulation)-[:USE_WORKFLOW]->(media)
+            RETURN DISTINCT media
+            ORDER BY media.workflow_name, media.id
+            """,
+            parameters_={
+                "world_id": world_id,
+                "simulation_id": simulation_id,
+            },
+        )
+
+        return [
+            WorkflowMediaFile.model_validate(_media_from_node(record["media"]))
+            for record in result.records
+        ]
+
+    async def remove_workflow_media(self,
+                                    source_id: str,
+                                    workflow_name: str,
+                                    delete_media: bool = True,
+                                    ) -> tuple[WorkflowMediaFile, int] | None:
+        if delete_media:
+            delete_clause = """
+            OPTIONAL MATCH (other:Media {hash: hash})
+            WHERE other.id <> media.id
+            WITH media, media_properties, count(other) AS remaining_hash_references
+            DETACH DELETE media
+            RETURN media_properties, remaining_hash_references
+            """
+        else:
+            delete_clause = """
+            WITH media_properties
+            RETURN media_properties, 1 AS remaining_hash_references
+            """
+
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (source:{self._WORKFLOW_SOURCE_LABELS} {{id: $source_id}})-[workflow:USE_WORKFLOW]->(media:Media {{
+                type: $media_type,
+                workflow_name: $workflow_name
+            }})
+            DELETE workflow
+            WITH media, properties(media) AS media_properties, media.hash AS hash
+            {delete_clause}
+            """,
+            parameters_={
+                "source_id": source_id,
+                "workflow_name": workflow_name,
+                "media_type": MediaType.JSON,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return (
+            WorkflowMediaFile.model_validate(_media_from_node(record["media_properties"])),
             record["remaining_hash_references"],
         )
 

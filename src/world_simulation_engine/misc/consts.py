@@ -1,7 +1,7 @@
 import json
 import importlib.resources
 from pathlib import Path
-from typing import TypedDict, TYPE_CHECKING
+from typing import Any, TypedDict, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .enums import SupportedLanguage
@@ -25,6 +25,10 @@ class Prompts(TypedDict, total=False):
     resolve_perceived_landmarks: list[dict]
 
 
+class Workflows(TypedDict, total=False):
+    character: dict[str, Any]
+
+
 PROMPT_NAMES = [
     "action_proposal",
     "action_reaction",
@@ -41,6 +45,11 @@ PROMPT_NAMES = [
     "resolve_perceived_equipment",
     "resolve_perceived_containers",
     "resolve_perceived_landmarks",
+]
+
+
+WORKFLOW_NAMES = [
+    "character",
 ]
 
 
@@ -86,4 +95,44 @@ def load_prompt() -> dict["SupportedLanguage", Prompts]:
     return result
 
 
+def _load_builtin_workflow(name: str) -> dict[str, Any]:
+    file_path = importlib.resources.files("world_simulation_engine.data.comfyui_workflows") / f"{name}.json"
+
+    with open(str(file_path), "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_override_workflow(name: str) -> dict[str, Any] | None:
+    from .config import CONFIG
+
+    data_path = Path(CONFIG.data_folder) / "comfyui_workflows" / f"{name}.json"
+    if data_path.is_file():
+        with open(str(data_path), "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    return None
+
+
+def _load_workflow(name: str) -> dict[str, Any]:
+    override_workflow = _load_override_workflow(name)
+
+    if override_workflow is not None:
+        return override_workflow
+
+    return _load_builtin_workflow(name)
+
+
+def load_workflow() -> Workflows:
+    result = {}
+
+    for workflow_name in WORKFLOW_NAMES:
+        try:
+            result[workflow_name] = _load_workflow(workflow_name)
+        except FileNotFoundError:
+            pass
+
+    return result
+
+
 PROMPTS = load_prompt()
+WORKFLOWS = load_workflow()

@@ -38,11 +38,13 @@ class ComponentType(StrEnum):
     PERSPECTIVE_RESOLVER = "perspective_resolver"
     SCENE_COORDINATOR = "scene_coordinator"
     STATE_COMMITTER = "state_committer"
+    CHARACTER_IMAGE_GENERATOR = "character_image_generator"
 
 
 class ConnectionType(StrEnum):
     OLLAMA = "ollama"
     OPENAI = "openai"
+    COMFYUI = "comfyui"
 
 
 class ContainerState(StrEnum):

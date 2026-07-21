@@ -373,6 +373,10 @@ async def create_simulation(world_id: str, db: db_dep):
         world_id=world_id,
         simulation_id=created_simulation.id,
     )
+    await db.media.copy_workflow_media_relationships(
+        world_id=world_id,
+        simulation_id=created_simulation.id,
+    )
 
     _, turn_pairs = await db.turn.copy_turns(
         world_id,

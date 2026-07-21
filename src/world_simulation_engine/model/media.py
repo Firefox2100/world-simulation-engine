@@ -46,3 +46,14 @@ class PromptMediaFile(MediaFile):
         None,
         description="Simulator component this prompt is intended for",
     )
+
+
+class WorkflowMediaFile(MediaFile):
+    type: MediaType = Field(
+        MediaType.JSON,
+        description="Type of the workflow media file",
+    )
+    workflow_name: str = Field(
+        ...,
+        description="Name of the workflow in package workflow data",
+    )
