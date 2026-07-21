@@ -10,7 +10,7 @@ from langgraph.graph.state import StateGraph, CompiledStateGraph
 from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import GraphStateSnapshotType, SceneCoordinationProblemType, \
+from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationGenerationRequestType, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
     Simulation, InputInterpretation, \
@@ -41,12 +41,41 @@ class CharacterActionValidationRecord(BaseModel):
 
 
 class OffSceneActivityResult(BaseModel):
-    """Non-authoritative output from the cancellable off-scene activity lane."""
+    """Internal result for one actor in a turn-triggered off-scene generation."""
     simulation_id: str
+    generation_id: str
+    trigger_turn_id: str
     character_id: str
     simulation_time: datetime
     proposal: ActionProposal | None = None
+    validation: ActionValidationResult | None = None
+    coordination: SceneCoordinationResult | None = None
+    state_commit: StateCommitProposal | None = None
+    memory_summary: MemorySummaryProposal | None = None
     error: str | None = None
+
+
+class OffSceneGenerationStatus(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    simulation_id: str
+    trigger_turn_id: str
+    trigger_turn_type: TurnType
+    simulation_time: datetime
+    status: str = "queued"
+    stage: str = "queued"
+    actor_ids: list[str] = Field(default_factory=list)
+    active_actor_id: str | None = None
+    active_proposal: ActionProposal | None = None
+    completed_actor_ids: list[str] = Field(default_factory=list)
+    results: list[OffSceneActivityResult] = Field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class _OffSceneWorkItem:
+    generation_id: str
+    state: "WorldSimulatorState"
+    trigger_turn: Turn
 
 
 class WorldSimulatorState(BaseModel):
@@ -71,6 +100,7 @@ class WorldSimulatorState(BaseModel):
     committed_turn: Turn | None = None
     state_commit_proposal: StateCommitProposal | None = None
     memory_summary_proposal: MemorySummaryProposal | None = None
+    active_off_scene_generations: list[OffSceneGenerationStatus] = Field(default_factory=list)
 
 
 class CharacterActionProposalState(BaseModel):
@@ -151,8 +181,10 @@ class WorldSimulator:
         self._completed_run_registry: dict[str, _SimulatorRun] = {}
         self._simulation_run_locks: dict[str, asyncio.Lock] = {}
         self._run_registry_lock = asyncio.Lock()
-        self._off_scene_tasks: dict[str, asyncio.Task] = {}
-        self._off_scene_results: dict[str, list[OffSceneActivityResult]] = {}
+        self._off_scene_generations: dict[str, OffSceneGenerationStatus] = {}
+        self._off_scene_generation_by_turn: dict[tuple[str, str], str] = {}
+        self._off_scene_queues: dict[str, asyncio.Queue[_OffSceneWorkItem]] = {}
+        self._off_scene_workers: dict[str, asyncio.Task] = {}
 
     async def start_generation(
             self,
@@ -170,7 +202,6 @@ class WorldSimulator:
             request_type=request_type,
             regenerate_turn_sequence=regenerate_turn_sequence,
         )
-        self._cancel_off_scene_activity(state.simulation.id)
         if client_request_id:
             existing_job = await self._db.generation_job.get_job_by_client_request_id(
                 simulation_id=state.simulation.id,
@@ -251,6 +282,14 @@ class WorldSimulator:
                     request_type=request_type,
                     regenerate_turn_sequence=regenerate_turn_sequence,
                 )
+                # Snapshot-backed continuation/regeneration can replace the supplied state.
+                # Inject the live process registry only after that restoration has completed.
+                state = state.model_copy(update={
+                    "active_off_scene_generations": self.list_off_scene_generations(
+                        state.simulation.id,
+                        active_only=True,
+                    ),
+                })
                 self._run_registry[thread_id] = run
                 self._completed_run_registry.pop(thread_id, None)
                 if state.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
@@ -331,21 +370,178 @@ class WorldSimulator:
     def is_generation_running(self, thread_id: str) -> bool:
         return thread_id in self._run_registry
 
+    def list_off_scene_generations(
+            self,
+            simulation_id: str,
+            *,
+            active_only: bool = False,
+    ) -> list[OffSceneGenerationStatus]:
+        generations = [
+            generation
+            for generation in self._off_scene_generations.values()
+            if generation.simulation_id == simulation_id
+        ]
+        if active_only:
+            generations = [
+                generation
+                for generation in generations
+                if generation.status in {"queued", "running"}
+            ]
+        return sorted(
+            generations,
+            key=lambda generation: (generation.simulation_time, generation.trigger_turn_id),
+        )
+
     def list_off_scene_activity_results(self, simulation_id: str) -> list[OffSceneActivityResult]:
-        return list(self._off_scene_results.get(simulation_id, []))
+        return [
+            result
+            for generation in self.list_off_scene_generations(simulation_id)
+            for result in generation.results
+        ]
 
     async def wait_for_off_scene_activity(self, simulation_id: str):
-        task = self._off_scene_tasks.get(simulation_id)
-        if task:
-            await task
+        while True:
+            worker = self._off_scene_workers.get(simulation_id)
+            if not worker:
+                return
+            await asyncio.gather(worker, return_exceptions=True)
+            if self._off_scene_workers.get(simulation_id) is worker and worker.done():
+                self._off_scene_workers.pop(simulation_id, None)
+
+    async def _wait_for_conflicting_off_scene_activity(
+            self,
+            *,
+            simulation_id: str,
+            actions: list[ProposedAction],
+            action_text: str = "",
+    ) -> bool:
+        """Wait only when structured foreground intent can encounter active off-scene work."""
+        active_generations = self.list_off_scene_generations(
+            simulation_id,
+            active_only=True,
+        )
+        if not active_generations or not actions:
+            return False
+
+        remaining_actor_ids = {
+            actor_id
+            for generation in active_generations
+            for actor_id in generation.actor_ids
+            if actor_id not in generation.completed_actor_ids
+        }
+        remaining_actor_ids.update(
+            generation.active_actor_id
+            for generation in active_generations
+            if generation.active_actor_id
+        )
+        has_unresolved_generation = any(
+            not generation.actor_ids
+            for generation in active_generations
+        )
+        target_ids = {
+            target_id
+            for action in actions
+            for target_id in action.target_ids
+        }
+
+        if remaining_actor_ids.intersection(target_ids):
+            await self.wait_for_off_scene_activity(simulation_id)
+            return True
+
+        movement_target_ids = {
+            target_id
+            for action in actions
+            if action.type == ActionType.MOVE
+            for target_id in action.target_ids
+        }
+        background_movement_target_ids = {
+            target_id
+            for generation in active_generations
+            if generation.active_proposal
+            for action in generation.active_proposal.actions
+            if action.type == ActionType.MOVE
+            for target_id in action.target_ids
+        }
+        if movement_target_ids.intersection(background_movement_target_ids):
+            await self.wait_for_off_scene_activity(simulation_id)
+            return True
+        for location_id in movement_target_ids:
+            characters = await self._db.get_characters_in_location(location_id)
+            location_actor_ids = {entry[0].id for entry in characters}
+            if remaining_actor_ids.intersection(location_actor_ids):
+                await self.wait_for_off_scene_activity(simulation_id)
+                return True
+            if has_unresolved_generation and any(
+                    not entry[0].user_controlled
+                    for entry in characters
+            ):
+                await self.wait_for_off_scene_activity(simulation_id)
+                return True
+
+        if await self._action_text_mentions_off_scene_actor(
+                actor_ids=remaining_actor_ids,
+                actions=actions,
+                action_text=action_text,
+        ):
+            await self.wait_for_off_scene_activity(simulation_id)
+            return True
+
+        if has_unresolved_generation:
+            for target_id in target_ids:
+                character = await self._db.character.get_character(target_id)
+                if character and not character.user_controlled:
+                    await self.wait_for_off_scene_activity(simulation_id)
+                    return True
+
+        return False
+
+    async def _action_text_mentions_off_scene_actor(
+            self,
+            *,
+            actor_ids: set[str],
+            actions: list[ProposedAction],
+            action_text: str,
+    ) -> bool:
+        if not actor_ids:
+            return False
+        searchable_text = " ".join([
+            action_text,
+            *(action.label for action in actions),
+            *(action.utterance or "" for action in actions),
+        ]).casefold()
+        if not searchable_text.strip():
+            return False
+        for actor_id in actor_ids:
+            character = await self._db.character.get_character(actor_id)
+            if not character or not character.name:
+                continue
+            names = {character.name.casefold()}
+            if len(character.name.split()) > 1:
+                names.add(character.name.split()[0].casefold())
+            if any(self._text_contains_name(searchable_text, name) for name in names):
+                return True
+        return False
+
+    @staticmethod
+    def _text_contains_name(text: str, name: str) -> bool:
+        padded_text = f" {text} "
+        normalized_name = "".join(
+            character if character.isalnum() else " "
+            for character in name
+        ).strip()
+        normalized_text = "".join(
+            character if character.isalnum() else " "
+            for character in padded_text
+        )
+        return bool(normalized_name and f" {normalized_name} " in f" {normalized_text} ")
 
     async def shutdown(self):
-        tasks = list(self._off_scene_tasks.values())
+        tasks = list(self._off_scene_workers.values())
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        self._off_scene_tasks.clear()
+        self._off_scene_workers.clear()
 
     def _graph_for_request_type(self, request_type: SimulationGenerationRequestType) -> CompiledStateGraph:
         if request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
@@ -366,7 +562,6 @@ class WorldSimulator:
             state: WorldSimulatorState,
             simulation_lock: asyncio.Lock,
     ):
-        completed_state = None
         try:
             await self._db.generation_job.mark_running(run.thread_id, stage="starting")
             graph = self._graph_for_request_type(state.request_type)
@@ -389,7 +584,6 @@ class WorldSimulator:
                 run.thread_id,
                 final_turn_id=self._final_turn_id(run.final_state),
             )
-            completed_state = self._world_state_from_result(run.final_state)
         except BaseException as exc:
             run.error = exc
             try:
@@ -405,8 +599,6 @@ class WorldSimulator:
                     simulation_lock.release()
 
             await run.queue.put(self._RUN_DONE)
-            if completed_state and completed_state.committed_turn:
-                self._schedule_off_scene_activity(completed_state)
 
     @staticmethod
     def _world_state_from_result(result: Any) -> WorldSimulatorState | None:
@@ -415,37 +607,86 @@ class WorldSimulator:
         except (TypeError, ValueError):
             return None
 
-    def _cancel_off_scene_activity(self, simulation_id: str):
-        task = self._off_scene_tasks.pop(simulation_id, None)
-        if task and not task.done():
-            task.cancel()
+    def _schedule_off_scene_activity(
+            self,
+            state: WorldSimulatorState,
+            trigger_turn: Turn | None = None,
+    ) -> OffSceneGenerationStatus | None:
+        trigger_turn = trigger_turn or state.committed_turn
+        if not trigger_turn:
+            return None
+        trigger_key = (state.simulation.id, trigger_turn.id)
+        existing_id = self._off_scene_generation_by_turn.get(trigger_key)
+        if existing_id:
+            return self._off_scene_generations[existing_id]
 
-    def _schedule_off_scene_activity(self, state: WorldSimulatorState):
-        simulation_id = state.simulation.id
-        self._cancel_off_scene_activity(simulation_id)
-        self._off_scene_results[simulation_id] = []
-        task = asyncio.create_task(self._run_off_scene_activity(state))
-        self._off_scene_tasks[simulation_id] = task
-        task.add_done_callback(
-            lambda completed, scheduled_simulation_id=simulation_id: self._finish_off_scene_activity(
-                scheduled_simulation_id,
+        generation = OffSceneGenerationStatus(
+            simulation_id=state.simulation.id,
+            trigger_turn_id=trigger_turn.id,
+            trigger_turn_type=trigger_turn.type,
+            simulation_time=state.simulation.current_time,
+        )
+        self._off_scene_generations[generation.id] = generation
+        self._off_scene_generation_by_turn[trigger_key] = generation.id
+        queue = self._off_scene_queues.setdefault(
+            state.simulation.id,
+            asyncio.Queue(),
+        )
+        queue.put_nowait(_OffSceneWorkItem(
+            generation_id=generation.id,
+            state=state.model_copy(deep=True),
+            trigger_turn=trigger_turn.model_copy(deep=True),
+        ))
+        self._ensure_off_scene_worker(state.simulation.id)
+        return generation
+
+    def _ensure_off_scene_worker(self, simulation_id: str):
+        worker = self._off_scene_workers.get(simulation_id)
+        if worker and not worker.done():
+            return
+        worker = asyncio.create_task(self._off_scene_worker(simulation_id))
+        self._off_scene_workers[simulation_id] = worker
+        worker.add_done_callback(
+            lambda completed, worker_simulation_id=simulation_id: self._finish_off_scene_worker(
+                worker_simulation_id,
                 completed,
             )
         )
 
-    def _finish_off_scene_activity(self, simulation_id: str, task: asyncio.Task):
-        if self._off_scene_tasks.get(simulation_id) is task:
-            self._off_scene_tasks.pop(simulation_id, None)
+    def _finish_off_scene_worker(self, simulation_id: str, task: asyncio.Task):
+        if self._off_scene_workers.get(simulation_id) is task:
+            self._off_scene_workers.pop(simulation_id, None)
         if not task.cancelled():
             task.exception()
+        queue = self._off_scene_queues.get(simulation_id)
+        if queue and not queue.empty():
+            self._ensure_off_scene_worker(simulation_id)
 
-    async def _run_off_scene_activity(self, state: WorldSimulatorState):
+    async def _off_scene_worker(self, simulation_id: str):
+        queue = self._off_scene_queues[simulation_id]
+        while not queue.empty():
+            item = queue.get_nowait()
+            try:
+                await self._run_off_scene_activity(item)
+            except Exception as exc:
+                generation = self._off_scene_generations[item.generation_id]
+                generation.status = "failed"
+                generation.stage = "failed"
+                generation.error = str(exc)
+            finally:
+                queue.task_done()
+
+    async def _run_off_scene_activity(self, item: _OffSceneWorkItem):
+        state = item.state
+        generation = self._off_scene_generations[item.generation_id]
+        generation.status = "running"
+        generation.stage = "selecting_actors"
         excluded_ids = set(state.perceiving_character_ids)
         characters = await self._db.character.list_characters(
             simulation_id=state.simulation.id,
         )
         candidates = []
-        for character in characters:
+        for character in sorted(characters, key=lambda candidate: candidate.id):
             if character.id in excluded_ids or character.user_controlled:
                 continue
             if not self._character_is_available(character, state.simulation.current_time):
@@ -456,33 +697,129 @@ class WorldSimulator:
             if len(candidates) >= self._MAX_SCHEDULED_CHARACTERS:
                 break
 
+        generation.actor_ids = [character.id for character in candidates]
+
         for character in candidates:
+            generation.active_actor_id = character.id
             try:
+                generation.stage = "proposing_actions"
+                activity_input = (
+                    "Continue your current off-scene activity at simulation time "
+                    f"{generation.simulation_time.isoformat()}. "
+                    "This is independent of the main scene."
+                )
                 proposal = await self._character_simulator.propose_actions(
                     world_id=state.world.id,
                     simulation_id=state.simulation.id,
                     character_id=character.id,
-                    user_input=(
-                        "Continue your current off-scene activity at simulation time "
-                        f"{state.simulation.current_time.isoformat()}."
+                    user_input=activity_input,
+                )
+                generation.active_proposal = proposal
+                generation.stage = "validating_actions"
+                validation_record = await self._validate_character_action_with_rework(
+                    world_id=state.world.id,
+                    simulation_id=state.simulation.id,
+                    user_input=activity_input,
+                    entry=CharacterActionProposalRecord(
+                        character_id=character.id,
+                        proposal=proposal,
                     ),
+                )
+                proposal_index, actions = self._valid_sequence_candidates_from_record(
+                    validation_record,
+                )[0]
+                validation = (
+                    validation_record.proposal_validations or [validation_record.validation]
+                )[proposal_index]
+                coordination = self._coordination_from_off_scene_actions(
+                    actor_id=character.id,
+                    proposal_index=proposal_index,
+                    actions=actions,
+                )
+                generation.stage = "committing_state"
+                state_commit = await self._state_committer.commit_character_actions(
+                    world_id=state.world.id,
+                    simulation_id=state.simulation.id,
+                    coordination_result=coordination,
+                    user_input=activity_input,
+                )
+                await self._db.state_commit.apply_state_commit_proposal(
+                    proposal=state_commit,
+                    source_id=state.simulation.id,
+                    turn_id=item.trigger_turn.id,
+                )
+                generation.stage = "summarizing_memory"
+                memory_turn = item.trigger_turn.model_copy(update={
+                    "content": activity_input,
+                })
+                memory_summary = await self._memory_summarizer.summarize_character_actions(
+                    world_id=state.world.id,
+                    simulation_id=state.simulation.id,
+                    turn=memory_turn,
+                    coordination_result=coordination,
+                    state_commit=state_commit,
+                    user_input=activity_input,
+                    narration=None,
+                )
+                await self._db.memory_summary.apply_memory_summary_proposal(
+                    proposal=memory_summary,
+                    turn_id=item.trigger_turn.id,
                 )
                 result = OffSceneActivityResult(
                     simulation_id=state.simulation.id,
+                    generation_id=generation.id,
+                    trigger_turn_id=item.trigger_turn.id,
                     character_id=character.id,
-                    simulation_time=state.simulation.current_time,
-                    proposal=proposal,
+                    simulation_time=generation.simulation_time,
+                    proposal=validation_record.proposal,
+                    validation=validation,
+                    coordination=coordination,
+                    state_commit=state_commit,
+                    memory_summary=memory_summary,
                 )
-            except asyncio.CancelledError:
-                raise
             except Exception as exc:
                 result = OffSceneActivityResult(
                     simulation_id=state.simulation.id,
+                    generation_id=generation.id,
+                    trigger_turn_id=item.trigger_turn.id,
                     character_id=character.id,
-                    simulation_time=state.simulation.current_time,
+                    simulation_time=generation.simulation_time,
                     error=str(exc),
                 )
-            self._off_scene_results[state.simulation.id].append(result)
+            generation.results.append(result)
+            generation.completed_actor_ids.append(character.id)
+            generation.active_proposal = None
+
+        generation.active_actor_id = None
+        generation.stage = "completed"
+        generation.status = "completed"
+
+    @staticmethod
+    def _coordination_from_off_scene_actions(
+            *,
+            actor_id: str,
+            proposal_index: int,
+            actions: list[ProposedAction],
+    ) -> SceneCoordinationResult:
+        accepted_actions = []
+        offset = 0
+        for action_index, action in enumerate(actions):
+            end_offset = offset + action.intended_duration_seconds
+            accepted_actions.append(AcceptedSceneAction(
+                actor_id=actor_id,
+                proposal_index=proposal_index,
+                action_index=action_index,
+                action=action,
+                start_offset_seconds=offset,
+                end_offset_seconds=end_offset,
+                summary=f"{actor_id} performs {action.label} off-screen.",
+            ))
+            offset = end_offset
+        return SceneCoordinationResult(
+            status=SceneCoordinationStatus.COMPLETE,
+            accepted_actions=accepted_actions,
+            coordinator_notes=["Single-actor off-screen actions were scheduled deterministically."],
+        )
 
     @staticmethod
     def _generation_request_fingerprint(
@@ -560,6 +897,16 @@ class WorldSimulator:
             simulation_id=state.simulation.id,
             character_id=user_character.id,
             user_input=state.user_input,
+        )
+
+        await self._wait_for_conflicting_off_scene_activity(
+            simulation_id=state.simulation.id,
+            actions=[
+                item.action
+                for item in interpretation.items
+                if item.type == "action"
+            ],
+            action_text=state.user_input,
         )
 
         return {
@@ -724,16 +1071,32 @@ class WorldSimulator:
         world_id = state.world.id if isinstance(state, WorldSimulatorState) else state.world_id
         simulation_id = state.simulation.id if isinstance(state, WorldSimulatorState) else state.simulation_id
 
-        validation_records = []
-        for entry in state.character_actions:
-            validation_records.append(
-                await self._validate_character_action_with_rework(
-                    world_id=world_id,
-                    simulation_id=simulation_id,
-                    user_input=state.user_input or "",
-                    entry=entry,
+        async def validate_records() -> list[CharacterActionValidationRecord]:
+            records = []
+            for entry in state.character_actions:
+                records.append(
+                    await self._validate_character_action_with_rework(
+                        world_id=world_id,
+                        simulation_id=simulation_id,
+                        user_input=state.user_input or "",
+                        entry=entry,
+                    )
                 )
-            )
+            return records
+
+        validation_records = await validate_records()
+        waited = await self._wait_for_conflicting_off_scene_activity(
+            simulation_id=simulation_id,
+            actions=[
+                action
+                for record in validation_records
+                for action in self._allowed_actions_from_validation(record.validation)
+            ],
+            action_text=state.user_input or "",
+        )
+        if waited:
+            # The background commit may have changed locations or preconditions.
+            validation_records = await validate_records()
 
         return {
             "character_action_validations": validation_records,
@@ -974,6 +1337,14 @@ class WorldSimulator:
             proposal=proposal,
             coordination_result=state.character_action_coordination,
         )
+        if isinstance(state, WorldSimulatorState):
+            self._schedule_off_scene_activity(
+                state.model_copy(update={
+                    "committed_turn": turn,
+                    "simulation": simulation,
+                }),
+                trigger_turn=turn,
+            )
         return {
             "committed_turn": turn,
             "state_commit_proposal": proposal,
@@ -999,6 +1370,14 @@ class WorldSimulator:
             content=state.user_input,
             proposal=proposal,
             coordination_result=coordination,
+        )
+        self._schedule_off_scene_activity(
+            state.model_copy(update={
+                "committed_turn": turn,
+                "simulation": simulation,
+                "user_action_coordination": coordination,
+            }),
+            trigger_turn=turn,
         )
         return {
             "committed_turn": turn,
@@ -1740,7 +2119,10 @@ class WorldSimulator:
                 type=type,
                 turn_id=turn.id if turn else None,
                 turn_sequence=turn.sequence if turn else None,
-                state=state.model_dump(mode="json"),
+                state=state.model_dump(
+                    mode="json",
+                    exclude={"active_off_scene_generations"},
+                ),
             )
         )
 
