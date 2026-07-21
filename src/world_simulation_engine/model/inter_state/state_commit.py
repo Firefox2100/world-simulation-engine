@@ -1,6 +1,6 @@
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 PhysicalEntityType = Literal[
@@ -96,6 +96,26 @@ class ProposedEntityStateChange(BaseModel):
     field_changes: list[StateCommitFieldChange] = Field(default_factory=list)
     source_action_refs: list[str] = Field(default_factory=list)
     reason: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_missing_reason(cls, value):
+        if not isinstance(value, dict) or value.get("reason") is not None:
+            return value
+
+        field_changes = value.get("field_changes") or []
+        reasons = [
+            field_change.get("reason")
+            for field_change in field_changes
+            if isinstance(field_change, dict) and field_change.get("reason")
+        ]
+        if not reasons:
+            return value
+
+        return {
+            **value,
+            "reason": reasons[0],
+        }
 
 
 class ProposedEntityPromotion(BaseModel):

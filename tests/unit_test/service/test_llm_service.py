@@ -2,7 +2,7 @@ import json
 
 from langchain.messages import AIMessage
 
-from world_simulation_engine.model import MemorySummaryProposal
+from world_simulation_engine.model import MemorySummaryProposal, SceneCoordinationResult
 from world_simulation_engine.service.llm_service import LlmService
 
 
@@ -71,3 +71,83 @@ def test_parse_raw_with_output_model_extracts_first_json_object_from_prose():
 
     assert parsed is not None
     assert parsed.operations[0].type == "no_abstract_change"
+
+
+def test_parse_raw_with_output_model_repairs_scene_coordination_action_bracket_slip():
+    raw = AIMessage(
+        content=(
+            '{\n'
+            '  "status": "complete",\n'
+            '  "accepted_actions": [\n'
+            '    {\n'
+            '      "actor_id": "character_arthur_moore",\n'
+            '      "proposal_index": 0,\n'
+            '      "action_index": 0,\n'
+            '      "start_offset_seconds": 0,\n'
+            '      "end_offset_seconds": 3,\n'
+            '      "summary": "Arthur moves.",\n'
+            '      "action": {\n'
+            '        "type": "move",\n'
+            '        "label": "step_away",\n'
+            '        "target_ids": [],\n'
+            '        "utterance": null,\n'
+            '        "intended_duration_seconds": 3,\n'
+            '        "interruptible": true,\n'
+            '        "interruption_triggers": [],\n'
+            '        "required_preconditions": [],\n'
+            '        "expected_effects": []\n'
+            '      }\n'
+            '    ]\n'
+            '  },\n'
+            '  "problem": null,\n'
+            '  "pending_actions": [],\n'
+            '  "stopped_reason": null,\n'
+            '  "coordinator_notes": []\n'
+            '}'
+        )
+    )
+
+    parsed = LlmService._parse_raw_with_output_model(SceneCoordinationResult, raw)
+
+    assert parsed is not None
+    assert parsed.accepted_actions[0].action.label == "step_away"
+
+
+def test_parse_raw_with_output_model_repairs_scene_coordination_final_action_bracket_slip():
+    raw = AIMessage(
+        content=(
+            '{\n'
+            '  "status": "complete",\n'
+            '  "accepted_actions": [\n'
+            '    {\n'
+            '      "actor_id": "character_arthur_moore",\n'
+            '      "proposal_index": 0,\n'
+            '      "action_index": 0,\n'
+            '      "start_offset_seconds": 0,\n'
+            '      "end_offset_seconds": 3,\n'
+            '      "summary": "Arthur moves.",\n'
+            '      "action": {\n'
+            '        "type": "move",\n'
+            '        "label": "step_away",\n'
+            '        "target_ids": [],\n'
+            '        "utterance": null,\n'
+            '        "intended_duration_seconds": 3,\n'
+            '        "interruptible": true,\n'
+            '        "interruption_triggers": [],\n'
+            '        "required_preconditions": [],\n'
+            '        "expected_effects": []\n'
+            '      }\n'
+            '    ]\n'
+            '  ],\n'
+            '  "problem": null,\n'
+            '  "pending_actions": [],\n'
+            '  "stopped_reason": null,\n'
+            '  "coordinator_notes": []\n'
+            '}'
+        )
+    )
+
+    parsed = LlmService._parse_raw_with_output_model(SceneCoordinationResult, raw)
+
+    assert parsed is not None
+    assert parsed.accepted_actions[0].action.label == "step_away"

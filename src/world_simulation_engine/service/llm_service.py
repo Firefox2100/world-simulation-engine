@@ -1,4 +1,5 @@
 import json
+import re
 from copy import deepcopy
 from typing import Union, Any, TypeVar, Type, TYPE_CHECKING, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -260,6 +261,13 @@ class LlmService:
                         parsed_candidate = cls._first_json_object(candidate)
                         if parsed_candidate is not None:
                             return output_model.model_validate(parsed_candidate)
+                        for repaired_candidate in cls._json_repair_candidates(candidate):
+                            try:
+                                return output_model.model_validate_json(repaired_candidate)
+                            except Exception:
+                                parsed_repaired_candidate = cls._first_json_object(repaired_candidate)
+                                if parsed_repaired_candidate is not None:
+                                    return output_model.model_validate(parsed_repaired_candidate)
             except Exception:
                 continue
 
@@ -305,6 +313,30 @@ class LlmService:
             return None
 
         return parsed
+
+    @staticmethod
+    def _json_repair_candidates(value: str) -> list[str]:
+        """
+        Return conservative repairs for common local structured-output glitches.
+
+        This intentionally handles only narrow, observed JSON bracket slips and still relies on
+        the target Pydantic model for semantic validation.
+        """
+        start = value.find("{")
+        if start == -1:
+            return []
+
+        json_text = value[start:]
+        repairs = []
+        for pattern in (
+            r'(\n\s*}\s*)\]\s*(\n\s*)},(\s*\n\s*"problem"\s*:)',
+            r'(\n\s*}\s*)\]\s*(\n\s*)\],(\s*\n\s*"problem"\s*:)',
+        ):
+            repaired = re.sub(pattern, r'\1}\2],\3', json_text, count=1)
+            if repaired != json_text and repaired not in repairs:
+                repairs.append(repaired)
+
+        return repairs
 
     async def invoke_structured_with_repair(self,
                                             *,

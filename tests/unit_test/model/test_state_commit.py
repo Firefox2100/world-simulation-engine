@@ -221,6 +221,35 @@ def test_state_commit_proposal_coerces_single_committer_note():
     assert proposal.committer_notes == ["Speech only; no physical state changed."]
 
 
+def test_state_commit_proposal_coerces_missing_state_change_reason():
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "type": "state_change",
+                    "entity": {
+                        "type": "character",
+                        "id": "character_1",
+                    },
+                    "field_changes": [
+                        {
+                            "field_path": "current_activity.name",
+                            "old_value": "standing",
+                            "new_value": "watching the notice board",
+                            "reason": "accepted:0 shows the character watching the notice board.",
+                        },
+                    ],
+                    "source_action_refs": ["accepted:0"],
+                },
+            ],
+            "unchanged_action_refs": [],
+            "committer_notes": [],
+        }
+    )
+
+    assert proposal.operations[0].reason == "accepted:0 shows the character watching the notice board."
+
+
 def test_state_commit_proposal_rejects_incomplete_operation_fragments():
     with pytest.raises(ValidationError):
         StateCommitProposal.model_validate(
