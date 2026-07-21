@@ -11,12 +11,17 @@ from .inter_state import ActionValidation, ActionValidationResult, PerceivedEnti
     ProposedEntityCreation, ProposedEntityPromotion, ProposedEntityStateChange, ProposedNoPhysicalChange, \
     ProposedRelationshipChange, RelationshipType, StateCommitEntityRef, StateCommitFieldChange, \
     StateCommitOperation, StateCommitProposal, EventInvolvementProposal, MemoryCharacterLinkProposal, \
-    MemorySummaryOperation, MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, \
+    MemorySummaryApplyResult, MemorySummaryOperation, MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, \
     ProposedExistingMemoryLink, ProposedIntentCreation, ProposedIntentUpdate, ProposedMemoryCreation, \
     ProposedNoAbstractChange, ProposedTurnEventLink
 from .item import Item, ItemStack, InventoryStack
 from .location import Location, Landmark
 from .memory import MemoryAtom
+from .entity_relationship import CompatibilityRelationshipDetails, EntityRelationship, EntityRelationshipDetails, \
+    GenericRelationshipDetails, GoalRelationshipDetails, InteractionRelationshipDetails, \
+    InterpersonalRelationshipDetails, ProposedRelationshipChange as ProposedEntityRelationshipChange, \
+    RecalledEntityRelationship, RelationshipChangeAudit, RelationshipEntityRef, RelationshipScope, \
+    RelationshipUpdateProposal, RelationshipVisibility, SpatialRelationshipDetails
 from .event import Event
 from .graph_state_snapshot import GraphStateSnapshot
 from .generation_job import GenerationJob

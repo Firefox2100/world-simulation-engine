@@ -13,8 +13,8 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
     event_store.add_turn_to_event = AsyncMock()
     event_store.update_event = AsyncMock()
     memory_store = Mock()
-    memory_store.create_memory_atom = AsyncMock()
-    memory_store.add_character_memory = AsyncMock()
+    memory_store.create_memory_atom = AsyncMock(return_value=Mock())
+    memory_store.add_character_memory = AsyncMock(return_value=True)
     intent_store = Mock()
     intent_store.create_intent = AsyncMock()
     intent_store.update_intent = AsyncMock()
@@ -77,7 +77,7 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
         }
     )
 
-    await store.apply_memory_summary_proposal(proposal=proposal, turn_id="turn_1")
+    result = await store.apply_memory_summary_proposal(proposal=proposal, turn_id="turn_1")
 
     event_store.create_event.assert_awaited_once()
     event_store.add_character_involvement.assert_awaited_once_with(
@@ -91,6 +91,8 @@ async def test_apply_memory_summary_proposal_delegates_event_memory_and_intent_c
         event_id="evt_event_1",
         intent_id="int_intent_1",
     )
+    assert result.created_memory_ids == ["memory_1"]
+    assert result.memory_ids_by_character == {"character_1": ["memory_1"]}
 
 
 async def test_apply_memory_summary_proposal_skips_unresolvable_memory_creation():

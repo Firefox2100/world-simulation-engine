@@ -14,6 +14,7 @@ from world_simulation_engine.misc.enums import (
 )
 from world_simulation_engine.model import (
     Intent,
+    EntityRelationship,
     ActionProposal,
     Character,
     CharacterActionPlan,
@@ -99,6 +100,10 @@ class CharacterPerspective(BaseModel):
     perceived_landmarks: list[PerceivedLandmark] = Field(default_factory=list)
 
     relevant_memories: list[RecalledMemory] = Field(default_factory=list)
+    relationships: list[EntityRelationship] = Field(
+        default_factory=list,
+        description="Objective facts and subjective relationships available to this actor.",
+    )
 
     recent_events: list[str] = Field(
         default_factory=list,
@@ -368,6 +373,24 @@ class CharacterSimulator(SimulatorComponent):
             character=character,
             user_input=user_input,
         )
+        relationship_entity_ids = {
+            character.id,
+            location.id,
+            *(entry.item_id for entry in inventory),
+            *(entry.stack_id for entry in inventory),
+            *(entry.id for entry in equipment),
+            *(entry.character.id for entry in perspective.perceived_characters),
+            *(entry.item.id for entry in perspective.perceived_items),
+            *(entry.stack.id for entry in perspective.perceived_items),
+            *(entry.equipment.id for entry in perspective.perceived_equipment),
+            *(entry.container.id for entry in perspective.perceived_containers),
+            *(entry.landmark.id for entry in perspective.perceived_landmarks),
+        }
+        relationships = await self._db.entity_relationship.list_relationships(
+            scope_id=simulation.id,
+            perspective_character_id=character.id,
+            entity_ids=list(relationship_entity_ids),
+        )
 
         return CharacterPerspective(
             actor=character,
@@ -384,6 +407,7 @@ class CharacterSimulator(SimulatorComponent):
             perceived_containers=perspective.perceived_containers,
             perceived_landmarks=perspective.perceived_landmarks,
             relevant_memories=relevant_memories,
+            relationships=relationships,
         )
 
     async def propose_actions(self,
@@ -418,6 +442,7 @@ class CharacterSimulator(SimulatorComponent):
             language=world.language,
             prompt_name="action_proposal",
         )
+        prompt = self._with_relationship_context(prompt)
 
         llm = await self._prepare_llm_service(
             simulation_id=simulation_id,
@@ -633,6 +658,10 @@ class CharacterSimulator(SimulatorComponent):
             simulation_id=simulation_id,
             language=world.language,
             prompt_name="action_reaction",
+        )
+        prompt = self._with_relationship_context(
+            prompt,
+            nested_under_perspective=True,
         )
 
         llm = await self._prepare_llm_service(

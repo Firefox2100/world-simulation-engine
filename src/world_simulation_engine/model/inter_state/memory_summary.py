@@ -192,3 +192,9 @@ class MemorySummaryProposal(BaseModel):
         default_factory=list,
         description="Brief diagnostic notes. Do not include hidden chain-of-thought.",
     )
+
+
+class MemorySummaryApplyResult(BaseModel):
+    created_memory_ids: list[str] = Field(default_factory=list)
+    linked_memory_ids: list[str] = Field(default_factory=list)
+    memory_ids_by_character: dict[str, list[str]] = Field(default_factory=dict)

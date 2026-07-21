@@ -65,6 +65,7 @@ async def test_build_context_fetches_typed_database_state():
         interruptible=True,
     )
     database = Mock()
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
     database.world.get_world = AsyncMock(return_value=world)
     database.simulation.get_simulation = AsyncMock(return_value=simulation)
     database.character.get_character = AsyncMock(return_value=character)
@@ -93,6 +94,11 @@ async def test_build_context_fetches_typed_database_state():
     assert context.actor == character
     assert context.location == location
     assert context.actions == [action]
+    assert context.relationships == []
+    relationship_call = database.entity_relationship.list_relationships.await_args.kwargs
+    assert relationship_call["scope_id"] == simulation.id
+    assert relationship_call["perspective_character_id"] == character.id
+    assert {character.id, location.id}.issubset(set(relationship_call["entity_ids"]))
     assert context.active_intents == []
     assert context.recent_memories == []
 
@@ -137,6 +143,7 @@ async def test_validate_actions_preserves_original_action_payload_from_llm_echo_
         interruptible=True,
     )
     database = Mock()
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
     database.world.get_world = AsyncMock(return_value=world)
     database.simulation.get_simulation = AsyncMock(return_value=simulation)
     database.character.get_character = AsyncMock(return_value=character)

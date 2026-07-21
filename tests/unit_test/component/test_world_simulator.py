@@ -14,7 +14,8 @@ from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotTyp
     SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
     ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GenerationJob, GraphStateSnapshot, InputInterpretation, \
-    MemorySummaryProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, \
+    MemorySummaryApplyResult, MemorySummaryProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, \
+    SceneCoordinationResult, Simulation, \
     StateCommitProposal, Turn, World
 
 
@@ -1426,6 +1427,7 @@ async def test_summarize_character_memory_applies_summary_proposal():
     proposal = MemorySummaryProposal()
     simulator._memory_summarizer.summarize_character_actions = AsyncMock(return_value=proposal)
     simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
+    simulator._relationship_updater.update_from_memories = AsyncMock()
 
     result = await simulator.summarize_character_memory(state)
 
@@ -1445,6 +1447,50 @@ async def test_summarize_character_memory_applies_summary_proposal():
         proposal=proposal,
         turn_id="turn_1",
     )
+    simulator._relationship_updater.update_from_memories.assert_not_awaited()
+
+
+async def test_memory_relationship_update_uses_committed_evidence_and_action_entities():
+    simulator = WorldSimulator(database=Mock())
+    simulator._relationship_updater.update_from_memories = AsyncMock()
+    coordination = SceneCoordinationResult.model_validate({
+        "status": "complete",
+        "accepted_actions": [{
+            "actor_id": "character_1",
+            "proposal_index": 0,
+            "action_index": 0,
+            "action": {
+                "type": "speak",
+                "label": "thank",
+                "target_ids": ["character_2", "item_1"],
+                "utterance": "Thank you.",
+                "intended_duration_seconds": 2,
+                "interruptible": True,
+            },
+            "start_offset_seconds": 0,
+            "end_offset_seconds": 2,
+            "summary": "Alex thanks Blair.",
+        }],
+    })
+
+    await simulator._update_relationships_from_memory(
+        simulation_id="simulation_1",
+        turn_id="turn_1",
+        memory_apply_result=MemorySummaryApplyResult(
+            created_memory_ids=["memory_1"],
+            memory_ids_by_character={
+                "character_2": ["memory_1"],
+                "character_1": ["memory_1"],
+            },
+        ),
+        coordination=coordination,
+    )
+
+    assert simulator._relationship_updater.update_from_memories.await_count == 2
+    first = simulator._relationship_updater.update_from_memories.await_args_list[0].kwargs
+    assert first["character_id"] == "character_1"
+    assert first["memory_ids"] == ["memory_1"]
+    assert first["candidate_entity_ids"] == ["character_1", "character_2", "item_1"]
 
 
 async def test_summarize_character_memory_saves_character_round_base_for_world_state():

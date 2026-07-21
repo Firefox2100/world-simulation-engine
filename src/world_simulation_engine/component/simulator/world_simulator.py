@@ -15,7 +15,8 @@ from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotTyp
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
     Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
-    GraphStateSnapshot, MemorySummaryProposal, NarrationProposal, ReactionHistoryEntry, StateCommitProposal, Turn
+    GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationProposal, \
+    ReactionHistoryEntry, StateCommitProposal, Turn
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from .action_validator import ActionValidator
@@ -23,6 +24,7 @@ from .character_simulator import CharacterSimulator
 from .input_interpreter import InputInterpreter
 from .memory_summarizer import MemorySummarizer
 from .narrator import Narrator
+from .relationship_updater import RelationshipUpdater
 from .scene_coordinator import SceneCoordinator
 from .state_committer import StateCommitter
 
@@ -133,6 +135,7 @@ class _SimulatorRun:
 class WorldSimulator:
     _MAX_VALIDATION_REWORK_ATTEMPTS = 3
     _MAX_SCHEDULED_CHARACTERS = 8
+    _MAX_RELATIONSHIP_UPDATE_PERSPECTIVES = 8
     _RUN_DONE = object()
 
     def __init__(self,
@@ -162,6 +165,10 @@ class WorldSimulator:
             prompt_loader=prompt_loader,
         )
         self._narrator = Narrator(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._relationship_updater = RelationshipUpdater(
             database=database,
             prompt_loader=prompt_loader,
         )
@@ -761,9 +768,15 @@ class WorldSimulator:
                     user_input=activity_input,
                     narration=None,
                 )
-                await self._db.memory_summary.apply_memory_summary_proposal(
+                memory_apply_result = await self._db.memory_summary.apply_memory_summary_proposal(
                     proposal=memory_summary,
                     turn_id=item.trigger_turn.id,
+                )
+                await self._update_relationships_from_memory(
+                    simulation_id=state.simulation.id,
+                    turn_id=item.trigger_turn.id,
+                    memory_apply_result=memory_apply_result,
+                    coordination=coordination,
                 )
                 result = OffSceneActivityResult(
                     simulation_id=state.simulation.id,
@@ -1402,9 +1415,15 @@ class WorldSimulator:
             state_commit=state.state_commit_proposal,
             user_input=state.user_input,
         )
-        await self._db.memory_summary.apply_memory_summary_proposal(
+        memory_apply_result = await self._db.memory_summary.apply_memory_summary_proposal(
             proposal=proposal,
             turn_id=state.committed_turn.id,
+        )
+        await self._update_relationships_from_memory(
+            simulation_id=state.simulation.id,
+            turn_id=state.committed_turn.id,
+            memory_apply_result=memory_apply_result,
+            coordination=state.user_action_coordination,
         )
         await self._save_graph_state_snapshot(
             state=state.model_copy(update={"memory_summary_proposal": proposal}),
@@ -1483,9 +1502,15 @@ class WorldSimulator:
             user_input=state.user_input,
             narration=Narrator.render_text(state.narration),
         )
-        await self._db.memory_summary.apply_memory_summary_proposal(
+        memory_apply_result = await self._db.memory_summary.apply_memory_summary_proposal(
             proposal=proposal,
             turn_id=state.committed_turn.id,
+        )
+        await self._update_relationships_from_memory(
+            simulation_id=simulation_id,
+            turn_id=state.committed_turn.id,
+            memory_apply_result=memory_apply_result,
+            coordination=state.character_action_coordination,
         )
         if isinstance(state, WorldSimulatorState):
             await self._save_graph_state_snapshot(
@@ -1496,6 +1521,41 @@ class WorldSimulator:
         return {
             "memory_summary_proposal": proposal,
         }
+
+    async def _update_relationships_from_memory(
+            self,
+            *,
+            simulation_id: str,
+            turn_id: str,
+            memory_apply_result: MemorySummaryApplyResult,
+            coordination: SceneCoordinationResult,
+    ) -> None:
+        """Run isolated, best-effort updates only for perspectives with committed evidence."""
+        if not isinstance(memory_apply_result, MemorySummaryApplyResult):
+            return
+        candidate_ids = set(memory_apply_result.memory_ids_by_character)
+        for accepted in coordination.accepted_actions:
+            candidate_ids.add(accepted.actor_id)
+            candidate_ids.update(accepted.action.target_ids)
+        for pending in coordination.pending_actions:
+            candidate_ids.add(pending.actor_id)
+            candidate_ids.update(pending.action.target_ids)
+        if coordination.problem:
+            candidate_ids.update(coordination.problem.involved_actor_ids)
+
+        character_ids = sorted(memory_apply_result.memory_ids_by_character)
+        for character_id in character_ids[:self._MAX_RELATIONSHIP_UPDATE_PERSPECTIVES]:
+            try:
+                await self._relationship_updater.update_from_memories(
+                    simulation_id=simulation_id,
+                    character_id=character_id,
+                    turn_id=turn_id,
+                    memory_ids=memory_apply_result.memory_ids_by_character[character_id],
+                    candidate_entity_ids=sorted(candidate_ids),
+                )
+            except Exception:
+                # Relationship inference is derived state and must not invalidate a committed turn.
+                continue
 
     async def route_after_input(self, state: WorldSimulatorState):
         if state.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:

@@ -1,8 +1,8 @@
 from .action_validation import ActionValidation, ActionValidationResult
 from .action_proposal import ProposedAction, ActionProposal
 from .input_interpretation import InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem
-from .memory_summary import EventInvolvementProposal, MemoryCharacterLinkProposal, MemorySummaryOperation, \
-    MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, ProposedExistingMemoryLink, \
+from .memory_summary import EventInvolvementProposal, MemoryCharacterLinkProposal, MemorySummaryApplyResult, \
+    MemorySummaryOperation, MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, ProposedExistingMemoryLink, \
     ProposedIntentCreation, ProposedIntentUpdate, ProposedMemoryCreation, ProposedNoAbstractChange, \
     ProposedTurnEventLink
 from .narration import NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, \

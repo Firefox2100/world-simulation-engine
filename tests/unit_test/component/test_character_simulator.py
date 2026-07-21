@@ -5,7 +5,8 @@ import pytest
 
 from world_simulation_engine.component.simulator.character_simulator import CharacterPerspective, CharacterSimulator
 from world_simulation_engine.misc.enums import ActionType, MemoryStance, MemorySupportType, Salience, SupportedLanguage
-from world_simulation_engine.model import ActionProposal, Character, CurrentActivity, Event, Location, MemoryAtom
+from world_simulation_engine.model import ActionProposal, Character, CurrentActivity, Event, Location, MemoryAtom, \
+    Simulation, World
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
 
@@ -143,6 +144,64 @@ def make_character_perspective() -> CharacterPerspective:
             description="A busy inn bar",
         ),
     )
+
+
+async def test_build_perspective_recalls_relationships_for_actor_scope():
+    world = World(
+        id="world_1",
+        name="World",
+        description="A world",
+        starting_time=datetime(2026, 1, 1, 12, 0),
+        version=1,
+        language=SupportedLanguage.ENGLISH,
+    )
+    simulation = Simulation(
+        id="simulation_1",
+        name="Simulation",
+        description="A simulation",
+        current_time=datetime(2026, 1, 1, 12, 0),
+    )
+    character = Character(
+        id="character_1",
+        name="Alex",
+        age=30,
+        gender="unknown",
+        appearance="Plain",
+        description="The actor",
+        public_state="Standing",
+        private_state="Focused",
+        current_activity={"name": "idle"},
+    )
+    location = Location(id="location_1", name="Room", description="A room")
+    database = Mock()
+    database.location.get_location_by_character = AsyncMock(return_value=location)
+    database.item.get_inventory = AsyncMock(return_value=[])
+    database.equipment.get_equipment_inventory = AsyncMock(return_value=[])
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
+    simulator = CharacterSimulator(database=database, langfuse_handler=None)
+    simulator._perspective_resolver.resolve_perceived_entities = AsyncMock(return_value=Mock(
+        perceived_characters=[],
+        perceived_background_characters=[],
+        perceived_items=[],
+        perceived_equipment=[],
+        perceived_containers=[],
+        perceived_landmarks=[],
+    ))
+    simulator._recall_memory = AsyncMock(return_value=[])
+    simulator._recall_intents = AsyncMock(return_value=[])
+
+    perspective = await simulator._build_perspective(
+        world=world,
+        simulation=simulation,
+        character=character,
+        user_input="Wait.",
+    )
+
+    assert perspective.relationships == []
+    relationship_call = database.entity_relationship.list_relationships.await_args.kwargs
+    assert relationship_call["scope_id"] == simulation.id
+    assert relationship_call["perspective_character_id"] == character.id
+    assert set(relationship_call["entity_ids"]) == {character.id, location.id}
 
 
 async def test_character_simulator_repairs_speak_action_without_utterance():

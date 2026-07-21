@@ -3,8 +3,9 @@ from datetime import timedelta
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType
-from world_simulation_engine.model import ActionValidationResult, BackgroundCharacter, Character, Container, Equipment, \
-    Intent, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, ProposedAction, Simulation, World
+from world_simulation_engine.model import ActionValidationResult, BackgroundCharacter, Character, Container, \
+    EntityRelationship, Equipment, Intent, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
+    ProposedAction, Simulation, World
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
 from .simulator_component import SimulatorComponent
@@ -65,6 +66,7 @@ class ActionValidatorContext(BaseModel):
     perceived_landmarks: list[Landmark] = Field(default_factory=list)
     active_intents: list[Intent] = Field(default_factory=list)
     recent_memories: list[MemoryRecallRecord] = Field(default_factory=list)
+    relationships: list[EntityRelationship] = Field(default_factory=list)
 
 
 class ActionValidator(SimulatorComponent):
@@ -114,6 +116,25 @@ class ActionValidator(SimulatorComponent):
             deadline_delta=self._INTENT_DEADLINE_DELTA,
             priority_threshold=self._INTENT_PRIORITY_THRESHOLD,
             urgency_threshold=self._INTENT_URGENCY_THRESHOLD,
+        )
+        relationship_entity_ids = {
+            character_id,
+            location.id,
+            *(target_id for action in actions for target_id in action.target_ids),
+            *(entry.item_id for entry in inventory),
+            *(entry.stack_id for entry in inventory),
+            *(entry.id for entry in equipment),
+            *(character.id for character, _, _, _ in characters),
+            *(item.id for item, _, _, _, _ in items),
+            *(stack.id for _, stack, _, _, _ in items),
+            *(entry.id for entry, _, _, _, _ in location_equipment),
+            *(container.id for container, _, _, _, _ in containers),
+            *(landmark.id for landmark in landmarks),
+        }
+        relationships = await self._db.entity_relationship.list_relationships(
+            scope_id=simulation_id,
+            perspective_character_id=character_id,
+            entity_ids=list(relationship_entity_ids),
         )
 
         return ActionValidatorContext(
@@ -174,6 +195,7 @@ class ActionValidator(SimulatorComponent):
             perceived_landmarks=landmarks,
             active_intents=active_intents,
             recent_memories=recent_memories,
+            relationships=relationships,
         )
 
     async def validate_actions(self,
@@ -201,6 +223,7 @@ class ActionValidator(SimulatorComponent):
             language=context.world.language,
             prompt_name="action_validator",
         )
+        prompt = self._with_relationship_context(prompt)
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
         result = await llm.invoke_structured_with_repair(

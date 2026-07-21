@@ -411,7 +411,7 @@ async def create_simulation(world_id: str, db: db_dep):
         location_pairs=location_pairs,
         entity_pairs=character_pairs + background_character_pairs,
     )
-    await db.container.copy_containers(
+    _, container_pairs = await db.container.copy_containers(
         world_id,
         created_simulation.id,
         location_pairs=location_pairs,
@@ -426,6 +426,20 @@ async def create_simulation(world_id: str, db: db_dep):
     await db.intent.copy_intents(
         character_pairs=character_pairs,
         event_pairs=event_pairs,
+    )
+    await db.entity_relationship.copy_relationships(
+        source_id=world_id,
+        target_simulation_id=created_simulation.id,
+        entity_pairs=(
+            location_pairs
+            + landmark_pairs
+            + character_pairs
+            + background_character_pairs
+            + stack_pairs
+            + equipment_pairs
+            + container_pairs
+        ),
+        copied_at=created_simulation.current_time,
     )
 
     return created_simulation

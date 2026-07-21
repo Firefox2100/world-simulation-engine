@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "你只为一个角色视角提出最多两项小幅关系变化。只能使用给出的新记忆、候选实体和已有关系。每项变化必须引用至少一个给出的新记忆 ID。除非记忆明确建立或改变了持久的态度、习惯、目标、空间事实或兼容性认知，否则不要修改。变化幅度应小。不得创建客观全局事实、修改其他角色的私有观点、虚构实体或重复未变化的关系。只返回包含 changes 和 updater_notes 的 RelationshipUpdateProposal JSON。"
+  },
+  {
+    "role": "user",
+    "content": "角色：{{ actor.name }}（{{ actor.id }}）\n模拟时间：{{ simulation_time }}\n回合：{{ turn_id }}\n\n新记忆：\n{% for memory in new_memories %}- {{ memory.id }}：{{ memory.summary }}\n{% else %}- 无\n{% endfor %}\n\n允许的实体端点：\n{% for entity in candidate_entities %}- {{ entity.type }} {{ entity.name or entity.id }}（{{ entity.id }}）\n{% else %}- 无\n{% endfor %}\n\n该角色可知的已有关系：\n{% for relationship in existing_relationships %}- ID {{ relationship.id }}；{{ relationship.source.name or relationship.source.id }}（{{ relationship.source.id }}）--{{ relationship.label }}--> {{ relationship.target.name or relationship.target.id }}（{{ relationship.target.id }}）；类型 {{ relationship.details.kind }}；置信度 {{ relationship.confidence }}；详情 {{ relationship.details }}；私有描述 {{ relationship.private_description }}；证据 {{ relationship.evidence_memory_ids }}\n{% else %}- 无\n{% endfor %}\n\n更新时提供 relationship_id，并保持相同端点和类型；新建时省略 relationship_id。kind 只能是 interpersonal、spatial、interaction、goal、compatibility、generic。只填写对应类型需要的字段。"
+  }
+]

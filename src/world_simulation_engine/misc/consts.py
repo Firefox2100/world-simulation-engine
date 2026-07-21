@@ -13,6 +13,7 @@ class Prompts(TypedDict, total=False):
     action_validator: list[dict]
     input_interpreter: list[dict]
     memory_summarizer: list[dict]
+    relationship_updater: list[dict]
     narrator: list[dict]
     scene_coordinator: list[dict]
     speech_repair: list[dict]
@@ -35,6 +36,7 @@ PROMPT_NAMES = [
     "action_validator",
     "input_interpreter",
     "memory_summarizer",
+    "relationship_updater",
     "narrator",
     "scene_coordinator",
     "speech_repair",

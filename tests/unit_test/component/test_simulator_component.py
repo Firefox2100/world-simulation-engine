@@ -1,11 +1,14 @@
 from types import SimpleNamespace
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
-from world_simulation_engine.misc.enums import ConnectionType
-from world_simulation_engine.model import ConnectionConfig, OpenAiChatModelConfig
+from world_simulation_engine.misc.enums import ConnectionType, MessageRole
+from world_simulation_engine.model import ConnectionConfig, EntityRelationship, InterpersonalRelationshipDetails, \
+    OpenAiChatModelConfig, PromptMessage, RelationshipEntityRef, RelationshipScope
+from world_simulation_engine.service.llm_service import LlmService
 
 
 async def test_prepare_llm_service_requires_component_chat_config():
@@ -69,3 +72,31 @@ async def test_prepare_llm_service_builds_llm_when_config_is_complete(monkeypatc
         "model_config": chat_config,
         "connection_config": connection_config,
     }
+
+
+def test_relationship_context_message_renders_compact_directional_facts():
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    relationship = EntityRelationship(
+        scope_type=RelationshipScope.SIMULATION,
+        scope_id="simulation_1",
+        source=RelationshipEntityRef(type="character", id="character_1", name="Alex"),
+        target=RelationshipEntityRef(type="character", id="character_2", name="Blair"),
+        label="trusts",
+        public_description="Alex relies on Blair.",
+        details=InterpersonalRelationshipDetails(trust=0.5),
+        created_at=now,
+        last_changed_at=now,
+    )
+    prompts = InputInterpreter._with_relationship_context([
+        PromptMessage(role=MessageRole.USER, content="Existing context."),
+    ])
+    service = LlmService(model_config=Mock(), connection_config=Mock())
+
+    messages = service._compose_messages(
+        prompts,
+        data={"relationships": [relationship.model_dump()]},
+    )
+
+    assert len(messages) == 1
+    assert "Alex (character_1) --trusts--> Blair (character_2)" in messages[0].content
+    assert "trust" in messages[0].content

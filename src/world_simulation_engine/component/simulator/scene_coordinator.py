@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, SceneCoordinationStatus
-from world_simulation_engine.model import BackgroundCharacter, Character, CharacterActionPlan, Container, Equipment, \
-    InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, PendingSceneAction, ProposedAction, \
-    ReactionHistoryEntry, SceneCoordinationResult, Simulation, World
+from world_simulation_engine.model import BackgroundCharacter, Character, CharacterActionPlan, Container, \
+    EntityRelationship, Equipment, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
+    PendingSceneAction, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, World
 
 from .simulator_component import SimulatorComponent
 
@@ -49,6 +49,7 @@ class ActorCoordinationContext(BaseModel):
     location: Location
     inventory: list[InventoryStack] = Field(default_factory=list)
     equipment: list[InventoryEquipment] = Field(default_factory=list)
+    relationships: list[EntityRelationship] = Field(default_factory=list)
 
 
 class SceneCoordinatorContext(BaseModel):
@@ -223,12 +224,33 @@ class SceneCoordinator(SimulatorComponent):
                 raise ValueError(f"Character {actor.id} is not in a location")
 
             actor_location_ids.add(location.id)
+            inventory = await self._db.item.get_inventory(actor.id)
+            equipment = await self._db.equipment.get_equipment_inventory(actor.id)
+            relationship_entity_ids = {
+                actor.id,
+                location.id,
+                *(target_id for action in plan.actions for target_id in action.target_ids),
+                *(
+                    target_id
+                    for candidate_set in plan.candidate_sets
+                    for action in candidate_set.actions
+                    for target_id in action.target_ids
+                ),
+                *(entry.item_id for entry in inventory),
+                *(entry.stack_id for entry in inventory),
+                *(entry.id for entry in equipment),
+            }
             actor_contexts.append(
                 ActorCoordinationContext(
                     actor=actor,
                     location=location,
-                    inventory=await self._db.item.get_inventory(actor.id),
-                    equipment=await self._db.equipment.get_equipment_inventory(actor.id),
+                    inventory=inventory,
+                    equipment=equipment,
+                    relationships=await self._db.entity_relationship.list_relationships(
+                        scope_id=simulation_id,
+                        perspective_character_id=actor.id,
+                        entity_ids=list(relationship_entity_ids),
+                    ),
                 )
             )
 
@@ -342,6 +364,10 @@ class SceneCoordinator(SimulatorComponent):
             simulation_id=simulation_id,
             language=context.world.language,
             prompt_name="scene_coordinator",
+        )
+        prompt = self._with_relationship_context(
+            prompt,
+            nested_under_actors=True,
         )
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 

@@ -1,6 +1,14 @@
+"""Apply validated abstract memory proposals to graph storage."""
+
 from uuid import uuid4
 
-from world_simulation_engine.model import Event, Intent, MemoryAtom, MemorySummaryProposal
+from world_simulation_engine.model import (
+    Event,
+    Intent,
+    MemoryAtom,
+    MemorySummaryApplyResult,
+    MemorySummaryProposal,
+)
 
 from .event_store import EventStore
 from .intent_store import IntentStore
@@ -8,6 +16,7 @@ from .memory_store import CharacterMemoryLink, MemoryStore
 
 
 class MemorySummaryStore:
+    """Persist events, memories, and intents from a summary proposal."""
     def __init__(self,
                  event_store: EventStore,
                  memory_store: MemoryStore,
@@ -20,7 +29,11 @@ class MemorySummaryStore:
     async def apply_memory_summary_proposal(self,
                                             proposal: MemorySummaryProposal,
                                             turn_id: str,
-                                            ):
+                                            ) -> MemorySummaryApplyResult:
+        """Apply valid operations and report the memory evidence actually committed."""
+        created_memory_ids = []
+        linked_memory_ids = []
+        memory_ids_by_character: dict[str, list[str]] = {}
         for operation in proposal.operations:
             if operation.type == "create_event":
                 event = Event(
@@ -54,10 +67,11 @@ class MemorySummaryStore:
                         involvement=involvement.involvement,
                     )
             elif operation.type == "create_memory":
+                memory_id = operation.proposed_id or str(uuid4())
                 try:
-                    await self._memory.create_memory_atom(
+                    created = await self._memory.create_memory_atom(
                         memory=MemoryAtom(
-                            id=operation.proposed_id or str(uuid4()),
+                            id=memory_id,
                             summary=operation.summary,
                             keywords=operation.keywords,
                             embedding=None,
@@ -75,10 +89,17 @@ class MemorySummaryStore:
                             for link in operation.character_links
                         ],
                     )
+                    if created:
+                        created_memory_ids.append(memory_id)
+                        for link in operation.character_links:
+                            memory_ids_by_character.setdefault(
+                                link.character_id,
+                                [],
+                            ).append(memory_id)
                 except ValueError:
                     continue
             elif operation.type == "link_existing_memory":
-                await self._memory.add_character_memory(
+                linked = await self._memory.add_character_memory(
                     memory_id=operation.memory_id,
                     character_link=CharacterMemoryLink(
                         character_id=operation.character_link.character_id,
@@ -88,6 +109,12 @@ class MemorySummaryStore:
                         stance=operation.character_link.stance,
                     ),
                 )
+                if linked:
+                    linked_memory_ids.append(operation.memory_id)
+                    memory_ids_by_character.setdefault(
+                        operation.character_link.character_id,
+                        [],
+                    ).append(operation.memory_id)
             elif operation.type == "create_intent":
                 intent = Intent(
                     id=operation.proposed_id or str(uuid4()),
@@ -146,3 +173,11 @@ class MemorySummaryStore:
                         event_id=operation.event_id,
                         intent_id=operation.intent_id,
                     )
+        return MemorySummaryApplyResult(
+            created_memory_ids=list(dict.fromkeys(created_memory_ids)),
+            linked_memory_ids=list(dict.fromkeys(linked_memory_ids)),
+            memory_ids_by_character={
+                character_id: list(dict.fromkeys(memory_ids))
+                for character_id, memory_ids in memory_ids_by_character.items()
+            },
+        )

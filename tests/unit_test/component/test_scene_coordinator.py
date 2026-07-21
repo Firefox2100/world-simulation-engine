@@ -70,6 +70,7 @@ def make_database(
         description="A small room",
     )
     database = Mock()
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
     database.world.get_world = AsyncMock(return_value=world)
     database.simulation.get_simulation = AsyncMock(return_value=simulation)
     database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
@@ -162,6 +163,7 @@ async def test_build_context_fetches_actor_and_scene_state():
     )
 
     database = Mock()
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
     database.world.get_world = AsyncMock(return_value=world)
     database.simulation.get_simulation = AsyncMock(return_value=simulation)
     database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
@@ -189,6 +191,10 @@ async def test_build_context_fetches_actor_and_scene_state():
     assert context.action_plans == [action_plan]
     assert context.actors[0].actor == character
     assert context.actors[0].location == location
+    assert context.actors[0].relationships == []
+    database.entity_relationship.list_relationships.assert_awaited_once()
+    relationship_call = database.entity_relationship.list_relationships.await_args.kwargs
+    assert relationship_call["perspective_character_id"] == character.id
 
 
 async def test_build_context_deduplicates_landmarks_and_excludes_planned_characters_from_perceived_list():
@@ -210,6 +216,7 @@ async def test_build_context_deduplicates_landmarks_and_excludes_planned_charact
     shared_landmark = Landmark(id="landmark_1", name="Clock", description="A brass clock")
 
     database = Mock()
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
     database.world.get_world = AsyncMock(return_value=world)
     database.simulation.get_simulation = AsyncMock(return_value=simulation)
     database.character.get_user_character_by_simulation = AsyncMock(return_value=actor_1)

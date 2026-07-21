@@ -348,8 +348,8 @@ class MemoryStore:
     async def add_character_memory(self,
                                    memory_id: str,
                                    character_link: CharacterMemoryLink,
-                                   ):
-        await self._driver.execute_query(
+                                   ) -> bool:
+        result = await self._driver.execute_query(
             """
             MATCH (memory:MemoryAtom {id: $memory_id})
             MATCH (character:Character {id: $character_id})
@@ -358,6 +358,7 @@ class MemoryStore:
                 remembers.salience = $salience,
                 remembers.behavioural_relevance = $behavioural_relevance,
                 remembers.stance = $stance
+            RETURN memory
             """,
             parameters_={
                 "memory_id": memory_id,
@@ -368,6 +369,7 @@ class MemoryStore:
                 "stance": character_link.stance,
             },
         )
+        return bool(result.records)
 
     async def get_recent_turn_memory_candidates(self,
                                                 character_id: str,
