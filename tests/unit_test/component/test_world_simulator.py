@@ -8,7 +8,8 @@ import pytest
 os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.simulator.world_simulator import CharacterActionProposalRecord, \
-    CharacterActionProposalState, CharacterActionValidationRecord, WorldSimulator, WorldSimulatorState
+    CharacterActionProposalState, CharacterActionValidationRecord, OffSceneGenerationStatus, WorldSimulator, \
+    WorldSimulatorState
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
@@ -115,6 +116,181 @@ async def collect_async(async_iterable):
         item
         async for item in async_iterable
     ]
+
+
+def register_running_off_scene_generation(
+        simulator: WorldSimulator,
+        actor_ids: list[str],
+) -> OffSceneGenerationStatus:
+    generation = OffSceneGenerationStatus(
+        simulation_id="simulation_1",
+        trigger_turn_id="background_turn",
+        trigger_turn_type=TurnType.USER_INPUT,
+        simulation_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        status="running",
+        stage="proposing_actions",
+        actor_ids=actor_ids,
+    )
+    simulator._off_scene_generations[generation.id] = generation
+    return generation
+
+
+async def test_off_scene_conflict_waits_for_direct_character_target():
+    simulator = WorldSimulator(database=Mock())
+    register_running_off_scene_generation(simulator, ["character_2"])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+    action = make_action("ask_clara").model_copy(update={
+        "type": ActionType.SPEAK,
+        "target_ids": ["character_2"],
+    })
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[action],
+    )
+
+    assert waited is True
+    simulator.wait_for_off_scene_activity.assert_awaited_once_with("simulation_1")
+
+
+async def test_off_scene_conflict_waits_for_movement_into_actor_location_scope():
+    database = Mock()
+    off_scene = make_character().model_copy(update={
+        "id": "character_2",
+        "user_controlled": False,
+    })
+    database.get_characters_in_location = AsyncMock(
+        return_value=[(off_scene, Mock(), None, None)]
+    )
+    simulator = WorldSimulator(database=database)
+    register_running_off_scene_generation(simulator, ["character_2"])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+    action = make_action("enter_inn").model_copy(update={
+        "type": ActionType.MOVE,
+        "target_ids": ["location_inn"],
+    })
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[action],
+    )
+
+    assert waited is True
+    database.get_characters_in_location.assert_awaited_once_with("location_inn")
+
+
+async def test_off_scene_conflict_waits_for_converging_background_movement():
+    simulator = WorldSimulator(database=Mock())
+    generation = register_running_off_scene_generation(simulator, ["character_2"])
+    generation.active_proposal = make_action_proposal(
+        make_action("enter_inn").model_copy(update={
+            "type": ActionType.MOVE,
+            "target_ids": ["location_inn"],
+        })
+    )
+    simulator.wait_for_off_scene_activity = AsyncMock()
+    foreground_action = make_action("enter_inn").model_copy(update={
+        "type": ActionType.MOVE,
+        "target_ids": ["location_inn"],
+    })
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[foreground_action],
+    )
+
+    assert waited is True
+    simulator.wait_for_off_scene_activity.assert_awaited_once_with("simulation_1")
+
+
+async def test_off_scene_conflict_resolves_character_target_for_unselected_queued_work():
+    database = Mock()
+    database.character.get_character = AsyncMock(return_value=make_character().model_copy(update={
+        "id": "character_2",
+        "user_controlled": False,
+    }))
+    simulator = WorldSimulator(database=database)
+    register_running_off_scene_generation(simulator, [])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+    action = make_action("contact_clara").model_copy(update={
+        "type": ActionType.SPEAK,
+        "target_ids": ["character_2"],
+    })
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[action],
+    )
+
+    assert waited is True
+    database.character.get_character.assert_awaited_once_with("character_2")
+
+
+async def test_off_scene_conflict_uses_character_name_as_small_model_repair():
+    database = Mock()
+    database.character.get_character = AsyncMock(return_value=make_character().model_copy(update={
+        "id": "character_2",
+        "name": "Clara Whitlock",
+    }))
+    simulator = WorldSimulator(database=database)
+    register_running_off_scene_generation(simulator, ["character_2"])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[make_action("ask_about_clara")],
+        action_text="I ask about Clara.",
+    )
+
+    assert waited is True
+
+
+async def test_off_scene_conflict_does_not_wait_for_unrelated_action():
+    database = Mock()
+    database.character.get_character = AsyncMock(return_value=make_character().model_copy(update={
+        "id": "character_2",
+        "name": "Clara Whitlock",
+    }))
+    simulator = WorldSimulator(database=database)
+    register_running_off_scene_generation(simulator, ["character_2"])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[make_action("inspect_ledger")],
+        action_text="I inspect the ledger.",
+    )
+
+    assert waited is False
+    simulator.wait_for_off_scene_activity.assert_not_awaited()
+
+
+async def test_interpret_user_input_checks_background_conflicts_before_validation():
+    action = make_action("contact_clara").model_copy(update={
+        "type": ActionType.SPEAK,
+        "target_ids": ["character_2"],
+    })
+    interpretation = InputInterpretation(items=[{
+        "type": "action",
+        "action": action,
+        "source_text": "I call Clara.",
+    }])
+    state = make_state(InputInterpretation(items=[]))
+    simulator = WorldSimulator(database=Mock())
+    simulator._db.character.get_user_character_by_simulation = AsyncMock(
+        return_value=make_character()
+    )
+    simulator._input_interpreter.interpret = AsyncMock(return_value=interpretation)
+    simulator._wait_for_conflicting_off_scene_activity = AsyncMock(return_value=True)
+
+    result = await simulator.interpret_user_input(state)
+
+    assert result == {"input_interpretation": interpretation}
+    simulator._wait_for_conflicting_off_scene_activity.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        actions=[action],
+        action_text="I look around.",
+    )
 
 
 async def test_validate_user_action_validates_interpreted_actions():
@@ -387,7 +563,7 @@ async def test_scheduled_actions_only_run_for_perceivers_who_are_not_busy():
     assert simulator._character_simulator.propose_actions.await_count == 3
 
 
-async def test_off_scene_activity_runs_in_background_without_committing_or_advancing_time():
+async def test_off_scene_activity_commits_in_background_and_attaches_to_trigger_turn():
     state = make_state(InputInterpretation(items=[]))
     state.perceiving_character_ids = ["scene"]
     state.committed_turn = Turn(
@@ -418,25 +594,83 @@ async def test_off_scene_activity_runs_in_background_without_committing_or_advan
         return make_action_proposal(make_action(kwargs["character_id"]))
 
     simulator._character_simulator.propose_actions = AsyncMock(side_effect=propose)
+    simulator._action_validator.validate_actions = AsyncMock(return_value=ActionValidationResult(
+        validations=[
+            ActionValidation(
+                action_index=0,
+                action=make_action("off_scene"),
+                allowed=True,
+                reason="Allowed.",
+            )
+        ]
+    ))
+    state_commit = StateCommitProposal(operations=[])
+    memory_summary = MemorySummaryProposal(operations=[])
+    simulator._state_committer.commit_character_actions = AsyncMock(return_value=state_commit)
+    database.state_commit.apply_state_commit_proposal = AsyncMock()
+    simulator._memory_summarizer.summarize_character_actions = AsyncMock(
+        return_value=memory_summary
+    )
+    database.memory_summary.apply_memory_summary_proposal = AsyncMock()
 
-    simulator._schedule_off_scene_activity(state)
+    generation = simulator._schedule_off_scene_activity(state)
     await asyncio.sleep(0)
 
-    assert simulator._off_scene_tasks["simulation_1"].done() is False
+    assert generation.status == "running"
+    assert generation.stage == "proposing_actions"
     assert state.simulation.current_time == datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     release.set()
     await simulator.wait_for_off_scene_activity("simulation_1")
 
     results = simulator.list_off_scene_activity_results("simulation_1")
     assert [result.character_id for result in results] == ["off_scene"]
-    assert results[0].proposal is not None
+    assert results[0].state_commit == state_commit
+    assert results[0].memory_summary == memory_summary
     assert results[0].error is None
+    assert generation.status == "completed"
     simulator._character_simulator.propose_actions.assert_awaited_once()
-    assert not hasattr(database, "state_commit") or not database.state_commit.mock_calls
+    database.state_commit.apply_state_commit_proposal.assert_awaited_once_with(
+        proposal=state_commit,
+        source_id="simulation_1",
+        turn_id="turn_1",
+    )
+    database.memory_summary.apply_memory_summary_proposal.assert_awaited_once_with(
+        proposal=memory_summary,
+        turn_id="turn_1",
+    )
 
 
-async def test_new_foreground_request_cancels_off_scene_activity():
+async def test_failed_off_scene_generation_is_recorded_and_silently_ignored():
     state = make_state(InputInterpretation(items=[]))
+    state.committed_turn = Turn(
+        id="turn_1",
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="Trigger.",
+        start_time=state.simulation.current_time,
+    )
+    database = Mock()
+    database.character.list_characters = AsyncMock(
+        side_effect=RuntimeError("local model unavailable")
+    )
+    simulator = WorldSimulator(database=database)
+
+    generation = simulator._schedule_off_scene_activity(state)
+    await simulator.wait_for_off_scene_activity("simulation_1")
+
+    assert generation.status == "failed"
+    assert generation.error == "local model unavailable"
+
+
+async def test_new_foreground_request_keeps_off_scene_activity_running_and_exposes_registry():
+    state = make_state(InputInterpretation(items=[]))
+    state.committed_turn = Turn(
+        id="turn_1",
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="Trigger.",
+        start_time=state.simulation.current_time,
+    )
     off_scene = make_character().model_copy(update={
         "id": "off_scene",
         "user_controlled": False,
@@ -447,20 +681,81 @@ async def test_new_foreground_request_cancels_off_scene_activity():
     simulator = WorldSimulator(database=database)
     started = asyncio.Event()
 
-    async def propose(**kwargs):
+    release = asyncio.Event()
+
+    async def propose(**_kwargs):
         started.set()
-        await asyncio.Event().wait()
+        await release.wait()
+        return make_action_proposal(make_action("off_scene"))
 
     simulator._character_simulator.propose_actions = AsyncMock(side_effect=propose)
-    simulator._schedule_off_scene_activity(state)
-    task = simulator._off_scene_tasks["simulation_1"]
+    simulator._action_validator.validate_actions = AsyncMock(return_value=ActionValidationResult(
+        validations=[
+            ActionValidation(
+                action_index=0,
+                action=make_action("off_scene"),
+                allowed=True,
+                reason="Allowed.",
+            )
+        ]
+    ))
+    simulator._state_committer.commit_character_actions = AsyncMock(
+        return_value=StateCommitProposal(operations=[])
+    )
+    database.state_commit.apply_state_commit_proposal = AsyncMock()
+    simulator._memory_summarizer.summarize_character_actions = AsyncMock(
+        return_value=MemorySummaryProposal(operations=[])
+    )
+    database.memory_summary.apply_memory_summary_proposal = AsyncMock()
+    generation = simulator._schedule_off_scene_activity(state)
     await started.wait()
 
-    simulator._cancel_off_scene_activity("simulation_1")
-    await asyncio.sleep(0)
+    graph = FakeStreamingGraph(chunks=[{"narration": "Foreground completed."}])
+    simulator._user_input_graph = graph
+    foreground_state = make_state(InputInterpretation(items=[]))
+    thread_id = await simulator.start_generation(foreground_state)
+    await simulator.get_generation_final_state(thread_id)
 
-    assert task.cancelled()
-    assert simulator.list_off_scene_activity_results("simulation_1") == []
+    assert generation.status == "running"
+    assert graph.state.active_off_scene_generations[0].id == generation.id
+    release.set()
+    await simulator.wait_for_off_scene_activity("simulation_1")
+    assert generation.status == "completed"
+
+
+def test_off_scene_user_and_generated_turns_are_distinct_idempotent_triggers():
+    state = make_state(InputInterpretation(items=[]))
+    user_turn = Turn(
+        id="user_turn",
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="I open the door.",
+        start_time=state.simulation.current_time,
+    )
+    generated_turn = Turn(
+        id="generated_turn",
+        sequence=2,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="The door opens.",
+        start_time=state.simulation.current_time,
+    )
+    simulator = WorldSimulator(database=make_database_mock())
+    simulator._ensure_off_scene_worker = Mock()
+
+    user_generation = simulator._schedule_off_scene_activity(state, user_turn)
+    duplicate_user_generation = simulator._schedule_off_scene_activity(state, user_turn)
+    generated_generation = simulator._schedule_off_scene_activity(state, generated_turn)
+
+    assert duplicate_user_generation is user_generation
+    assert generated_generation is not user_generation
+    registered_turns = [
+        generation.trigger_turn_id
+        for generation in simulator.list_off_scene_generations("simulation_1")
+    ]
+    assert registered_turns == ["generated_turn", "user_turn"]
+    assert simulator._off_scene_queues["simulation_1"].qsize() == 2
+    assert user_generation.trigger_turn_type == TurnType.USER_INPUT
+    assert generated_generation.trigger_turn_type == TurnType.SYSTEM_RESPONSE
 
 
 async def test_coordinate_rejected_user_actions_converts_validation_failure_to_coordination_problem():
@@ -544,6 +839,40 @@ async def test_validate_character_actions_reworks_invalid_proposal_before_coordi
     assert validation_record.validation.validations[0].allowed
     assert "The wall is opaque." in simulator._character_simulator.propose_actions.await_args.kwargs["user_input"]
     simulator._scene_coordinator.coordinate_scene.assert_not_called()
+
+
+async def test_character_validation_repeats_after_waiting_for_background_conflict():
+    action = make_action("follow_clara").model_copy(update={
+        "target_ids": ["character_2"],
+    })
+    proposal = make_action_proposal(action)
+    state = make_state(InputInterpretation(items=[]))
+    state.character_actions = [CharacterActionProposalRecord(
+        character_id="character_1",
+        proposal=proposal,
+    )]
+    validation_record = CharacterActionValidationRecord(
+        character_id="character_1",
+        proposal=proposal,
+        validation=ActionValidationResult(validations=[ActionValidation(
+            action_index=0,
+            action=action,
+            allowed=True,
+            reason="Allowed.",
+        )]),
+    )
+    simulator = WorldSimulator(database=Mock())
+    register_running_off_scene_generation(simulator, ["character_2"])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+    simulator._validate_character_action_with_rework = AsyncMock(
+        return_value=validation_record
+    )
+
+    result = await simulator.validate_character_actions(state)
+
+    assert result == {"character_action_validations": [validation_record]}
+    assert simulator._validate_character_action_with_rework.await_count == 2
+    simulator.wait_for_off_scene_activity.assert_awaited_once_with("simulation_1")
 
 
 async def test_validate_character_actions_stops_after_three_invalid_reworks():
@@ -992,6 +1321,7 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
         current_time=datetime(2026, 1, 1, 12, 0, 2, tzinfo=UTC),
     )
     simulator._state_committer.commit_user_actions = AsyncMock(return_value=proposal)
+    simulator._schedule_off_scene_activity = Mock()
     simulator._db.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
     turn = Turn(
         id="turn_1",
@@ -1030,6 +1360,46 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
         simulation_id="simulation_1",
         current_time=updated_simulation.current_time,
     )
+    scheduled_state = simulator._schedule_off_scene_activity.call_args.args[0]
+    assert scheduled_state.committed_turn == turn
+    assert scheduled_state.simulation == updated_simulation
+    assert simulator._schedule_off_scene_activity.call_args.kwargs == {"trigger_turn": turn}
+
+
+async def test_commit_generated_turn_schedules_its_own_off_scene_trigger():
+    state = make_state(InputInterpretation(items=[]))
+    state.character_action_coordination = SceneCoordinationResult(
+        status=SceneCoordinationStatus.COMPLETE,
+        accepted_actions=[],
+    )
+    state.narration = "The scene settles."
+    proposal = StateCommitProposal()
+    generated_turn = Turn(
+        id="generated_turn",
+        sequence=2,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="The scene settles.",
+        start_time=state.simulation.current_time,
+    )
+    updated_simulation = state.simulation.model_copy(update={
+        "current_time": state.simulation.current_time + timedelta(seconds=1),
+    })
+    simulator = WorldSimulator(database=Mock())
+    simulator._state_committer.commit_character_actions = AsyncMock(return_value=proposal)
+    simulator._create_turn_and_apply_commit = AsyncMock(
+        return_value=(generated_turn, updated_simulation)
+    )
+    simulator._schedule_off_scene_activity = Mock()
+
+    result = await simulator.commit_character_actions(state)
+
+    assert result["committed_turn"] == generated_turn
+    scheduled_state = simulator._schedule_off_scene_activity.call_args.args[0]
+    assert scheduled_state.committed_turn == generated_turn
+    assert scheduled_state.simulation == updated_simulation
+    assert simulator._schedule_off_scene_activity.call_args.kwargs == {
+        "trigger_turn": generated_turn,
+    }
 
 
 async def test_summarize_character_memory_applies_summary_proposal():
@@ -1094,6 +1464,13 @@ async def test_summarize_character_memory_saves_character_round_base_for_world_s
     state.narration = "The scene continues."
     state.committed_turn = turn
     state.state_commit_proposal = state_commit
+    state.active_off_scene_generations = [OffSceneGenerationStatus(
+        simulation_id="simulation_1",
+        trigger_turn_id="turn_1",
+        trigger_turn_type=TurnType.USER_INPUT,
+        simulation_time=state.simulation.current_time,
+        status="running",
+    )]
     database = make_database_mock()
     simulator = WorldSimulator(database=database)
     proposal = MemorySummaryProposal()
@@ -1107,6 +1484,7 @@ async def test_summarize_character_memory_saves_character_round_base_for_world_s
     assert saved_snapshot.turn_id == "turn_2"
     assert saved_snapshot.turn_sequence == 2
     assert saved_snapshot.state["memory_summary_proposal"] == proposal.model_dump(mode="json")
+    assert "active_off_scene_generations" not in saved_snapshot.state
 
 
 async def test_summarize_user_memory_applies_summary_proposal():
