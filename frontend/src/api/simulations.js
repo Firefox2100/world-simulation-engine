@@ -92,6 +92,10 @@ export async function fetchCharacterInventory(characterId) {
     return apiRequest(`/characters/${characterId}/inventory`);
 }
 
+export async function fetchCharacterEmotion({ simulationId, characterId }) {
+    return query(`/characters/${characterId}/emotion`, { simulation_id: simulationId });
+}
+
 export async function fetchEventsByTurn(turnId) {
     return query("/events", { turn_id: turnId });
 }
@@ -174,6 +178,7 @@ function normalizeSimulation(simulation) {
     return {
         ...simulation,
         description: simulation.description ?? "",
+        emotion_enabled: simulation.emotion_enabled ?? true,
     };
 }
 

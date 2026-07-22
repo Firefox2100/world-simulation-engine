@@ -21,6 +21,7 @@ from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from .action_validator import ActionValidator
 from .character_simulator import CharacterSimulator
+from .emotion_updater import EmotionUpdater
 from .input_interpreter import InputInterpreter
 from .memory_summarizer import MemorySummarizer
 from .narrator import Narrator
@@ -157,6 +158,10 @@ class WorldSimulator:
             langfuse_handler=self._langfuse_handler
         )
         self._input_interpreter = InputInterpreter(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._emotion_updater = EmotionUpdater(
             database=database,
             prompt_loader=prompt_loader,
         )
@@ -1545,6 +1550,16 @@ class WorldSimulator:
 
         character_ids = sorted(memory_apply_result.memory_ids_by_character)
         for character_id in character_ids[:self._MAX_RELATIONSHIP_UPDATE_PERSPECTIVES]:
+            try:
+                await self._emotion_updater.update_from_memories(
+                    simulation_id=simulation_id,
+                    character_id=character_id,
+                    turn_id=turn_id,
+                    memory_ids=memory_apply_result.memory_ids_by_character[character_id],
+                )
+            except Exception:
+                # Emotion inference is optional derived state and cannot suppress other updates.
+                pass
             try:
                 await self._relationship_updater.update_from_memories(
                     simulation_id=simulation_id,

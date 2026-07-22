@@ -544,8 +544,9 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         f"/simulations/{created_simulation['id']}",
         json={
             "name": "Updated Simulation",
-            "description": "Updated through the simulation API",
-            "current_time": "2026-03-01T12:00:00Z",
+                "description": "Updated through the simulation API",
+                "current_time": "2026-03-01T12:00:00Z",
+                "emotion_enabled": False,
         },
     )
 
@@ -555,6 +556,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "name": "Updated Simulation",
         "description": "Updated through the simulation API",
         "current_time": "2026-03-01T12:00:00Z",
+        "emotion_enabled": False,
     }
 
     delete_response = client.delete(f"/simulations/{created_simulation['id']}")

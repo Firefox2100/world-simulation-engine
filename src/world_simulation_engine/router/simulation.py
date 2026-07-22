@@ -33,6 +33,10 @@ class SimulationUpdate(BaseModel):
         None,
         description="Current time of the simulation",
     )
+    emotion_enabled: Optional[bool] = Field(
+        None,
+        description="Enable or disable quantitative emotion updates and prompt context.",
+    )
 
 
 class SimulationInput(BaseModel):

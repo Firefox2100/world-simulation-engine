@@ -13,6 +13,7 @@ import {
 } from "@/api/configurations";
 import {
     fetchCharacterInventory,
+    fetchCharacterEmotion,
     fetchSimulation,
     fetchSimulationBackgroundCharacters,
     fetchSimulationCharacters,
@@ -985,6 +986,7 @@ function SimulationDetailsModal({
     locations,
     entities,
     inventory,
+    emotion,
     activeSection,
     selectedCharacterId,
     selectedLocationId,
@@ -1052,6 +1054,10 @@ function SimulationDetailsModal({
         {
             label: t("simulationDetails.fields.enableImageGeneration"),
             value: formatBoolean(simulation.enable_image_generation, t),
+        },
+        {
+            label: t("simulationDetails.fields.emotionEnabled"),
+            value: formatBoolean(simulation.emotion_enabled, t),
         },
     ];
     const characterRows = selectedCharacter
@@ -1329,6 +1335,13 @@ function SimulationDetailsModal({
                                         emptyValue={t("simulationDetails.emptyValue")}
                                     />
                                     <CharacterInventory inventory={inventory} />
+                                    {emotion ? (
+                                        <ObjectList
+                                            title={t("simulationDetails.characterFields.emotion")}
+                                            values={emotion.effective}
+                                            emptyValue={t("simulationDetails.emptyValue")}
+                                        />
+                                    ) : null}
                                 </>
                             ) : (
                                 <p className="status-text">{t("simulationDetails.noCharacters")}</p>
@@ -1381,6 +1394,7 @@ export function SimulationChatPage() {
     const [locationCache, setLocationCache] = useState({});
     const [entityCache, setEntityCache] = useState({});
     const [inventoryCache, setInventoryCache] = useState({});
+    const [emotionCache, setEmotionCache] = useState({});
     const [previews, setPreviews] = useState({});
     const [records, setRecords] = useState([]);
     const [input, setInput] = useState("");
@@ -1416,6 +1430,9 @@ export function SimulationChatPage() {
     const selectedEntityIdsForSimulation = selectedEntityIds[simulationId] ?? {};
     const selectedInventory = selectedCharacterId
         ? inventoryCache[`${simulationId}:${selectedCharacterId}`]
+        : null;
+    const selectedEmotion = selectedCharacterId
+        ? emotionCache[`${simulationId}:${selectedCharacterId}`]
         : null;
     const inputFormatError = useMemo(
         () => (input.trim().length > 0 ? validateInputMarkup(input) : null),
@@ -1567,6 +1584,24 @@ export function SimulationChatPage() {
         }
     }
 
+    async function refreshCharacterEmotion(id, characterId) {
+        if (!id || !characterId) {
+            return;
+        }
+        try {
+            const emotion = await fetchCharacterEmotion({ simulationId: id, characterId });
+            setEmotionCache((current) => ({
+                ...current,
+                [`${id}:${characterId}`]: emotion,
+            }));
+        } catch {
+            setEmotionCache((current) => ({
+                ...current,
+                [`${id}:${characterId}`]: null,
+            }));
+        }
+    }
+
     useEffect(() => {
         let ignore = false;
 
@@ -1681,6 +1716,7 @@ export function SimulationChatPage() {
         }
 
         refreshCharacterInventory(simulationId, selectedCharacterId);
+        refreshCharacterEmotion(simulationId, selectedCharacterId);
     }, [detailsOpen, detailsSection, simulationId, selectedCharacterId]);
 
     useEffect(() => {
@@ -2075,6 +2111,7 @@ export function SimulationChatPage() {
                     locations={selectedLocations}
                     entities={selectedEntities}
                     inventory={selectedInventory}
+                    emotion={selectedEmotion}
                     activeSection={detailsSection}
                     selectedCharacterId={selectedCharacterId}
                     selectedLocationId={selectedLocationId}

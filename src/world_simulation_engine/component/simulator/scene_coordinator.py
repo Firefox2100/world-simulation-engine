@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, SceneCoordinationStatus
 from world_simulation_engine.model import BackgroundCharacter, Character, CharacterActionPlan, Container, \
-    EntityRelationship, Equipment, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
+    EmotionVector, EntityRelationship, Equipment, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
     PendingSceneAction, ProposedAction, ReactionHistoryEntry, SceneCoordinationResult, Simulation, World
 
 from .simulator_component import SimulatorComponent
@@ -50,6 +50,7 @@ class ActorCoordinationContext(BaseModel):
     inventory: list[InventoryStack] = Field(default_factory=list)
     equipment: list[InventoryEquipment] = Field(default_factory=list)
     relationships: list[EntityRelationship] = Field(default_factory=list)
+    emotion: EmotionVector | None = None
 
 
 class SceneCoordinatorContext(BaseModel):
@@ -251,6 +252,10 @@ class SceneCoordinator(SimulatorComponent):
                         perspective_character_id=actor.id,
                         entity_ids=list(relationship_entity_ids),
                     ),
+                    emotion=await self._effective_emotion(
+                        simulation=simulation,
+                        character_id=actor.id,
+                    ),
                 )
             )
 
@@ -369,6 +374,8 @@ class SceneCoordinator(SimulatorComponent):
             prompt,
             nested_under_actors=True,
         )
+        if any(actor.emotion is not None for actor in context.actors):
+            prompt = self._with_emotion_context(prompt, actors=True)
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
         result = await llm.invoke_structured_with_repair(

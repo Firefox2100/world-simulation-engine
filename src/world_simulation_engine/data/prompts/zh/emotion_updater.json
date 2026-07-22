@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "根据新近提交的记忆，估计单个角色的私密情绪反应。只返回 EmotionUpdateProposal JSON。事件不重要或证据不足时使用 change: null。即时变化是短期的，通常应很小；基线变化表示持久心境，通常应为零。正效价表示愉快，正唤醒表示活跃，正支配表示有掌控感。只能引用提供的记忆 ID。不要推断其他角色的情绪，不要重复散文状态、虚构事实或输出行动。"
+  },
+  {
+    "role": "user",
+    "content": "角色：{{ actor.name }}（{{ actor.id }}）\n模拟时间：{{ state.last_updated_at }}\n当前有效情绪：效价 {{ effective_emotion.valence }}，唤醒 {{ effective_emotion.arousal }}，支配 {{ effective_emotion.dominance }}，扩展 {{ effective_emotion.dimensions }}\n\n新记忆：\n{% for memory in memories %}- {{ memory.id }}：{{ memory.summary }}\n{% else %}- 无\n{% endfor %}\n\n若有充分依据，返回一个包含 immediate_delta、baseline_delta、evidence_memory_ids 和简短 reason 的 change。基线变化应接近零。"
+  }
+]

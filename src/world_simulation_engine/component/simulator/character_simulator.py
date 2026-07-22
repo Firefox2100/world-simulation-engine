@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.misc.enums import (
     ActionType,
     ComponentType,
+    IntentType,
     MemoryStance,
     MemorySupportType,
     Salience,
@@ -15,6 +16,7 @@ from world_simulation_engine.misc.enums import (
 from world_simulation_engine.model import (
     Intent,
     EntityRelationship,
+    EmotionVector,
     ActionProposal,
     Character,
     CharacterActionPlan,
@@ -104,6 +106,7 @@ class CharacterPerspective(BaseModel):
         default_factory=list,
         description="Objective facts and subjective relationships available to this actor.",
     )
+    emotion: EmotionVector | None = None
 
     recent_events: list[str] = Field(
         default_factory=list,
@@ -368,10 +371,17 @@ class CharacterSimulator(SimulatorComponent):
             character=character,
             user_input=user_input,
         )
-        intents = await self._recall_intents(
+        emotion = await self._effective_emotion(
             simulation=simulation,
-            character=character,
-            user_input=user_input,
+            character_id=character.id,
+        )
+        intents = self._apply_emotion_intent_bias(
+            await self._recall_intents(
+                simulation=simulation,
+                character=character,
+                user_input=user_input,
+            ),
+            emotion,
         )
         relationship_entity_ids = {
             character.id,
@@ -408,7 +418,30 @@ class CharacterSimulator(SimulatorComponent):
             perceived_landmarks=perspective.perceived_landmarks,
             relevant_memories=relevant_memories,
             relationships=relationships,
+            emotion=emotion,
         )
+
+    @staticmethod
+    def _apply_emotion_intent_bias(
+            intents: list[RecalledIntent],
+            emotion: EmotionVector | None,
+    ) -> list[RecalledIntent]:
+        """Apply a small contextual priority bias without mutating canonical intents."""
+        if not emotion:
+            return intents
+        activation = abs(emotion.arousal)
+        distress = max(-emotion.valence, 0)
+        for recalled in intents:
+            if recalled.intent.type not in {IntentType.NEED, IntentType.REACTION}:
+                continue
+            bias = min(activation * 0.1 + distress * 0.05, 0.15)
+            recalled.intent = recalled.intent.model_copy(update={
+                "priority": min(recalled.intent.priority + bias, 1),
+                "urgency": min(recalled.intent.urgency + bias, 1),
+            })
+            if bias > 0 and "emotion_bias" not in recalled.recall_sources:
+                recalled.recall_sources.append("emotion_bias")
+        return intents
 
     async def propose_actions(self,
                               world_id: str,
@@ -443,6 +476,8 @@ class CharacterSimulator(SimulatorComponent):
             prompt_name="action_proposal",
         )
         prompt = self._with_relationship_context(prompt)
+        if perspective.emotion is not None:
+            prompt = self._with_emotion_context(prompt)
 
         llm = await self._prepare_llm_service(
             simulation_id=simulation_id,
@@ -663,6 +698,11 @@ class CharacterSimulator(SimulatorComponent):
             prompt,
             nested_under_perspective=True,
         )
+        if perspective.emotion is not None:
+            prompt = self._with_emotion_context(
+                prompt,
+                expression="perspective.emotion",
+            )
 
         llm = await self._prepare_llm_service(
             simulation_id=simulation_id,

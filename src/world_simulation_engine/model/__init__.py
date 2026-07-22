@@ -1,6 +1,8 @@
 from .character import CurrentActivity, Character, BackgroundCharacter
 from .container import Container
 from .equipment import Equipment, InventoryEquipment
+from .emotion import EmotionChangeAudit, EmotionState, EmotionUpdateProposal, EmotionVector, \
+    ProposedEmotionChange
 from .inter_state import ActionValidation, ActionValidationResult, PerceivedEntity, PerceivedCharacter, \
     PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
     ProposedAction, ActionProposal, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem, \

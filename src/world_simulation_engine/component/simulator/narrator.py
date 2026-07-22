@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType
-from world_simulation_engine.model import Character, Location, NarrationBlock, NarrationInsertionProposal, \
+from world_simulation_engine.model import Character, EmotionVector, Location, NarrationBlock, NarrationInsertionProposal, \
     NarrationProposal, SceneCoordinationResult, Simulation, SpeechAnchor, SpeechBlock, World
 
 from .simulator_component import SimulatorComponent
@@ -10,6 +10,7 @@ from .simulator_component import SimulatorComponent
 class NarrationActorContext(BaseModel):
     character: Character
     location: Location | None = None
+    emotion: EmotionVector | None = None
 
 
 class NarratorContext(BaseModel):
@@ -62,6 +63,10 @@ class Narrator(SimulatorComponent):
                 NarrationActorContext(
                     character=character,
                     location=await self._db.location.get_location_by_character(actor_id),
+                    emotion=await self._effective_emotion(
+                        simulation=simulation,
+                        character_id=actor_id,
+                    ),
                 )
             )
 
@@ -113,6 +118,12 @@ class Narrator(SimulatorComponent):
             language=context.world.language,
             prompt_name="narrator",
         )
+        if any(actor.emotion is not None for actor in context.actors):
+            prompt = self._with_emotion_context(
+                prompt,
+                actors=True,
+                actor_key="character",
+            )
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
         insertion_proposal = await llm.invoke_structured_with_repair(

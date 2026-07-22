@@ -123,6 +123,44 @@ def character_api(neo4j_container):
         )
 
 
+def test_get_and_update_private_emotion_state(character_api):
+    character_id = character_api.inventory_character.id
+    simulation_id = character_api.simulation.id
+
+    initial = character_api.client.get(
+        f"/characters/{character_id}/emotion",
+        params={"simulation_id": simulation_id},
+    )
+    assert initial.status_code == 200
+    assert initial.json()["effective"] == {
+        "valence": 0.0,
+        "arousal": 0.0,
+        "dominance": 0.0,
+        "dimensions": {},
+    }
+
+    updated = character_api.client.patch(
+        f"/characters/{character_id}/emotion",
+        params={"simulation_id": simulation_id},
+        json={
+            "baseline": {"valence": 0.1, "arousal": 0, "dominance": 0, "dimensions": {}},
+            "immediate": {
+                "valence": -0.2,
+                "arousal": 0.5,
+                "dominance": -0.1,
+                "dimensions": {"fear": 0.4},
+            },
+            "immediate_half_life_seconds": 900,
+        },
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["state"]["version"] == 1
+    assert body["state"]["immediate_half_life_seconds"] == 900
+    assert body["effective"]["valence"] == -0.1
+    assert body["effective"]["arousal"] == 0.5
+
+
 def character_payload(name: str = "Alex") -> dict:
     return {
         "user_controlled": False,

@@ -13,6 +13,7 @@ def _simulation_from_node(simulation_node) -> Simulation:
         name=simulation_node["name"],
         description=simulation_node.get("description"),
         current_time=current_time,
+        emotion_enabled=simulation_node.get("emotion_enabled", True),
     )
 
 
@@ -33,7 +34,8 @@ class SimulationStore:
                 id: $simulation_id,
                 name: $world_name,
                 description: $world_description,
-                current_time: $current_time
+                current_time: $current_time,
+                emotion_enabled: $emotion_enabled
             })
             CREATE (s)-[:BASED_ON]->(w)
             RETURN s
@@ -44,6 +46,7 @@ class SimulationStore:
                 "world_name": simulation.name,
                 "world_description": simulation.description,
                 "current_time": simulation.current_time,
+                "emotion_enabled": simulation.emotion_enabled,
             },
         )
 

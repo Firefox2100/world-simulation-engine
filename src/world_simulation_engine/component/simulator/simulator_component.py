@@ -1,6 +1,8 @@
+import inspect
+
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import SupportedLanguage, ComponentType, MessageRole
-from world_simulation_engine.model import PromptMessage
+from world_simulation_engine.model import EmotionVector, PromptMessage, Simulation
 from world_simulation_engine.service import DatabaseService, LlmService
 from ..prompt_loader import PromptLoader
 
@@ -57,6 +59,54 @@ class SimulatorComponent:
         )
 
         return llm
+
+    async def _effective_emotion(
+            self,
+            *,
+            simulation: Simulation,
+            character_id: str,
+    ) -> EmotionVector | None:
+        """Return private emotion at simulation time without persisting read-time decay."""
+        if not simulation.emotion_enabled:
+            return None
+        emotion_store = getattr(self._db, "emotion", None)
+        get_state = getattr(emotion_store, "get_state", None)
+        if not inspect.iscoroutinefunction(get_state):
+            return EmotionVector()
+        state = await get_state(
+            simulation_id=simulation.id,
+            character_id=character_id,
+        )
+        if not state:
+            return EmotionVector()
+        return emotion_store.combined_vector(
+            emotion_store.decay_state(state, simulation.current_time),
+        )
+
+    @staticmethod
+    def _with_emotion_context(
+            prompt: list[PromptMessage],
+            *,
+            expression: str = "emotion",
+            actors: bool = False,
+            actor_key: str = "actor",
+    ) -> list[PromptMessage]:
+        """Append a compact numeric state without expanding existing output schemas."""
+        if actors:
+            content = f"""## Private emotion constraints by actor
+
+{{% for entry in actors %}}
+{{% if entry.emotion %}}- {{{{ entry.{actor_key}.name }}}} ({{{{ entry.{actor_key}.id }}}}): valence {{{{ entry.emotion.valence }}}}, arousal {{{{ entry.emotion.arousal }}}}, dominance {{{{ entry.emotion.dominance }}}}, extensions {{{{ entry.emotion.dimensions }}}}
+{{% endif %}}{{% endfor %}}
+Use each actor's emotion only for that actor's risk, interruption, intent urgency, and tone. Never disclose one actor's private emotion to another."""
+        else:
+            content = f"""## Private emotion constraint
+
+{{% if {expression} %}}- valence {{{{ {expression}.valence }}}}; arousal {{{{ {expression}.arousal }}}}; dominance {{{{ {expression}.dominance }}}}; extensions {{{{ {expression}.dimensions }}}}
+Use this as a soft constraint for risk tolerance, interruption, intent urgency, and tone. Do not state numeric values or expose private emotion.
+{{% else %}}- disabled
+{{% endif %}}"""
+        return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]
 
     @staticmethod
     def _with_relationship_context(

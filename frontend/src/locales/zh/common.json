@@ -158,7 +158,8 @@
       "language": "语言",
       "actForUser": "代用户行动",
       "enableTts": "启用 TTS",
-      "enableImageGeneration": "启用图像生成"
+      "enableImageGeneration": "启用图像生成",
+      "emotionEnabled": "量化情绪"
     },
     "characterFields": {
       "id": "ID",
@@ -171,7 +172,8 @@
       "privateState": "私有状态",
       "attributes": "属性",
       "stats": "数值",
-      "inventory": "库存"
+      "inventory": "库存",
+      "emotion": "当前私密情绪"
     },
     "inventory": {
       "items": "物品",

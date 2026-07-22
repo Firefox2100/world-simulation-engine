@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Estimate one character's private emotional response to newly committed memories. Return EmotionUpdateProposal JSON only. Use change: null when the event is emotionally insignificant or evidence is weak. Immediate deltas are short-lived and should usually be small. Baseline deltas represent durable mood and should usually be zero. Positive valence is pleasant, positive arousal is activated, and positive dominance is in-control. Cite only supplied memory IDs. Do not infer another character's emotion, restate prose state, invent facts, or output actions."
+  },
+  {
+    "role": "user",
+    "content": "Character: {{ actor.name }} ({{ actor.id }})\nSimulation time: {{ state.last_updated_at }}\nCurrent effective emotion: valence {{ effective_emotion.valence }}, arousal {{ effective_emotion.arousal }}, dominance {{ effective_emotion.dominance }}, extensions {{ effective_emotion.dimensions }}\n\nNew memories:\n{% for memory in memories %}- {{ memory.id }}: {{ memory.summary }}\n{% else %}- none\n{% endfor %}\n\nIf a response is justified, return one change with immediate_delta, baseline_delta, evidence_memory_ids, and a brief reason. Keep baseline deltas near zero."
+  }
+]

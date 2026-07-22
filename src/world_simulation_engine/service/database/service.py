@@ -6,6 +6,7 @@ from .character_store import CharacterStore
 from .config_store import ConfigStore
 from .container_store import ContainerStore
 from .equipment_store import EquipmentStore
+from .emotion_store import EmotionStore
 from .entity_relationship_store import EntityRelationshipStore
 from .event_store import EventStore
 from .graph_state_snapshot_store import GraphStateSnapshotStore
@@ -36,6 +37,7 @@ class DatabaseService:
         self._config = ConfigStore(self._driver)
         self._container = ContainerStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
+        self._emotion = EmotionStore(self._driver)
         self._entity_relationship = EntityRelationshipStore(self._driver)
         self._event = EventStore(self._driver)
         self._graph_state_snapshot = GraphStateSnapshotStore(self._driver)
@@ -73,6 +75,10 @@ class DatabaseService:
     @property
     def equipment(self) -> EquipmentStore:
         return self._equipment
+
+    @property
+    def emotion(self) -> EmotionStore:
+        return self._emotion
 
     @property
     def entity_relationship(self) -> EntityRelationshipStore:

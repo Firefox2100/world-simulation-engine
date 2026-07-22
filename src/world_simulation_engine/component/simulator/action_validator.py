@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ActionValidationResult, BackgroundCharacter, Character, Container, \
-    EntityRelationship, Equipment, Intent, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
+    EmotionVector, EntityRelationship, Equipment, Intent, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
     ProposedAction, Simulation, World
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
@@ -67,6 +67,7 @@ class ActionValidatorContext(BaseModel):
     active_intents: list[Intent] = Field(default_factory=list)
     recent_memories: list[MemoryRecallRecord] = Field(default_factory=list)
     relationships: list[EntityRelationship] = Field(default_factory=list)
+    emotion: EmotionVector | None = None
 
 
 class ActionValidator(SimulatorComponent):
@@ -196,6 +197,10 @@ class ActionValidator(SimulatorComponent):
             active_intents=active_intents,
             recent_memories=recent_memories,
             relationships=relationships,
+            emotion=await self._effective_emotion(
+                simulation=simulation,
+                character_id=character_id,
+            ),
         )
 
     async def validate_actions(self,
@@ -224,6 +229,8 @@ class ActionValidator(SimulatorComponent):
             prompt_name="action_validator",
         )
         prompt = self._with_relationship_context(prompt)
+        if context.emotion is not None:
+            prompt = self._with_emotion_context(prompt)
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
         result = await llm.invoke_structured_with_repair(

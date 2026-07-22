@@ -2,7 +2,8 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.model import Character, Container, CurrentActivity, InventoryEquipment, InventoryStack
+from world_simulation_engine.model import Character, Container, CurrentActivity, EmotionState, EmotionVector, \
+    InventoryEquipment, InventoryStack
 from .utils import db_dep
 
 
@@ -146,6 +147,18 @@ class CharacterInventory(BaseModel):
     )
 
 
+class EmotionStateUpdate(BaseModel):
+    baseline: EmotionVector | None = None
+    immediate: EmotionVector | None = None
+    baseline_half_life_seconds: int | None = Field(default=None, ge=60)
+    immediate_half_life_seconds: int | None = Field(default=None, ge=60)
+
+
+class EffectiveEmotionState(BaseModel):
+    state: EmotionState
+    effective: EmotionVector
+
+
 async def validate_character_relationships(
         character_data: CharacterCreate | CharacterUpdate,
         db: db_dep,
@@ -239,6 +252,88 @@ async def get_character(character_id: str, db: db_dep):
         )
 
     return character
+
+
+@character_router.get(
+    "/characters/{character_id}/emotion",
+    response_model=EffectiveEmotionState,
+)
+async def get_character_emotion(character_id: str, simulation_id: str, db: db_dep):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    character = await db.character.get_character(character_id)
+    belongs = await db.emotion.character_belongs_to_simulation(
+        simulation_id=simulation_id,
+        character_id=character_id,
+    )
+    if not simulation or not character or not belongs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Simulation or character not found")
+    state = await db.emotion.get_state(
+        simulation_id=simulation_id,
+        character_id=character_id,
+    )
+    if not state:
+        state = EmotionState(
+            simulation_id=simulation_id,
+            character_id=character_id,
+            last_updated_at=simulation.current_time,
+        )
+    decayed = db.emotion.decay_state(state, simulation.current_time)
+    return EffectiveEmotionState(
+        state=state,
+        effective=db.emotion.combined_vector(decayed),
+    )
+
+
+@character_router.patch(
+    "/characters/{character_id}/emotion",
+    response_model=EffectiveEmotionState,
+)
+async def update_character_emotion(
+        character_id: str,
+        simulation_id: str,
+        emotion_update: EmotionStateUpdate,
+        db: db_dep,
+):
+    simulation = await db.simulation.get_simulation(simulation_id)
+    character = await db.character.get_character(character_id)
+    belongs = await db.emotion.character_belongs_to_simulation(
+        simulation_id=simulation_id,
+        character_id=character_id,
+    )
+    if not simulation or not character or not belongs:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Simulation or character not found")
+    existing = await db.emotion.get_state(
+        simulation_id=simulation_id,
+        character_id=character_id,
+    )
+    base = existing or EmotionState(
+        simulation_id=simulation_id,
+        character_id=character_id,
+        last_updated_at=simulation.current_time,
+    )
+    changes = {
+        field_name: getattr(emotion_update, field_name)
+        for field_name in emotion_update.model_fields_set
+        if getattr(emotion_update, field_name) is not None
+    }
+    candidate = base.model_copy(update={
+        **changes,
+        "last_updated_at": simulation.current_time,
+        "version": base.version + 1 if existing else 1,
+    })
+    stored = (
+        await db.emotion.update_state(candidate)
+        if existing else await db.emotion.create_state(candidate)
+    )
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Emotion state changed concurrently; reload and retry",
+        )
+    return EffectiveEmotionState(
+        state=stored,
+        effective=db.emotion.combined_vector(stored),
+    )
 
 
 @character_router.patch("/characters/{character_id}", response_model=Character)

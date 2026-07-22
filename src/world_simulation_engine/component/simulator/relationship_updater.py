@@ -8,6 +8,7 @@ from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import (
     CompatibilityRelationshipDetails,
     EntityRelationship,
+    EmotionVector,
     GenericRelationshipDetails,
     GoalRelationshipDetails,
     InteractionRelationshipDetails,
@@ -35,6 +36,7 @@ class RelationshipUpdateContext(BaseModel):
     new_memories: list[MemoryAtom] = Field(default_factory=list)
     candidate_entities: list[RelationshipEntityRef] = Field(default_factory=list)
     existing_relationships: list[EntityRelationship] = Field(default_factory=list)
+    emotion: EmotionVector | None = None
 
 
 class RelationshipUpdateApplyResult(BaseModel):
@@ -107,12 +109,18 @@ class RelationshipUpdater(SimulatorComponent):
             new_memories=new_memories,
             candidate_entities=list(candidates_by_id.values()),
             existing_relationships=existing_relationships,
+            emotion=await self._effective_emotion(
+                simulation=simulation,
+                character_id=character_id,
+            ),
         )
         prompt = await self._prepare_prompt(
             simulation_id=simulation_id,
             language=(await self._require_world_for_simulation(simulation_id)).language,
             prompt_name="relationship_updater",
         )
+        if context.emotion is not None:
+            prompt = self._with_emotion_context(prompt)
         llm = await self._prepare_llm_service(simulation_id)
         proposal = await llm.invoke_structured_with_repair(
             output_model=RelationshipUpdateProposal,

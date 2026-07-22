@@ -195,7 +195,10 @@ class CharacterStore:
             MATCH (c:Character {id: $character_id})
             OPTIONAL MATCH (c)-[:HOLDS]->(intent:Intent)
             OPTIONAL MATCH (c)-[:HOLDS]->(stack:ItemStack)
-            WITH collect(DISTINCT c) + collect(DISTINCT intent) + collect(DISTINCT stack) AS nodes,
+            OPTIONAL MATCH (c)-[:HAS_EMOTION_STATE]->(emotion:EmotionState)
+            OPTIONAL MATCH (audit:EmotionChangeAudit)-[:CHANGED]->(emotion)
+            WITH collect(DISTINCT c) + collect(DISTINCT intent) + collect(DISTINCT stack)
+                + collect(DISTINCT emotion) + collect(DISTINCT audit) AS nodes,
                 1 AS deleted
             FOREACH (node IN nodes | DETACH DELETE node)
             RETURN deleted

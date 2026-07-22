@@ -158,7 +158,8 @@
       "language": "Language",
       "actForUser": "Act for user",
       "enableTts": "Enable TTS",
-      "enableImageGeneration": "Enable image generation"
+      "enableImageGeneration": "Enable image generation",
+      "emotionEnabled": "Quantitative emotion"
     },
     "characterFields": {
       "id": "ID",
@@ -171,7 +172,8 @@
       "privateState": "Private state",
       "attributes": "Attributes",
       "stats": "Stats",
-      "inventory": "Inventory"
+      "inventory": "Inventory",
+      "emotion": "Effective private emotion"
     },
     "inventory": {
       "items": "Items",

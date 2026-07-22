@@ -22,3 +22,7 @@ class Simulation(BaseModel):
         ...,
         description="Current time of the simulation",
     )
+    emotion_enabled: bool = Field(
+        True,
+        description="Whether private quantitative emotion state participates in simulation workflows.",
+    )

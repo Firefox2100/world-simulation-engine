@@ -1452,6 +1452,7 @@ async def test_summarize_character_memory_applies_summary_proposal():
 
 async def test_memory_relationship_update_uses_committed_evidence_and_action_entities():
     simulator = WorldSimulator(database=Mock())
+    simulator._emotion_updater.update_from_memories = AsyncMock()
     simulator._relationship_updater.update_from_memories = AsyncMock()
     coordination = SceneCoordinationResult.model_validate({
         "status": "complete",
@@ -1487,6 +1488,7 @@ async def test_memory_relationship_update_uses_committed_evidence_and_action_ent
     )
 
     assert simulator._relationship_updater.update_from_memories.await_count == 2
+    assert simulator._emotion_updater.update_from_memories.await_count == 2
     first = simulator._relationship_updater.update_from_memories.await_args_list[0].kwargs
     assert first["character_id"] == "character_1"
     assert first["memory_ids"] == ["memory_1"]
