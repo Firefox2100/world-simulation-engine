@@ -2,7 +2,7 @@ import inspect
 
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import SupportedLanguage, ComponentType, MessageRole
-from world_simulation_engine.model import EmotionVector, PromptMessage, Simulation
+from world_simulation_engine.model import EmotionVector, PromptMessage, Simulation, SubjectiveEntityClaim
 from world_simulation_engine.service import DatabaseService, LlmService
 from ..prompt_loader import PromptLoader
 
@@ -145,3 +145,31 @@ Treat objective compatibility/spatial facts as constraints and subjective record
             *prompt,
             PromptMessage(role=MessageRole.USER, content=content),
         ]
+
+    async def _subjective_claims(self, *, simulation_id: str, observer_character_id: str,
+                                 subject_ids: list[str]) -> list[SubjectiveEntityClaim]:
+        """Compatibility-safe observer-scoped recall for tests and older database adapters."""
+        store = getattr(self._db, "subjective_entity_claim", None)
+        method = getattr(store, "list_claims", None)
+        if not inspect.iscoroutinefunction(method):
+            return []
+        return await method(simulation_id=simulation_id, observer_character_id=observer_character_id,
+                            subject_ids=subject_ids, limit=24)
+
+    @staticmethod
+    def _with_subjective_claim_context(prompt: list[PromptMessage], *, nested_under_perspective: bool = False,
+                                       nested_under_actors: bool = False) -> list[PromptMessage]:
+        if nested_under_actors:
+            content = """## Private entity models by actor
+{% for actor_context in actors %}{% for claim in actor_context.subjective_claims %}
+- {{ actor_context.actor.name }} privately {{ claim.stance }} about {{ claim.subject.name or claim.subject.id }}: [{{ claim.category }}] {{ claim.statement }} (confidence {{ claim.confidence }})
+{% endfor %}{% endfor %}
+Use each claim only for its observer. A belief is not objective fact and must not leak to another actor."""
+        else:
+            prefix = "perspective." if nested_under_perspective else ""
+            content = f"""## Actor's private models of entities
+{{% for claim in {prefix}subjective_claims %}}
+- {{{{ claim.stance }}}} about {{{{ claim.subject.name or claim.subject.id }}}}: [{{{{ claim.category }}}}] {{{{ claim.statement }}}} (confidence {{{{ claim.confidence }}}})
+{{% endfor %}}
+Treat these as this actor's fallible beliefs, never as objective facts or another actor's knowledge."""
+        return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]

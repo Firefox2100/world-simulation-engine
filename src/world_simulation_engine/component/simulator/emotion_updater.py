@@ -102,13 +102,19 @@ class EmotionUpdater(SimulatorComponent):
             messages=prompt,
             data=context.model_dump(),
             repair_instruction=(
-                "Return EmotionUpdateProposal JSON only. Use change: null unless the new memories "
-                "clearly support an emotional response. Cite only supplied memory IDs. Use small "
-                "valence, arousal, dominance deltas; omit extension dimensions unless essential."
+                "Return EmotionUpdateProposal JSON only. For no response use exactly "
+                '{"change": null, "updater_notes": []}. Otherwise immediate_delta and '
+                "baseline_delta must be objects, not null. Cite only supplied memory IDs. "
+                "Use small valence, arousal, dominance deltas and a list for updater_notes."
             ),
             run_name="emotion_updater.update_from_memories",
         )
         if not proposal.change:
+            return EmotionUpdateApplyResult(emotion_state_id=existing.id if existing else None)
+        if not self._has_nonzero_delta(
+                proposal.change.immediate_delta,
+                proposal.change.baseline_delta,
+        ):
             return EmotionUpdateApplyResult(emotion_state_id=existing.id if existing else None)
         evidence_ids = list(dict.fromkeys(proposal.change.evidence_memory_ids))
         if not evidence_ids or not set(evidence_ids).issubset({memory.id for memory in memories}):
@@ -151,6 +157,16 @@ class EmotionUpdater(SimulatorComponent):
             emotion_state_id=stored.id,
             audit_id=stored_audit.id if stored_audit else None,
             applied=stored_audit is not None,
+        )
+
+    @staticmethod
+    def _has_nonzero_delta(*vectors: EmotionVector) -> bool:
+        return any(
+            vector.valence
+            or vector.arousal
+            or vector.dominance
+            or any(vector.dimensions.values())
+            for vector in vectors
         )
 
     @classmethod

@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Annotated, Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .inter_state.state_commit import PhysicalEntityType
 
@@ -167,16 +167,6 @@ class ProposedRelationshipChange(BaseModel):
     conditions: list[str] = Field(default_factory=list, max_length=4)
     attributes: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def validate_kind_fields(self) -> "ProposedRelationshipChange":
-        """Reject ambiguous specialized changes before deterministic application."""
-        if self.kind == "compatibility" and self.compatible is None:
-            raise ValueError("Compatibility changes require compatible")
-        if self.kind == "spatial" and self.distance_metres is None and self.travel_time_seconds is None:
-            raise ValueError("Spatial changes require distance or travel time")
-        return self
-
-
 class RelationshipUpdateProposal(BaseModel):
     """Bounded changes for one character perspective and one committed turn."""
 
@@ -184,6 +174,13 @@ class RelationshipUpdateProposal(BaseModel):
 
     changes: list[ProposedRelationshipChange] = Field(default_factory=list, max_length=2)
     updater_notes: list[str] = Field(default_factory=list, max_length=3)
+
+    @field_validator("updater_notes", mode="before")
+    @classmethod
+    def normalize_notes(cls, value):
+        if value is None:
+            return []
+        return [value] if isinstance(value, str) else value
 
 
 class RelationshipChangeAudit(BaseModel):

@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "只更新一个观察者对其他实体的私有认知模型。最多提出两个持久观点，只能使用给定的新记忆和 ID。观点描述单个实体；实体之间的关系应由关系系统处理。短暂行为、证据薄弱或已有内容应不更新。强化或反驳已有观点时必须使用其 claim_id。新观点的 evidence_effect 必须是 supports。只返回 SubjectiveClaimUpdateProposal JSON。"
+  },
+  {
+    "role": "user",
+    "content": "观察者：{{ actor.name }}（{{ actor.id }}）\n时间：{{ simulation_time }}\n回合：{{ turn_id }}\n\n新记忆：\n{% for memory in new_memories %}- {{ memory.id }}：{{ memory.summary }}\n{% else %}- 无\n{% endfor %}\n\n允许的对象：\n{% for entity in candidate_entities %}- {{ entity.type }} {{ entity.name or entity.id }}（{{ entity.id }}）\n{% else %}- 无\n{% endfor %}\n\n已有私有观点：\n{% for claim in existing_claims %}- {{ claim.id }}，对象 {{ claim.subject.id }}；{{ claim.category }}；{{ claim.stance }}；置信度 {{ claim.confidence }}；{{ claim.statement }}\n{% else %}- 无\n{% endfor %}\n\n类别：appearance、personality、preference、aversion、capability、habit、value、relationship_expectation、identity、state、safety、access、contents、purpose、condition、ownership、risk、history、other。evidence_effect 只能是 supports 或 contradicts。引用一个或多个给定记忆 ID。"
+  }
+]

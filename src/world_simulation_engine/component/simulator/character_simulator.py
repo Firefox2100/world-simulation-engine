@@ -28,6 +28,7 @@ from world_simulation_engine.model import (
     Simulation,
     World,
     MemoryAtom,
+    SubjectiveEntityClaim,
     PerceivedBackgroundCharacter,
     PerceivedCharacter,
     PerceivedContainer,
@@ -106,6 +107,7 @@ class CharacterPerspective(BaseModel):
         default_factory=list,
         description="Objective facts and subjective relationships available to this actor.",
     )
+    subjective_claims: list[SubjectiveEntityClaim] = Field(default_factory=list)
     emotion: EmotionVector | None = None
 
     recent_events: list[str] = Field(
@@ -401,6 +403,10 @@ class CharacterSimulator(SimulatorComponent):
             perspective_character_id=character.id,
             entity_ids=list(relationship_entity_ids),
         )
+        subjective_claims = await self._subjective_claims(
+            simulation_id=simulation.id, observer_character_id=character.id,
+            subject_ids=list(relationship_entity_ids),
+        )
 
         return CharacterPerspective(
             actor=character,
@@ -418,6 +424,7 @@ class CharacterSimulator(SimulatorComponent):
             perceived_landmarks=perspective.perceived_landmarks,
             relevant_memories=relevant_memories,
             relationships=relationships,
+            subjective_claims=subjective_claims,
             emotion=emotion,
         )
 
@@ -476,6 +483,8 @@ class CharacterSimulator(SimulatorComponent):
             prompt_name="action_proposal",
         )
         prompt = self._with_relationship_context(prompt)
+        if perspective.subjective_claims:
+            prompt = self._with_subjective_claim_context(prompt)
         if perspective.emotion is not None:
             prompt = self._with_emotion_context(prompt)
 
@@ -698,6 +707,8 @@ class CharacterSimulator(SimulatorComponent):
             prompt,
             nested_under_perspective=True,
         )
+        if perspective.subjective_claims:
+            prompt = self._with_subjective_claim_context(prompt, nested_under_perspective=True)
         if perspective.emotion is not None:
             prompt = self._with_emotion_context(
                 prompt,

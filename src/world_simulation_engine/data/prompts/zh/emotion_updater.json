@@ -5,6 +5,6 @@
   },
   {
     "role": "user",
-    "content": "角色：{{ actor.name }}（{{ actor.id }}）\n模拟时间：{{ state.last_updated_at }}\n当前有效情绪：效价 {{ effective_emotion.valence }}，唤醒 {{ effective_emotion.arousal }}，支配 {{ effective_emotion.dominance }}，扩展 {{ effective_emotion.dimensions }}\n\n新记忆：\n{% for memory in memories %}- {{ memory.id }}：{{ memory.summary }}\n{% else %}- 无\n{% endfor %}\n\n若有充分依据，返回一个包含 immediate_delta、baseline_delta、evidence_memory_ids 和简短 reason 的 change。基线变化应接近零。"
+    "content": "角色：{{ actor.name }}（{{ actor.id }}）\n模拟时间：{{ state.last_updated_at }}\n当前有效情绪：效价 {{ effective_emotion.valence }}，唤醒 {{ effective_emotion.arousal }}，支配 {{ effective_emotion.dominance }}，扩展 {{ effective_emotion.dimensions }}\n\n新记忆：\n{% for memory in memories %}- {{ memory.id }}：{{ memory.summary }}\n{% else %}- 无\n{% endfor %}\n\n无反应时精确使用 {\"change\": null, \"updater_notes\": []}。否则 immediate_delta 和 baseline_delta 必须是 JSON 对象，不能是 null；无变化向量使用 {\"valence\": 0, \"arousal\": 0, \"dominance\": 0, \"dimensions\": {}}。包含 evidence_memory_ids 和简短 reason。updater_notes 必须是字符串列表。基线变化应接近零。"
   }
 ]

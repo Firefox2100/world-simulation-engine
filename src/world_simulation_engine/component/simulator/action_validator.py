@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ActionValidationResult, BackgroundCharacter, Character, Container, \
     EmotionVector, EntityRelationship, Equipment, Intent, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
-    ProposedAction, Simulation, World
+    ProposedAction, Simulation, SubjectiveEntityClaim, World
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
 from .simulator_component import SimulatorComponent
@@ -67,6 +67,7 @@ class ActionValidatorContext(BaseModel):
     active_intents: list[Intent] = Field(default_factory=list)
     recent_memories: list[MemoryRecallRecord] = Field(default_factory=list)
     relationships: list[EntityRelationship] = Field(default_factory=list)
+    subjective_claims: list[SubjectiveEntityClaim] = Field(default_factory=list)
     emotion: EmotionVector | None = None
 
 
@@ -137,6 +138,10 @@ class ActionValidator(SimulatorComponent):
             perspective_character_id=character_id,
             entity_ids=list(relationship_entity_ids),
         )
+        subjective_claims = await self._subjective_claims(
+            simulation_id=simulation_id, observer_character_id=character_id,
+            subject_ids=list(relationship_entity_ids),
+        )
 
         return ActionValidatorContext(
             world=world,
@@ -197,6 +202,7 @@ class ActionValidator(SimulatorComponent):
             active_intents=active_intents,
             recent_memories=recent_memories,
             relationships=relationships,
+            subjective_claims=subjective_claims,
             emotion=await self._effective_emotion(
                 simulation=simulation,
                 character_id=character_id,
@@ -229,6 +235,8 @@ class ActionValidator(SimulatorComponent):
             prompt_name="action_validator",
         )
         prompt = self._with_relationship_context(prompt)
+        if context.subjective_claims:
+            prompt = self._with_subjective_claim_context(prompt)
         if context.emotion is not None:
             prompt = self._with_emotion_context(prompt)
         llm = await self._prepare_llm_service(simulation_id=simulation_id)

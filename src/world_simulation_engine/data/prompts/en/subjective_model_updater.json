@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Update the private model held by exactly one actor about other entities. Propose at most two durable claims, using only supplied new memories and IDs. A claim describes an entity; relationships between entities belong elsewhere. Prefer no change for transient actions, weak evidence, or facts already represented. Use an existing claim_id when evidence reinforces or contradicts it. New claims must use evidence_effect supports. Return only SubjectiveClaimUpdateProposal JSON."
+  },
+  {
+    "role": "user",
+    "content": "Observer: {{ actor.name }} ({{ actor.id }})\nTime: {{ simulation_time }}\nTurn: {{ turn_id }}\n\nNew memories:\n{% for memory in new_memories %}- {{ memory.id }}: {{ memory.summary }}\n{% else %}- none\n{% endfor %}\n\nAllowed subjects:\n{% for entity in candidate_entities %}- {{ entity.type }} {{ entity.name or entity.id }} ({{ entity.id }})\n{% else %}- none\n{% endfor %}\n\nExisting private claims:\n{% for claim in existing_claims %}- {{ claim.id }} about {{ claim.subject.id }}; {{ claim.category }}; {{ claim.stance }}; confidence {{ claim.confidence }}; {{ claim.statement }}\n{% else %}- none\n{% endfor %}\n\nCategories: appearance, personality, preference, aversion, capability, habit, value, relationship_expectation, identity, state, safety, access, contents, purpose, condition, ownership, risk, history, other. evidence_effect is supports or contradicts. Cite one or more supplied memory IDs."
+  }
+]

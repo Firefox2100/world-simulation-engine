@@ -162,6 +162,29 @@ async def test_apply_proposal_rejects_unknown_evidence_and_endpoint():
     database.entity_relationship.create_change_audit.assert_not_awaited()
 
 
+async def test_apply_proposal_skips_incomplete_specialized_shapes_after_parsing():
+    database = Mock()
+    database.entity_relationship.create_relationship = AsyncMock()
+    updater = RelationshipUpdater(database=database)
+    proposal = RelationshipUpdateProposal.model_validate({"changes": [
+        {
+            "kind": "spatial", "source_id": "character_1", "target_id": "character_2",
+            "label": "near", "private_description": "No distance supplied.", "confidence": .5,
+            "evidence_memory_ids": ["memory_1"],
+        },
+        {
+            "kind": "compatibility", "source_id": "character_1", "target_id": "character_2",
+            "label": "compatible", "private_description": "No compatible value supplied.", "confidence": .5,
+            "evidence_memory_ids": ["memory_1"],
+        },
+    ]})
+
+    result = await updater._apply_proposal(proposal=proposal, context=make_context())
+
+    assert result.skipped_changes == 2
+    database.entity_relationship.create_relationship.assert_not_awaited()
+
+
 async def test_update_from_memories_uses_one_scoped_small_proposal_call():
     simulation = Simulation(
         id="simulation_1",

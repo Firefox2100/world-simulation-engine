@@ -128,6 +128,33 @@ async def test_emotion_update_rejects_memory_not_committed_for_this_pass():
 
     assert result.applied is False
     database.emotion.create_state.assert_not_awaited()
+
+
+async def test_null_vectors_repaired_to_zero_are_a_noop_not_an_audit():
+    database = make_database()
+    updater = EmotionUpdater(database=database)
+    updater._prepare_prompt = AsyncMock(return_value=[])
+    updater._prepare_llm_service = AsyncMock(return_value=SimpleNamespace(
+        invoke_structured_with_repair=AsyncMock(return_value=EmotionUpdateProposal.model_validate({
+            "change": {
+                "immediate_delta": None,
+                "baseline_delta": None,
+                "evidence_memory_ids": ["memory_1"],
+                "reason": "No directional emotional evidence.",
+            },
+        })),
+    ))
+
+    result = await updater.update_from_memories(
+        simulation_id="simulation_1",
+        character_id="character_1",
+        turn_id="turn_1",
+        memory_ids=["memory_1"],
+    )
+
+    assert result.applied is False
+    database.emotion.create_state.assert_not_awaited()
+    database.emotion.create_change_audit.assert_not_awaited()
     database.emotion.create_change_audit.assert_not_awaited()
 
 

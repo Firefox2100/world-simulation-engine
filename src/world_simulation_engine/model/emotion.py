@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EmotionVector(BaseModel):
@@ -42,6 +42,12 @@ class ProposedEmotionChange(BaseModel):
     evidence_memory_ids: list[str] = Field(min_length=1, max_length=4)
     reason: str = Field(min_length=1)
 
+    @field_validator("immediate_delta", "baseline_delta", mode="before")
+    @classmethod
+    def null_delta_means_zero(cls, value):
+        """Local models often emit null for a deliberately unchanged vector."""
+        return {} if value is None else value
+
 
 class EmotionUpdateProposal(BaseModel):
     """At most one emotional response for a single character perspective."""
@@ -50,6 +56,13 @@ class EmotionUpdateProposal(BaseModel):
 
     change: ProposedEmotionChange | None = None
     updater_notes: list[str] = Field(default_factory=list, max_length=2)
+
+    @field_validator("updater_notes", mode="before")
+    @classmethod
+    def normalize_notes(cls, value):
+        if value is None:
+            return []
+        return [value] if isinstance(value, str) else value
 
 
 class EmotionChangeAudit(BaseModel):

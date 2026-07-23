@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from world_simulation_engine.model import EmotionState, EmotionVector
+from world_simulation_engine.model import EmotionState, EmotionUpdateProposal, EmotionVector
 from world_simulation_engine.service.database.emotion_store import EmotionStore
 
 
@@ -43,3 +43,19 @@ def test_combined_emotion_clamps_baseline_plus_immediate():
 
     assert combined.valence == 1
     assert combined.dimensions == {"fear": 1}
+
+
+def test_local_model_null_deltas_and_scalar_note_are_normalized():
+    proposal = EmotionUpdateProposal.model_validate({
+        "change": {
+            "immediate_delta": None,
+            "baseline_delta": None,
+            "evidence_memory_ids": ["memory_1"],
+            "reason": "No specific direction was supported.",
+        },
+        "updater_notes": "Conservative no-op vectors.",
+    })
+
+    assert proposal.change.immediate_delta == EmotionVector()
+    assert proposal.change.baseline_delta == EmotionVector()
+    assert proposal.updater_notes == ["Conservative no-op vectors."]

@@ -28,6 +28,7 @@ from .narrator import Narrator
 from .relationship_updater import RelationshipUpdater
 from .scene_coordinator import SceneCoordinator
 from .state_committer import StateCommitter
+from .subjective_model_updater import SubjectiveModelUpdater
 
 
 class CharacterActionProposalRecord(BaseModel):
@@ -174,6 +175,10 @@ class WorldSimulator:
             prompt_loader=prompt_loader,
         )
         self._relationship_updater = RelationshipUpdater(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._subjective_model_updater = SubjectiveModelUpdater(
             database=database,
             prompt_loader=prompt_loader,
         )
@@ -1559,6 +1564,17 @@ class WorldSimulator:
                 )
             except Exception:
                 # Emotion inference is optional derived state and cannot suppress other updates.
+                pass
+            try:
+                await self._subjective_model_updater.update_from_memories(
+                    simulation_id=simulation_id,
+                    character_id=character_id,
+                    turn_id=turn_id,
+                    memory_ids=memory_apply_result.memory_ids_by_character[character_id],
+                    candidate_entity_ids=sorted(candidate_ids),
+                )
+            except Exception:
+                # Subjective synthesis is isolated derived state; committed turns remain valid.
                 pass
             try:
                 await self._relationship_updater.update_from_memories(

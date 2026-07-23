@@ -8,6 +8,7 @@ from .container_store import ContainerStore
 from .equipment_store import EquipmentStore
 from .emotion_store import EmotionStore
 from .entity_relationship_store import EntityRelationshipStore
+from .subjective_entity_claim_store import SubjectiveEntityClaimStore
 from .event_store import EventStore
 from .graph_state_snapshot_store import GraphStateSnapshotStore
 from .generation_job_store import GenerationJobStore
@@ -39,6 +40,7 @@ class DatabaseService:
         self._equipment = EquipmentStore(self._driver)
         self._emotion = EmotionStore(self._driver)
         self._entity_relationship = EntityRelationshipStore(self._driver)
+        self._subjective_entity_claim = SubjectiveEntityClaimStore(self._driver)
         self._event = EventStore(self._driver)
         self._graph_state_snapshot = GraphStateSnapshotStore(self._driver)
         self._generation_job = GenerationJobStore(self._driver)
@@ -83,6 +85,10 @@ class DatabaseService:
     @property
     def entity_relationship(self) -> EntityRelationshipStore:
         return self._entity_relationship
+
+    @property
+    def subjective_entity_claim(self) -> SubjectiveEntityClaimStore:
+        return self._subjective_entity_claim
 
     @property
     def event(self) -> EventStore:

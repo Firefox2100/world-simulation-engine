@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.model import Character, Container, CurrentActivity, EmotionState, EmotionVector, \
-    InventoryEquipment, InventoryStack
+    InventoryEquipment, InventoryStack, SubjectiveEntityClaim
 from .utils import db_dep
 
 
@@ -252,6 +252,26 @@ async def get_character(character_id: str, db: db_dep):
         )
 
     return character
+
+
+@character_router.get(
+    "/characters/{character_id}/subjective-claims",
+    response_model=list[SubjectiveEntityClaim],
+)
+async def get_character_subjective_claims(
+        character_id: str,
+        simulation_id: str,
+        db: db_dep,
+        subject_id: str | None = None,
+):
+    """Inspect only the selected character's private model, never an aggregate."""
+    if not await db.simulation.get_simulation(simulation_id) or not await db.character.get_character(character_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Simulation or character not found")
+    return await db.subjective_entity_claim.list_claims(
+        simulation_id=simulation_id,
+        observer_character_id=character_id,
+        subject_ids=[subject_id] if subject_id else None,
+    )
 
 
 @character_router.get(

@@ -21,6 +21,7 @@ from world_simulation_engine.model import (
     RelationshipUpdateProposal,
     RelationshipVisibility,
     SpatialRelationshipDetails,
+    SubjectiveEntityClaim,
 )
 
 from .simulator_component import SimulatorComponent
@@ -37,6 +38,7 @@ class RelationshipUpdateContext(BaseModel):
     candidate_entities: list[RelationshipEntityRef] = Field(default_factory=list)
     existing_relationships: list[EntityRelationship] = Field(default_factory=list)
     emotion: EmotionVector | None = None
+    subjective_claims: list[SubjectiveEntityClaim] = Field(default_factory=list)
 
 
 class RelationshipUpdateApplyResult(BaseModel):
@@ -113,6 +115,10 @@ class RelationshipUpdater(SimulatorComponent):
                 simulation=simulation,
                 character_id=character_id,
             ),
+            subjective_claims=await self._subjective_claims(
+                simulation_id=simulation_id, observer_character_id=character_id,
+                subject_ids=list(candidates_by_id),
+            ),
         )
         prompt = await self._prepare_prompt(
             simulation_id=simulation_id,
@@ -121,6 +127,8 @@ class RelationshipUpdater(SimulatorComponent):
         )
         if context.emotion is not None:
             prompt = self._with_emotion_context(prompt)
+        if context.subjective_claims:
+            prompt = self._with_subjective_claim_context(prompt)
         llm = await self._prepare_llm_service(simulation_id)
         proposal = await llm.invoke_structured_with_repair(
             output_model=RelationshipUpdateProposal,
@@ -131,9 +139,12 @@ class RelationshipUpdater(SimulatorComponent):
             },
             repair_instruction=(
                 "Return RelationshipUpdateProposal with at most two changes. Use only supplied "
-                "entity and memory IDs. Every change needs kind, source_id, target_id, label, "
+                "entity IDs as source_id/target_id; memory IDs are evidence_memory_ids only. "
+                "Every change needs kind, source_id, target_id, label, "
                 "private_description, confidence, and evidence_memory_ids. Fill only fields "
-                "relevant to kind. Return changes: [] when evidence is weak."
+                "relevant to kind. Spatial requires distance_metres or travel_time_seconds; "
+                "compatibility requires compatible. updater_notes must be a list. "
+                'When no valid edge exists return {"changes": [], "updater_notes": []}.'
             ),
             run_name="relationship_updater.update_from_memories",
         )
@@ -289,6 +300,13 @@ class RelationshipUpdater(SimulatorComponent):
             changed_at: datetime,
     ):
         current = existing.details if existing else None
+        if change.kind == "spatial" and (
+                change.distance_metres is None
+                and change.travel_time_seconds is None
+        ):
+            return None
+        if change.kind == "compatibility" and change.compatible is None:
+            return None
         if change.kind == "interpersonal":
             if not (
                     isinstance(current, InterpersonalRelationshipDetails)

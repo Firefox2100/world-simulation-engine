@@ -9,6 +9,7 @@ from world_simulation_engine.model import (
     InterpersonalRelationshipDetails,
     RelationshipEntityRef,
     RelationshipScope,
+    RelationshipUpdateProposal,
     RelationshipVisibility,
 )
 
@@ -70,3 +71,20 @@ def test_generic_entity_relationship_supports_compatibility_constraints():
 
     assert relationship.details.compatible is False
     assert relationship.source.type == "item"
+
+
+def test_relationship_proposal_normalizes_scalar_notes_before_code_validation():
+    proposal = RelationshipUpdateProposal.model_validate({
+        "changes": [{
+            "kind": "spatial",
+            "source_id": "character_1",
+            "target_id": "location_1",
+            "label": "associated with",
+            "private_description": "No measurable distance was supplied.",
+            "confidence": .5,
+            "evidence_memory_ids": ["memory_1"],
+        }],
+        "updater_notes": "The specialized fields are incomplete.",
+    })
+
+    assert proposal.updater_notes == ["The specialized fields are incomplete."]

@@ -24,6 +24,8 @@ from .entity_relationship import CompatibilityRelationshipDetails, EntityRelatio
     InterpersonalRelationshipDetails, ProposedRelationshipChange as ProposedEntityRelationshipChange, \
     RecalledEntityRelationship, RelationshipChangeAudit, RelationshipEntityRef, RelationshipScope, \
     RelationshipUpdateProposal, RelationshipVisibility, SpatialRelationshipDetails
+from .subjective_entity_claim import ProposedSubjectiveClaimChange, SubjectiveClaimCategory, \
+    SubjectiveClaimChangeAudit, SubjectiveClaimStance, SubjectiveClaimUpdateProposal, SubjectiveEntityClaim
 from .event import Event
 from .graph_state_snapshot import GraphStateSnapshot
 from .generation_job import GenerationJob
