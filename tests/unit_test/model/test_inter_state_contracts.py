@@ -61,6 +61,33 @@ def test_action_proposal_accepts_primary_sequence_and_backup_sequences():
     assert proposal.backup_proposals == [[backup]]
 
 
+def test_action_proposal_wraps_flat_backup_actions_as_single_action_sequences():
+    backup_first = ProposedAction(
+        type=ActionType.WAIT,
+        label="wait",
+        intended_duration_seconds=3,
+    )
+    backup_second = ProposedAction(
+        type=ActionType.MOVE,
+        label="step_aside",
+        intended_duration_seconds=3,
+    )
+
+    proposal = ActionProposal.model_validate(
+        {
+            "actions": [make_action().model_dump()],
+            "backup_proposals": [
+                backup_first.model_dump(),
+                backup_second.model_dump(),
+            ],
+            "reasoning_summary": "Flat backup actions are single-action alternatives.",
+            "next_review_hint_seconds": 5,
+        }
+    )
+
+    assert proposal.backup_proposals == [[backup_first], [backup_second]]
+
+
 def test_action_proposal_rejects_legacy_single_action_shape():
     action = make_action()
     backup = ProposedAction(

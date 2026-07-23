@@ -59,3 +59,24 @@ def test_local_model_null_deltas_and_scalar_note_are_normalized():
     assert proposal.change.immediate_delta == EmotionVector()
     assert proposal.change.baseline_delta == EmotionVector()
     assert proposal.updater_notes == ["Conservative no-op vectors."]
+
+
+def test_local_model_misplaced_emotion_updater_notes_are_lifted():
+    proposal = EmotionUpdateProposal.model_validate({
+        "change": {
+            "immediate_delta": {
+                "valence": -0.1,
+                "arousal": 0.2,
+                "dominance": 0,
+                "dimensions": {},
+            },
+            "baseline_delta": None,
+            "evidence_memory_ids": ["memory_1"],
+            "reason": "The memory causes mild unease.",
+            "updater_notes": [],
+        },
+    })
+
+    assert proposal.change.immediate_delta.valence == -0.1
+    assert proposal.change.baseline_delta == EmotionVector()
+    assert proposal.updater_notes == []

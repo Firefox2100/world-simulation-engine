@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EmotionVector(BaseModel):
@@ -56,6 +56,24 @@ class EmotionUpdateProposal(BaseModel):
 
     change: ProposedEmotionChange | None = None
     updater_notes: list[str] = Field(default_factory=list, max_length=2)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_misplaced_notes(cls, value):
+        if not isinstance(value, dict):
+            return value
+
+        change = value.get("change")
+        if not isinstance(change, dict) or "updater_notes" not in change:
+            return value
+
+        normalized = dict(value)
+        normalized_change = dict(change)
+        notes = normalized_change.pop("updater_notes")
+        normalized["change"] = normalized_change
+        if not normalized.get("updater_notes"):
+            normalized["updater_notes"] = notes
+        return normalized
 
     @field_validator("updater_notes", mode="before")
     @classmethod

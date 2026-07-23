@@ -48,20 +48,29 @@ class ProposedAction(BaseModel):
 class ActionProposal(BaseModel):
     @model_validator(mode="before")
     @classmethod
-    def normalize_memory_updates(cls, value: Any) -> Any:
+    def normalize_local_model_shapes(cls, value: Any) -> Any:
         if not isinstance(value, dict):
             return value
 
         normalized = dict(value)
 
         updates = normalized.get("memory_updates_suggested")
-        if not isinstance(updates, list):
-            return normalized
+        if isinstance(updates, list):
+            normalized["memory_updates_suggested"] = [
+                cls._memory_update_to_string(update)
+                for update in updates
+            ]
 
-        normalized["memory_updates_suggested"] = [
-            cls._memory_update_to_string(update)
-            for update in updates
-        ]
+        backup_proposals = normalized.get("backup_proposals")
+        if isinstance(backup_proposals, list) and backup_proposals:
+            normalized["backup_proposals"] = [
+                [proposal]
+                if isinstance(proposal, dict) and (
+                    "type" in proposal or "label" in proposal
+                )
+                else proposal
+                for proposal in backup_proposals
+            ]
         return normalized
 
     @staticmethod
