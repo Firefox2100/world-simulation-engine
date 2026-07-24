@@ -24,7 +24,7 @@ export async function fetchSimulationTurns({ simulationId, limit = 50, offset = 
     params.set("limit", String(limit));
     params.set("skip", String(offset));
 
-    const turns = await apiRequest(`/turns?${params.toString()}`);
+    const turns = await apiRequest(`/turn-presentations?${params.toString()}`);
     return turns.map(normalizeTurn);
 }
 
@@ -182,38 +182,26 @@ function normalizeSimulation(simulation) {
     };
 }
 
-function normalizeTurn(turn) {
-    const narrationBlocks = parseNarrationBlocks(turn.content);
+function normalizeTurn(presentedTurn) {
+    const turn = presentedTurn.turn;
+    const presentationBlocks = presentedTurn.presentation_blocks ?? [];
     return {
         ...turn,
         turn_number: turn.sequence,
-        narration: narrationBlocks ? narrationTextFromBlocks(narrationBlocks) : turn.content,
-        narration_blocks: narrationBlocks,
+        narration: presentationBlocks.length > 0
+            ? narrationTextFromBlocks(presentationBlocks)
+            : turn.content,
+        narration_blocks: presentationBlocks,
+        rendering_id: presentedTurn.rendering_id ?? "default",
+        locale: presentedTurn.locale ?? null,
     };
-}
-
-function parseNarrationBlocks(content) {
-    if (typeof content !== "string") {
-        return null;
-    }
-
-    try {
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed?.blocks)) {
-            return parsed.blocks;
-        }
-    } catch {
-        // Legacy turns store plain text.
-    }
-
-    return null;
 }
 
 function narrationTextFromBlocks(blocks) {
     return blocks
         .map((block) => {
             if (block.type === "speech") {
-                const speaker = block.character_name || block.character_id || "";
+                const speaker = block.speaker_name || block.speaker_id || "";
                 return speaker ? `${speaker}: "${block.text}"` : block.text;
             }
 

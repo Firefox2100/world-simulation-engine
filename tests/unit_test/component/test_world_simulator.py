@@ -14,9 +14,9 @@ from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotTyp
     SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
     ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GenerationJob, GraphStateSnapshot, InputInterpretation, \
-    MemorySummaryApplyResult, MemorySummaryProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, \
+    MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, \
     SceneCoordinationResult, Simulation, \
-    StateCommitProposal, Turn, World
+    PresentationBlockType, SpeechBlock, StateCommitProposal, Turn, World
 
 
 def make_state(input_interpretation: InputInterpretation) -> WorldSimulatorState:
@@ -1254,6 +1254,7 @@ async def test_commit_character_actions_returns_turn_and_commit_proposal():
     )
     simulator._db.turn.create_next_turn = AsyncMock(return_value=turn)
     simulator._db.state_commit.apply_state_commit_proposal = AsyncMock()
+    simulator._db.turn_presentation.replace_rendering = AsyncMock(side_effect=lambda value: value)
     simulator._db.simulation.get_simulation = AsyncMock(return_value=simulation)
     simulator._db.simulation.update_current_time = AsyncMock(return_value=updated_simulation)
 
@@ -1284,6 +1285,10 @@ async def test_commit_character_actions_returns_turn_and_commit_proposal():
         simulation_id="simulation_1",
         current_time=updated_simulation.current_time,
     )
+    rendering = simulator._db.turn_presentation.replace_rendering.await_args.args[0]
+    assert rendering.turn_id == turn.id
+    assert rendering.blocks[0].type == PresentationBlockType.NARRATION
+    assert rendering.blocks[0].text == "The scene continues."
 
 
 async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
@@ -1333,6 +1338,7 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
     )
     simulator._db.turn.create_next_turn = AsyncMock(return_value=turn)
     simulator._db.state_commit.apply_state_commit_proposal = AsyncMock()
+    simulator._db.turn_presentation.replace_rendering = AsyncMock(side_effect=lambda value: value)
     simulator._db.simulation.update_current_time = AsyncMock(return_value=updated_simulation)
 
     result = await simulator.commit_user_actions(state)
@@ -1352,6 +1358,9 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
     assert created_turn.type == TurnType.USER_INPUT
     assert created_turn.content == "I look around."
     assert created_turn.start_time == state.simulation.current_time
+    rendering = simulator._db.turn_presentation.replace_rendering.await_args.args[0]
+    assert rendering.blocks[0].type == PresentationBlockType.ACTION
+    assert rendering.blocks[0].speaker_id == "character_1"
     simulator._db.state_commit.apply_state_commit_proposal.assert_awaited_once_with(
         proposal=proposal,
         source_id="simulation_1",
@@ -1365,6 +1374,36 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
     assert scheduled_state.committed_turn == turn
     assert scheduled_state.simulation == updated_simulation
     assert simulator._schedule_off_scene_activity.call_args.kwargs == {"trigger_turn": turn}
+
+
+async def test_default_presentation_preserves_structured_narration_and_speaker_order():
+    simulator = WorldSimulator(database=Mock())
+    simulator._db.turn_presentation.replace_rendering = AsyncMock(side_effect=lambda value: value)
+    turn = Turn(
+        id="turn_1",
+        sequence=2,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="canonical",
+        start_time=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    narration = NarrationProposal(blocks=[
+        NarrationBlock(type="narration", text="Alex turns."),
+        SpeechBlock(
+            type="speech",
+            character_id="character_1",
+            character_name="Alex",
+            text="Hello.",
+        ),
+    ])
+
+    await simulator._store_default_presentation(turn=turn, presentation=narration)
+
+    rendering = simulator._db.turn_presentation.replace_rendering.await_args.args[0]
+    assert [block.type for block in rendering.blocks] == [
+        PresentationBlockType.NARRATION,
+        PresentationBlockType.SPEECH,
+    ]
+    assert rendering.blocks[1].speaker_id == "character_1"
 
 
 async def test_commit_generated_turn_schedules_its_own_off_scene_trigger():

@@ -403,6 +403,11 @@ async def create_simulation(world_id: str, db: db_dep):
         location_pairs=location_pairs,
         landmark_pairs=landmark_pairs,
     )
+    await db.turn_presentation.copy_presentations(
+        turn_pairs=turn_pairs,
+        entity_pairs=[*character_pairs, *background_character_pairs],
+        copied_at=simulation.current_time,
+    )
     _, stack_pairs = await db.item.copy_stacks(
         world_id,
         created_simulation.id,

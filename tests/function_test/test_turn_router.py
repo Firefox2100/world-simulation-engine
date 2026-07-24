@@ -139,6 +139,48 @@ def test_get_turns_by_id_and_sequence(turn_api):
     assert sequence_response.json() == turn.model_dump(mode="json")
 
 
+def test_presented_turns_adapt_legacy_content_without_changing_turn(turn_api):
+    response = turn_api.client.get(
+        "/turn-presentations",
+        params={"simulation_id": turn_api.simulation.id, "limit": 1},
+    )
+
+    assert response.status_code == 200
+    presented = response.json()[0]
+    assert presented["turn"] == turn_api.turns[4].model_dump(mode="json")
+    assert presented["presentation_blocks"][0]["type"] == "action"
+    assert presented["presentation_blocks"][0]["text"] == "Turn 4"
+    assert presented["presentation_blocks"][0]["completion"] == "complete"
+
+
+def test_presentation_variants_are_replaceable_without_mutating_canonical_turn(turn_api):
+    turn = turn_api.turns[2]
+    response = turn_api.client.put(
+        f"/turns/{turn.id}/presentation/compact",
+        json={
+            "locale": "en-GB",
+            "blocks": [
+                {
+                    "sequence": 0,
+                    "type": "system_notice",
+                    "text": "A compact alternate rendering.",
+                    "completion": "complete",
+                }
+            ],
+        },
+    )
+    presented = turn_api.client.get(
+        f"/turns/{turn.id}/presentation",
+        params={"rendering_id": "compact", "locale": "en-GB"},
+    )
+    canonical = turn_api.client.get(f"/turns/{turn.id}")
+
+    assert response.status_code == 200
+    assert presented.status_code == 200
+    assert presented.json()["presentation_blocks"][0]["text"] == "A compact alternate rendering."
+    assert canonical.json() == turn.model_dump(mode="json")
+
+
 def test_create_world_turn_validates_sequence(turn_api):
     client = turn_api.client
 

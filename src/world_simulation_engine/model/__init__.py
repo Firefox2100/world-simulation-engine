@@ -37,4 +37,6 @@ from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatMode
 from .prompt_message import PromptMessage
 from .simulation import Simulation
 from .turn import Turn
+from .turn_presentation import PresentedTurn, PresentationBlockType, PresentationCompletion, \
+    TurnPresentationBlock, TurnPresentationRendering
 from .world import Author, World

@@ -15,8 +15,9 @@ from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotTyp
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
     Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
-    GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationProposal, \
-    ReactionHistoryEntry, StateCommitProposal, Turn
+    GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, \
+    PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Turn, \
+    TurnPresentationBlock, TurnPresentationRendering
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from .action_validator import ActionValidator
@@ -1359,6 +1360,7 @@ class WorldSimulator:
             content=Narrator.serialize_content(state.narration),
             proposal=proposal,
             coordination_result=state.character_action_coordination,
+            presentation=state.narration,
         )
         if isinstance(state, WorldSimulatorState):
             self._schedule_off_scene_activity(
@@ -1393,6 +1395,15 @@ class WorldSimulator:
             content=state.user_input,
             proposal=proposal,
             coordination_result=coordination,
+            presentation=state.user_input,
+            presentation_speaker_id=next(
+                (
+                    accepted.actor_id
+                    for accepted in coordination.accepted_actions
+                    if accepted.actor_id
+                ),
+                None,
+            ),
         )
         self._schedule_off_scene_activity(
             state.model_copy(update={
@@ -2086,6 +2097,8 @@ class WorldSimulator:
             content: str,
             proposal: StateCommitProposal,
             coordination_result: SceneCoordinationResult,
+            presentation: NarrationProposal | str | None = None,
+            presentation_speaker_id: str | None = None,
     ) -> tuple[Turn, Simulation]:
         turn = await self._db.turn.create_next_turn(
             source_id=simulation_id,
@@ -2101,6 +2114,11 @@ class WorldSimulator:
             source_id=simulation_id,
             turn_id=turn.id,
         )
+        await self._store_default_presentation(
+            turn=turn,
+            presentation=presentation,
+            speaker_id=presentation_speaker_id,
+        )
         advanced_time = simulation.current_time + timedelta(
             seconds=self._coordination_elapsed_seconds(coordination_result)
         )
@@ -2109,6 +2127,61 @@ class WorldSimulator:
             current_time=advanced_time,
         )
         return turn, updated_simulation
+
+    async def _store_default_presentation(
+            self,
+            *,
+            turn: Turn,
+            presentation: NarrationProposal | str | None,
+            speaker_id: str | None = None,
+    ) -> None:
+        """Persist display segmentation separately from the canonical turn."""
+        now = turn.start_time
+        blocks: list[TurnPresentationBlock] = []
+        if isinstance(presentation, NarrationProposal):
+            for sequence, block in enumerate(presentation.blocks):
+                if isinstance(block, SpeechBlock):
+                    blocks.append(TurnPresentationBlock(
+                        turn_id=turn.id,
+                        sequence=sequence,
+                        type=PresentationBlockType.SPEECH,
+                        text=block.text,
+                        speaker_id=block.character_id,
+                        speaker_name=block.character_name,
+                        completion=PresentationCompletion.COMPLETE,
+                        created_at=now,
+                        updated_at=now,
+                    ))
+                elif isinstance(block, NarrationBlock):
+                    blocks.append(TurnPresentationBlock(
+                        turn_id=turn.id,
+                        sequence=sequence,
+                        type=PresentationBlockType.NARRATION,
+                        text=block.text,
+                        completion=PresentationCompletion.COMPLETE,
+                        created_at=now,
+                        updated_at=now,
+                    ))
+        elif isinstance(presentation, str) and presentation.strip():
+            blocks.append(TurnPresentationBlock(
+                turn_id=turn.id,
+                sequence=0,
+                type=(
+                    PresentationBlockType.ACTION
+                    if turn.type == TurnType.USER_INPUT
+                    else PresentationBlockType.NARRATION
+                ),
+                text=presentation,
+                speaker_id=speaker_id,
+                completion=PresentationCompletion.COMPLETE,
+                created_at=now,
+                updated_at=now,
+            ))
+        if not blocks:
+            return
+        await self._db.turn_presentation.replace_rendering(
+            TurnPresentationRendering(turn_id=turn.id, blocks=blocks),
+        )
 
     async def _require_simulation(self, simulation_id: str) -> Simulation:
         simulation = await self._db.simulation.get_simulation(simulation_id)

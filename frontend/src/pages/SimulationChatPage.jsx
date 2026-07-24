@@ -386,17 +386,18 @@ function CharacterAvatar({ simulationId, character, label }) {
     );
 }
 
-function NarrationBlocks({ blocks, simulationId, charactersById }) {
+function NarrationBlocks({ blocks, simulationId, charactersById, userCharacter = null, userRecord = false }) {
     return (
         <>
             {blocks.map((block, index) => {
                 if (block.type === "speech") {
-                    const character = charactersById[String(block.character_id)];
-                    const authorName = block.character_name || character?.name || block.character_id;
+                    const speakerId = block.speaker_id ?? block.character_id;
+                    const character = charactersById[String(speakerId)];
+                    const authorName = block.speaker_name || block.character_name || character?.name || speakerId;
 
                     return (
                         <article
-                            key={`${block.type}-${block.character_id}-${index}`}
+                            key={block.id ?? `${block.type}-${speakerId}-${index}`}
                             className="chat-message character"
                         >
                             <CharacterAvatar
@@ -414,13 +415,50 @@ function NarrationBlocks({ blocks, simulationId, charactersById }) {
                     );
                 }
 
+                if (block.type === "action" && userRecord) {
+                    const authorName = userCharacter?.name ?? block.speaker_name ?? block.speaker_id ?? "";
+                    return (
+                        <article
+                            key={block.id ?? `${block.type}-${index}`}
+                            className="chat-message user presentation-action"
+                        >
+                            <CharacterAvatar
+                                simulationId={simulationId}
+                                character={userCharacter}
+                                label={authorName}
+                            />
+                            <div className="chat-message-content">
+                                <div className="chat-message-author">{authorName}</div>
+                                <div className="chat-bubble">
+                                    <FormattedUserText text={block.text ?? ""} />
+                                </div>
+                            </div>
+                        </article>
+                    );
+                }
+
+                const blockClass = block.type === "thought"
+                    ? "thought-block"
+                    : block.type === "system_notice"
+                      ? "system-notice-block"
+                      : block.type === "media"
+                        ? "media-block"
+                        : block.type === "action"
+                          ? "action-block"
+                          : "narration-block";
                 return (
                     <article
-                        key={`${block.type}-${index}`}
-                        className="chat-message narration-block"
+                        key={block.id ?? `${block.type}-${index}`}
+                        className={`chat-message ${blockClass} presentation-${block.completion ?? "complete"}`}
                     >
                         <div className="chat-narration-card">
-                            <p>{block.text}</p>
+                            {block.type === "media" ? (
+                                <p>Media: {block.media_id}</p>
+                            ) : block.type === "thought" ? (
+                                <p><em>{block.text}</em></p>
+                            ) : (
+                                <p>{block.text}</p>
+                            )}
                         </div>
                     </article>
                 );
@@ -433,7 +471,7 @@ function ChatRecord({ record, simulation, charactersById, userCharacter }) {
     const { t } = useTranslation();
     const userRecord = isUserRecord(record);
     const authorName = userRecord ? (userCharacter?.name ?? t("simulationChat.userCharacterFallback")) : simulation?.name;
-    const blocks = !userRecord ? narrationBlocksFromValue(record.narration_blocks) : null;
+    const blocks = narrationBlocksFromValue(record.narration_blocks);
 
     if (blocks?.length > 0) {
         return (
@@ -441,6 +479,8 @@ function ChatRecord({ record, simulation, charactersById, userCharacter }) {
                 blocks={blocks}
                 simulationId={simulation?.id}
                 charactersById={charactersById}
+                userCharacter={userCharacter}
+                userRecord={userRecord}
             />
         );
     }
