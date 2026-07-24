@@ -88,6 +88,25 @@ export async function fetchSimulationIntents(simulationId) {
     return query("/intents", { simulation_id: simulationId });
 }
 
+export async function fetchSimulationAuditEvents({
+    simulationId,
+    runId = null,
+    turnId = null,
+    category = null,
+    actorId = null,
+    limit = 200,
+    offset = 0,
+}) {
+    return query(`/simulations/${simulationId}/audit-events`, {
+        run_id: runId,
+        turn_id: turnId,
+        category,
+        actor_id: actorId,
+        limit,
+        skip: offset,
+    });
+}
+
 export async function fetchCharacterInventory(characterId) {
     return apiRequest(`/characters/${characterId}/inventory`);
 }

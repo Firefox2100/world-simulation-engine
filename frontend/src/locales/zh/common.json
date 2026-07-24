@@ -112,7 +112,8 @@
       "factions": "阵营",
       "worldEntries": "世界条目",
       "configs": "配置",
-      "prompts": "提示词"
+      "prompts": "提示词",
+      "observability": "可观测性"
     },
     "empty": {
       "landmarks": "该模拟暂无地标。",
@@ -148,6 +149,12 @@
       "stats": "数值"
     },
     "configLoading": "正在加载配置...",
+    "observability": {
+      "empty": "尚未记录模拟器审计事件。",
+      "simulationTime": "模拟时间：{{time}}",
+      "noSimulationTime": "无模拟时间值",
+      "actors": "角色：{{actors}}"
+    },
     "configSaving": "正在保存...",
     "configSaved": "配置已保存。",
     "configError": "无法加载配置：{{error}}",

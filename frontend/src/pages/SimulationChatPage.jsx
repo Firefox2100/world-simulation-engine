@@ -26,6 +26,7 @@ import {
     fetchSimulationLocations,
     fetchSimulationMemories,
     fetchSimulationRecords,
+    fetchSimulationAuditEvents,
     fetchSimulationStacks,
     fetchSimulations,
     getSimulationRunUrl,
@@ -65,6 +66,7 @@ const detailSections = [
     "events",
     "memories",
     "intents",
+    "observability",
 ];
 const entityDetailSections = [
     "landmarks",
@@ -1027,6 +1029,7 @@ function SimulationDetailsModal({
     entities,
     inventory,
     emotion,
+    auditEvents,
     activeSection,
     selectedCharacterId,
     selectedLocationId,
@@ -1083,6 +1086,8 @@ function SimulationDetailsModal({
                     ? t("simulationDetails.tabs.configs")
                     : activeSection === "prompts"
                       ? t("simulationDetails.tabs.prompts")
+                    : activeSection === "observability"
+                      ? t("simulationDetails.tabs.observability")
                   : simulation.name;
 
     const basicRows = [
@@ -1261,6 +1266,8 @@ function SimulationDetailsModal({
                             <SimulationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "prompts" ? (
                             <PromptAssignmentEditor sourceType="simulation" sourceId={simulation.id} />
+                        ) : activeSection === "observability" ? (
+                            <AuditEventTimeline events={auditEvents} />
                         ) : entityDetailSections.includes(activeSection) ? (
                             <GenericEntityPanel
                                 section={activeSection}
@@ -1420,6 +1427,45 @@ function SimulationDetailsModal({
     );
 }
 
+function AuditEventTimeline({ events }) {
+    const { t } = useTranslation();
+    if (!events?.length) {
+        return <p className="status-text">{t("simulationDetails.observability.empty")}</p>;
+    }
+    return (
+        <div className="audit-timeline">
+            {events.map((event) => (
+                <article className="audit-event" key={event.id}>
+                    <header>
+                        <strong>{event.stage}</strong>
+                        <span>{event.category} · {event.origin} · {event.status}</span>
+                    </header>
+                    <p>{event.summary}</p>
+                    <small>
+                        {event.simulation_time
+                            ? t("simulationDetails.observability.simulationTime", {
+                                  time: new Date(event.simulation_time).toLocaleString(),
+                              })
+                            : t("simulationDetails.observability.noSimulationTime")}
+                    </small>
+                    {event.actor_ids?.length ? (
+                        <p className="simulation-details-empty-line">
+                            {t("simulationDetails.observability.actors", {
+                                actors: event.actor_ids.join(", "),
+                            })}
+                        </p>
+                    ) : null}
+                    {Object.keys(event.details ?? {}).length ? (
+                        <pre className="audit-event-details">
+                            {JSON.stringify(event.details, null, 2)}
+                        </pre>
+                    ) : null}
+                </article>
+            ))}
+        </div>
+    );
+}
+
 export function SimulationChatPage() {
     const { t } = useTranslation();
     const { simulationId } = useParams();
@@ -1435,6 +1481,7 @@ export function SimulationChatPage() {
     const [entityCache, setEntityCache] = useState({});
     const [inventoryCache, setInventoryCache] = useState({});
     const [emotionCache, setEmotionCache] = useState({});
+    const [auditCache, setAuditCache] = useState({});
     const [previews, setPreviews] = useState({});
     const [records, setRecords] = useState([]);
     const [input, setInput] = useState("");
@@ -1474,6 +1521,7 @@ export function SimulationChatPage() {
     const selectedEmotion = selectedCharacterId
         ? emotionCache[`${simulationId}:${selectedCharacterId}`]
         : null;
+    const selectedAuditEvents = auditCache[simulationId] ?? [];
     const inputFormatError = useMemo(
         () => (input.trim().length > 0 ? validateInputMarkup(input) : null),
         [input],
@@ -1602,6 +1650,15 @@ export function SimulationChatPage() {
             });
         } catch {
             // Keep cached entities available if background refresh fails.
+        }
+    }
+
+    async function refreshAuditEvents(id) {
+        try {
+            const events = await fetchSimulationAuditEvents({ simulationId: id });
+            setAuditCache((current) => ({ ...current, [id]: events }));
+        } catch {
+            setAuditCache((current) => ({ ...current, [id]: [] }));
         }
     }
 
@@ -1748,6 +1805,7 @@ export function SimulationChatPage() {
         refreshSimulationDetails(simulationId);
         refreshCharacters(simulationId).then(() => refreshEntities(simulationId));
         refreshLocations(simulationId);
+        refreshAuditEvents(simulationId);
     }, [detailsOpen, refreshCharacters, simulationId]);
 
     useEffect(() => {
@@ -2152,6 +2210,7 @@ export function SimulationChatPage() {
                     entities={selectedEntities}
                     inventory={selectedInventory}
                     emotion={selectedEmotion}
+                    auditEvents={selectedAuditEvents}
                     activeSection={detailsSection}
                     selectedCharacterId={selectedCharacterId}
                     selectedLocationId={selectedLocationId}

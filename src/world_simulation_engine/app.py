@@ -3,6 +3,7 @@ from neo4j import AsyncGraphDatabase
 from fastapi import FastAPI
 
 from world_simulation_engine.misc.config import CONFIG
+from world_simulation_engine.misc.logging import configure_event_logging, log_event
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
 from world_simulation_engine.component.prompt_loader import PromptLoader
@@ -15,6 +16,7 @@ from world_simulation_engine.router import author_router, background_character_r
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_event_logging()
     database = DatabaseService(
         driver=AsyncGraphDatabase.driver(
             uri=CONFIG.neo4j_uri,
@@ -23,9 +25,10 @@ async def lifespan(app: FastAPI):
     )
     storage = StorageService(CONFIG.data_folder)
     await storage.initialise()
-    await database.generation_job.fail_incomplete_jobs(
+    interrupted_jobs = await database.generation_job.fail_incomplete_jobs(
         "Generation interrupted by application restart",
     )
+    log_event("application_started", interrupted_generation_jobs=interrupted_jobs)
 
     app.state.database = database
     app.state.storage = storage
@@ -40,6 +43,7 @@ async def lifespan(app: FastAPI):
     finally:
         await simulator.shutdown()
         await database.close()
+        log_event("application_stopped")
 
 
 def create_app() -> FastAPI:

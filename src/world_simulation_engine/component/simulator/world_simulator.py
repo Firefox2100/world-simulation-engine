@@ -11,15 +11,17 @@ from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
-    SceneCoordinationStatus, SimulationGenerationRequestType, TurnType
+    SceneCoordinationStatus, SimulationAuditCategory, SimulationAuditOrigin, SimulationAuditStatus, \
+    SimulationGenerationRequestType, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
     Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
     GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, \
     PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Turn, \
-    TurnPresentationBlock, TurnPresentationRendering
+    TurnPresentationBlock, TurnPresentationRendering, SimulationAuditEvent
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.audit_service import AuditService
 from .action_validator import ActionValidator
 from .character_simulator import CharacterSimulator
 from .emotion_updater import EmotionUpdater
@@ -106,6 +108,7 @@ class WorldSimulatorState(BaseModel):
     state_commit_proposal: StateCommitProposal | None = None
     memory_summary_proposal: MemorySummaryProposal | None = None
     active_off_scene_generations: list[OffSceneGenerationStatus] = Field(default_factory=list)
+    audit_run_id: str | None = None
 
 
 class CharacterActionProposalState(BaseModel):
@@ -123,6 +126,7 @@ class CharacterActionProposalState(BaseModel):
     committed_turn: Turn | None = None
     state_commit_proposal: StateCommitProposal | None = None
     memory_summary_proposal: MemorySummaryProposal | None = None
+    audit_run_id: str | None = None
 
 
 @dataclass
@@ -147,6 +151,7 @@ class WorldSimulator:
                  langfuse_handler: CallbackHandler | None = None,
                  ):
         self._db = database
+        self._audit = AuditService(database)
         self._prompt_loader = prompt_loader
         self._langfuse_handler = langfuse_handler
 
@@ -303,6 +308,7 @@ class WorldSimulator:
                 # Snapshot-backed continuation/regeneration can replace the supplied state.
                 # Inject the live process registry only after that restoration has completed.
                 state = state.model_copy(update={
+                    "audit_run_id": thread_id,
                     "active_off_scene_generations": self.list_off_scene_generations(
                         state.simulation.id,
                         active_only=True,
@@ -582,6 +588,15 @@ class WorldSimulator:
     ):
         try:
             await self._db.generation_job.mark_running(run.thread_id, stage="starting")
+            await self._record_audit(
+                simulation_id=run.simulation_id,
+                run_id=run.thread_id,
+                category=SimulationAuditCategory.GENERATION,
+                stage="starting",
+                summary="Generation run started.",
+                details={"request_type": state.request_type},
+                simulation_time=state.simulation.current_time,
+            )
             graph = self._graph_for_request_type(state.request_type)
             current_stage = "starting"
             async for chunk in graph.astream(
@@ -602,6 +617,16 @@ class WorldSimulator:
                 run.thread_id,
                 final_turn_id=self._final_turn_id(run.final_state),
             )
+            final_state = self._world_state_from_result(run.final_state)
+            await self._record_audit(
+                simulation_id=run.simulation_id,
+                run_id=run.thread_id,
+                turn_id=self._final_turn_id(run.final_state),
+                category=SimulationAuditCategory.GENERATION,
+                stage="completed",
+                summary="Generation run completed.",
+                simulation_time=final_state.simulation.current_time if final_state else None,
+            )
         except BaseException as exc:
             run.error = exc
             try:
@@ -609,6 +634,15 @@ class WorldSimulator:
             except BaseException:
                 # Preserve the generation error even if persistence is also unavailable.
                 pass
+            await self._record_audit(
+                simulation_id=run.simulation_id,
+                run_id=run.thread_id,
+                category=SimulationAuditCategory.ERROR,
+                status=SimulationAuditStatus.FAILED,
+                stage="failed",
+                summary="Generation run failed.",
+                details={"error_type": type(exc).__name__},
+            )
         finally:
             async with self._run_registry_lock:
                 self._run_registry.pop(run.thread_id, None)
@@ -656,6 +690,16 @@ class WorldSimulator:
             trigger_turn=trigger_turn.model_copy(deep=True),
         ))
         self._ensure_off_scene_worker(state.simulation.id)
+        self._schedule_audit(self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=generation.id,
+            turn_id=trigger_turn.id,
+            category=SimulationAuditCategory.BACKGROUND,
+            origin=SimulationAuditOrigin.BACKGROUND,
+            stage="queued",
+            summary="Off-screen character review queued.",
+            simulation_time=state.simulation.current_time,
+        ))
         return generation
 
     def _ensure_off_scene_worker(self, simulation_id: str):
@@ -691,6 +735,18 @@ class WorldSimulator:
                 generation.status = "failed"
                 generation.stage = "failed"
                 generation.error = str(exc)
+                await self._record_audit(
+                    simulation_id=simulation_id,
+                    run_id=generation.id,
+                    turn_id=item.trigger_turn.id,
+                    category=SimulationAuditCategory.BACKGROUND,
+                    origin=SimulationAuditOrigin.BACKGROUND,
+                    status=SimulationAuditStatus.FAILED,
+                    stage="failed",
+                    summary="Off-screen character review failed and was ignored.",
+                    details={"error_type": type(exc).__name__},
+                    simulation_time=generation.simulation_time,
+                )
             finally:
                 queue.task_done()
 
@@ -716,6 +772,21 @@ class WorldSimulator:
                 break
 
         generation.actor_ids = [character.id for character in candidates]
+        await self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=generation.id,
+            turn_id=item.trigger_turn.id,
+            category=SimulationAuditCategory.SCHEDULER,
+            origin=SimulationAuditOrigin.BACKGROUND,
+            stage="background_actor_selection",
+            summary=f"Selected {len(candidates)} available off-screen actor(s).",
+            actor_ids=generation.actor_ids,
+            details={
+                "selection_reason": "off_scene_available_and_located",
+                "excluded_perceiving_actor_ids": sorted(excluded_ids),
+            },
+            simulation_time=state.simulation.current_time,
+        )
 
         for character in candidates:
             generation.active_actor_id = character.id
@@ -817,6 +888,24 @@ class WorldSimulator:
         generation.active_actor_id = None
         generation.stage = "completed"
         generation.status = "completed"
+        await self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=generation.id,
+            turn_id=item.trigger_turn.id,
+            category=SimulationAuditCategory.BACKGROUND,
+            origin=SimulationAuditOrigin.BACKGROUND,
+            stage="completed",
+            summary="Off-screen character review completed.",
+            actor_ids=generation.actor_ids,
+            details={
+                "completed_actor_ids": generation.completed_actor_ids,
+                "result_count": len(generation.results),
+                "failed_actor_ids": [
+                    result.character_id for result in generation.results if result.error
+                ],
+            },
+            simulation_time=state.simulation.current_time,
+        )
 
     @staticmethod
     def _coordination_from_off_scene_actions(
@@ -1122,6 +1211,24 @@ class WorldSimulator:
             # The background commit may have changed locations or preconditions.
             validation_records = await validate_records()
 
+        await self._record_audit(
+            simulation_id=simulation_id,
+            run_id=state.audit_run_id,
+            category=SimulationAuditCategory.VALIDATION,
+            origin=SimulationAuditOrigin.VALIDATION,
+            status=SimulationAuditStatus.VALIDATED,
+            stage="character_action_validation",
+            summary=f"Validated actions for {len(validation_records)} actor(s).",
+            actor_ids=[record.character_id for record in validation_records],
+            details={
+                "waited_for_background": waited,
+                "allowed_action_counts": {
+                    record.character_id: len(self._allowed_actions_from_validation(record.validation))
+                    for record in validation_records
+                },
+            },
+            simulation_time=state.simulation.current_time if isinstance(state, WorldSimulatorState) else None,
+        )
         return {
             "character_action_validations": validation_records,
         }
@@ -1139,6 +1246,19 @@ class WorldSimulator:
                 if len(candidates) >= self._MAX_SCHEDULED_CHARACTERS:
                     break
 
+        await self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=state.audit_run_id,
+            category=SimulationAuditCategory.SCHEDULER,
+            stage="actor_selection",
+            summary=f"Selected {len(candidates)} perceiving and available actor(s).",
+            actor_ids=[character.id for character in candidates],
+            details={
+                "perceiving_actor_ids": state.perceiving_character_ids,
+                "selection_reason": "perceiving_non_user_actor_available_by_current_activity",
+            },
+            simulation_time=state.simulation.current_time,
+        )
         proposals = []
         for character in candidates:
             proposal = await self._character_simulator.propose_actions(
@@ -1146,6 +1266,53 @@ class WorldSimulator:
                 simulation_id=state.simulation.id,
                 character_id=character.id,
                 user_input=state.user_input or "",
+            )
+            diagnostics, memory_ids = self._character_simulator.last_memory_retrieval
+            await self._record_audit(
+                simulation_id=state.simulation.id,
+                run_id=state.audit_run_id,
+                category=SimulationAuditCategory.RETRIEVAL,
+                stage="character_context_retrieval",
+                summary=f"Built bounded context for {character.name}.",
+                actor_ids=[character.id],
+                entity_ids=memory_ids,
+                details={
+                    "selected_memory_ids": memory_ids,
+                    "considered_count": diagnostics.considered_count if diagnostics else 0,
+                    "selected_count": diagnostics.selected_count if diagnostics else len(memory_ids),
+                    "token_budget": diagnostics.token_budget if diagnostics else None,
+                    "estimated_tokens_used": diagnostics.estimated_tokens_used if diagnostics else None,
+                    "dropped_memory_ids": diagnostics.dropped_memory_ids if diagnostics else [],
+                },
+                simulation_time=state.simulation.current_time,
+            )
+            proposal_actions = [
+                action
+                for sequence in self._proposal_sequences(proposal)
+                for action in sequence
+            ]
+            await self._record_audit(
+                simulation_id=state.simulation.id,
+                run_id=state.audit_run_id,
+                category=SimulationAuditCategory.GENERATION,
+                origin=SimulationAuditOrigin.LLM_PROPOSAL,
+                status=SimulationAuditStatus.PROPOSED,
+                stage="character_action_proposal",
+                summary=f"{character.name} proposed {len(proposal_actions)} action candidate(s).",
+                actor_ids=[character.id],
+                entity_ids=list(dict.fromkeys(
+                    entity_id
+                    for action in proposal_actions
+                    for entity_id in action.target_ids
+                )),
+                details={
+                    "action_types": [action.type for action in proposal_actions],
+                    "action_labels": [action.label for action in proposal_actions],
+                    "durations_seconds": [
+                        action.intended_duration_seconds for action in proposal_actions
+                    ],
+                },
+                simulation_time=state.simulation.current_time,
             )
             proposals.append(
                 CharacterActionProposalRecord(
@@ -1298,6 +1465,25 @@ class WorldSimulator:
                 reaction_coordination=coordination,
             )
 
+        await self._record_audit(
+            simulation_id=simulation_id,
+            run_id=state.audit_run_id,
+            category=SimulationAuditCategory.COORDINATION,
+            origin=SimulationAuditOrigin.VALIDATION,
+            status=SimulationAuditStatus.VALIDATED,
+            stage="character_action_coordination",
+            summary=f"Coordinated {len(coordination.accepted_actions)} accepted action(s).",
+            actor_ids=list(dict.fromkeys(action.actor_id for action in coordination.accepted_actions)),
+            details={
+                "coordination_status": coordination.status,
+                "accepted_action_refs": [
+                    f"{action.actor_id}:{action.proposal_index}:{action.action_index}"
+                    for action in coordination.accepted_actions
+                ],
+                "has_problem": coordination.problem is not None,
+            },
+            simulation_time=state.simulation.current_time if isinstance(state, WorldSimulatorState) else None,
+        )
         return {
             "character_action_coordination": coordination,
             "previous_character_action_coordination": None,
@@ -1361,6 +1547,7 @@ class WorldSimulator:
             proposal=proposal,
             coordination_result=state.character_action_coordination,
             presentation=state.narration,
+            audit_run_id=state.audit_run_id,
         )
         if isinstance(state, WorldSimulatorState):
             self._schedule_off_scene_activity(
@@ -1404,6 +1591,7 @@ class WorldSimulator:
                 ),
                 None,
             ),
+            audit_run_id=state.audit_run_id,
         )
         self._schedule_off_scene_activity(
             state.model_copy(update={
@@ -2099,6 +2287,7 @@ class WorldSimulator:
             coordination_result: SceneCoordinationResult,
             presentation: NarrationProposal | str | None = None,
             presentation_speaker_id: str | None = None,
+            audit_run_id: str | None = None,
     ) -> tuple[Turn, Simulation]:
         turn = await self._db.turn.create_next_turn(
             source_id=simulation_id,
@@ -2125,6 +2314,43 @@ class WorldSimulator:
         updated_simulation = await self._db.simulation.update_current_time(
             simulation_id=simulation_id,
             current_time=advanced_time,
+        )
+        actor_ids = list(dict.fromkeys(
+            action.actor_id for action in coordination_result.accepted_actions
+        ))
+        await self._record_audit(
+            simulation_id=simulation_id,
+            run_id=audit_run_id,
+            turn_id=turn.id,
+            category=SimulationAuditCategory.COMMIT,
+            origin=SimulationAuditOrigin.COMMIT,
+            status=SimulationAuditStatus.COMMITTED,
+            stage="state_commit",
+            summary=f"Committed turn with {len(proposal.operations)} state operation(s).",
+            actor_ids=actor_ids,
+            details={
+                "operation_types": [type(operation).__name__ for operation in proposal.operations],
+                "operation_count": len(proposal.operations),
+            },
+            simulation_time=simulation.current_time,
+        )
+        elapsed_seconds = self._coordination_elapsed_seconds(coordination_result)
+        await self._record_audit(
+            simulation_id=simulation_id,
+            run_id=audit_run_id,
+            turn_id=turn.id,
+            category=SimulationAuditCategory.TIME,
+            origin=SimulationAuditOrigin.COMMIT,
+            status=SimulationAuditStatus.COMMITTED,
+            stage="time_advancement",
+            summary=f"Advanced simulation time by {elapsed_seconds} second(s).",
+            actor_ids=actor_ids,
+            details={
+                "elapsed_seconds": elapsed_seconds,
+                "from": simulation.current_time,
+                "to": updated_simulation.current_time,
+            },
+            simulation_time=updated_simulation.current_time,
         )
         return turn, updated_simulation
 
@@ -2189,6 +2415,47 @@ class WorldSimulator:
             raise ValueError(f"Simulation {simulation_id} not found")
 
         return simulation
+
+    async def _record_audit(
+            self,
+            *,
+            simulation_id: str,
+            category: SimulationAuditCategory,
+            stage: str,
+            summary: str,
+            run_id: str | None = None,
+            turn_id: str | None = None,
+            origin: SimulationAuditOrigin = SimulationAuditOrigin.CODE,
+            status: SimulationAuditStatus = SimulationAuditStatus.COMPLETED,
+            actor_ids: list[str] | None = None,
+            entity_ids: list[str] | None = None,
+            details: dict | None = None,
+            simulation_time: datetime | None = None,
+    ) -> None:
+        await self._audit.record(SimulationAuditEvent(
+            simulation_id=simulation_id,
+            run_id=run_id,
+            turn_id=turn_id,
+            category=category,
+            origin=origin,
+            status=status,
+            stage=stage,
+            summary=summary,
+            actor_ids=actor_ids or [],
+            entity_ids=entity_ids or [],
+            details=details or {},
+            simulation_time=simulation_time,
+        ))
+
+    @staticmethod
+    def _schedule_audit(coroutine) -> None:
+        """Schedule best-effort audit work only when called inside an event loop."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            coroutine.close()
+            return
+        loop.create_task(coroutine)
 
     async def _prepare_generation_state(
             self,

@@ -19,6 +19,7 @@ from .memory_store import MemoryStore
 from .memory_summary_store import MemorySummaryStore
 from .media_store import MediaStore
 from .simulation_store import SimulationStore
+from .simulation_audit_store import SimulationAuditStore
 from .state_commit_store import StateCommitStore
 from .turn_store import TurnStore
 from .turn_presentation_store import TurnPresentationStore
@@ -56,6 +57,7 @@ class DatabaseService:
         )
         self._media = MediaStore(self._driver)
         self._simulation = SimulationStore(self._driver)
+        self._simulation_audit = SimulationAuditStore(self._driver)
         self._state_commit = StateCommitStore(self._driver)
         self._turn = TurnStore(self._driver)
         self._turn_presentation = TurnPresentationStore(self._driver)
@@ -131,6 +133,10 @@ class DatabaseService:
     @property
     def simulation(self) -> SimulationStore:
         return self._simulation
+
+    @property
+    def simulation_audit(self) -> SimulationAuditStore:
+        return self._simulation_audit
 
     @property
     def state_commit(self) -> StateCommitStore:

@@ -156,6 +156,7 @@ class CharacterSimulator(SimulatorComponent):
         )
         self._memory_retriever = MemoryRetriever(database)
         self._last_memory_retrieval_diagnostics: MemoryRetrievalDiagnostics | None = None
+        self._last_retrieved_memory_ids: list[str] = []
 
     async def _prepare_embed_service(self,
                                      simulation_id: str,
@@ -249,7 +250,12 @@ class CharacterSimulator(SimulatorComponent):
             embed_service=embed_service,
         )
         self._last_memory_retrieval_diagnostics = result.diagnostics
+        self._last_retrieved_memory_ids = [entry.memory.id for entry in result.memories]
         return result.memories
+
+    @property
+    def last_memory_retrieval(self) -> tuple[MemoryRetrievalDiagnostics | None, list[str]]:
+        return self._last_memory_retrieval_diagnostics, list(self._last_retrieved_memory_ids)
 
     async def _recall_intents(self,
                               simulation: Simulation,

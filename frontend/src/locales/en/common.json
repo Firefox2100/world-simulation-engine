@@ -112,7 +112,8 @@
       "factions": "Factions",
       "worldEntries": "World entries",
       "configs": "Configurations",
-      "prompts": "Prompts"
+      "prompts": "Prompts",
+      "observability": "Observability"
     },
     "empty": {
       "landmarks": "No landmarks are available for this simulation.",
@@ -148,6 +149,12 @@
       "stats": "Stats"
     },
     "configLoading": "Loading configurations...",
+    "observability": {
+      "empty": "No simulator audit events have been recorded yet.",
+      "simulationTime": "Simulation time: {{time}}",
+      "noSimulationTime": "No simulation-time value",
+      "actors": "Actors: {{actors}}"
+    },
     "configSaving": "Saving...",
     "configSaved": "Configurations saved.",
     "configError": "Unable to load configurations: {{error}}",

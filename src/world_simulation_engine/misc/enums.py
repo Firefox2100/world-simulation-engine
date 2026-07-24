@@ -132,6 +132,35 @@ class GenerationJobStatus(StrEnum):
     FAILED = "failed"
 
 
+class SimulationAuditCategory(StrEnum):
+    GENERATION = "generation"
+    SCHEDULER = "scheduler"
+    RETRIEVAL = "retrieval"
+    VALIDATION = "validation"
+    COORDINATION = "coordination"
+    COMMIT = "commit"
+    TIME = "time"
+    BACKGROUND = "background"
+    ERROR = "error"
+
+
+class SimulationAuditOrigin(StrEnum):
+    CODE = "code"
+    LLM_PROPOSAL = "llm_proposal"
+    VALIDATION = "validation"
+    COMMIT = "commit"
+    BACKGROUND = "background"
+
+
+class SimulationAuditStatus(StrEnum):
+    PROPOSED = "proposed"
+    VALIDATED = "validated"
+    COMMITTED = "committed"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
 class SimulationGenerationRequestType(StrEnum):
     USER_INPUT_GENERATION = "user_input_generation"
     CONTINUE_GENERATION = "continue_generation"

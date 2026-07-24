@@ -29,6 +29,7 @@ from .subjective_entity_claim import ProposedSubjectiveClaimChange, SubjectiveCl
 from .event import Event
 from .graph_state_snapshot import GraphStateSnapshot
 from .generation_job import GenerationJob
+from .simulation_audit import SimulationAuditEvent
 from .intent import Intent
 from .media import MediaFile, PromptMediaFile, WorkflowMediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig, \

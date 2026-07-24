@@ -5,8 +5,9 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType, GraphStateSnapshotType, SimulationGenerationRequestType
-from world_simulation_engine.model import GenerationJob, GraphStateSnapshot, Simulation
+from world_simulation_engine.misc.enums import ComponentType, GraphStateSnapshotType, SimulationAuditCategory, \
+    SimulationGenerationRequestType
+from world_simulation_engine.model import GenerationJob, GraphStateSnapshot, Simulation, SimulationAuditEvent
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulatorState
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 from .utils import db_dep, simulator_dep
@@ -112,6 +113,36 @@ async def get_simulation(simulation_id: str, db: db_dep):
         )
 
     return simulation
+
+
+@simulation_router.get(
+    "/simulations/{simulation_id}/audit-events",
+    response_model=list[SimulationAuditEvent],
+)
+async def list_simulation_audit_events(
+        simulation_id: str,
+        db: db_dep,
+        run_id: str | None = Query(None),
+        turn_id: str | None = Query(None),
+        category: SimulationAuditCategory | None = Query(None),
+        actor_id: str | None = Query(None),
+        limit: int = Query(200, ge=1, le=500),
+        skip: int = Query(0, ge=0),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+    return await db.simulation_audit.list_events(
+        simulation_id,
+        run_id=run_id,
+        turn_id=turn_id,
+        category=category,
+        actor_id=actor_id,
+        limit=limit,
+        skip=skip,
+    )
 
 
 @simulation_router.get("/simulations/{simulation_id}/graph-snapshots", response_model=list[GraphStateSnapshot])

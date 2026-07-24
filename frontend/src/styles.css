@@ -4,6 +4,40 @@
     background: #f3f4f6;
 }
 
+.audit-timeline {
+    display: grid;
+    gap: 12px;
+}
+
+.audit-event {
+    padding: 14px;
+    border: 1px solid var(--border-color, #d7d7d7);
+    border-radius: 10px;
+    background: var(--surface-subtle, rgba(127, 127, 127, 0.06));
+}
+
+.audit-event header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.audit-event header span,
+.audit-event small {
+    color: var(--text-muted, #666);
+}
+
+.audit-event-details {
+    overflow: auto;
+    max-height: 240px;
+    padding: 10px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.08);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 * {
     box-sizing: border-box;
 }
