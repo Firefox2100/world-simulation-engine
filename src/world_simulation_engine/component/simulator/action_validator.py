@@ -6,8 +6,7 @@ from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ActionValidationResult, BackgroundCharacter, Character, Container, \
     EmotionVector, EntityRelationship, Equipment, Intent, InventoryEquipment, InventoryStack, Item, ItemStack, Landmark, Location, \
     ProposedAction, Simulation, SubjectiveEntityClaim, World
-from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
-
+from .memory_retriever import MemoryRetrievalDiagnostics, MemoryRetriever, RecalledMemory
 from .simulator_component import SimulatorComponent
 
 
@@ -65,7 +64,8 @@ class ActionValidatorContext(BaseModel):
     perceived_containers: list[LocatedContainer] = Field(default_factory=list)
     perceived_landmarks: list[Landmark] = Field(default_factory=list)
     active_intents: list[Intent] = Field(default_factory=list)
-    recent_memories: list[MemoryRecallRecord] = Field(default_factory=list)
+    recent_memories: list[RecalledMemory] = Field(default_factory=list)
+    memory_retrieval: MemoryRetrievalDiagnostics | None = None
     relationships: list[EntityRelationship] = Field(default_factory=list)
     subjective_claims: list[SubjectiveEntityClaim] = Field(default_factory=list)
     emotion: EmotionVector | None = None
@@ -76,6 +76,10 @@ class ActionValidator(SimulatorComponent):
     _INTENT_DEADLINE_DELTA = timedelta(hours=24)
     _INTENT_PRIORITY_THRESHOLD = 0.7
     _INTENT_URGENCY_THRESHOLD = 0.7
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._memory_retriever = MemoryRetriever(self._db)
 
     async def _build_context(self,
                              *,
@@ -108,10 +112,6 @@ class ActionValidator(SimulatorComponent):
         location_equipment = await self._db.equipment.get_equipment_by_location(location.id)
         containers = await self._db.container.get_containers_by_location(location.id)
         landmarks = await self._db.location.get_landmarks_by_location(location.id)
-        recent_memories = await self._db.memory.get_recent_turn_memory_candidates(
-            character_id=character_id,
-            source_id=simulation_id,
-        )
         active_intents = await self._db.intent.get_active_intent_candidates(
             character_id=character_id,
             current_time=simulation.current_time,
@@ -141,6 +141,31 @@ class ActionValidator(SimulatorComponent):
         subjective_claims = await self._subjective_claims(
             simulation_id=simulation_id, observer_character_id=character_id,
             subject_ids=list(relationship_entity_ids),
+        )
+        semantic_query = "\n".join(
+            " ".join(filter(None, [
+                action.label,
+                action.utterance,
+                " ".join(action.target_ids),
+            ]))
+            for action in actions
+        )
+        query_embedding = None
+        embed_service = None
+        if semantic_query.strip():
+            try:
+                embed_service = await self._prepare_embed_service(simulation_id)
+                query_embedding = (await embed_service.embed_texts([semantic_query]))[0]
+            except Exception:
+                # Semantic recall is optional; graph constraints must still be validated.
+                query_embedding = None
+        retrieval = await self._memory_retriever.retrieve(
+            simulation_id=simulation_id,
+            character_id=character_id,
+            current_time=simulation.current_time,
+            entity_ids=sorted(relationship_entity_ids),
+            query_embedding=query_embedding,
+            embed_service=embed_service,
         )
 
         return ActionValidatorContext(
@@ -200,7 +225,8 @@ class ActionValidator(SimulatorComponent):
             ],
             perceived_landmarks=landmarks,
             active_intents=active_intents,
-            recent_memories=recent_memories,
+            recent_memories=retrieval.memories,
+            memory_retrieval=retrieval.diagnostics,
             relationships=relationships,
             subjective_claims=subjective_claims,
             emotion=await self._effective_emotion(

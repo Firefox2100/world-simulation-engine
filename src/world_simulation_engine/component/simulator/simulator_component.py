@@ -3,7 +3,7 @@ import inspect
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import SupportedLanguage, ComponentType, MessageRole
 from world_simulation_engine.model import EmotionVector, PromptMessage, Simulation, SubjectiveEntityClaim
-from world_simulation_engine.service import DatabaseService, LlmService
+from world_simulation_engine.service import DatabaseService, EmbedService, LlmService
 from ..prompt_loader import PromptLoader
 
 
@@ -59,6 +59,28 @@ class SimulatorComponent:
         )
 
         return llm
+
+    async def _prepare_embed_service(self, simulation_id: str) -> EmbedService:
+        embed_config = await self._db.config.get_embed_by_source(
+            source_id=simulation_id,
+            component=self.COMPONENT_TYPE,
+        )
+        if not embed_config:
+            raise ValueError(
+                f"Simulation {simulation_id} does not have an embedding model configured for "
+                f"{self.COMPONENT_TYPE}"
+            )
+        connection_config = await self._db.config.get_connection_by_embed_source(
+            source_id=embed_config.id,
+        )
+        if not connection_config:
+            raise ValueError(
+                f"Embedding config {embed_config.id} does not have a connection configured"
+            )
+        return EmbedService(
+            model_config=embed_config,
+            connection_config=connection_config,
+        )
 
     async def _effective_emotion(
             self,

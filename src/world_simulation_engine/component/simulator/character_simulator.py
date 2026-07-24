@@ -40,24 +40,9 @@ from world_simulation_engine.model import (
 from world_simulation_engine.service import DatabaseService, EmbedService
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 from ..prompt_loader import PromptLoader
+from .memory_retriever import MemoryRetrievalDiagnostics, MemoryRetriever, RecalledMemory
 from .simulator_component import SimulatorComponent
 from .perspective_resolver import PerspectiveResolver
-
-
-class RecalledMemory(BaseModel):
-    memory: MemoryAtom
-    event_id: str
-    event_name: str
-    event_summary: str
-    event_ending_time: datetime
-    support_type: MemorySupportType
-    confidence: float = Field(ge=0, le=1)
-    decayed_confidence: float = Field(ge=0, le=1)
-    salience: Salience
-    behavioural_relevance: Optional[str] = None
-    stance: MemoryStance
-    recall_sources: list[str] = Field(default_factory=list)
-    similarity: Optional[float] = None
 
 
 class RecalledIntent(BaseModel):
@@ -103,6 +88,7 @@ class CharacterPerspective(BaseModel):
     perceived_landmarks: list[PerceivedLandmark] = Field(default_factory=list)
 
     relevant_memories: list[RecalledMemory] = Field(default_factory=list)
+    memory_retrieval: MemoryRetrievalDiagnostics | None = None
     relationships: list[EntityRelationship] = Field(
         default_factory=list,
         description="Objective facts and subjective relationships available to this actor.",
@@ -168,6 +154,8 @@ class CharacterSimulator(SimulatorComponent):
             database=database,
             langfuse_handler=langfuse_handler
         )
+        self._memory_retriever = MemoryRetriever(database)
+        self._last_memory_retrieval_diagnostics: MemoryRetrievalDiagnostics | None = None
 
     async def _prepare_embed_service(self,
                                      simulation_id: str,
@@ -226,6 +214,7 @@ class CharacterSimulator(SimulatorComponent):
                                      ) -> RecalledMemory:
         return RecalledMemory(
             memory=record.memory,
+            event=record.event,
             event_id=record.event.id,
             event_name=record.event.name,
             event_summary=record.event.summary,
@@ -244,56 +233,23 @@ class CharacterSimulator(SimulatorComponent):
                              simulation: Simulation,
                              character: Character,
                              user_input: str,
+                             entity_ids: list[str] | None = None,
                              ) -> list[RecalledMemory]:
-        decay_threshold = 0.2
-        recent_records = await self._db.memory.get_recent_turn_memory_candidates(
-            character_id=character.id,
-            source_id=simulation.id,
-            turn_limit=5,
-        )
-
-        recalled_by_id: dict[str, RecalledMemory] = {}
-        recent_memory_ids = set()
-        for record in recent_records:
-            recent_memory_ids.add(record.memory.id)
-            recalled_by_id[record.memory.id] = self._recalled_memory_from_record(
-                record=record,
-                current_time=simulation.current_time,
-                recall_sources=["recent_event"],
-            )
-
+        query_embedding = None
+        embed_service = None
         if user_input.strip():
             embed_service = await self._prepare_embed_service(simulation.id)
             query_embedding = (await embed_service.embed_texts([user_input]))[0]
-            scoped_records = await self._db.memory.get_character_memory_candidates(character.id)
-            scored_records = [
-                (
-                    record,
-                    self._cosine_similarity(query_embedding, record.memory.embedding or []),
-                )
-                for record in scoped_records
-            ]
-            scored_records.sort(key=lambda item: item[1], reverse=True)
-
-            for record, similarity in scored_records[:10]:
-                decayed_confidence = self._decayed_confidence(record, simulation.current_time)
-                if record.memory.id not in recent_memory_ids and decayed_confidence < decay_threshold:
-                    continue
-
-                if record.memory.id in recalled_by_id:
-                    recalled = recalled_by_id[record.memory.id]
-                    recalled.similarity = similarity
-                    if "embedding_match" not in recalled.recall_sources:
-                        recalled.recall_sources.append("embedding_match")
-                else:
-                    recalled_by_id[record.memory.id] = self._recalled_memory_from_record(
-                        record=record,
-                        current_time=simulation.current_time,
-                        recall_sources=["embedding_match"],
-                        similarity=similarity,
-                    )
-
-        return list(recalled_by_id.values())
+        result = await self._memory_retriever.retrieve(
+            simulation_id=simulation.id,
+            character_id=character.id,
+            current_time=simulation.current_time,
+            entity_ids=entity_ids or [],
+            query_embedding=query_embedding,
+            embed_service=embed_service,
+        )
+        self._last_memory_retrieval_diagnostics = result.diagnostics
+        return result.memories
 
     async def _recall_intents(self,
                               simulation: Simulation,
@@ -368,11 +324,6 @@ class CharacterSimulator(SimulatorComponent):
             character_id=character.id,
             thread_id=thread_id,
         )
-        relevant_memories = await self._recall_memory(
-            simulation=simulation,
-            character=character,
-            user_input=user_input,
-        )
         emotion = await self._effective_emotion(
             simulation=simulation,
             character_id=character.id,
@@ -398,6 +349,12 @@ class CharacterSimulator(SimulatorComponent):
             *(entry.container.id for entry in perspective.perceived_containers),
             *(entry.landmark.id for entry in perspective.perceived_landmarks),
         }
+        relevant_memories = await self._recall_memory(
+            simulation=simulation,
+            character=character,
+            user_input=user_input,
+            entity_ids=sorted(relationship_entity_ids),
+        )
         relationships = await self._db.entity_relationship.list_relationships(
             scope_id=simulation.id,
             perspective_character_id=character.id,
@@ -423,6 +380,7 @@ class CharacterSimulator(SimulatorComponent):
             perceived_containers=perspective.perceived_containers,
             perceived_landmarks=perspective.perceived_landmarks,
             relevant_memories=relevant_memories,
+            memory_retrieval=self._last_memory_retrieval_diagnostics,
             relationships=relationships,
             subjective_claims=subjective_claims,
             emotion=emotion,

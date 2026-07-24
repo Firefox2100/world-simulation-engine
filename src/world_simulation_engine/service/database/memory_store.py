@@ -28,6 +28,7 @@ class MemoryRecallRecord(BaseModel):
     salience: Salience
     behavioural_relevance: str | None = None
     stance: MemoryStance
+    recall_channels: list[str] = Field(default_factory=list)
 
 
 class MemoryStore:
@@ -77,6 +78,7 @@ class MemoryStore:
             salience=record["salience"],
             behavioural_relevance=record.get("behavioural_relevance"),
             stance=record["stance"],
+            recall_channels=list(record.get("recall_channels") or []),
         )
 
     async def create_memory_atom(self,
@@ -231,6 +233,22 @@ class MemoryStore:
 
         return self.memory_from_node(record["memory"])
 
+    async def update_embeddings(self, rows: list[dict]) -> int:
+        """Cache lazily generated semantic vectors without changing memory meaning."""
+        if not rows:
+            return 0
+        result = await self._driver.execute_query(
+            """
+            UNWIND $rows AS row
+            MATCH (memory:MemoryAtom {id: row.memory_id})
+            WHERE memory.embedding IS NULL
+            SET memory.embedding = row.embedding
+            RETURN count(memory) AS updated
+            """,
+            parameters_={"rows": rows},
+        )
+        return result.records[0]["updated"] if result.records else 0
+
     async def delete_memory(self, memory_id: str) -> bool:
         result = await self._driver.execute_query(
             """
@@ -378,12 +396,13 @@ class MemoryStore:
                                                 ) -> list[MemoryRecallRecord]:
         result = await self._driver.execute_query(
             """
-            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(recent_turn:Turn)
-            WITH recent_turn
+            MATCH (source:World|Simulation {id: $source_id})-[:CONTAINS]->(recent_turn:Turn)
+            WITH source, recent_turn
             ORDER BY recent_turn.sequence DESC
             LIMIT $turn_limit
             MATCH (recent_turn)-[:PART_OF]->(event:Event)-[support:SUPPORTS]->(memory:MemoryAtom)
-            MATCH (:Character {id: $character_id})-[remembers:REMEMBERS]->(memory)
+            MATCH (observer:Character {id: $character_id})-[remembers:REMEMBERS]->(memory)
+            WHERE EXISTS { MATCH (source)-[:CONTAINS*0..]->(observer) }
             MATCH (event)<-[:PART_OF]-(event_turn:Turn)
             RETURN memory,
                    event,
@@ -432,3 +451,105 @@ class MemoryStore:
             self.recall_record_from_record(record)
             for record in result.records
         ]
+
+    async def get_scoped_character_memory_candidates(
+            self,
+            *,
+            character_id: str,
+            source_id: str,
+            limit: int = 200,
+    ) -> list[MemoryRecallRecord]:
+        """Return semantic candidates only from the observer's requested world/simulation."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:World|Simulation {id: $source_id})-[:CONTAINS]->(event_turn:Turn)
+                -[:PART_OF]->(event:Event)-[support:SUPPORTS]->(memory:MemoryAtom)
+            MATCH (observer:Character {id: $character_id})-[remembers:REMEMBERS]->(memory)
+            WHERE EXISTS { MATCH (source)-[:CONTAINS*0..]->(observer) }
+            WITH memory, event, support, remembers, max(event_turn.start_time) AS event_ending_time
+            RETURN memory, event, event_ending_time,
+                   support.type AS support_type,
+                   remembers.confidence AS confidence,
+                   remembers.salience AS salience,
+                   remembers.behavioural_relevance AS behavioural_relevance,
+                   remembers.stance AS stance,
+                   [] AS recall_channels
+            ORDER BY event_ending_time DESC, memory.id
+            LIMIT $limit
+            """,
+            parameters_={
+                "character_id": character_id,
+                "source_id": source_id,
+                "limit": limit,
+            },
+        )
+        return [self.recall_record_from_record(record) for record in result.records]
+
+    async def get_graph_memory_candidates(
+            self,
+            *,
+            character_id: str,
+            source_id: str,
+            entity_ids: list[str],
+            limit: int = 50,
+    ) -> list[MemoryRecallRecord]:
+        """Expand observer-owned memories through scoped graph evidence channels."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:World|Simulation {id: $source_id})-[:CONTAINS]->(event_turn:Turn)
+                -[:PART_OF]->(event:Event)-[support:SUPPORTS]->(memory:MemoryAtom)
+            MATCH (observer:Character {id: $character_id})-[remembers:REMEMBERS]->(memory)
+            WHERE EXISTS { MATCH (source)-[:CONTAINS*0..]->(observer) }
+            WITH source, event_turn, event, support, memory, observer, remembers,
+                CASE WHEN EXISTS {
+                    MATCH (event)-[:INVOLVES]->(involved:Character)
+                    WHERE involved.id IN $entity_ids
+                } THEN ['entity_neighborhood'] ELSE [] END
+                + CASE WHEN EXISTS {
+                    MATCH (event)-[:CREATES|CONTRIBUTES_TO]->(intent:Intent)
+                    WHERE EXISTS { MATCH (observer)-[:HOLDS]->(intent) }
+                      AND intent.status IN ['active', 'paused']
+                } THEN ['active_intent'] ELSE [] END
+                + CASE WHEN EXISTS {
+                    MATCH (memory)-[:EVIDENCE_FOR]->(relationship:EntityRelationship)
+                    WHERE relationship.scope_id = $source_id
+                      AND (relationship.perspective_character_id IS NULL
+                           OR relationship.perspective_character_id = $character_id)
+                      AND (
+                          EXISTS {
+                              MATCH (endpoint)-[:RELATIONSHIP_SOURCE]->(relationship)
+                              WHERE endpoint.id IN $entity_ids
+                          }
+                          OR EXISTS {
+                              MATCH (relationship)-[:RELATIONSHIP_TARGET]->(endpoint)
+                              WHERE endpoint.id IN $entity_ids
+                          }
+                      )
+                } THEN ['relationship_evidence'] ELSE [] END
+                + CASE WHEN EXISTS {
+                    MATCH (memory)-[:CLAIM_EVIDENCE]->(claim:SubjectiveEntityClaim)-[:ABOUT]->(subject)
+                    WHERE claim.simulation_id = $source_id
+                      AND claim.observer_character_id = $character_id
+                      AND subject.id IN $entity_ids
+                } THEN ['portrait_evidence'] ELSE [] END AS recall_channels
+            WHERE size(recall_channels) > 0
+            WITH memory, event, support, remembers, recall_channels,
+                 max(event_turn.start_time) AS event_ending_time
+            RETURN memory, event, event_ending_time,
+                   support.type AS support_type,
+                   remembers.confidence AS confidence,
+                   remembers.salience AS salience,
+                   remembers.behavioural_relevance AS behavioural_relevance,
+                   remembers.stance AS stance,
+                   recall_channels
+            ORDER BY event_ending_time DESC, memory.id
+            LIMIT $limit
+            """,
+            parameters_={
+                "character_id": character_id,
+                "source_id": source_id,
+                "entity_ids": list(dict.fromkeys(entity_ids)),
+                "limit": limit,
+            },
+        )
+        return [self.recall_record_from_record(record) for record in result.records]
