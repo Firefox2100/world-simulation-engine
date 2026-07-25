@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from langgraph.constants import END
 
 os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
@@ -12,9 +13,11 @@ from world_simulation_engine.component.simulator.world_simulator import Characte
     WorldSimulatorState
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
-from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionValidation, ActionValidationResult, \
+from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionSuggestionResult, \
+    ActionValidation, ActionValidationResult, \
     ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GenerationJob, GraphStateSnapshot, InputInterpretation, \
-    MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, OOCCommand, ProposedAction, ReactionHistoryEntry, \
+    MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, OOCCharacterActionGuide, \
+    OOCCommand, OOCEvaluationResult, OOCWorldStateMutation, ProposedAction, ReactionHistoryEntry, \
     SceneCoordinationResult, Simulation, \
     PresentationBlockType, SpeechBlock, StateCommitProposal, Turn, World
 
@@ -372,7 +375,7 @@ async def test_validate_user_action_rejects_other_character_control_without_ooc(
     simulator._action_validator.validate_actions.assert_not_awaited()
 
 
-async def test_route_after_input_interpretation_rejects_ooc_for_now():
+async def test_route_after_input_interpretation_routes_ooc_to_evaluation():
     state = make_state(
         InputInterpretation(
             items=[
@@ -386,8 +389,234 @@ async def test_route_after_input_interpretation_rejects_ooc_for_now():
     )
     simulator = WorldSimulator(database=Mock())
 
-    with pytest.raises(NotImplementedError, match="OOC command route"):
-        await simulator.route_after_input_interpretation(state)
+    assert await simulator.route_after_input_interpretation(state) == "evaluate_ooc_commands"
+
+
+async def test_route_after_ooc_evaluation_continues_to_validation_for_mixed_input():
+    action = make_action()
+    state = make_state(
+        InputInterpretation(
+            items=[
+                {
+                    "type": "action",
+                    "action": action,
+                    "source_text": "I look around.",
+                },
+                OOCCommand(
+                    command_text="the door is unlocked",
+                    normalized_intent="Unlock the door.",
+                    source_text="[/OOC: the door is unlocked]",
+                ),
+            ],
+        )
+    )
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_ooc_evaluation(state) == "validate_user_action"
+
+
+async def test_route_after_ooc_evaluation_routes_forced_character_actions():
+    state = make_state(
+        InputInterpretation(
+            items=[
+                OOCCommand(
+                    command_text="Clara should tell Arthur about the mysterious guest",
+                    normalized_intent="Direct Clara's next action.",
+                    source_text="[/OOC: Clara should tell Arthur about the mysterious guest]",
+                ),
+            ],
+        )
+    )
+    state.ooc_forced_character_actions = {"character_2": [make_action("tell_arthur")]}
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_ooc_evaluation(state) == "propose_scheduled_character_actions"
+
+
+async def test_route_after_ooc_evaluation_ends_when_only_mutation_applied():
+    state = make_state(
+        InputInterpretation(
+            items=[
+                OOCCommand(
+                    command_text="the door is unlocked",
+                    normalized_intent="Unlock the door.",
+                    source_text="[/OOC: the door is unlocked]",
+                ),
+            ],
+        )
+    )
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_ooc_evaluation(state) == END
+
+
+async def test_evaluate_ooc_commands_applies_consistent_world_state_mutation():
+    command = OOCCommand(
+        command_text="the chest under the bar contains a ledger",
+        normalized_intent="Place a ledger inside the chest.",
+        source_text="[/OOC: the chest under the bar contains a ledger]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCWorldStateMutation(
+                command_index=0,
+                command_text=command.command_text,
+                operations=[
+                    {
+                        "type": "create",
+                        "entity_type": "item",
+                        "properties": {"name": "ledger"},
+                        "reason": "The OOC command introduces the ledger.",
+                    }
+                ],
+                consistent=True,
+                issues=[],
+                reason="Placed a ledger inside the chest.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+
+    turn = Turn(
+        id="turn_1",
+        sequence=1,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="OOC: Placed a ledger inside the chest.",
+        start_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    simulator._db.turn.create_next_turn = AsyncMock(return_value=turn)
+    simulator._db.state_commit.apply_state_commit_proposal = AsyncMock()
+    simulator._db.turn_presentation.replace_rendering = AsyncMock(side_effect=lambda value: value)
+    simulator._db.simulation.update_current_time = AsyncMock(return_value=state.simulation)
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert result["ooc_evaluation"] == evaluation
+    assert result["ooc_forced_character_actions"] == {}
+    assert result["committed_turn"] == turn
+    simulator._db.state_commit.apply_state_commit_proposal.assert_awaited_once()
+    applied_proposal = simulator._db.state_commit.apply_state_commit_proposal.await_args.kwargs["proposal"]
+    assert len(applied_proposal.operations) == 1
+    simulator._db.turn_presentation.replace_rendering.assert_awaited_once()
+    rendering = simulator._db.turn_presentation.replace_rendering.await_args.args[0]
+    assert rendering.blocks[0].type == PresentationBlockType.SYSTEM_NOTICE
+    assert "Placed a ledger" in rendering.blocks[0].text
+
+
+async def test_evaluate_ooc_commands_skips_inconsistent_mutation():
+    command = OOCCommand(
+        command_text="the dragon under the bar breathes fire",
+        normalized_intent="Introduce a dragon.",
+        source_text="[/OOC: the dragon under the bar breathes fire]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCWorldStateMutation(
+                command_index=0,
+                command_text=command.command_text,
+                operations=[],
+                consistent=False,
+                issues=["No such entity is grounded in the supplied context."],
+                reason="Cannot ground this command.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert result["ooc_evaluation"] == evaluation
+    assert "committed_turn" not in result
+    simulator._db.turn.create_next_turn.assert_not_awaited()
+
+
+async def test_evaluate_ooc_commands_forces_character_action_without_committing_turn():
+    command = OOCCommand(
+        command_text="Clara should tell Arthur about the mysterious guest",
+        normalized_intent="Direct Clara's next action.",
+        source_text="[/OOC: Clara should tell Arthur about the mysterious guest]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    forced_action = make_action("tell_arthur")
+    database.character.get_character = AsyncMock(
+        return_value=Character(
+            id="character_2",
+            name="Clara Whitlock",
+            age=42,
+            gender="female",
+            appearance="Plain",
+            description="The innkeeper",
+            public_state="Behind the bar",
+            private_state="Careful",
+            current_activity=CurrentActivity(name="idle"),
+            user_controlled=False,
+        )
+    )
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCCharacterActionGuide(
+                command_index=0,
+                command_text=command.command_text,
+                character_id="character_2",
+                actions=[forced_action],
+                reason="Clara warns Arthur.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert result["ooc_forced_character_actions"] == {"character_2": [forced_action]}
+    assert "committed_turn" not in result
+    simulator._db.turn.create_next_turn.assert_not_awaited()
+
+
+async def test_propose_scheduled_character_actions_uses_forced_action_without_llm():
+    forced_action = make_action("tell_arthur")
+    state = make_state(InputInterpretation(items=[]))
+    state.ooc_forced_character_actions = {"character_2": [forced_action]}
+    database = Mock()
+    database.character.get_character = AsyncMock(
+        return_value=Character(
+            id="character_2",
+            name="Clara Whitlock",
+            age=42,
+            gender="female",
+            appearance="Plain",
+            description="The innkeeper",
+            public_state="Behind the bar",
+            private_state="Careful",
+            current_activity=CurrentActivity(name="idle"),
+            user_controlled=False,
+        )
+    )
+    simulator = WorldSimulator(database=database)
+    simulator._character_simulator.propose_actions = AsyncMock()
+
+    result = await simulator.propose_scheduled_character_actions(state)
+
+    assert len(result["character_actions"]) == 1
+    record = result["character_actions"][0]
+    assert record.character_id == "character_2"
+    assert record.proposal.actions == [forced_action]
+    simulator._character_simulator.propose_actions.assert_not_awaited()
 
 
 async def test_route_after_user_action_validation_routes_valid_actions_to_observer_selection():
@@ -1886,3 +2115,130 @@ async def test_get_graph_state_snapshot_state_rehydrates_saved_world_state():
     )
 
     assert result == state
+
+
+async def test_suggest_user_actions_uses_narration_when_available_and_stores_result():
+    state = make_state(InputInterpretation(items=[]))
+    state.narration = "Clara leans across the bar and whispers about a stranger."
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.simulation.update_suggested_actions = AsyncMock()
+    simulator = WorldSimulator(database=database)
+    suggestions = ActionSuggestionResult(
+        suggestions=[
+            "Ask Clara who the stranger is.",
+            "Observe the stranger closely from across the room.",
+            "Say nothing and keep listening.",
+        ],
+    )
+    simulator._action_suggester.suggest_actions = AsyncMock(return_value=suggestions)
+
+    result = await simulator.suggest_user_actions(state)
+
+    assert result == {}
+    simulator._action_suggester.suggest_actions.assert_awaited_once_with(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        character_id="character_1",
+        recent_narration="Clara leans across the bar and whispers about a stranger.",
+    )
+    database.simulation.update_suggested_actions.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        suggested_actions=suggestions.suggestions,
+    )
+
+
+async def test_suggest_user_actions_falls_back_to_user_input_without_narration():
+    state = make_state(InputInterpretation(items=[]))
+    state.narration = None
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.simulation.update_suggested_actions = AsyncMock()
+    simulator = WorldSimulator(database=database)
+    simulator._action_suggester.suggest_actions = AsyncMock(
+        return_value=ActionSuggestionResult(suggestions=["a", "b", "c"])
+    )
+
+    await simulator.suggest_user_actions(state)
+
+    simulator._action_suggester.suggest_actions.assert_awaited_once_with(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        character_id="character_1",
+        recent_narration="I look around.",
+    )
+
+
+async def test_suggest_character_actions_uses_rendered_narration():
+    action = make_action()
+    state = make_state(InputInterpretation(items=[]))
+    state.narration = NarrationProposal(
+        blocks=[NarrationBlock(type="narration", text="A hush falls over the tavern.")]
+    )
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.simulation.update_suggested_actions = AsyncMock()
+    simulator = WorldSimulator(database=database)
+    simulator._action_suggester.suggest_actions = AsyncMock(
+        return_value=ActionSuggestionResult(suggestions=["a", "b", "c"])
+    )
+
+    await simulator.suggest_character_actions(state)
+
+    simulator._action_suggester.suggest_actions.assert_awaited_once_with(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        character_id="character_1",
+        recent_narration="A hush falls over the tavern.",
+    )
+
+
+async def test_generate_and_store_action_suggestions_swallows_errors():
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    simulator = WorldSimulator(database=database)
+    simulator._action_suggester.suggest_actions = AsyncMock(side_effect=RuntimeError("llm unavailable"))
+
+    # Must not raise: a failed suggestion generation is never allowed to fail the turn it accompanies.
+    await simulator._generate_and_store_action_suggestions(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        audit_run_id=None,
+        recent_narration="Something happened.",
+    )
+
+    database.simulation.update_suggested_actions.assert_not_called()
+
+
+async def test_generate_and_store_action_suggestions_skips_without_user_character():
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=None)
+    simulator = WorldSimulator(database=database)
+    simulator._action_suggester.suggest_actions = AsyncMock()
+
+    await simulator._generate_and_store_action_suggestions(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        audit_run_id=None,
+        recent_narration="Something happened.",
+    )
+
+    simulator._action_suggester.suggest_actions.assert_not_awaited()
+
+
+def test_user_input_graph_runs_suggestions_concurrently_with_commit():
+    simulator = WorldSimulator(database=Mock())
+    graph = simulator._user_input_graph.get_graph()
+    edges = simulator._user_input_graph.builder.edges
+
+    assert "suggest_user_actions" in graph.nodes
+    assert "suggest_character_actions" in graph.nodes
+
+    outgoing_from_select_observers = {target for source, target in edges if source == "select_user_event_observers"}
+    assert outgoing_from_select_observers == {"commit_user_actions", "suggest_user_actions"}
+
+    outgoing_from_narrate_user_turn = {target for source, target in edges if source == "narrate_user_turn"}
+    assert outgoing_from_narrate_user_turn == {"commit_user_actions", "suggest_user_actions"}
+
+    outgoing_from_narrate_turn = {target for source, target in edges if source == "narrate_turn"}
+    assert outgoing_from_narrate_turn == {"select_character_event_observers", "suggest_character_actions"}

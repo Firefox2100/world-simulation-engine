@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 class Prompts(TypedDict, total=False):
     action_proposal: list[dict]
     action_reaction: list[dict]
+    action_suggester: list[dict]
     action_validator: list[dict]
     input_interpreter: list[dict]
     memory_summarizer: list[dict]
@@ -17,6 +18,7 @@ class Prompts(TypedDict, total=False):
     relationship_updater: list[dict]
     subjective_model_updater: list[dict]
     narrator: list[dict]
+    ooc_handler: list[dict]
     scene_coordinator: list[dict]
     speech_repair: list[dict]
     state_committer: list[dict]
@@ -35,6 +37,7 @@ class Workflows(TypedDict, total=False):
 PROMPT_NAMES = [
     "action_proposal",
     "action_reaction",
+    "action_suggester",
     "action_validator",
     "input_interpreter",
     "memory_summarizer",
@@ -42,6 +45,7 @@ PROMPT_NAMES = [
     "relationship_updater",
     "subjective_model_updater",
     "narrator",
+    "ooc_handler",
     "scene_coordinator",
     "speech_repair",
     "state_committer",

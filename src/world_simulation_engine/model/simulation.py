@@ -26,3 +26,7 @@ class Simulation(BaseModel):
         True,
         description="Whether private quantitative emotion state participates in simulation workflows.",
     )
+    suggested_actions: list[str] = Field(
+        default_factory=list,
+        description="Short free-text suggestions for the user's next action, refreshed after each turn.",
+    )

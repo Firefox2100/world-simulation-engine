@@ -198,6 +198,7 @@ function normalizeSimulation(simulation) {
         ...simulation,
         description: simulation.description ?? "",
         emotion_enabled: simulation.emotion_enabled ?? true,
+        suggested_actions: simulation.suggested_actions ?? [],
     };
 }
 

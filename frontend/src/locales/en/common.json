@@ -78,7 +78,11 @@
     "inputPlaceholder": "Action text, *thought*, **emphasis**, \"speech\"...",
     "send": "Send",
     "sendError": "Unable to send message: {{error}}",
-    "cancelled": "Generation was cancelled."
+    "cancelled": "Generation was cancelled.",
+    "suggestions": {
+      "title": "Suggested actions",
+      "useSuggestion": "Use this suggestion"
+    }
   },
   "simulationDetails": {
     "title": "Simulation",

@@ -563,6 +563,52 @@ function StreamingChatRecord({ message, blocks = [], error, active, stageName, s
     );
 }
 
+function ActionSuggestions({ suggestions, open, onToggle, onSelect, disabled }) {
+    const { t } = useTranslation();
+
+    if (!suggestions.length) {
+        return null;
+    }
+
+    return (
+        <div className="chat-suggestions">
+            <button
+                type="button"
+                className="chat-suggestions-toggle"
+                onClick={onToggle}
+                aria-expanded={open}
+            >
+                <span>{t("simulationChat.suggestions.title")}</span>
+                <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    focusable="false"
+                    className={`chat-suggestions-chevron${open ? " open" : ""}`}
+                >
+                    <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+            {open ? (
+                <ul className="chat-suggestions-list">
+                    {suggestions.map((suggestion, index) => (
+                        <li key={`${index}-${suggestion}`}>
+                            <button
+                                type="button"
+                                className="chat-suggestion-chip"
+                                onClick={() => onSelect(suggestion)}
+                                disabled={disabled}
+                                title={t("simulationChat.suggestions.useSuggestion")}
+                            >
+                                {suggestion}
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            ) : null}
+        </div>
+    );
+}
+
 function CharacterImage({ simulationId, character, className = "simulation-details-cover" }) {
     const imageSrc = useOptionalImage(
         simulationId && character?.id
@@ -1492,6 +1538,7 @@ export function SimulationChatPage() {
     const [recordLoading, setRecordLoading] = useState(true);
     const [error, setError] = useState(null);
     const [recordError, setRecordError] = useState(null);
+    const [suggestionsOpen, setSuggestionsOpen] = useState(true);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [detailsSection, setDetailsSection] = useState("basic");
     const [selectedCharacterIds, setSelectedCharacterIds] = useState({});
@@ -1522,6 +1569,7 @@ export function SimulationChatPage() {
         ? emotionCache[`${simulationId}:${selectedCharacterId}`]
         : null;
     const selectedAuditEvents = auditCache[simulationId] ?? [];
+    const suggestedActions = selectedSimulation?.suggested_actions ?? emptyList;
     const inputFormatError = useMemo(
         () => (input.trim().length > 0 ? validateInputMarkup(input) : null),
         [input],
@@ -1888,6 +1936,12 @@ export function SimulationChatPage() {
             .catch((err) => {
                 setRecordError(err.message);
             });
+
+        if (!finalError) {
+            // Suggestions are refreshed alongside the turn commit on the backend; re-fetch the
+            // simulation so the composer picks up the latest suggested_actions once the run settles.
+            refreshSimulationDetails(simulationId);
+        }
     }
 
     function connectRunEvents(runId) {
@@ -2066,6 +2120,15 @@ export function SimulationChatPage() {
         }
     }
 
+    function handleSuggestionClick(suggestion) {
+        if (sendDisabled) {
+            return;
+        }
+
+        setInput(suggestion);
+        composerInputRef.current?.focus();
+    }
+
     function handleComposerKeyDown(event) {
         if (event.key !== "Enter" || event.shiftKey) {
             return;
@@ -2164,6 +2227,14 @@ export function SimulationChatPage() {
                         <div ref={recordsEndRef} />
                     </div>
                 </div>
+
+                <ActionSuggestions
+                    suggestions={suggestedActions}
+                    open={suggestionsOpen}
+                    onToggle={() => setSuggestionsOpen((current) => !current)}
+                    onSelect={handleSuggestionClick}
+                    disabled={sendDisabled}
+                />
 
                 <form
                     className="chat-composer"

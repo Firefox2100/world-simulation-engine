@@ -14,6 +14,7 @@ def _simulation_from_node(simulation_node) -> Simulation:
         description=simulation_node.get("description"),
         current_time=current_time,
         emotion_enabled=simulation_node.get("emotion_enabled", True),
+        suggested_actions=simulation_node.get("suggested_actions") or [],
     )
 
 
@@ -35,7 +36,8 @@ class SimulationStore:
                 name: $world_name,
                 description: $world_description,
                 current_time: $current_time,
-                emotion_enabled: $emotion_enabled
+                emotion_enabled: $emotion_enabled,
+                suggested_actions: $suggested_actions
             })
             CREATE (s)-[:BASED_ON]->(w)
             RETURN s
@@ -47,6 +49,7 @@ class SimulationStore:
                 "world_description": simulation.description,
                 "current_time": simulation.current_time,
                 "emotion_enabled": simulation.emotion_enabled,
+                "suggested_actions": simulation.suggested_actions,
             },
         )
 
@@ -198,6 +201,28 @@ class SimulationStore:
             parameters_={
                 "id": simulation_id,
                 "current_time": current_time,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            raise ValueError(f"Simulation {simulation_id} not found")
+
+        return _simulation_from_node(record["s"])
+
+    async def update_suggested_actions(self,
+                                       simulation_id: str,
+                                       suggested_actions: list[str],
+                                       ) -> Simulation:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:Simulation {id: $id})
+            SET s.suggested_actions = $suggested_actions
+            RETURN s
+            """,
+            parameters_={
+                "id": simulation_id,
+                "suggested_actions": suggested_actions,
             },
         )
 

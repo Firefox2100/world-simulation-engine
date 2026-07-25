@@ -30,11 +30,13 @@ class ActionType(StrEnum):
 
 
 class ComponentType(StrEnum):
+    ACTION_SUGGESTER = "action_suggester"
     ACTION_VALIDATOR = "action_validator"
     CHARACTER_SIMULATOR = "character_simulator"
     INPUT_INTERPRETER = "input_interpreter"
     MEMORY_SUMMARIZER = "memory_summarizer"
     NARRATOR = "narrator"
+    OOC_HANDLER = "ooc_handler"
     PERSPECTIVE_RESOLVER = "perspective_resolver"
     SCENE_COORDINATOR = "scene_coordinator"
     STATE_COMMITTER = "state_committer"

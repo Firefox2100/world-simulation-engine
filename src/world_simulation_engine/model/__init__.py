@@ -3,12 +3,13 @@ from .container import Container
 from .equipment import Equipment, InventoryEquipment
 from .emotion import EmotionChangeAudit, EmotionState, EmotionUpdateProposal, EmotionVector, \
     ProposedEmotionChange
-from .inter_state import ActionValidation, ActionValidationResult, PerceivedEntity, PerceivedCharacter, \
+from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidationResult, PerceivedEntity, PerceivedCharacter, \
     PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
     ProposedAction, ActionProposal, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem, \
     AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, ReactionHistoryEntry, \
     NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, NarrationProposal, \
     SpeechAnchor, SpeechBlock, \
+    OOCCharacterActionGuide, OOCEvaluationItem, OOCEvaluationResult, OOCWorldStateMutation, \
     SceneActionReference, SceneCoordinationProblem, SceneCoordinationResult, PhysicalEntityType, \
     ProposedEntityCreation, ProposedEntityPromotion, ProposedEntityStateChange, ProposedNoPhysicalChange, \
     ProposedRelationshipChange, RelationshipType, StateCommitEntityRef, StateCommitFieldChange, \

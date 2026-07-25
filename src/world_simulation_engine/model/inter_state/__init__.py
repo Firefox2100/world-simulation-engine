@@ -1,3 +1,4 @@
+from .action_suggestion import ActionSuggestionResult
 from .action_validation import ActionValidation, ActionValidationResult
 from .action_proposal import ProposedAction, ActionProposal
 from .input_interpretation import InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem
@@ -7,6 +8,7 @@ from .memory_summary import EventInvolvementProposal, MemoryCharacterLinkProposa
     ProposedTurnEventLink
 from .narration import NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, \
     NarrationProposal, SpeechAnchor, SpeechBlock
+from .ooc_evaluation import OOCCharacterActionGuide, OOCEvaluationItem, OOCEvaluationResult, OOCWorldStateMutation
 from .perceived_entity import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, PerceivedItem, \
     PerceivedEquipment, PerceivedLandmark, PerceivedContainer
 from .scene_coordination import AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, \

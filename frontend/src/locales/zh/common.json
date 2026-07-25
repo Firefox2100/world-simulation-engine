@@ -78,7 +78,11 @@
     "inputPlaceholder": "行动文本、*内心*、**强调**、\"台词\"...",
     "send": "发送",
     "sendError": "无法发送消息：{{error}}",
-    "cancelled": "生成已取消。"
+    "cancelled": "生成已取消。",
+    "suggestions": {
+      "title": "建议的行动",
+      "useSuggestion": "使用这条建议"
+    }
   },
   "simulationDetails": {
     "title": "模拟",

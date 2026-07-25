@@ -18,19 +18,22 @@ from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotTyp
     SimulationGenerationRequestType, TurnType
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
     Simulation, InputInterpretation, \
-    ActionCandidateSet, ActionProposal, CharacterActionPlan, ProposedAction, SceneCoordinationResult, \
+    ActionCandidateSet, ActionProposal, CharacterActionPlan, OOCCharacterActionGuide, OOCEvaluationResult, \
+    OOCWorldStateMutation, ProposedAction, SceneCoordinationResult, \
     GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, \
     PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Turn, \
     TurnPresentationBlock, TurnPresentationRendering, SimulationAuditEvent
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.audit_service import AuditService
+from .action_suggester import ActionSuggester
 from .action_validator import ActionValidator
 from .character_simulator import CharacterSimulator
 from .emotion_updater import EmotionUpdater
 from .input_interpreter import InputInterpreter
 from .memory_summarizer import MemorySummarizer
 from .narrator import Narrator
+from .ooc_handler import OOCHandler
 from .relationship_updater import RelationshipUpdater
 from .scene_coordinator import SceneCoordinator
 from .state_committer import StateCommitter
@@ -141,6 +144,8 @@ class WorldSimulatorState(BaseModel):
     request_type: SimulationGenerationRequestType = SimulationGenerationRequestType.USER_INPUT_GENERATION
 
     input_interpretation: InputInterpretation | None = None
+    ooc_evaluation: OOCEvaluationResult | None = None
+    ooc_forced_character_actions: dict[str, list[ProposedAction]] = Field(default_factory=dict)
     user_action_validation: ActionValidationResult | None = None
     user_action_coordination: SceneCoordinationResult | None = None
 
@@ -203,6 +208,10 @@ class WorldSimulator:
         self._prompt_loader = prompt_loader
         self._langfuse_handler = langfuse_handler
 
+        self._action_suggester = ActionSuggester(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
         self._action_validator = ActionValidator(
             database=database,
             prompt_loader=prompt_loader,
@@ -225,6 +234,10 @@ class WorldSimulator:
             prompt_loader=prompt_loader,
         )
         self._narrator = Narrator(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._ooc_handler = OOCHandler(
             database=database,
             prompt_loader=prompt_loader,
         )
@@ -1018,6 +1031,8 @@ class WorldSimulator:
             return "action_validator"
         if chunk.get("character_actions"):
             return "character_simulator"
+        if chunk.get("ooc_evaluation"):
+            return "ooc_handler"
         if chunk.get("input_interpretation"):
             return "input_interpreter"
         return None
@@ -1095,13 +1110,130 @@ class WorldSimulator:
             "input_interpretation": interpretation,
         }
 
-    async def validate_user_action(self, state: WorldSimulatorState):
+    async def evaluate_ooc_commands(self, state: WorldSimulatorState):
         if not state.input_interpretation:
             raise RuntimeError("No input interpretation supplied")
 
-        if any(item.type == "ooc" for item in state.input_interpretation.items):
-            # TODO: Handle OOC commands before validating user actions.
-            raise NotImplementedError("OOC command handling is not implemented yet")
+        commands = [
+            item
+            for item in state.input_interpretation.items
+            if item.type == "ooc"
+        ]
+        if not commands:
+            return {}
+
+        user_character = await self._db.character.get_user_character_by_simulation(
+            simulation_id=state.simulation.id
+        )
+        if not user_character:
+            raise ValueError(f"Simulation {state.simulation.id} has no user character")
+
+        evaluation = await self._ooc_handler.evaluate_commands(
+            world_id=state.world.id,
+            simulation_id=state.simulation.id,
+            character_id=user_character.id,
+            commands=commands,
+        )
+
+        simulation = state.simulation
+        forced_actions = {
+            character_id: list(actions)
+            for character_id, actions in state.ooc_forced_character_actions.items()
+        }
+        mutation_operations = []
+        notices: list[str] = []
+        skipped_notes: list[str] = []
+
+        for item in evaluation.items:
+            if isinstance(item, OOCWorldStateMutation):
+                if not item.consistent or not item.operations:
+                    skipped_notes.append(
+                        f"Skipped OOC command \"{item.command_text}\": "
+                        f"{'; '.join(item.issues) if item.issues else 'failed the basic consistency check'}."
+                    )
+                    continue
+                mutation_operations.extend(item.operations)
+                notices.append(f"OOC: {item.reason}")
+            elif isinstance(item, OOCCharacterActionGuide):
+                target_character = await self._db.character.get_character(item.character_id)
+                if not target_character or target_character.user_controlled:
+                    skipped_notes.append(
+                        f"Skipped OOC command \"{item.command_text}\": "
+                        "the directed character was not found or is user-controlled."
+                    )
+                    continue
+                forced_actions.setdefault(item.character_id, []).extend(item.actions)
+                notices.append(f"OOC: {item.reason}")
+
+        committed_turn = None
+        if mutation_operations:
+            proposal = StateCommitProposal(
+                operations=mutation_operations,
+                committer_notes=[f"Applied {len(mutation_operations)} OOC-forced state operation(s)."],
+            )
+            coordination = SceneCoordinationResult(
+                status=SceneCoordinationStatus.COMPLETE,
+                accepted_actions=[],
+                coordinator_notes=["OOC world state mutation bypassed normal action validation."],
+            )
+            committed_turn, simulation = await self._create_turn_and_apply_commit(
+                simulation=simulation,
+                simulation_id=state.simulation.id,
+                turn_type=TurnType.SYSTEM_RESPONSE,
+                content="\n".join(notices) or "OOC world state mutation.",
+                proposal=proposal,
+                coordination_result=coordination,
+                audit_run_id=state.audit_run_id,
+            )
+            await self._store_ooc_presentation(turn=committed_turn, notices=notices)
+
+        await self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=state.audit_run_id,
+            turn_id=committed_turn.id if committed_turn else None,
+            category=SimulationAuditCategory.COMMIT,
+            stage="ooc_command_evaluation",
+            summary=f"Evaluated {len(commands)} OOC command(s).",
+            actor_ids=[user_character.id],
+            details={
+                "mutation_operation_count": len(mutation_operations),
+                "forced_character_ids": sorted(forced_actions),
+                "skipped_notes": skipped_notes,
+            },
+            simulation_time=simulation.current_time,
+        )
+
+        return {
+            "ooc_evaluation": evaluation,
+            "ooc_forced_character_actions": forced_actions,
+            "simulation": simulation,
+            **({"committed_turn": committed_turn} if committed_turn else {}),
+        }
+
+    async def _store_ooc_presentation(self, *, turn: Turn, notices: list[str]) -> None:
+        if not notices:
+            return
+
+        now = turn.start_time
+        blocks = [
+            TurnPresentationBlock(
+                turn_id=turn.id,
+                sequence=sequence,
+                type=PresentationBlockType.SYSTEM_NOTICE,
+                text=notice,
+                completion=PresentationCompletion.COMPLETE,
+                created_at=now,
+                updated_at=now,
+            )
+            for sequence, notice in enumerate(notices)
+        ]
+        await self._db.turn_presentation.replace_rendering(
+            TurnPresentationRendering(turn_id=turn.id, blocks=blocks),
+        )
+
+    async def validate_user_action(self, state: WorldSimulatorState):
+        if not state.input_interpretation:
+            raise RuntimeError("No input interpretation supplied")
 
         user_character = await self._db.character.get_user_character_by_simulation(
             simulation_id=state.simulation.id
@@ -1304,6 +1436,8 @@ class WorldSimulator:
     async def propose_scheduled_character_actions(self, state: WorldSimulatorState):
         candidates = []
         for character_id in dict.fromkeys(state.perceiving_character_ids):
+            if character_id in state.ooc_forced_character_actions:
+                continue
             character = await self._db.character.get_character(character_id)
             if (
                     character
@@ -1314,22 +1448,30 @@ class WorldSimulator:
                 if len(candidates) >= self._MAX_SCHEDULED_CHARACTERS:
                     break
 
+        forced_candidates = []
+        for character_id in state.ooc_forced_character_actions:
+            character = await self._db.character.get_character(character_id)
+            if character and not character.user_controlled:
+                forced_candidates.append(character)
+
+        all_candidates = [*forced_candidates, *candidates]
         await self._record_audit(
             simulation_id=state.simulation.id,
             run_id=state.audit_run_id,
             category=SimulationAuditCategory.SCHEDULER,
             stage="actor_selection",
-            summary=f"Selected {len(candidates)} perceiving and available actor(s).",
-            actor_ids=[character.id for character in candidates],
+            summary=f"Selected {len(all_candidates)} perceiving and available actor(s).",
+            actor_ids=[character.id for character in all_candidates],
             details={
                 "perceiving_actor_ids": state.perceiving_character_ids,
+                "ooc_forced_actor_ids": [character.id for character in forced_candidates],
                 "selection_reason": "perceiving_non_user_actor_available_by_current_activity",
             },
             simulation_time=state.simulation.current_time,
         )
         proposals = await self._run_fan_out([
             functools.partial(self._propose_scheduled_action_for_character, state=state, character=character)
-            for character in candidates
+            for character in all_candidates
         ])
 
         return {
@@ -1340,6 +1482,17 @@ class WorldSimulator:
             "character_actions_are_reactions": False,
             "reaction_history": [],
         }
+
+    @staticmethod
+    def _forced_action_proposal(actions: list[ProposedAction]) -> ActionProposal:
+        return ActionProposal(
+            actions=actions,
+            reasoning_summary="Forced by an out-of-character command.",
+            next_review_hint_seconds=min(
+                max(sum(action.intended_duration_seconds for action in actions), 1),
+                7200,
+            ),
+        )
 
     async def _propose_scheduled_action_for_character(
             self,
@@ -1354,6 +1507,34 @@ class WorldSimulator:
         contextvar-scoped per asyncio task - is read back in the same task that produced it when
         several actors are proposed concurrently.
         """
+        forced_actions = state.ooc_forced_character_actions.get(character.id)
+        if forced_actions:
+            proposal = self._forced_action_proposal(forced_actions)
+            await self._record_audit(
+                simulation_id=state.simulation.id,
+                run_id=state.audit_run_id,
+                category=SimulationAuditCategory.GENERATION,
+                origin=SimulationAuditOrigin.CODE,
+                status=SimulationAuditStatus.PROPOSED,
+                stage="ooc_forced_character_action",
+                summary=f"{character.name} proposed {len(forced_actions)} OOC-forced action candidate(s).",
+                actor_ids=[character.id],
+                entity_ids=list(dict.fromkeys(
+                    entity_id
+                    for action in forced_actions
+                    for entity_id in action.target_ids
+                )),
+                details={
+                    "action_types": [action.type for action in forced_actions],
+                    "action_labels": [action.label for action in forced_actions],
+                },
+                simulation_time=state.simulation.current_time,
+            )
+            return CharacterActionProposalRecord(
+                character_id=character.id,
+                proposal=proposal,
+            )
+
         proposal = await self._character_simulator.propose_actions(
             world_id=state.world.id,
             simulation_id=state.simulation.id,
@@ -1604,6 +1785,76 @@ class WorldSimulator:
             "narration": narration,
             "user_action_coordination": coordination,
         }
+
+    async def suggest_user_actions(self, state: WorldSimulatorState):
+        """Runs in parallel with commit_user_actions; must never fail the turn it accompanies."""
+        recent_narration = Narrator.render_text(state.narration) or state.user_input or ""
+        await self._generate_and_store_action_suggestions(
+            world_id=state.world.id,
+            simulation_id=state.simulation.id,
+            audit_run_id=state.audit_run_id,
+            recent_narration=recent_narration,
+        )
+        return {}
+
+    async def suggest_character_actions(self, state: WorldSimulatorState):
+        """Runs in parallel with commit_character_actions; must never fail the turn it accompanies."""
+        recent_narration = Narrator.render_text(state.narration)
+        await self._generate_and_store_action_suggestions(
+            world_id=state.world.id,
+            simulation_id=state.simulation.id,
+            audit_run_id=state.audit_run_id,
+            recent_narration=recent_narration,
+        )
+        return {}
+
+    async def _generate_and_store_action_suggestions(
+            self,
+            *,
+            world_id: str,
+            simulation_id: str,
+            audit_run_id: str | None,
+            recent_narration: str,
+    ) -> None:
+        """Best-effort suggestion refresh: a failure here is logged and swallowed, never raised."""
+        try:
+            user_character = await self._db.character.get_user_character_by_simulation(
+                simulation_id=simulation_id
+            )
+            if not user_character:
+                return
+
+            result = await self._action_suggester.suggest_actions(
+                world_id=world_id,
+                simulation_id=simulation_id,
+                character_id=user_character.id,
+                recent_narration=recent_narration,
+            )
+            await self._db.simulation.update_suggested_actions(
+                simulation_id=simulation_id,
+                suggested_actions=result.suggestions,
+            )
+            await self._record_audit(
+                simulation_id=simulation_id,
+                run_id=audit_run_id,
+                category=SimulationAuditCategory.GENERATION,
+                origin=SimulationAuditOrigin.LLM_PROPOSAL,
+                status=SimulationAuditStatus.COMPLETED,
+                stage="action_suggestion",
+                summary=f"Suggested {len(result.suggestions)} next action(s) for the user.",
+                actor_ids=[user_character.id],
+                details={"suggestions": result.suggestions},
+            )
+        except Exception as exc:
+            await self._record_audit(
+                simulation_id=simulation_id,
+                run_id=audit_run_id,
+                category=SimulationAuditCategory.ERROR,
+                status=SimulationAuditStatus.FAILED,
+                stage="action_suggestion",
+                summary="Action suggestion generation failed and was skipped.",
+                details={"error_type": type(exc).__name__},
+            )
 
     async def commit_character_actions(self, state: WorldSimulatorState | CharacterActionProposalState):
         world_id = state.world.id if isinstance(state, WorldSimulatorState) else state.world_id
@@ -1907,10 +2158,21 @@ class WorldSimulator:
             raise RuntimeError("No input interpretation supplied")
 
         if any(item.type == "ooc" for item in state.input_interpretation.items):
-            # TODO: Route OOC commands to their own handler.
-            raise NotImplementedError("OOC command route is not implemented yet")
+            return "evaluate_ooc_commands"
 
         return "validate_user_action"
+
+    async def route_after_ooc_evaluation(self, state: WorldSimulatorState):
+        if not state.input_interpretation:
+            raise RuntimeError("No input interpretation supplied")
+
+        if any(item.type == "action" for item in state.input_interpretation.items):
+            return "validate_user_action"
+
+        if state.ooc_forced_character_actions:
+            return "propose_scheduled_character_actions"
+
+        return END
 
     async def route_after_user_action_validation(self, state: WorldSimulatorState):
         if not state.user_action_validation:
@@ -2616,6 +2878,8 @@ class WorldSimulator:
             update={
                 "request_type": request_type,
                 "user_input": None,
+                "ooc_evaluation": None,
+                "ooc_forced_character_actions": {},
                 "character_actions": [],
                 "character_action_validations": [],
                 "character_action_coordination": None,
@@ -2670,6 +2934,7 @@ class WorldSimulator:
         graph.add_node("coordinate_character_actions", self.coordinate_character_actions)
         graph.add_node("narrate_turn", self.narrate_turn)
         graph.add_node("select_character_event_observers", self.select_character_event_observers)
+        graph.add_node("suggest_character_actions", self.suggest_character_actions)
         graph.add_node("commit_character_actions", self.commit_character_actions)
         graph.add_node("summarize_character_memory", self.summarize_character_memory)
 
@@ -2685,9 +2950,13 @@ class WorldSimulator:
         )
         graph.add_edge("propose_character_reactions", "validate_character_actions")
         graph.add_edge("narrate_turn", "select_character_event_observers")
+        # suggest_character_actions runs concurrently with the commit branch below; it is a
+        # dead-end leaf that never affects committed state, so it needs no merge point.
+        graph.add_edge("narrate_turn", "suggest_character_actions")
         graph.add_edge("select_character_event_observers", "commit_character_actions")
         graph.add_edge("commit_character_actions", "summarize_character_memory")
         graph.add_edge("summarize_character_memory", END)
+        graph.add_edge("suggest_character_actions", END)
 
     def _add_character_round_edges(self, graph: StateGraph, start_node: str):
         graph.add_edge(start_node, "propose_scheduled_character_actions")
@@ -2697,11 +2966,13 @@ class WorldSimulator:
         graph = StateGraph(WorldSimulatorState)
 
         graph.add_node("interpret_user_input", self.interpret_user_input)
+        graph.add_node("evaluate_ooc_commands", self.evaluate_ooc_commands)
         graph.add_node("validate_user_action", self.validate_user_action)
         graph.add_node("narrate_user_turn", self.narrate_user_turn)
         graph.add_node("commit_user_actions", self.commit_user_actions)
         graph.add_node("summarize_user_memory", self.summarize_user_memory)
         graph.add_node("select_user_event_observers", self.select_user_event_observers)
+        graph.add_node("suggest_user_actions", self.suggest_user_actions)
         self._add_character_round_nodes(graph)
 
         graph.add_edge(START, "interpret_user_input")
@@ -2710,16 +2981,25 @@ class WorldSimulator:
             self.route_after_input_interpretation,
         )
         graph.add_conditional_edges(
+            "evaluate_ooc_commands",
+            self.route_after_ooc_evaluation,
+        )
+        graph.add_conditional_edges(
             "validate_user_action",
             self.route_after_user_action_validation,
         )
         graph.add_edge("select_user_event_observers", "commit_user_actions")
         graph.add_edge("narrate_user_turn", "commit_user_actions")
+        # suggest_user_actions runs concurrently with the commit branch above; it is a dead-end
+        # leaf that never affects committed state, so it needs no merge point.
+        graph.add_edge("select_user_event_observers", "suggest_user_actions")
+        graph.add_edge("narrate_user_turn", "suggest_user_actions")
         graph.add_edge("commit_user_actions", "summarize_user_memory")
         graph.add_conditional_edges(
             "summarize_user_memory",
             self.route_after_user_memory_summary,
         )
+        graph.add_edge("suggest_user_actions", END)
         self._add_character_round_processing_edges(graph)
 
         return graph.compile()
