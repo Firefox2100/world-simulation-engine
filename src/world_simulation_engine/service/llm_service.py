@@ -315,6 +315,130 @@ class LlmService:
         return parsed
 
     @staticmethod
+    def _json_type_label(schema: Any, defs: dict[str, Any]) -> str:
+        """Render a compact, human-readable type label for one JSON Schema node."""
+        if not isinstance(schema, dict):
+            return "any"
+
+        if "$ref" in schema:
+            name = schema["$ref"].rsplit("/", 1)[-1]
+            target = defs.get(name, {})
+            # Enum classes (e.g. ActionType) are their own named $defs entry; resolve to the
+            # actual allowed values so the guide can spell them out inline like a Literal enum,
+            # rather than making the model guess valid values from a bare type name.
+            if "enum" in target and "properties" not in target:
+                return "enum[" + ", ".join(repr(value) for value in target["enum"]) + "]"
+            return name
+
+        for combinator in ("anyOf", "oneOf"):
+            if combinator in schema:
+                labels = [
+                    LlmService._json_type_label(option, defs)
+                    for option in schema[combinator]
+                ]
+                return " | ".join(dict.fromkeys(labels))
+
+        if "allOf" in schema and len(schema["allOf"]) == 1:
+            return LlmService._json_type_label(schema["allOf"][0], defs)
+
+        if "const" in schema:
+            return repr(schema["const"])
+
+        if "enum" in schema:
+            return "enum[" + ", ".join(repr(value) for value in schema["enum"]) + "]"
+
+        schema_type = schema.get("type")
+        if schema_type == "array":
+            return f"list[{LlmService._json_type_label(schema.get('items', {}), defs)}]"
+
+        return schema_type or "any"
+
+    @staticmethod
+    def _json_schema_field_guide(
+            schema: Any,
+            defs: dict[str, Any],
+            *,
+            depth: int = 0,
+            max_depth: int = 4,
+            expanded: set[str] | None = None,
+    ) -> list[str]:
+        """Recursively describe object fields (name, type, required/optional, description).
+
+        `expanded` tracks referenced type names across the *entire* guide (not just the current
+        path), so a type referenced many times (e.g. StateCommitEntityRef inside every
+        StateCommitOperation variant) is spelled out once and only referred to by name afterward.
+        This keeps discriminated-union/recursive schemas from re-expanding indefinitely and keeps
+        the guide short enough to stay useful in a local model's context window.
+        """
+        if expanded is None:
+            expanded = set()
+
+        if not isinstance(schema, dict):
+            return []
+
+        if "$ref" in schema:
+            name = schema["$ref"].rsplit("/", 1)[-1]
+            if name in expanded:
+                return []
+            expanded.add(name)
+            schema = defs.get(name, {})
+
+        for combinator in ("anyOf", "oneOf"):
+            if combinator in schema:
+                lines = []
+                for option in schema[combinator]:
+                    lines.extend(LlmService._json_schema_field_guide(
+                        option, defs, depth=depth, max_depth=max_depth, expanded=expanded,
+                    ))
+                return lines
+
+        properties = schema.get("properties")
+        if not properties:
+            return []
+
+        required = set(schema.get("required", []))
+        indent = "  " * depth
+        lines = []
+        for field_name, field_schema in properties.items():
+            type_label = LlmService._json_type_label(field_schema, defs)
+            requirement = "required" if field_name in required else "optional"
+            description = field_schema.get("description")
+            suffix = f" - {description}" if description else ""
+            lines.append(f"{indent}- {field_name}: {type_label} ({requirement}){suffix}")
+
+            if depth < max_depth:
+                nested_schema = field_schema.get("items", {}) if field_schema.get("type") == "array" else field_schema
+                lines.extend(LlmService._json_schema_field_guide(
+                    nested_schema, defs, depth=depth + 1, max_depth=max_depth, expanded=expanded,
+                ))
+
+        return lines
+
+    @classmethod
+    def _schema_guidance_text(cls, output_model: Type[T], *, max_chars: int = 4000) -> str:
+        """Build an explicit field guide from the Pydantic schema for the prompt text itself.
+
+        Constrained/native structured-output decoding only guarantees syntactic compliance; small
+        local models still routinely skip optional fields or misuse discriminated-union shapes
+        unless the schema and its per-field intent are spelled out in the natural-language context
+        as well, not only enforced by the decoder.
+        """
+        schema = output_model.model_json_schema()
+        defs = schema.get("$defs", {})
+        lines = cls._json_schema_field_guide(schema, defs, expanded={output_model.__name__})
+        body = "\n".join(lines)
+        if len(body) > max_chars:
+            body = f"{body[:max_chars]}\n... (schema truncated)"
+
+        return (
+            f"## Output schema field guide for {output_model.__name__}\n\n"
+            f"{body}\n\n"
+            "Populate every required field. For optional fields, include a concrete value whenever "
+            "the context above supports one; only leave an optional field at its default (null/empty) "
+            "when nothing in the context applies to it. Do not invent fields that are not listed here."
+        )
+
+    @staticmethod
     def _json_repair_candidates(value: str) -> list[str]:
         """
         Return conservative repairs for common local structured-output glitches.
@@ -345,17 +469,28 @@ class LlmService:
                                             data: dict[str, Any],
                                             repair_instruction: str,
                                             run_name: str,
-                                            max_attempts: int = 2,
+                                            max_attempts: int = 3,
                                             ) -> T:
         last_error: Exception | None = None
         last_raw: Any = None
 
-        base_messages = self._compose_messages(messages, data=data)
+        # Route the schema guide through the same PromptMessage/_compose_messages pipeline (rather
+        # than appending a raw HumanMessage afterward) so it still passes through adjacent-user
+        # merging like the rest of the prompt, instead of leaving two consecutive user turns.
+        messages_with_schema_guidance = [
+            *messages,
+            PromptMessage(
+                role=MessageRole.USER,
+                content=self._schema_guidance_text(output_model),
+            ),
+        ]
+        base_messages = self._compose_messages(messages_with_schema_guidance, data=data)
         current_messages = base_messages
 
         for attempt in range(max_attempts):
             structured_model = self.model.with_structured_output(
                 output_model,
+                method="json_schema",
                 include_raw=True,
             )
 

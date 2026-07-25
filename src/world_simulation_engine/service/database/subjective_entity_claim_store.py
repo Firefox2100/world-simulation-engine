@@ -49,7 +49,7 @@ class SubjectiveEntityClaimStore:
             MATCH (simulation:Simulation {id: $simulation_id})-[:CONTAINS*0..]->(observer:Character {id: $observer_character_id})
             MATCH (subject {id: $subject_id})
             WHERE ($subject_type IN labels(subject) OR toLower(replace($subject_type, '_', '')) IN [label IN labels(subject) | toLower(label)])
-              AND (EXISTS { MATCH (simulation)-[:CONTAINS*0..]->(subject) } OR EXISTS { MATCH (simulation)-[:BASED_ON]->(:World)-[:CONTAINS]->(subject:Item) })
+              AND (EXISTS { MATCH (simulation)-[:CONTAINS*0..]->(subject) } OR EXISTS { MATCH (simulation)-[:BASED_ON]->(:World)-[:CONTAINS*0..]->(subject) })
             OPTIONAL MATCH (memory:MemoryAtom) WHERE memory.id IN $evidence_ids AND EXISTS { MATCH (observer)-[:REMEMBERS]->(memory) }
             WITH simulation, observer, subject, collect(DISTINCT memory) AS memories
             WHERE size(memories) = size($evidence_ids) AND NOT EXISTS { MATCH (:SubjectiveEntityClaim {id: $id}) }

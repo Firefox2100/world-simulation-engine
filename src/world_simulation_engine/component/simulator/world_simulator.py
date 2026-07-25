@@ -1,14 +1,17 @@
 import asyncio
+import functools
 import hashlib
 import json
+import operator
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import Annotated, Any, Awaitable, Callable, AsyncIterator, TypeVar
 from uuid import uuid4
 from langgraph.constants import START, END
 from langgraph.graph.state import StateGraph, CompiledStateGraph
+from langgraph.types import Send
 from langfuse.langchain import CallbackHandler
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationAuditCategory, SimulationAuditOrigin, SimulationAuditStatus, \
@@ -83,6 +86,51 @@ class _OffSceneWorkItem:
     generation_id: str
     state: "WorldSimulatorState"
     trigger_turn: Turn
+
+
+_FanOutResultT = TypeVar("_FanOutResultT")
+
+
+class _FanOutWork(BaseModel):
+    """One independent unit of work dispatched to the reusable Send-based fan-out sub-graph."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    index: int
+    call: Callable[[], Awaitable[Any]]
+
+
+class _FanOutState(BaseModel):
+    """Minimal state for a small map-reduce sub-graph used to run independent LLM calls
+    concurrently through LangGraph's Send mechanism instead of asyncio.gather.
+
+    `results` uses an additive reducer (`operator.add`) so that each Send-dispatched worker's
+    single-item result list merges into the shared list rather than one overwriting another;
+    caller-visible order is restored afterward from `index` since completion order is not
+    guaranteed to match dispatch order.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    items: list[_FanOutWork] = Field(default_factory=list)
+    results: Annotated[list[tuple[int, Any]], operator.add] = Field(default_factory=list)
+
+
+async def _fan_out_worker(work: _FanOutWork) -> dict:
+    result = await work.call()
+    return {"results": [(work.index, result)]}
+
+
+def _fan_out_dispatch(state: _FanOutState):
+    if not state.items:
+        return END
+    return [Send("fan_out_worker", item) for item in state.items]
+
+
+def _build_fan_out_graph() -> CompiledStateGraph:
+    graph = StateGraph(_FanOutState)
+    graph.add_node("fan_out_worker", _fan_out_worker, input_schema=_FanOutWork)
+    graph.add_conditional_edges(START, _fan_out_dispatch)
+    graph.add_edge("fan_out_worker", END)
+    return graph.compile()
 
 
 class WorldSimulatorState(BaseModel):
@@ -200,6 +248,7 @@ class WorldSimulator:
         self._user_input_graph = self._build_user_input_generation_graph()
         self._character_round_graph = self._build_character_round_generation_graph()
         self._simulator_graph = self._user_input_graph
+        self._fan_out_graph = _build_fan_out_graph()
         self._run_registry: dict[str, _SimulatorRun] = {}
         self._completed_run_registry: dict[str, _SimulatorRun] = {}
         self._simulation_run_locks: dict[str, asyncio.Lock] = {}
@@ -995,6 +1044,26 @@ class WorldSimulator:
 
         return config
 
+    async def _run_fan_out(
+            self,
+            calls: list[Callable[[], Awaitable[_FanOutResultT]]],
+    ) -> list[_FanOutResultT]:
+        """Run independent zero-arg async calls concurrently via a LangGraph Send fan-out.
+
+        Preferred over asyncio.gather for dispatching per-character LLM calls: LangGraph (via its
+        Send/map-reduce mechanism) owns the concurrent scheduling instead of ad hoc asyncio tasks.
+        Returns results in the same order as `calls`, regardless of completion order.
+        """
+        if not calls:
+            return []
+
+        final_state = await self._fan_out_graph.ainvoke(_FanOutState(items=[
+            _FanOutWork(index=index, call=call)
+            for index, call in enumerate(calls)
+        ]))
+        ordered = sorted(final_state["results"], key=lambda pair: pair[0])
+        return [result for _, result in ordered]
+
     async def interpret_user_input(self, state: WorldSimulatorState):
         user_character = await self._db.character.get_user_character_by_simulation(
             simulation_id=state.simulation.id
@@ -1185,17 +1254,16 @@ class WorldSimulator:
         simulation_id = state.simulation.id if isinstance(state, WorldSimulatorState) else state.simulation_id
 
         async def validate_records() -> list[CharacterActionValidationRecord]:
-            records = []
-            for entry in state.character_actions:
-                records.append(
-                    await self._validate_character_action_with_rework(
-                        world_id=world_id,
-                        simulation_id=simulation_id,
-                        user_input=state.user_input or "",
-                        entry=entry,
-                    )
+            return await self._run_fan_out([
+                functools.partial(
+                    self._validate_character_action_with_rework,
+                    world_id=world_id,
+                    simulation_id=simulation_id,
+                    user_input=state.user_input or "",
+                    entry=entry,
                 )
-            return records
+                for entry in state.character_actions
+            ])
 
         validation_records = await validate_records()
         waited = await self._wait_for_conflicting_off_scene_activity(
@@ -1259,67 +1327,10 @@ class WorldSimulator:
             },
             simulation_time=state.simulation.current_time,
         )
-        proposals = []
-        for character in candidates:
-            proposal = await self._character_simulator.propose_actions(
-                world_id=state.world.id,
-                simulation_id=state.simulation.id,
-                character_id=character.id,
-                user_input=state.user_input or "",
-            )
-            diagnostics, memory_ids = self._character_simulator.last_memory_retrieval
-            await self._record_audit(
-                simulation_id=state.simulation.id,
-                run_id=state.audit_run_id,
-                category=SimulationAuditCategory.RETRIEVAL,
-                stage="character_context_retrieval",
-                summary=f"Built bounded context for {character.name}.",
-                actor_ids=[character.id],
-                entity_ids=memory_ids,
-                details={
-                    "selected_memory_ids": memory_ids,
-                    "considered_count": diagnostics.considered_count if diagnostics else 0,
-                    "selected_count": diagnostics.selected_count if diagnostics else len(memory_ids),
-                    "token_budget": diagnostics.token_budget if diagnostics else None,
-                    "estimated_tokens_used": diagnostics.estimated_tokens_used if diagnostics else None,
-                    "dropped_memory_ids": diagnostics.dropped_memory_ids if diagnostics else [],
-                },
-                simulation_time=state.simulation.current_time,
-            )
-            proposal_actions = [
-                action
-                for sequence in self._proposal_sequences(proposal)
-                for action in sequence
-            ]
-            await self._record_audit(
-                simulation_id=state.simulation.id,
-                run_id=state.audit_run_id,
-                category=SimulationAuditCategory.GENERATION,
-                origin=SimulationAuditOrigin.LLM_PROPOSAL,
-                status=SimulationAuditStatus.PROPOSED,
-                stage="character_action_proposal",
-                summary=f"{character.name} proposed {len(proposal_actions)} action candidate(s).",
-                actor_ids=[character.id],
-                entity_ids=list(dict.fromkeys(
-                    entity_id
-                    for action in proposal_actions
-                    for entity_id in action.target_ids
-                )),
-                details={
-                    "action_types": [action.type for action in proposal_actions],
-                    "action_labels": [action.label for action in proposal_actions],
-                    "durations_seconds": [
-                        action.intended_duration_seconds for action in proposal_actions
-                    ],
-                },
-                simulation_time=state.simulation.current_time,
-            )
-            proposals.append(
-                CharacterActionProposalRecord(
-                    character_id=character.id,
-                    proposal=proposal,
-                )
-            )
+        proposals = await self._run_fan_out([
+            functools.partial(self._propose_scheduled_action_for_character, state=state, character=character)
+            for character in candidates
+        ])
 
         return {
             "character_actions": proposals,
@@ -1329,6 +1340,77 @@ class WorldSimulator:
             "character_actions_are_reactions": False,
             "reaction_history": [],
         }
+
+    async def _propose_scheduled_action_for_character(
+            self,
+            *,
+            state: WorldSimulatorState,
+            character,
+    ) -> CharacterActionProposalRecord:
+        """One actor's proposal plus its own audit records, run as an independent unit of work.
+
+        Kept as a single coroutine (rather than a gather of proposal calls followed by a separate
+        loop reading diagnostics) so that CharacterSimulator.last_memory_retrieval - which is
+        contextvar-scoped per asyncio task - is read back in the same task that produced it when
+        several actors are proposed concurrently.
+        """
+        proposal = await self._character_simulator.propose_actions(
+            world_id=state.world.id,
+            simulation_id=state.simulation.id,
+            character_id=character.id,
+            user_input=state.user_input or "",
+        )
+        diagnostics, memory_ids = self._character_simulator.last_memory_retrieval
+        await self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=state.audit_run_id,
+            category=SimulationAuditCategory.RETRIEVAL,
+            stage="character_context_retrieval",
+            summary=f"Built bounded context for {character.name}.",
+            actor_ids=[character.id],
+            entity_ids=memory_ids,
+            details={
+                "selected_memory_ids": memory_ids,
+                "considered_count": diagnostics.considered_count if diagnostics else 0,
+                "selected_count": diagnostics.selected_count if diagnostics else len(memory_ids),
+                "token_budget": diagnostics.token_budget if diagnostics else None,
+                "estimated_tokens_used": diagnostics.estimated_tokens_used if diagnostics else None,
+                "dropped_memory_ids": diagnostics.dropped_memory_ids if diagnostics else [],
+            },
+            simulation_time=state.simulation.current_time,
+        )
+        proposal_actions = [
+            action
+            for sequence in self._proposal_sequences(proposal)
+            for action in sequence
+        ]
+        await self._record_audit(
+            simulation_id=state.simulation.id,
+            run_id=state.audit_run_id,
+            category=SimulationAuditCategory.GENERATION,
+            origin=SimulationAuditOrigin.LLM_PROPOSAL,
+            status=SimulationAuditStatus.PROPOSED,
+            stage="character_action_proposal",
+            summary=f"{character.name} proposed {len(proposal_actions)} action candidate(s).",
+            actor_ids=[character.id],
+            entity_ids=list(dict.fromkeys(
+                entity_id
+                for action in proposal_actions
+                for entity_id in action.target_ids
+            )),
+            details={
+                "action_types": [action.type for action in proposal_actions],
+                "action_labels": [action.label for action in proposal_actions],
+                "durations_seconds": [
+                    action.intended_duration_seconds for action in proposal_actions
+                ],
+            },
+            simulation_time=state.simulation.current_time,
+        )
+        return CharacterActionProposalRecord(
+            character_id=character.id,
+            proposal=proposal,
+        )
 
     async def select_user_event_observers(self, state: WorldSimulatorState):
         coordination = await self._user_coordination_from_state(state)
@@ -1412,8 +1494,7 @@ class WorldSimulator:
             existing=state.reaction_history,
             reactions=state.character_actions if state.character_actions_are_reactions else [],
         )
-        proposals = []
-        for actor_id in actors_to_react:
+        async def propose_reaction_record(actor_id: str) -> CharacterActionProposalRecord:
             proposal = await self._character_simulator.propose_reaction(
                 world_id=world_id,
                 simulation_id=simulation_id,
@@ -1423,12 +1504,14 @@ class WorldSimulator:
                 reaction_history=reaction_history,
                 user_input=state.user_input or "",
             )
-            proposals.append(
-                CharacterActionProposalRecord(
-                    character_id=actor_id,
-                    proposal=proposal,
-                )
+            return CharacterActionProposalRecord(
+                character_id=actor_id,
+                proposal=proposal,
             )
+
+        proposals = await self._run_fan_out([
+            functools.partial(propose_reaction_record, actor_id) for actor_id in actors_to_react
+        ])
 
         return {
             "character_actions": proposals,
@@ -1753,39 +1836,55 @@ class WorldSimulator:
             candidate_ids.update(coordination.problem.involved_actor_ids)
 
         character_ids = sorted(memory_apply_result.memory_ids_by_character)
-        for character_id in character_ids[:self._MAX_RELATIONSHIP_UPDATE_PERSPECTIVES]:
-            try:
-                await self._emotion_updater.update_from_memories(
-                    simulation_id=simulation_id,
-                    character_id=character_id,
-                    turn_id=turn_id,
-                    memory_ids=memory_apply_result.memory_ids_by_character[character_id],
-                )
-            except Exception:
-                # Emotion inference is optional derived state and cannot suppress other updates.
-                pass
-            try:
-                await self._subjective_model_updater.update_from_memories(
-                    simulation_id=simulation_id,
-                    character_id=character_id,
-                    turn_id=turn_id,
-                    memory_ids=memory_apply_result.memory_ids_by_character[character_id],
-                    candidate_entity_ids=sorted(candidate_ids),
-                )
-            except Exception:
-                # Subjective synthesis is isolated derived state; committed turns remain valid.
-                pass
-            try:
-                await self._relationship_updater.update_from_memories(
-                    simulation_id=simulation_id,
-                    character_id=character_id,
-                    turn_id=turn_id,
-                    memory_ids=memory_apply_result.memory_ids_by_character[character_id],
-                    candidate_entity_ids=sorted(candidate_ids),
-                )
-            except Exception:
-                # Relationship inference is derived state and must not invalidate a committed turn.
-                continue
+        await self._run_fan_out([
+            functools.partial(
+                self._run_derived_updates_for_character,
+                simulation_id=simulation_id,
+                turn_id=turn_id,
+                character_id=character_id,
+                memory_ids=memory_apply_result.memory_ids_by_character[character_id],
+                candidate_ids=candidate_ids,
+            )
+            for character_id in character_ids[:self._MAX_RELATIONSHIP_UPDATE_PERSPECTIVES]
+        ])
+
+    async def _run_derived_updates_for_character(
+            self,
+            *,
+            simulation_id: str,
+            turn_id: str,
+            character_id: str,
+            memory_ids: list[str],
+            candidate_ids: set[str],
+    ) -> None:
+        """Emotion, subjective-belief, and relationship inference for one perspective.
+
+        Each is independent isolated derived state (they touch disjoint node types), so they run
+        concurrently; a failure in one must not suppress the others or invalidate the committed turn.
+        """
+        await asyncio.gather(
+            self._emotion_updater.update_from_memories(
+                simulation_id=simulation_id,
+                character_id=character_id,
+                turn_id=turn_id,
+                memory_ids=memory_ids,
+            ),
+            self._subjective_model_updater.update_from_memories(
+                simulation_id=simulation_id,
+                character_id=character_id,
+                turn_id=turn_id,
+                memory_ids=memory_ids,
+                candidate_entity_ids=sorted(candidate_ids),
+            ),
+            self._relationship_updater.update_from_memories(
+                simulation_id=simulation_id,
+                character_id=character_id,
+                turn_id=turn_id,
+                memory_ids=memory_ids,
+                candidate_entity_ids=sorted(candidate_ids),
+            ),
+            return_exceptions=True,
+        )
 
     async def route_after_input(self, state: WorldSimulatorState):
         if state.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:

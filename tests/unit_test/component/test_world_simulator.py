@@ -564,6 +564,53 @@ async def test_scheduled_actions_only_run_for_perceivers_who_are_not_busy():
     assert simulator._character_simulator.propose_actions.await_count == 3
 
 
+async def test_run_fan_out_preserves_call_order_regardless_of_completion_order():
+    simulator = WorldSimulator(database=Mock())
+    completion_order = []
+
+    async def make_call(index: int, delay: float):
+        await asyncio.sleep(delay)
+        completion_order.append(index)
+        return index * 10
+
+    # Dispatch out of completion order (index 0 finishes last) to prove the fan-out reorders
+    # results by dispatch index rather than by whichever task happens to finish first.
+    calls = [
+        (lambda i=0: make_call(0, 0.03)),
+        (lambda i=1: make_call(1, 0.0)),
+        (lambda i=2: make_call(2, 0.01)),
+    ]
+
+    results = await simulator._run_fan_out(calls)
+
+    assert results == [0, 10, 20]
+    assert completion_order != [0, 1, 2]
+
+
+async def test_run_fan_out_runs_calls_concurrently_not_sequentially():
+    simulator = WorldSimulator(database=Mock())
+    concurrent_count = 0
+    max_concurrent = 0
+
+    async def make_call():
+        nonlocal concurrent_count, max_concurrent
+        concurrent_count += 1
+        max_concurrent = max(max_concurrent, concurrent_count)
+        await asyncio.sleep(0.02)
+        concurrent_count -= 1
+        return None
+
+    await simulator._run_fan_out([make_call, make_call, make_call])
+
+    assert max_concurrent == 3
+
+
+async def test_run_fan_out_returns_empty_list_for_no_calls():
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator._run_fan_out([]) == []
+
+
 async def test_off_scene_activity_commits_in_background_and_attaches_to_trigger_turn():
     state = make_state(InputInterpretation(items=[]))
     state.perceiving_character_ids = ["scene"]

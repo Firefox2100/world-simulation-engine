@@ -98,13 +98,11 @@ class EntityRelationshipStore:
                     [label IN labels(target) | toLower(label)])
                 AND (EXISTS { MATCH (scope)-[:CONTAINS*0..]->(source) }
                     OR EXISTS {
-                        MATCH (scope:Simulation)-[:BASED_ON]->(:World)
-                            -[:CONTAINS]->(source:Item)
+                        MATCH (scope:Simulation)-[:BASED_ON]->(:World)-[:CONTAINS*0..]->(source)
                     })
                 AND (EXISTS { MATCH (scope)-[:CONTAINS*0..]->(target) }
                     OR EXISTS {
-                        MATCH (scope:Simulation)-[:BASED_ON]->(:World)
-                            -[:CONTAINS]->(target:Item)
+                        MATCH (scope:Simulation)-[:BASED_ON]->(:World)-[:CONTAINS*0..]->(target)
                     })
             OPTIONAL MATCH (perspective:Character {id: $perspective_character_id})
             WITH scope, source, target, perspective
@@ -221,8 +219,7 @@ class EntityRelationshipStore:
                 AND (
                     EXISTS { MATCH (scope)-[:CONTAINS*0..]->(entity) }
                     OR EXISTS {
-                        MATCH (scope:Simulation)-[:BASED_ON]->(:World)
-                            -[:CONTAINS]->(entity:Item)
+                        MATCH (scope:Simulation)-[:BASED_ON]->(:World)-[:CONTAINS*0..]->(entity)
                     }
                 )
                 AND any(label IN labels(entity) WHERE label IN $allowed_labels)

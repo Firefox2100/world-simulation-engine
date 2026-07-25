@@ -9,7 +9,7 @@ from world_simulation_engine.component.simulator.action_validator import ActionV
 from world_simulation_engine.component.simulator.character_simulator import CharacterSimulator
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 from world_simulation_engine.component.simulator.scene_coordinator import SceneCoordinator
-from world_simulation_engine.misc.enums import ActionType, ComponentType
+from world_simulation_engine.misc.enums import ActionType, ComponentType, SceneCoordinationStatus
 from world_simulation_engine.model import ActionCandidateSet, CharacterActionPlan, ProposedAction
 
 
@@ -18,6 +18,9 @@ EVALUATION_CASES = [
         "case_id": "user_ask_clara_about_room_7",
         "origin": "user",
         "actor_id": "character_arthur_moore",
+        # Clara is at the same location as Arthur (location_iron_stag_bar); plain speech
+        # addressed to someone present has no plausible blocker.
+        "expected_allowed": True,
         "actions": [
             {
                 "type": ActionType.SPEAK,
@@ -36,6 +39,9 @@ EVALUATION_CASES = [
         "case_id": "user_compare_visitor_ledger",
         "origin": "user",
         "actor_id": "character_arthur_moore",
+        # landmark_visitors_room_ledger is seeded at location_iron_stag_bar, Arthur's current
+        # location, so the "can get close enough" precondition is satisfiable.
+        "expected_allowed": True,
         "actions": [
             {
                 "type": ActionType.OBSERVE,
@@ -54,6 +60,9 @@ EVALUATION_CASES = [
         "case_id": "user_show_letter_signature_conditionally",
         "origin": "user",
         "actor_id": "character_arthur_moore",
+        # Nothing in the seeded state establishes that Clara has agreed to speak privately, so
+        # this required_precondition is unmet and must gate the action.
+        "expected_allowed": False,
         "actions": [
             {
                 "type": ActionType.MANIPULATE,
@@ -72,6 +81,9 @@ EVALUATION_CASES = [
         "case_id": "user_open_distant_filing_cabinet",
         "origin": "user",
         "actor_id": "character_arthur_moore",
+        # container_locked_filing_cabinet is seeded at location_observatory_directors_office,
+        # not Arthur's location (location_iron_stag_bar) - it is not reachable from context.
+        "expected_allowed": False,
         "actions": [
             {
                 "type": ActionType.MANIPULATE,
@@ -90,6 +102,10 @@ EVALUATION_CASES = [
         "case_id": "user_fire_laser_pistol",
         "origin": "user",
         "actor_id": "character_arthur_moore",
+        # The world is a 1912 mystery setting and Arthur's only seeded weapon is a pocket
+        # revolver (equipment_pocket_revolver) - no laser pistol exists to satisfy this
+        # precondition.
+        "expected_allowed": False,
         "actions": [
             {
                 "type": ActionType.ATTACK,
@@ -108,6 +124,7 @@ EVALUATION_CASES = [
         "case_id": "character_clara_greet_arthur",
         "origin": "character",
         "actor_id": "character_clara_whitlock",
+        "expected_allowed": True,
         "actions": [
             {
                 "type": ActionType.SPEAK,
@@ -126,6 +143,8 @@ EVALUATION_CASES = [
         "case_id": "character_clara_hand_receipt_to_arthur",
         "origin": "character",
         "actor_id": "character_clara_whitlock",
+        # item_room_7_cash_receipt is seeded as held/owned by Clara, and Arthur is present.
+        "expected_allowed": True,
         "actions": [
             {
                 "type": ActionType.GIVE,
@@ -144,6 +163,8 @@ EVALUATION_CASES = [
         "case_id": "character_clara_check_gossip_notebook",
         "origin": "character",
         "actor_id": "character_clara_whitlock",
+        # item_claras_gossip_notebook is seeded as held/owned by Clara.
+        "expected_allowed": True,
         "actions": [
             {
                 "type": ActionType.OBSERVE,
@@ -162,6 +183,7 @@ EVALUATION_CASES = [
         "case_id": "character_clara_walk_to_observatory",
         "origin": "character",
         "actor_id": "character_clara_whitlock",
+        "expected_allowed": True,
         "actions": [
             {
                 "type": ActionType.MOVE,
@@ -180,6 +202,9 @@ EVALUATION_CASES = [
         "case_id": "character_clara_cast_truth_spell",
         "origin": "character",
         "actor_id": "character_clara_whitlock",
+        # The world is explicitly non-magical (1912 mystery setting) and Clara has no seeded
+        # magic capability, so this precondition can never be established.
+        "expected_allowed": False,
         "actions": [
             {
                 "type": ActionType.OTHER,
@@ -469,6 +494,73 @@ def _allowed_actions_from_validation(validation) -> list[ProposedAction]:
     ]
 
 
+def _assert_validation_is_internally_consistent(validation, actions: list[ProposedAction]) -> None:
+    """Check the structural/semantic contract of an ActionValidationResult, not just its shape.
+
+    This is deliberately generic (no assumption about which specific actions were supplied) so it
+    applies to both the fixed EVALUATION_CASES and the free-text-derived INPUT_PIPELINE_CASES: the
+    validator must echo back the exact action it judged, and its allowed/blocking_conditions/reason
+    fields must not contradict each other, regardless of what the action actually was.
+    """
+    assert len(validation.validations) == len(actions)
+    assert [entry.action_index for entry in validation.validations] == list(range(len(actions)))
+    for entry, original_action in zip(validation.validations, actions):
+        assert entry.action.type == original_action.type
+        assert entry.action.label == original_action.label
+        assert entry.action.target_ids == original_action.target_ids
+        assert entry.reason.strip(), (
+            f"Action {entry.action_index} ({original_action.label}) has no reason stated"
+        )
+        if entry.allowed:
+            assert not entry.blocking_conditions, (
+                f"Action {entry.action_index} ({original_action.label}) was allowed but still "
+                f"listed blocking_conditions: {entry.blocking_conditions}"
+            )
+        else:
+            assert entry.blocking_conditions, (
+                f"Action {entry.action_index} ({original_action.label}) was blocked but stated "
+                "no blocking_conditions"
+            )
+
+
+def _assert_coordination_is_internally_consistent(coordination, actor_id: str, action_count: int) -> None:
+    """Check SceneCoordinationResult beyond `status`, which is a StrEnum and therefore always
+    truthy - `assert coordination.status` alone can never fail regardless of outcome.
+    """
+    for accepted in coordination.accepted_actions:
+        assert accepted.actor_id == actor_id
+        assert 0 <= accepted.action_index < action_count
+        assert accepted.summary.strip()
+    for pending in coordination.pending_actions:
+        assert pending.actor_id == actor_id
+        assert 0 <= pending.action_index < action_count
+        assert pending.reason.strip()
+    if coordination.status == SceneCoordinationStatus.PROBLEM:
+        assert coordination.problem is not None
+        assert coordination.problem.description.strip()
+    elif coordination.status == SceneCoordinationStatus.STOPPED:
+        assert coordination.stopped_reason
+
+
+def _assert_multi_actor_coordination_is_internally_consistent(coordination, action_plans) -> None:
+    """Same contract as `_assert_coordination_is_internally_consistent`, for a coordination call
+    that covers several actors' plans at once (so actor_id can't be pinned to a single value).
+    """
+    known_actor_ids = {plan.actor_id for plan in action_plans}
+    for accepted in coordination.accepted_actions:
+        assert accepted.actor_id in known_actor_ids
+        assert accepted.action_index >= 0
+        assert accepted.summary.strip()
+    for pending in coordination.pending_actions:
+        assert pending.actor_id in known_actor_ids
+        assert pending.reason.strip()
+    if coordination.status == SceneCoordinationStatus.PROBLEM:
+        assert coordination.problem is not None
+        assert coordination.problem.description.strip()
+    elif coordination.status == SceneCoordinationStatus.STOPPED:
+        assert coordination.stopped_reason
+
+
 def _action_plan(actor_id: str, actions: list[ProposedAction]) -> CharacterActionPlan:
     return CharacterActionPlan(
         actor_id=actor_id,
@@ -586,8 +678,11 @@ async def test_evaluate_action_validator_outputs_result(
         actions=actions,
     )
 
-    assert len(validation.validations) == len(actions)
-    assert [entry.action_index for entry in validation.validations] == list(range(len(actions)))
+    _assert_validation_is_internally_consistent(validation, actions)
+    assert validation.validations[0].allowed == case["expected_allowed"], (
+        f"Expected allowed={case['expected_allowed']} for case {case['case_id']!r}, got "
+        f"allowed={validation.validations[0].allowed} (reason: {validation.validations[0].reason!r})"
+    )
 
     _write_case_result(
         output_path=_output_path(),
@@ -679,8 +774,7 @@ async def test_evaluate_input_to_character_action_validation_outputs_result(
             actions=proposed_actions,
         )
 
-        assert len(validation.validations) == len(proposed_actions)
-        assert [entry.action_index for entry in validation.validations] == list(range(len(proposed_actions)))
+        _assert_validation_is_internally_consistent(validation, proposed_actions)
         character_validation_records.append(
             {
                 "character_id": fanout_character_id,
@@ -814,7 +908,7 @@ async def test_evaluate_input_to_character_action_coordination_outputs_result(
         action_plans=character_action_plans,
     )
 
-    assert character_coordination.status
+    _assert_multi_actor_coordination_is_internally_consistent(character_coordination, character_action_plans)
 
     _write_case_result(
         output_path=_character_action_coordination_from_input_output_path(),
@@ -889,8 +983,7 @@ async def test_evaluate_action_validator_from_input_outputs_result(
         actions=actions,
     )
 
-    assert len(validation.validations) == len(actions)
-    assert [entry.action_index for entry in validation.validations] == list(range(len(actions)))
+    _assert_validation_is_internally_consistent(validation, actions)
 
     _write_case_result(
         output_path=_validator_from_input_output_path(),
@@ -937,11 +1030,7 @@ async def test_evaluate_user_action_coordination_outputs_result(
         action_plans=[_action_plan(case["actor_id"], actions)],
     )
 
-    assert coordination.status
-    for accepted in coordination.accepted_actions:
-        assert accepted.actor_id == case["actor_id"]
-    for pending in coordination.pending_actions:
-        assert pending.actor_id == case["actor_id"]
+    _assert_coordination_is_internally_consistent(coordination, case["actor_id"], len(actions))
 
     _write_case_result(
         output_path=_user_coordination_output_path(),
@@ -1005,8 +1094,8 @@ async def test_evaluate_input_to_user_action_coordination_outputs_result(
         action_plans=[_action_plan(character_id, allowed_actions)],
     )
 
-    assert len(validation.validations) == len(actions)
-    assert coordination.status
+    _assert_validation_is_internally_consistent(validation, actions)
+    _assert_coordination_is_internally_consistent(coordination, character_id, len(allowed_actions))
 
     _write_case_result(
         output_path=_input_to_coordination_output_path(),

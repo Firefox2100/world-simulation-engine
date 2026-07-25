@@ -16,6 +16,24 @@ from workflow_helpers import (
 )
 
 
+def _assert_every_accepted_action_is_accounted_for(proposal, coordination) -> None:
+    """Every accepted action must be referenced by some operation or listed as unchanged.
+
+    Replaces a previous `assert proposal.operations or proposal.unchanged_action_refs or
+    proposal.committer_notes` check, which was satisfied by a single stray committer_notes
+    string even if every actual accepted action was silently dropped.
+    """
+    accepted_refs = {f"accepted:{index}" for index in range(len(coordination.accepted_actions))}
+    referenced_refs = set(proposal.unchanged_action_refs)
+    for operation in proposal.operations:
+        referenced_refs.update(operation.source_action_refs)
+    missing = accepted_refs - referenced_refs
+    assert not missing, (
+        f"Accepted action(s) {sorted(missing)} were not accounted for by any operation or "
+        "unchanged_action_refs"
+    )
+
+
 def _synthetic_output_path() -> Path:
     return Path(
         os.getenv(
@@ -70,7 +88,18 @@ async def test_evaluate_state_committer_outputs_proposal(
         )
 
     if coordination.accepted_actions:
-        assert proposal.operations or proposal.unchanged_action_refs or proposal.committer_notes
+        _assert_every_accepted_action_is_accounted_for(proposal, coordination)
+
+    if case["case_id"] == "clara_hands_receipt":
+        # An unambiguous physical possession transfer: Clara gives Arthur a specific item she
+        # holds. The committer must record a relationship change moving that item, not just
+        # emit notes or leave it as "unchanged".
+        assert any(
+            operation.type == "relationship_change"
+            and operation.relationship_type in ("held_by", "owned_by")
+            and "item_room_7_cash_receipt" in (operation.subject.id, (operation.object or operation.subject).id)
+            for operation in proposal.operations
+        ), "Expected a held_by/owned_by relationship_change moving item_room_7_cash_receipt to Arthur"
 
     _write_state_commit_result(
         output_path=_synthetic_output_path(),
@@ -128,7 +157,7 @@ async def test_evaluate_input_to_state_committer_outputs_proposal(
     )
 
     if pipeline["character_coordination"].accepted_actions:
-        assert proposal.operations or proposal.unchanged_action_refs or proposal.committer_notes
+        _assert_every_accepted_action_is_accounted_for(proposal, pipeline["character_coordination"])
 
     _write_state_commit_result(
         output_path=_pipeline_output_path(),

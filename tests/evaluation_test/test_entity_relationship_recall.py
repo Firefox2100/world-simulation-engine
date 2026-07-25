@@ -81,18 +81,27 @@ async def test_evaluate_relationship_updater_returns_audited_memory_grounded_cha
         component=ComponentType.MEMORY_SUMMARIZER,
     )
 
+    candidate_entity_ids = ["character_clara_whitlock", "location_old_mine_entrance"]
+    # Confirms the test's own fixture references are real seeded entities, so an empty result
+    # below can be trusted to reflect the model's decision rather than a broken test setup.
+    resolved_candidates = await evaluation_seeded_database.entity_relationship.resolve_entity_refs(
+        scope_id=simulation_id,
+        entity_ids=candidate_entity_ids,
+    )
+    assert len(resolved_candidates) == len(candidate_entity_ids)
+
     result = await RelationshipUpdater(database=evaluation_seeded_database).update_from_memories(
         simulation_id=simulation_id,
         character_id="character_arthur_moore",
         turn_id=mock_graph_world_setup.initial_turn.id,
         memory_ids=["memory_disappearance_threads"],
-        candidate_entity_ids=[
-            "character_clara_whitlock",
-            "location_old_mine_entrance",
-        ],
+        candidate_entity_ids=candidate_entity_ids,
     )
 
-    assert len(result.applied_relationship_ids) <= 2
+    # The seeded memory is a neutral investigative summary rather than an unambiguous
+    # relationship-changing event, so a genuinely correct model could apply 0-2 changes; both
+    # outcomes are checked so the test can't pass by silently skipping an empty result.
+    assert 0 <= len(result.applied_relationship_ids) <= 2
     assert len(result.audit_ids) == len(result.applied_relationship_ids)
     for relationship_id in result.applied_relationship_ids:
         relationship = await evaluation_seeded_database.entity_relationship.get_relationship(

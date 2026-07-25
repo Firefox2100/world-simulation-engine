@@ -121,6 +121,29 @@ async def test_evaluate_input_interpreter_outputs_result(
         user_input=case["user_input"],
     )
 
+    # Every case describes an in-character attempt, so at least one item must be produced and
+    # at least one of them must be a "action" (not every case dumped entirely into unparsed_text
+    # or reduced to only an OOC command).
+    assert interpretation.items, f"No items were parsed for case {case['case_id']!r}"
+    action_items = [item for item in interpretation.items if item.type == "action"]
+    ooc_items = [item for item in interpretation.items if item.type == "ooc"]
+    assert action_items, f"No action item was parsed for case {case['case_id']!r}"
+
+    # source_text is documented as "the exact source span"; it must actually come from the
+    # original input, not be a paraphrase or hallucinated span.
+    for item in interpretation.items:
+        assert item.source_text.strip()
+        assert item.source_text in case["user_input"], (
+            f"source_text {item.source_text!r} is not a literal span of the case input"
+        )
+
+    if case["case_id"] == "mixed_speech_and_ooc":
+        # This input contains an unambiguous, syntactically self-contained OOC marker
+        # ("[/OOC: Keep the interpretation focused on the attempted action.]"), separate from
+        # the in-character speech that precedes it - the interpreter must not merge the two.
+        assert ooc_items, "The explicit [/OOC: ...] marker was not extracted as an OOCCommand"
+        assert ooc_items[0].command_text == "Keep the interpretation focused on the attempted action."
+
     _write_case_result(
         output_path=_output_path(),
         world_id=mock_graph_world_setup.world.id,

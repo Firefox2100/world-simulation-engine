@@ -3,10 +3,11 @@ from uuid import uuid4
 
 from world_simulation_engine.misc.enums import MemoryStance, MemorySupportType, Salience, TurnType
 from world_simulation_engine.model import (
-    Event, MemoryAtom, RelationshipEntityRef, Simulation, SubjectiveClaimChangeAudit,
+    Event, Location, MemoryAtom, RelationshipEntityRef, Simulation, SubjectiveClaimChangeAudit,
     SubjectiveEntityClaim, Turn,
 )
 from world_simulation_engine.service.database.event_store import EventStore
+from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.subjective_entity_claim_store import SubjectiveEntityClaimStore
@@ -52,3 +53,27 @@ async def test_claim_crud_is_observer_scoped_versioned_and_audited(clean_neo4j):
         previous_state=claim.model_dump(mode="json"), new_state=updated.model_dump(mode="json"),
     )
     assert await store.create_change_audit(audit) == audit
+
+
+async def test_claim_about_world_scoped_location_subject_can_be_created(clean_neo4j):
+    """Locations are attached to the World, not the Simulation. A claim's subject-reachability
+    check (scoped to the Simulation) must still find them via Simulation-[:BASED_ON]->World, not
+    only entities attached directly to the Simulation or the previously Item-only special case.
+    """
+    world = await create_world(clean_neo4j)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    simulation = Simulation(id=str(uuid4()), name="Location claims", current_time=now)
+    await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+    observer = await create_character(clean_neo4j, simulation.id, name="Observer")
+    location = Location(id=str(uuid4()), name="Old Mine Entrance", description="A sealed mine entrance.")
+    await LocationStore(clean_neo4j).create_location(location=location, source_id=world.id)
+
+    claim = SubjectiveEntityClaim(
+        simulation_id=simulation.id, observer_character_id=observer.id,
+        subject=RelationshipEntityRef(type="location", id=location.id, name=location.name),
+        category="risk", statement="The old mine entrance feels unsafe.",
+        normalized_statement="the old mine entrance feels unsafe", stance="believes", confidence=.6,
+        supporting_memory_ids=[], first_observed_at=now, last_updated_at=now,
+    )
+    store = SubjectiveEntityClaimStore(clean_neo4j)
+    assert await store.create_claim(claim) == claim

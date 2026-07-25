@@ -1,3 +1,4 @@
+import contextvars
 from datetime import datetime, timedelta
 from math import exp, log, sqrt
 from typing import Optional
@@ -155,8 +156,14 @@ class CharacterSimulator(SimulatorComponent):
             langfuse_handler=langfuse_handler
         )
         self._memory_retriever = MemoryRetriever(database)
-        self._last_memory_retrieval_diagnostics: MemoryRetrievalDiagnostics | None = None
-        self._last_retrieved_memory_ids: list[str] = []
+        # Diagnostics from the most recent _recall_memory call, scoped via contextvars (not plain
+        # instance attributes) so concurrent propose_actions/propose_reaction calls for different
+        # characters - e.g. run together with asyncio.gather - each see their own call's values
+        # instead of racing on a single shared attribute.
+        self._last_memory_retrieval_diagnostics_var: contextvars.ContextVar[MemoryRetrievalDiagnostics | None] = \
+            contextvars.ContextVar("last_memory_retrieval_diagnostics", default=None)
+        self._last_retrieved_memory_ids_var: contextvars.ContextVar[list[str]] = \
+            contextvars.ContextVar("last_retrieved_memory_ids", default=[])
 
     async def _prepare_embed_service(self,
                                      simulation_id: str,
@@ -249,13 +256,13 @@ class CharacterSimulator(SimulatorComponent):
             query_embedding=query_embedding,
             embed_service=embed_service,
         )
-        self._last_memory_retrieval_diagnostics = result.diagnostics
-        self._last_retrieved_memory_ids = [entry.memory.id for entry in result.memories]
+        self._last_memory_retrieval_diagnostics_var.set(result.diagnostics)
+        self._last_retrieved_memory_ids_var.set([entry.memory.id for entry in result.memories])
         return result.memories
 
     @property
     def last_memory_retrieval(self) -> tuple[MemoryRetrievalDiagnostics | None, list[str]]:
-        return self._last_memory_retrieval_diagnostics, list(self._last_retrieved_memory_ids)
+        return self._last_memory_retrieval_diagnostics_var.get(), list(self._last_retrieved_memory_ids_var.get())
 
     async def _recall_intents(self,
                               simulation: Simulation,
@@ -386,7 +393,7 @@ class CharacterSimulator(SimulatorComponent):
             perceived_containers=perspective.perceived_containers,
             perceived_landmarks=perspective.perceived_landmarks,
             relevant_memories=relevant_memories,
-            memory_retrieval=self._last_memory_retrieval_diagnostics,
+            memory_retrieval=self._last_memory_retrieval_diagnostics_var.get(),
             relationships=relationships,
             subjective_claims=subjective_claims,
             emotion=emotion,

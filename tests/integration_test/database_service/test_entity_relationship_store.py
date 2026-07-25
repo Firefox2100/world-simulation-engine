@@ -7,17 +7,20 @@ from world_simulation_engine.model import (
     EntityRelationship,
     Event,
     InterpersonalRelationshipDetails,
+    Location,
     MemoryAtom,
     RelationshipChangeAudit,
     RelationshipEntityRef,
     RelationshipScope,
     RelationshipVisibility,
     Simulation,
+    SpatialRelationshipDetails,
     Turn,
 )
 from world_simulation_engine.service.database.entity_relationship_store import EntityRelationshipStore
 from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.event_store import EventStore
+from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
@@ -262,3 +265,48 @@ async def test_world_relationships_copy_to_simulation_with_remapped_entities(cle
     assert copied[0].source.id == id_map[source.id]
     assert copied[0].target.id == id_map[target.id]
     assert copied[0].id != template.id
+
+
+async def test_world_scoped_location_resolves_and_relates_under_simulation_scope(clean_neo4j):
+    """Locations (and other world-attached entities) are created under the World, not the
+    Simulation, but relationship queries scoped to a Simulation must still be able to find and
+    relate them via the Simulation-[:BASED_ON]->World hop - not only for Item, which previously
+    had a narrow special case while Location/Landmark/etc. silently never resolved.
+    """
+    world = await create_world(clean_neo4j)
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="World-scoped entity simulation",
+        description="Regression test for Simulation-scoped queries over World-attached entities",
+        current_time=now,
+    )
+    await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+    alex = await create_character(clean_neo4j, simulation.id, name="Alex")
+
+    location = Location(id=str(uuid4()), name="Old Mine Entrance", description="A sealed mine entrance.")
+    await LocationStore(clean_neo4j).create_location(location=location, source_id=world.id)
+
+    resolved = await EntityRelationshipStore(clean_neo4j).resolve_entity_refs(
+        scope_id=simulation.id,
+        entity_ids=[alex.id, location.id],
+    )
+    assert {entity.id for entity in resolved} == {alex.id, location.id}
+
+    relationship = EntityRelationship(
+        scope_type=RelationshipScope.SIMULATION,
+        scope_id=simulation.id,
+        source=RelationshipEntityRef(type="character", id=alex.id, name=alex.name),
+        target=RelationshipEntityRef(type="location", id=location.id, name=location.name),
+        label="avoids",
+        private_description="Alex avoids the old mine entrance.",
+        visibility=RelationshipVisibility.PRIVATE,
+        perspective_character_id=alex.id,
+        confidence=0.8,
+        details=SpatialRelationshipDetails(distance_metres=None, travel_time_seconds=600),
+        created_at=now,
+        last_changed_at=now,
+    )
+    store = EntityRelationshipStore(clean_neo4j)
+    assert await store.create_relationship(relationship) == relationship
+    assert await store.get_relationship(relationship.id) == relationship
