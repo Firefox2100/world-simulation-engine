@@ -6,12 +6,16 @@ os.environ.setdefault("WSE_NEO4J_PASSWORD", "testpassword")
 
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.workflow_loader import WorkflowLoader
-from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
-from world_simulation_engine.model import Location, MediaFile, PromptMediaFile, Simulation, WorkflowMediaFile
+from world_simulation_engine.misc.enums import ComponentType, ImageGenerationType, MediaType, SupportedLanguage, \
+    TurnType
+from world_simulation_engine.model import Character, CurrentActivity, GeneratedImageMediaFile, Location, MediaFile, \
+    PromptMediaFile, Simulation, Turn, WorkflowMediaFile
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.media_store import MediaStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
+from world_simulation_engine.service.database.turn_store import TurnStore
 from world_simulation_engine.service.storage_service import StorageService
 from tests.integration_test.database_service.helpers import create_world
 
@@ -351,3 +355,132 @@ async def test_workflow_loader_prefers_simulation_override_then_world_then_built
     assert inherited["version"] == "World override"
     assert overridden["version"] == "Simulation override"
     assert "positive_prompt" in builtin
+
+
+async def test_generated_image_links_to_entities_and_turn(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    media_store = MediaStore(clean_neo4j)
+    location_store = LocationStore(clean_neo4j)
+    character_store = CharacterStore(clean_neo4j)
+    turn_store = TurnStore(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    simulation = await simulation_store.create_simulation(
+        Simulation(
+            id=str(uuid4()),
+            name="Simulation",
+            description="A simulation",
+            current_time=world.starting_time,
+        ),
+        world.id,
+    )
+    location = await location_store.create_location(
+        Location(id=str(uuid4()), name="Tavern", description="A dim tavern"),
+        source_id=simulation.id,
+    )
+    character = await character_store.create_character(
+        Character(
+            id=str(uuid4()),
+            name="Clara",
+            age=42,
+            gender="female",
+            appearance="Weathered hands",
+            description="The innkeeper",
+            public_state="Behind the bar",
+            private_state="Careful",
+            current_activity=CurrentActivity(name="serving"),
+        ),
+        simulation.id,
+        location_id=location.id,
+    )
+    turn = await turn_store.create_turn(
+        Turn(
+            id=str(uuid4()),
+            sequence=1,
+            type=TurnType.SYSTEM_RESPONSE,
+            content="Clara pours a drink for the stranger.",
+            start_time=world.starting_time,
+        ),
+        source_id=simulation.id,
+    )
+    generated_media = GeneratedImageMediaFile(
+        id=str(uuid4()),
+        hash="c" * 64,
+        filename="scene",
+        generation_type=ImageGenerationType.SCENE,
+        component=ComponentType.SCENE_IMAGE_GENERATOR,
+        workflow_name="scene",
+        positive_tags=["tavern", "warm lighting"],
+        positive_description="Clara pours a drink for a stranger at the bar.",
+        negative_prompt="blurry, low quality",
+    )
+
+    assert await media_store.create_media(generated_media) == generated_media
+    assert await media_store.get_media(generated_media.id) == generated_media
+
+    assert await media_store.add_generated_image_link(location.id, generated_media.id) == generated_media
+    assert await media_store.add_generated_image_link(character.id, generated_media.id) == generated_media
+    assert await media_store.list_generated_images(location.id) == [generated_media]
+    assert await media_store.list_generated_images(character.id) == [generated_media]
+
+    assert await media_store.link_turn_generated_image(turn.id, generated_media.id) == generated_media
+    assert await media_store.list_turn_generated_images(turn.id) == [generated_media]
+
+    # A generated image is independent of the ordinary HAS_MEDIA/HAS_COVER relationships.
+    assert await media_store.list_source_media(character.id) == []
+    assert await media_store.get_cover_image(character.id) is None
+
+
+async def test_get_last_turn_sequence_with_generated_image(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    media_store = MediaStore(clean_neo4j)
+    turn_store = TurnStore(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    simulation = await simulation_store.create_simulation(
+        Simulation(
+            id=str(uuid4()),
+            name="Simulation",
+            description="A simulation",
+            current_time=world.starting_time,
+        ),
+        world.id,
+    )
+
+    assert await media_store.get_last_turn_sequence_with_generated_image(simulation.id) is None
+
+    first_turn = await turn_store.create_turn(
+        Turn(
+            id=str(uuid4()), sequence=1, type=TurnType.SYSTEM_RESPONSE,
+            content="Nothing much happens.", start_time=world.starting_time,
+        ),
+        source_id=simulation.id,
+    )
+    second_turn = await turn_store.create_turn(
+        Turn(
+            id=str(uuid4()), sequence=2, type=TurnType.SYSTEM_RESPONSE,
+            content="Clara pours a drink.", start_time=world.starting_time,
+        ),
+        source_id=simulation.id,
+    )
+    third_turn = await turn_store.create_turn(
+        Turn(
+            id=str(uuid4()), sequence=3, type=TurnType.SYSTEM_RESPONSE,
+            content="Quiet again.", start_time=world.starting_time,
+        ),
+        source_id=simulation.id,
+    )
+    generated_media = GeneratedImageMediaFile(
+        id=str(uuid4()),
+        hash="d" * 64,
+        filename="scene",
+        generation_type=ImageGenerationType.SCENE,
+        component=ComponentType.SCENE_IMAGE_GENERATOR,
+        workflow_name="scene",
+        canonical_tags=["tavern", "warm lighting"],
+        canonical_description="Clara pours a drink for a stranger at the bar.",
+    )
+    await media_store.create_media(generated_media)
+    await media_store.link_turn_generated_image(second_turn.id, generated_media.id)
+
+    assert await media_store.get_last_turn_sequence_with_generated_image(simulation.id) == 2
+    assert first_turn.sequence == 1
+    assert third_turn.sequence == 3

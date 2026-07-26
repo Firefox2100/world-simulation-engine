@@ -542,3 +542,47 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
             ],
         },
     ).status_code == 404
+
+
+def test_simulation_image_generation_config_get_and_update(config_api):
+    client = config_api.client
+
+    default_response = client.get(f"/simulations/{config_api.simulation.id}/image-generation-config")
+
+    assert default_response.status_code == 200
+    assert default_response.json()["mode"] == "manual"
+    assert default_response.json()["fallback_turns"] == 10
+
+    update_response = client.put(
+        f"/simulations/{config_api.simulation.id}/image-generation-config",
+        json={"mode": "auto", "fallback_turns": 5},
+    )
+
+    assert update_response.status_code == 200
+    body = update_response.json()
+    assert body["mode"] == "auto"
+    assert body["fallback_turns"] == 5
+
+    get_response = client.get(f"/simulations/{config_api.simulation.id}/image-generation-config")
+    assert get_response.json()["mode"] == "auto"
+    assert get_response.json()["fallback_turns"] == 5
+    # Updating again reuses the same config node rather than creating a new one.
+    assert get_response.json()["id"] == body["id"]
+
+    always_response = client.put(
+        f"/simulations/{config_api.simulation.id}/image-generation-config",
+        json={"mode": "always", "fallback_turns": 5},
+    )
+    assert always_response.json()["id"] == body["id"]
+    assert always_response.json()["mode"] == "always"
+
+
+def test_simulation_image_generation_config_missing_simulation_returns_404(config_api):
+    client = config_api.client
+    missing_id = str(uuid4())
+
+    assert client.get(f"/simulations/{missing_id}/image-generation-config").status_code == 404
+    assert client.put(
+        f"/simulations/{missing_id}/image-generation-config",
+        json={"mode": "auto", "fallback_turns": 5},
+    ).status_code == 404

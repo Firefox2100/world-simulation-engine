@@ -557,6 +557,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "description": "Updated through the simulation API",
         "current_time": "2026-03-01T12:00:00Z",
         "emotion_enabled": False,
+        "suggested_actions": [],
     }
 
     delete_response = client.delete(f"/simulations/{created_simulation['id']}")

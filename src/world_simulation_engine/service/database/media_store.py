@@ -1,7 +1,7 @@
 from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
-from world_simulation_engine.model import MediaFile, PromptMediaFile, WorkflowMediaFile
+from world_simulation_engine.model import GeneratedImageMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
 
 
 def _media_from_node(media_node) -> MediaFile:
@@ -18,6 +18,18 @@ def _media_from_node(media_node) -> MediaFile:
             prompt_name=media_node["prompt_name"],
             language=media_node["language"],
             component=media_node.get("component"),
+        )
+    if media_node.get("generation_type") is not None:
+        return GeneratedImageMediaFile(
+            **data,
+            generation_type=media_node["generation_type"],
+            component=media_node["component"],
+            workflow_name=media_node["workflow_name"],
+            canonical_tags=media_node.get("canonical_tags") or [],
+            canonical_description=media_node.get("canonical_description") or "",
+            transient_tags=media_node.get("transient_tags") or [],
+            transient_description=media_node.get("transient_description") or "",
+            negative_prompt=media_node.get("negative_prompt"),
         )
     if media_node.get("workflow_name") is not None:
         return WorkflowMediaFile(
@@ -51,7 +63,13 @@ class MediaStore:
                 prompt_name: $prompt_name,
                 language: $language,
                 component: $component,
-                workflow_name: $workflow_name
+                workflow_name: $workflow_name,
+                generation_type: $generation_type,
+                canonical_tags: $canonical_tags,
+                canonical_description: $canonical_description,
+                transient_tags: $transient_tags,
+                transient_description: $transient_description,
+                negative_prompt: $negative_prompt
             })
             RETURN m
             """,
@@ -65,6 +83,12 @@ class MediaStore:
                 "language": getattr(media, "language", None),
                 "component": getattr(media, "component", None),
                 "workflow_name": getattr(media, "workflow_name", None),
+                "generation_type": getattr(media, "generation_type", None),
+                "canonical_tags": getattr(media, "canonical_tags", None),
+                "canonical_description": getattr(media, "canonical_description", None),
+                "transient_tags": getattr(media, "transient_tags", None),
+                "transient_description": getattr(media, "transient_description", None),
+                "negative_prompt": getattr(media, "negative_prompt", None),
             },
         )
 
@@ -261,6 +285,96 @@ class MediaStore:
 
         record = result.records[0] if result.records else None
         return bool(record and record["source_count"])
+
+    async def add_generated_image_link(self,
+                                       source_id: str,
+                                       media_id: str,
+                                       ) -> MediaFile | None:
+        """Record that a generated image depicts source_id, independent of cover-image selection."""
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (source:{self._MEDIA_SOURCE_LABELS} {{id: $source_id}})
+            MATCH (media:Media {{id: $media_id}})
+            MERGE (source)-[:HAS_IMAGE]->(media)
+            RETURN media LIMIT 1
+            """,
+            parameters_={
+                "source_id": source_id,
+                "media_id": media_id,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _media_from_node(record["media"])
+
+    async def list_generated_images(self, source_id: str) -> list[MediaFile]:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (source:{self._MEDIA_SOURCE_LABELS} {{id: $source_id}})
+            MATCH (source)-[:HAS_IMAGE]->(media:Media)
+            RETURN DISTINCT media
+            ORDER BY media.filename, media.id
+            """,
+            parameters_={"source_id": source_id},
+        )
+
+        return [
+            _media_from_node(record["media"])
+            for record in result.records
+        ]
+
+    async def link_turn_generated_image(self,
+                                        turn_id: str,
+                                        media_id: str,
+                                        ) -> MediaFile | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (turn:Turn {id: $turn_id})
+            MATCH (media:Media {id: $media_id})
+            MERGE (turn)-[:GENERATES_IMAGE]->(media)
+            RETURN media LIMIT 1
+            """,
+            parameters_={
+                "turn_id": turn_id,
+                "media_id": media_id,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _media_from_node(record["media"])
+
+    async def list_turn_generated_images(self, turn_id: str) -> list[MediaFile]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Turn {id: $turn_id})-[:GENERATES_IMAGE]->(media:Media)
+            RETURN DISTINCT media
+            ORDER BY media.filename, media.id
+            """,
+            parameters_={"turn_id": turn_id},
+        )
+
+        return [
+            _media_from_node(record["media"])
+            for record in result.records
+        ]
+
+    async def get_last_turn_sequence_with_generated_image(self, simulation_id: str) -> int | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(turn:Turn)-[:GENERATES_IMAGE]->(:Media)
+            RETURN max(turn.sequence) AS last_sequence
+            """,
+            parameters_={"simulation_id": simulation_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return record["last_sequence"] if record else None
 
     async def list_prompt_media(self,
                                 world_id: str | None = None,

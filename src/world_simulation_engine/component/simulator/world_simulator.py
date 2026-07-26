@@ -23,9 +23,12 @@ from world_simulation_engine.model import AcceptedSceneAction, ActionValidationR
     GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, \
     PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Turn, \
     TurnPresentationBlock, TurnPresentationRendering, SimulationAuditEvent
+from world_simulation_engine.component.image_generator import TurnImageTrigger
 from world_simulation_engine.component.prompt_loader import PromptLoader
+from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.audit_service import AuditService
+from world_simulation_engine.service.storage_service import StorageService
 from .action_suggester import ActionSuggester
 from .action_validator import ActionValidator
 from .character_simulator import CharacterSimulator
@@ -200,13 +203,22 @@ class WorldSimulator:
 
     def __init__(self,
                  database: DatabaseService,
+                 storage: StorageService | None = None,
                  prompt_loader: PromptLoader | None = None,
+                 workflow_loader: WorkflowLoader | None = None,
                  langfuse_handler: CallbackHandler | None = None,
                  ):
         self._db = database
         self._audit = AuditService(database)
         self._prompt_loader = prompt_loader
         self._langfuse_handler = langfuse_handler
+        self._turn_image_trigger = TurnImageTrigger(
+            database=database,
+            storage=storage,
+            workflow_loader=workflow_loader,
+            prompt_loader=prompt_loader,
+        )
+        self._turn_image_generation_tasks: set[asyncio.Task] = set()
 
         self._action_suggester = ActionSuggester(
             database=database,
@@ -622,12 +634,13 @@ class WorldSimulator:
         return bool(normalized_name and f" {normalized_name} " in f" {normalized_text} ")
 
     async def shutdown(self):
-        tasks = list(self._off_scene_workers.values())
+        tasks = list(self._off_scene_workers.values()) + list(self._turn_image_generation_tasks)
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._off_scene_workers.clear()
+        self._turn_image_generation_tasks.clear()
 
     def _graph_for_request_type(self, request_type: SimulationGenerationRequestType) -> CompiledStateGraph:
         if request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
@@ -763,6 +776,30 @@ class WorldSimulator:
             simulation_time=state.simulation.current_time,
         ))
         return generation
+
+    def _schedule_turn_image_generation(
+            self,
+            *,
+            simulation_id: str,
+            turn: Turn,
+            narration: str,
+            coordination_result: SceneCoordinationResult,
+    ) -> None:
+        """Fire-and-forget: evaluate the simulation's image generation mode and, if triggered,
+        generate a scene image for this turn. Runs fully in the background so it never delays the
+        turn's own graph run or streamed output."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._turn_image_trigger.maybe_generate(
+            simulation_id=simulation_id,
+            turn=turn,
+            narration=narration,
+            coordination_result=coordination_result,
+        ))
+        self._turn_image_generation_tasks.add(task)
+        task.add_done_callback(self._turn_image_generation_tasks.discard)
 
     def _ensure_off_scene_worker(self, simulation_id: str):
         worker = self._off_scene_workers.get(simulation_id)
@@ -1891,6 +1928,12 @@ class WorldSimulator:
                 }),
                 trigger_turn=turn,
             )
+        self._schedule_turn_image_generation(
+            simulation_id=simulation_id,
+            turn=turn,
+            narration=Narrator.render_text(state.narration),
+            coordination_result=state.character_action_coordination,
+        )
         return {
             "committed_turn": turn,
             "state_commit_proposal": proposal,
@@ -1934,6 +1977,12 @@ class WorldSimulator:
                 "user_action_coordination": coordination,
             }),
             trigger_turn=turn,
+        )
+        self._schedule_turn_image_generation(
+            simulation_id=state.simulation.id,
+            turn=turn,
+            narration=Narrator.render_text(state.narration) or state.user_input,
+            coordination_result=coordination,
         )
         return {
             "committed_turn": turn,

@@ -12,6 +12,8 @@ class Prompts(TypedDict, total=False):
     action_reaction: list[dict]
     action_suggester: list[dict]
     action_validator: list[dict]
+    image_prompt_builder: list[dict]
+    image_transient_prompt_builder: list[dict]
     input_interpreter: list[dict]
     memory_summarizer: list[dict]
     emotion_updater: list[dict]
@@ -28,10 +30,14 @@ class Prompts(TypedDict, total=False):
     resolve_perceived_equipment: list[dict]
     resolve_perceived_containers: list[dict]
     resolve_perceived_landmarks: list[dict]
+    turn_image_trigger: list[dict]
 
 
 class Workflows(TypedDict, total=False):
     character: dict[str, Any]
+    location: dict[str, Any]
+    item: dict[str, Any]
+    scene: dict[str, Any]
 
 
 PROMPT_NAMES = [
@@ -39,6 +45,8 @@ PROMPT_NAMES = [
     "action_reaction",
     "action_suggester",
     "action_validator",
+    "image_prompt_builder",
+    "image_transient_prompt_builder",
     "input_interpreter",
     "memory_summarizer",
     "emotion_updater",
@@ -55,11 +63,15 @@ PROMPT_NAMES = [
     "resolve_perceived_equipment",
     "resolve_perceived_containers",
     "resolve_perceived_landmarks",
+    "turn_image_trigger",
 ]
 
 
 WORKFLOW_NAMES = [
     "character",
+    "location",
+    "item",
+    "scene",
 ]
 
 

@@ -242,3 +242,17 @@ export async function setSimulationEmbeddingConfigs(simulationId, assignments) {
         body: JSON.stringify({ assignments }),
     });
 }
+
+export async function fetchSimulationImageGenerationConfig(simulationId) {
+    return apiRequest(`/simulations/${simulationId}/image-generation-config`);
+}
+
+export async function setSimulationImageGenerationConfig(simulationId, config) {
+    return apiRequest(`/simulations/${simulationId}/image-generation-config`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}

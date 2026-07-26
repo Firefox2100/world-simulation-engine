@@ -1,9 +1,10 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.component.image_generator import ItemImageGenerator, schedule_cover_image_generation
 from world_simulation_engine.model import Item, ItemStack
-from .utils import db_dep
+from .utils import db_dep, prompt_loader_dep, storage_dep, workflow_loader_dep
 
 
 item_router = APIRouter(
@@ -238,7 +239,15 @@ async def delete_item(item_id: str, db: db_dep):
 
 
 @item_router.post("/worlds/{world_id}/items", response_model=Item)
-async def create_item_in_world(world_id: str, item_data: ItemCreate, db: db_dep):
+async def create_item_in_world(
+        world_id: str,
+        item_data: ItemCreate,
+        db: db_dep,
+        storage: storage_dep,
+        workflow_loader: workflow_loader_dep,
+        prompt_loader: prompt_loader_dep,
+        background_tasks: BackgroundTasks,
+):
     world = await db.world.get_world(world_id)
     if not world:
         raise HTTPException(
@@ -254,11 +263,28 @@ async def create_item_in_world(world_id: str, item_data: ItemCreate, db: db_dep)
             detail=f"World {world_id} not found",
         )
 
+    schedule_cover_image_generation(
+        background_tasks,
+        generator=ItemImageGenerator(
+            database=db, storage=storage, workflow_loader=workflow_loader, prompt_loader=prompt_loader,
+        ),
+        source_id=world_id,
+        entity_id=created_item.id,
+    )
+
     return created_item
 
 
 @item_router.post("/simulations/{simulation_id}/items", response_model=Item)
-async def create_item_in_simulation(simulation_id: str, item_data: ItemCreate, db: db_dep):
+async def create_item_in_simulation(
+        simulation_id: str,
+        item_data: ItemCreate,
+        db: db_dep,
+        storage: storage_dep,
+        workflow_loader: workflow_loader_dep,
+        prompt_loader: prompt_loader_dep,
+        background_tasks: BackgroundTasks,
+):
     simulation = await db.simulation.get_simulation(simulation_id)
     if not simulation:
         raise HTTPException(
@@ -273,6 +299,15 @@ async def create_item_in_simulation(simulation_id: str, item_data: ItemCreate, d
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Simulation {simulation_id} not found",
         )
+
+    schedule_cover_image_generation(
+        background_tasks,
+        generator=ItemImageGenerator(
+            database=db, storage=storage, workflow_loader=workflow_loader, prompt_loader=prompt_loader,
+        ),
+        source_id=simulation_id,
+        entity_id=created_item.id,
+    )
 
     return created_item
 

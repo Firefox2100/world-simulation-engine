@@ -11,6 +11,10 @@ class ImageModelConfig(BaseModel):
     The configuration for an image generation model. This decides the model to use, sampling parameters, etc.
     """
 
+    id: str = Field(
+        default_factory=lambda: str(uuid4()),
+        description="Unique identifier for the model",
+    )
     model: Optional[str] = Field(
         None,
         description="Name of the model to use",

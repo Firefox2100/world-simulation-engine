@@ -41,6 +41,11 @@ class ComponentType(StrEnum):
     SCENE_COORDINATOR = "scene_coordinator"
     STATE_COMMITTER = "state_committer"
     CHARACTER_IMAGE_GENERATOR = "character_image_generator"
+    CHARACTER_PORTRAIT_IMAGE_GENERATOR = "character_portrait_image_generator"
+    LOCATION_IMAGE_GENERATOR = "location_image_generator"
+    ITEM_IMAGE_GENERATOR = "item_image_generator"
+    SCENE_IMAGE_GENERATOR = "scene_image_generator"
+    TURN_IMAGE_TRIGGER = "turn_image_trigger"
 
 
 class ConnectionType(StrEnum):
@@ -98,6 +103,18 @@ class SceneCoordinationStatus(StrEnum):
     COMPLETE = "complete"
     PROBLEM = "problem"
     STOPPED = "stopped"
+
+
+class ImageGenerationType(StrEnum):
+    STATE = "state"
+    CHARACTER_PORTRAIT = "character_portrait"
+    SCENE = "scene"
+
+
+class ImageGenerationMode(StrEnum):
+    MANUAL = "manual"
+    AUTO = "auto"
+    ALWAYS = "always"
 
 
 class MediaType(StrEnum):

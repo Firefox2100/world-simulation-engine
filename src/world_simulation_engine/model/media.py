@@ -2,7 +2,7 @@ from uuid import uuid4
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import MediaType
+from world_simulation_engine.misc.enums import ImageGenerationType, MediaType
 from world_simulation_engine.misc.enums import ComponentType, SupportedLanguage
 
 
@@ -56,4 +56,47 @@ class WorkflowMediaFile(MediaFile):
     workflow_name: str = Field(
         ...,
         description="Name of the workflow in package workflow data",
+    )
+
+
+class GeneratedImageMediaFile(MediaFile):
+    type: MediaType = Field(
+        MediaType.PNG,
+        description="Type of the generated image media file",
+    )
+    generation_type: ImageGenerationType = Field(
+        ...,
+        description="What kind of generation produced this image",
+    )
+    component: ComponentType = Field(
+        ...,
+        description="The image generator component that produced this image",
+    )
+    workflow_name: str = Field(
+        ...,
+        description="Name of the ComfyUI workflow used to produce this image",
+    )
+    canonical_tags: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Short tag-style keywords for this entity's permanent identity (look, build, hair, "
+            "fixed environment features, permanent objects), reused unchanged across generations "
+            "to prevent visual drift"
+        ),
+    )
+    canonical_description: str = Field(
+        "",
+        description="Natural language description of this entity's permanent identity, reused unchanged across generations",
+    )
+    transient_tags: list[str] = Field(
+        default_factory=list,
+        description="Short tag-style keywords for this specific image's situational state (clothing, expression, activity, time of day, temporary props)",
+    )
+    transient_description: str = Field(
+        "",
+        description="Natural language description of this specific image's pose, relationship, and interaction",
+    )
+    negative_prompt: Optional[str] = Field(
+        None,
+        description="Negative prompt used to steer the generation away from unwanted qualities",
     )

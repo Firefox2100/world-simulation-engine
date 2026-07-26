@@ -16,6 +16,9 @@ class ImageComfyUi:
                  steps: int | None = None,
                  cfg: int | None = None,
                  ):
+        if "workflow" not in workflow:
+            raise ValueError("ComfyUI workflow template must include a 'workflow' node graph")
+
         self._base_url = base_url.strip("/") if base_url else "http://localhost:8188"
         self._workflow = workflow
         self._vae = vae
@@ -30,20 +33,25 @@ class ImageComfyUi:
                           path_map: dict[str, Any],
                           ) -> dict[str, Any]:
         """
-        Compile the workflow template with the path_map
-        :param path_map: A dict with JSON pointer as key, and value to insert as value
-        :return: The compiled workflow
+        Compile the ComfyUI node graph template with the path_map.
+
+        The template's top-level metadata keys (positive_prompt, model, ...) hold JSON pointers
+        that are relative to the node graph nested under the "workflow" key, not to the template
+        object itself - the graph is what must be sent to ComfyUI's /prompt endpoint.
+
+        :param path_map: A dict with JSON pointer as key (relative to the node graph), and value to insert as value
+        :return: The compiled node graph, ready to submit as the "prompt" field
         """
-        compiled_workflow = deepcopy(self._workflow)
+        graph = deepcopy(self._workflow["workflow"])
 
         for path, value in path_map.items():
             keys = path.strip("/").split("/")
-            d = compiled_workflow
+            d = graph
             for key in keys[:-1]:
                 d = d.setdefault(key, {})
             d[keys[-1]] = value
 
-        return compiled_workflow
+        return graph
 
     async def generate(self,
                        prompt: str,

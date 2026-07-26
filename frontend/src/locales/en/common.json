@@ -116,6 +116,7 @@
       "factions": "Factions",
       "worldEntries": "World entries",
       "configs": "Configurations",
+      "imageGeneration": "Image generation",
       "prompts": "Prompts",
       "observability": "Observability"
     },
@@ -163,6 +164,20 @@
     "configSaved": "Configurations saved.",
     "configError": "Unable to load configurations: {{error}}",
     "saveConfigurations": "Save configurations",
+    "imageGeneration": {
+      "mode": "Image generation mode",
+      "fallbackTurns": "Fallback turns",
+      "modes": {
+        "manual": "Manual",
+        "auto": "Auto",
+        "always": "Always"
+      },
+      "modeHints": {
+        "manual": "Images are only generated when explicitly requested.",
+        "auto": "A significance check decides per turn whether to generate a scene image, with a fallback after too many turns without one.",
+        "always": "Every turn generates a scene image in the background, without delaying the turn."
+      }
+    },
     "fields": {
       "id": "ID",
       "name": "Name",

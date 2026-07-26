@@ -1,9 +1,11 @@
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.component.image_generator import LocationImageGenerator, \
+    schedule_cover_image_generation
 from world_simulation_engine.model import Location
-from .utils import db_dep
+from .utils import db_dep, prompt_loader_dep, storage_dep, workflow_loader_dep
 
 
 location_router = APIRouter(
@@ -97,7 +99,15 @@ async def delete_location(location_id: str, db: db_dep):
 
 
 @location_router.post("/worlds/{world_id}/locations", response_model=Location)
-async def create_location_in_world(world_id: str, location_data: LocationCreate, db: db_dep):
+async def create_location_in_world(
+        world_id: str,
+        location_data: LocationCreate,
+        db: db_dep,
+        storage: storage_dep,
+        workflow_loader: workflow_loader_dep,
+        prompt_loader: prompt_loader_dep,
+        background_tasks: BackgroundTasks,
+):
     world = await db.world.get_world(world_id)
     if not world:
         raise HTTPException(
@@ -113,11 +123,28 @@ async def create_location_in_world(world_id: str, location_data: LocationCreate,
             detail=f"World {world_id} not found",
         )
 
+    schedule_cover_image_generation(
+        background_tasks,
+        generator=LocationImageGenerator(
+            database=db, storage=storage, workflow_loader=workflow_loader, prompt_loader=prompt_loader,
+        ),
+        source_id=world_id,
+        entity_id=created_location.id,
+    )
+
     return created_location
 
 
 @location_router.post("/simulations/{simulation_id}/locations", response_model=Location)
-async def create_location_in_simulation(simulation_id: str, location_data: LocationCreate, db: db_dep):
+async def create_location_in_simulation(
+        simulation_id: str,
+        location_data: LocationCreate,
+        db: db_dep,
+        storage: storage_dep,
+        workflow_loader: workflow_loader_dep,
+        prompt_loader: prompt_loader_dep,
+        background_tasks: BackgroundTasks,
+):
     simulation = await db.simulation.get_simulation(simulation_id)
     if not simulation:
         raise HTTPException(
@@ -132,6 +159,15 @@ async def create_location_in_simulation(simulation_id: str, location_data: Locat
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Simulation {simulation_id} not found",
         )
+
+    schedule_cover_image_generation(
+        background_tasks,
+        generator=LocationImageGenerator(
+            database=db, storage=storage, workflow_loader=workflow_loader, prompt_loader=prompt_loader,
+        ),
+        source_id=simulation_id,
+        entity_id=created_location.id,
+    )
 
     return created_location
 

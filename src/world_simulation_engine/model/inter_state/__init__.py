@@ -1,5 +1,6 @@
 from .action_suggestion import ActionSuggestionResult
 from .action_validation import ActionValidation, ActionValidationResult
+from .image_prompt import ImagePromptProposal, TransientImagePromptProposal
 from .action_proposal import ProposedAction, ActionProposal
 from .input_interpretation import InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem
 from .memory_summary import EventInvolvementProposal, MemoryCharacterLinkProposal, MemorySummaryApplyResult, \
@@ -16,3 +17,4 @@ from .scene_coordination import AcceptedSceneAction, ActionCandidateSet, Charact
 from .state_commit import PhysicalEntityType, ProposedEntityCreation, ProposedEntityPromotion, \
     ProposedEntityStateChange, ProposedNoPhysicalChange, ProposedRelationshipChange, RelationshipType, \
     StateCommitEntityRef, StateCommitFieldChange, StateCommitOperation, StateCommitProposal
+from .turn_image_significance import TurnImageSignificanceDecision

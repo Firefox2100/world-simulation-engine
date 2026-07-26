@@ -3,7 +3,9 @@ from .container import Container
 from .equipment import Equipment, InventoryEquipment
 from .emotion import EmotionChangeAudit, EmotionState, EmotionUpdateProposal, EmotionVector, \
     ProposedEmotionChange
-from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidationResult, PerceivedEntity, PerceivedCharacter, \
+from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidationResult, ImagePromptProposal, \
+    TransientImagePromptProposal, \
+    PerceivedEntity, PerceivedCharacter, \
     PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
     ProposedAction, ActionProposal, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem, \
     AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, ReactionHistoryEntry, \
@@ -13,7 +15,8 @@ from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidat
     SceneActionReference, SceneCoordinationProblem, SceneCoordinationResult, PhysicalEntityType, \
     ProposedEntityCreation, ProposedEntityPromotion, ProposedEntityStateChange, ProposedNoPhysicalChange, \
     ProposedRelationshipChange, RelationshipType, StateCommitEntityRef, StateCommitFieldChange, \
-    StateCommitOperation, StateCommitProposal, EventInvolvementProposal, MemoryCharacterLinkProposal, \
+    StateCommitOperation, StateCommitProposal, TurnImageSignificanceDecision, \
+    EventInvolvementProposal, MemoryCharacterLinkProposal, \
     MemorySummaryApplyResult, MemorySummaryOperation, MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, \
     ProposedExistingMemoryLink, ProposedIntentCreation, ProposedIntentUpdate, ProposedMemoryCreation, \
     ProposedNoAbstractChange, ProposedTurnEventLink
@@ -30,9 +33,10 @@ from .subjective_entity_claim import ProposedSubjectiveClaimChange, SubjectiveCl
 from .event import Event
 from .graph_state_snapshot import GraphStateSnapshot
 from .generation_job import GenerationJob
+from .image_generation_config import ImageGenerationConfig
 from .simulation_audit import SimulationAuditEvent
 from .intent import Intent
-from .media import MediaFile, PromptMediaFile, WorkflowMediaFile
+from .media import GeneratedImageMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig, \
     OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, ComfyUiImageModelConfig, \
     ImageModelConfigUnion

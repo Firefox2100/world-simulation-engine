@@ -1521,6 +1521,7 @@ async def test_commit_character_actions_returns_turn_and_commit_proposal():
     simulator = WorldSimulator(database=Mock())
     proposal = StateCommitProposal()
     simulator._state_committer.commit_character_actions = AsyncMock(return_value=proposal)
+    simulator._schedule_turn_image_generation = Mock()
     turn = Turn(
         id="turn_1",
         sequence=1,
@@ -1565,6 +1566,12 @@ async def test_commit_character_actions_returns_turn_and_commit_proposal():
     assert rendering.turn_id == turn.id
     assert rendering.blocks[0].type == PresentationBlockType.NARRATION
     assert rendering.blocks[0].text == "The scene continues."
+    simulator._schedule_turn_image_generation.assert_called_once_with(
+        simulation_id="simulation_1",
+        turn=turn,
+        narration="The scene continues.",
+        coordination_result=coordination,
+    )
 
 
 async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
@@ -1604,6 +1611,7 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
     )
     simulator._state_committer.commit_user_actions = AsyncMock(return_value=proposal)
     simulator._schedule_off_scene_activity = Mock()
+    simulator._schedule_turn_image_generation = Mock()
     simulator._db.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
     turn = Turn(
         id="turn_1",
@@ -1650,6 +1658,45 @@ async def test_commit_user_actions_uses_raw_user_input_for_turn_content():
     assert scheduled_state.committed_turn == turn
     assert scheduled_state.simulation == updated_simulation
     assert simulator._schedule_off_scene_activity.call_args.kwargs == {"trigger_turn": turn}
+    simulator._schedule_turn_image_generation.assert_called_once_with(
+        simulation_id="simulation_1",
+        turn=turn,
+        narration="I look around.",
+        coordination_result=result["user_action_coordination"],
+    )
+
+
+async def test_schedule_turn_image_generation_tracks_task_and_cleans_up_on_shutdown():
+    simulator = WorldSimulator(database=Mock())
+    simulator._turn_image_trigger.maybe_generate = AsyncMock()
+    coordination = SceneCoordinationResult(status=SceneCoordinationStatus.COMPLETE)
+    turn = Turn(
+        id="turn_1",
+        sequence=1,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="Nothing happens.",
+        start_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+
+    simulator._schedule_turn_image_generation(
+        simulation_id="simulation_1",
+        turn=turn,
+        narration="Nothing happens.",
+        coordination_result=coordination,
+    )
+
+    assert len(simulator._turn_image_generation_tasks) == 1
+    await asyncio.sleep(0)
+    simulator._turn_image_trigger.maybe_generate.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        turn=turn,
+        narration="Nothing happens.",
+        coordination_result=coordination,
+    )
+
+    await simulator.shutdown()
+
+    assert simulator._turn_image_generation_tasks == set()
 
 
 async def test_default_presentation_preserves_structured_narration_and_speaker_order():

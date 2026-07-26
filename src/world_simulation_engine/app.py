@@ -7,9 +7,11 @@ from world_simulation_engine.misc.logging import configure_event_logging, log_ev
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
 from world_simulation_engine.component.prompt_loader import PromptLoader
+from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.component.simulator.world_simulator import WorldSimulator
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
-    config_router, container_router, equipment_router, event_router, intent_router, item_router, landmark_router, \
+    config_router, container_router, equipment_router, event_router, image_generation_router, intent_router, \
+    item_router, landmark_router, \
     location_router, media_router, memory_router, prompt_router, simulation_router, turn_router, workflow_router, \
     world_router
 
@@ -30,11 +32,18 @@ async def lifespan(app: FastAPI):
     )
     log_event("application_started", interrupted_generation_jobs=interrupted_jobs)
 
+    prompt_loader = PromptLoader(database=database, storage=storage)
+    workflow_loader = WorkflowLoader(database=database, storage=storage)
+
     app.state.database = database
     app.state.storage = storage
+    app.state.prompt_loader = prompt_loader
+    app.state.workflow_loader = workflow_loader
     simulator = WorldSimulator(
         database=database,
-        prompt_loader=PromptLoader(database=database, storage=storage),
+        storage=storage,
+        prompt_loader=prompt_loader,
+        workflow_loader=workflow_loader,
     )
     app.state.world_simulator = simulator
 
@@ -58,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(container_router)
     app.include_router(equipment_router)
     app.include_router(event_router)
+    app.include_router(image_generation_router)
     app.include_router(intent_router)
     app.include_router(item_router)
     app.include_router(landmark_router)

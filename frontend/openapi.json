@@ -3581,6 +3581,98 @@
         }
       }
     },
+    "/simulations/{simulation_id}/image-generation-config": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Simulation Image Generation Config",
+        "operationId": "get_simulation_image_generation_config_simulations__simulation_id__image_generation_config_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerationConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Image Generation Config",
+        "operationId": "set_simulation_image_generation_config_simulations__simulation_id__image_generation_config_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageGenerationConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerationConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/containers": {
       "get": {
         "tags": [
@@ -5784,6 +5876,284 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/generate-image/state": {
+      "post": {
+        "tags": [
+          "Image Generation"
+        ],
+        "summary": "Generate Character State Image",
+        "operationId": "generate_character_state_image_characters__character_id__generate_image_state_post",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStateImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/locations/{location_id}/generate-image/state": {
+      "post": {
+        "tags": [
+          "Image Generation"
+        ],
+        "summary": "Generate Location State Image",
+        "operationId": "generate_location_state_image_locations__location_id__generate_image_state_post",
+        "parameters": [
+          {
+            "name": "location_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStateImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/items/{item_id}/generate-image/state": {
+      "post": {
+        "tags": [
+          "Image Generation"
+        ],
+        "summary": "Generate Item State Image",
+        "operationId": "generate_item_state_image_items__item_id__generate_image_state_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStateImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/characters/{character_id}/generate-image/portrait": {
+      "post": {
+        "tags": [
+          "Image Generation"
+        ],
+        "summary": "Generate Character Portrait Image",
+        "operationId": "generate_character_portrait_image_simulations__simulation_id__characters__character_id__generate_image_portrait_post",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateTurnGroundedImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/locations/{location_id}/generate-image/scene": {
+      "post": {
+        "tags": [
+          "Image Generation"
+        ],
+        "summary": "Generate Scene Image",
+        "operationId": "generate_scene_image_simulations__simulation_id__locations__location_id__generate_image_scene_post",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "location_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Location Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateTurnGroundedImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -15603,7 +15973,12 @@
           "perspective_resolver",
           "scene_coordinator",
           "state_committer",
-          "character_image_generator"
+          "character_image_generator",
+          "character_portrait_image_generator",
+          "location_image_generator",
+          "item_image_generator",
+          "scene_image_generator",
+          "turn_image_trigger"
         ],
         "title": "ComponentType"
       },
@@ -16916,6 +17291,136 @@
         "title": "EventUpdate",
         "description": "DTO model for updating an event"
       },
+      "GenerateStateImageRequest": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "World or Simulation id used to resolve image model, chat model, and workflow configuration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id"
+        ],
+        "title": "GenerateStateImageRequest"
+      },
+      "GenerateTurnGroundedImageRequest": {
+        "properties": {
+          "turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id",
+            "description": "Optional turn to use for pose/relationship context and to link via GENERATES_IMAGE"
+          }
+        },
+        "type": "object",
+        "title": "GenerateTurnGroundedImageRequest"
+      },
+      "GeneratedImageMediaFile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the media file"
+          },
+          "type": {
+            "$ref": "#/components/schemas/MediaType",
+            "description": "Type of the generated image media file",
+            "default": "image/png"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Title of the media file"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash",
+            "description": "Hash of the media file"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "Filename of the media file, no format suffix"
+          },
+          "generation_type": {
+            "$ref": "#/components/schemas/ImageGenerationType",
+            "description": "What kind of generation produced this image"
+          },
+          "component": {
+            "$ref": "#/components/schemas/ComponentType",
+            "description": "The image generator component that produced this image"
+          },
+          "workflow_name": {
+            "type": "string",
+            "title": "Workflow Name",
+            "description": "Name of the ComfyUI workflow used to produce this image"
+          },
+          "canonical_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Canonical Tags",
+            "description": "Short tag-style keywords for this entity's permanent identity (look, build, hair, fixed environment features, permanent objects), reused unchanged across generations to prevent visual drift"
+          },
+          "canonical_description": {
+            "type": "string",
+            "title": "Canonical Description",
+            "description": "Natural language description of this entity's permanent identity, reused unchanged across generations",
+            "default": ""
+          },
+          "transient_tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Transient Tags",
+            "description": "Short tag-style keywords for this specific image's situational state (clothing, expression, activity, time of day, temporary props)"
+          },
+          "transient_description": {
+            "type": "string",
+            "title": "Transient Description",
+            "description": "Natural language description of this specific image's pose, relationship, and interaction",
+            "default": ""
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt",
+            "description": "Negative prompt used to steer the generation away from unwanted qualities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hash",
+          "filename",
+          "generation_type",
+          "component",
+          "workflow_name"
+        ],
+        "title": "GeneratedImageMediaFile"
+      },
       "GenerationJob": {
         "properties": {
           "id": {
@@ -17130,6 +17635,69 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ImageGenerationConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the configuration"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImageGenerationMode",
+            "description": "manual: no auto generation. auto: a deterministic/LLM significance check decides per turn. always: every turn generates images.",
+            "default": "manual"
+          },
+          "fallback_turns": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fallback Turns",
+            "description": "In auto mode, force a generation if this many consecutive turns passed without one, regardless of the significance check.",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "title": "ImageGenerationConfig",
+        "description": "Per-simulation configuration for automatically triggering image generation after a turn."
+      },
+      "ImageGenerationConfigUpdate": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ImageGenerationMode",
+            "description": "manual, auto, or always"
+          },
+          "fallback_turns": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Fallback Turns",
+            "description": "In auto mode, force a generation if this many turns passed without one",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "ImageGenerationConfigUpdate",
+        "description": "DTO model for updating a simulation's auto image generation configuration"
+      },
+      "ImageGenerationMode": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "auto",
+          "always"
+        ],
+        "title": "ImageGenerationMode"
+      },
+      "ImageGenerationType": {
+        "type": "string",
+        "enum": [
+          "state",
+          "character_portrait",
+          "scene"
+        ],
+        "title": "ImageGenerationType"
       },
       "Intent": {
         "properties": {

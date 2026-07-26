@@ -6,8 +6,10 @@ import {
     fetchEmbeddingConfigs,
     fetchLlmConfigs,
     fetchSimulationEmbeddingConfigs,
+    fetchSimulationImageGenerationConfig,
     fetchSimulationLlmConfigs,
     setSimulationEmbeddingConfigs,
+    setSimulationImageGenerationConfig,
     setSimulationLlmConfigs,
     simulatorComponents,
 } from "@/api/configurations";
@@ -53,6 +55,7 @@ const emptyList = [];
 const detailSections = [
     "basic",
     "configs",
+    "imageGeneration",
     "prompts",
     "locations",
     "landmarks",
@@ -1068,6 +1071,124 @@ function SimulationConfigEditor({ simulationId }) {
     );
 }
 
+const imageGenerationModes = ["manual", "auto", "always"];
+
+function ImageGenerationConfigEditor({ simulationId }) {
+    const { t } = useTranslation();
+    const [mode, setMode] = useState("manual");
+    const [fallbackTurns, setFallbackTurns] = useState(10);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadConfig() {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const config = await fetchSimulationImageGenerationConfig(simulationId);
+
+                if (!cancelled) {
+                    setMode(config.mode ?? "manual");
+                    setFallbackTurns(config.fallback_turns ?? 10);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadConfig();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [simulationId]);
+
+    async function saveConfig() {
+        try {
+            setSaving(true);
+            setNotice(null);
+            setError(null);
+            const saved = await setSimulationImageGenerationConfig(simulationId, {
+                mode,
+                fallback_turns: Number(fallbackTurns) || 1,
+            });
+            setMode(saved.mode ?? mode);
+            setFallbackTurns(saved.fallback_turns ?? fallbackTurns);
+            setNotice(t("simulationDetails.configSaved"));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return <p className="status-text">{t("simulationDetails.configLoading")}</p>;
+    }
+
+    return (
+        <section className="world-editor-form">
+            {error ? (
+                <p className="status-text error-text">
+                    {t("simulationDetails.configError", { error })}
+                </p>
+            ) : null}
+            <label className="form-field inline-field">
+                <span className="world-editor-field-label">
+                    <span>{t("simulationDetails.imageGeneration.mode")}</span>
+                </span>
+                <select
+                    className="single-line-input"
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value)}
+                >
+                    {imageGenerationModes.map((option) => (
+                        <option key={option} value={option}>
+                            {t(`simulationDetails.imageGeneration.modes.${option}`)}
+                        </option>
+                    ))}
+                </select>
+            </label>
+            <p className="simulation-details-empty-line">
+                {t(`simulationDetails.imageGeneration.modeHints.${mode}`)}
+            </p>
+            {mode === "auto" ? (
+                <div className="compact-form-field">
+                    <label htmlFor="image-generation-fallback-turns">
+                        {t("simulationDetails.imageGeneration.fallbackTurns")}
+                    </label>
+                    <input
+                        id="image-generation-fallback-turns"
+                        className="single-line-input"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={fallbackTurns}
+                        onChange={(event) => setFallbackTurns(event.target.value)}
+                    />
+                </div>
+            ) : null}
+            {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
+            <div className="modal-actions inline-actions">
+                <button type="button" className="primary-button" disabled={saving} onClick={saveConfig}>
+                    {saving ? t("simulationDetails.configSaving") : t("simulationDetails.saveConfigurations")}
+                </button>
+            </div>
+        </section>
+    );
+}
+
 function SimulationDetailsModal({
     simulation,
     characters,
@@ -1130,6 +1251,8 @@ function SimulationDetailsModal({
                 ? entityTitle(selectedEntity)
                 : activeSection === "configs"
                     ? t("simulationDetails.tabs.configs")
+                    : activeSection === "imageGeneration"
+                      ? t("simulationDetails.tabs.imageGeneration")
                     : activeSection === "prompts"
                       ? t("simulationDetails.tabs.prompts")
                     : activeSection === "observability"
@@ -1310,6 +1433,8 @@ function SimulationDetailsModal({
 
                         {activeSection === "configs" ? (
                             <SimulationConfigEditor simulationId={simulation.id} />
+                        ) : activeSection === "imageGeneration" ? (
+                            <ImageGenerationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "prompts" ? (
                             <PromptAssignmentEditor sourceType="simulation" sourceId={simulation.id} />
                         ) : activeSection === "observability" ? (

@@ -8,10 +8,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
 
+from world_simulation_engine.component.prompt_loader import PromptLoader
+from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.misc.enums import SupportedLanguage
 from world_simulation_engine.model import Author, Location, Simulation, World
 from world_simulation_engine.router import location_router
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.storage_service import StorageService
 
 
 @dataclass(frozen=True)
@@ -22,7 +25,7 @@ class LocationRouterTestClient:
 
 
 @pytest.fixture
-def location_api(neo4j_container):
+def location_api(neo4j_container, tmp_path):
     author = Author(
         id=str(uuid4()),
         name="Location API Author",
@@ -54,10 +57,15 @@ def location_api(neo4j_container):
         await driver.execute_query("MATCH (n) DETACH DELETE n")
 
         database = DatabaseService(driver)
+        storage = StorageService(tmp_path / "storage")
+        await storage.initialise()
         await database.world.create_author(author)
         await database.world.create_world(world, author.id)
         await database.simulation.create_simulation(simulation, world.id)
         app.state.database = database
+        app.state.storage = storage
+        app.state.prompt_loader = PromptLoader(database=database, storage=storage)
+        app.state.workflow_loader = WorkflowLoader(database=database, storage=storage)
 
         try:
             yield

@@ -5,6 +5,7 @@ from .config import config_router
 from .container import container_router
 from .equipment import equipment_router
 from .event import event_router
+from .image_generation import image_generation_router
 from .intent import intent_router
 from .item import item_router
 from .landmark import landmark_router

@@ -116,6 +116,7 @@
       "factions": "阵营",
       "worldEntries": "世界条目",
       "configs": "配置",
+      "imageGeneration": "图像生成",
       "prompts": "提示词",
       "observability": "可观测性"
     },
@@ -163,6 +164,20 @@
     "configSaved": "配置已保存。",
     "configError": "无法加载配置：{{error}}",
     "saveConfigurations": "保存配置",
+    "imageGeneration": {
+      "mode": "图像生成模式",
+      "fallbackTurns": "兜底回合数",
+      "modes": {
+        "manual": "手动",
+        "auto": "自动",
+        "always": "总是"
+      },
+      "modeHints": {
+        "manual": "只有在明确请求时才会生成图像。",
+        "auto": "每个回合会通过重要性判断决定是否生成场景图像，若过多回合未生成则会兜底触发一次。",
+        "always": "每个回合都会在后台生成场景图像，不会延迟回合本身。"
+      }
+    },
     "fields": {
       "id": "ID",
       "name": "名称",

@@ -2,7 +2,8 @@ from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion, OllamaChatModelConfig, \
-    OpenAiChatModelConfig, EmbedModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig
+    OpenAiChatModelConfig, EmbedModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
+    ComfyUiImageModelConfig, ImageModelConfigUnion, ImageGenerationConfig
 
 
 def _connection_from_node(connection_node) -> ConnectionConfig:
@@ -86,6 +87,35 @@ def _embed_from_node(config_node, labels: list[str], connection_node=None) -> Em
     if "OpenAiEmbedModelConfig" in labels:
         return _openai_embed_from_node(config_node, connection_node)
     raise ValueError(f"Unknown config labels {labels}")
+
+
+def _comfyui_image_from_node(config_node, connection_node=None) -> ComfyUiImageModelConfig:
+    return ComfyUiImageModelConfig(
+        id=config_node["id"],
+        model=config_node.get("model"),
+        vae=config_node.get("vae"),
+        clip=config_node.get("clip"),
+        image_width=config_node.get("image_width"),
+        image_height=config_node.get("image_height"),
+        seed=config_node.get("seed"),
+        steps=config_node.get("steps"),
+        cfg=config_node.get("cfg"),
+        connection=_connection_from_optional_node(connection_node),
+    )
+
+
+def _image_from_node(config_node, labels: list[str], connection_node=None) -> ImageModelConfigUnion:
+    if "ComfyUiImageModelConfig" in labels:
+        return _comfyui_image_from_node(config_node, connection_node)
+    raise ValueError(f"Unknown config labels {labels}")
+
+
+def _image_generation_config_from_node(config_node) -> ImageGenerationConfig:
+    return ImageGenerationConfig(
+        id=config_node["id"],
+        mode=config_node["mode"],
+        fallback_turns=config_node["fallback_turns"],
+    )
 
 
 class ConfigStore:
@@ -175,13 +205,31 @@ class ConfigStore:
 
         return _connection_from_node(record["c"])
 
+    async def get_connection_by_image_source(self, source_id: str) -> ConnectionConfig | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:ComfyUiImageModelConfig {id: $source_id})
+                -[:USES]->
+                (c:ConnectionConfig)
+            RETURN c LIMIT 1
+            """,
+            parameters_={"source_id": source_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _connection_from_node(record["c"])
+
     async def link_connection(self,
                               source_id: str,
                               connection_id: str,
                               ) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
             """
-            MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig {
+            MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+                |ComfyUiImageModelConfig {
                 id: $source_id
             })
             MATCH (c:ConnectionConfig {id: $connection_id})
@@ -205,7 +253,8 @@ class ConfigStore:
     async def unlink_connection(self, source_id: str) -> bool:
         result = await self._driver.execute_query(
             """
-            MATCH (source:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig {
+            MATCH (source:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+                |ComfyUiImageModelConfig {
                 id: $source_id
             })
             OPTIONAL MATCH (source)-[uses:USES]->(:ConnectionConfig)
@@ -715,3 +764,250 @@ class ConfigStore:
 
         record = result.records[0] if result.records else None
         return bool(record and record["deleted"])
+
+    async def create_image(self, image_config: ImageModelConfigUnion):
+        if isinstance(image_config, ComfyUiImageModelConfig):
+            result = await self._driver.execute_query(
+                """
+                CREATE (c:ComfyUiImageModelConfig {
+                    id: $id,
+                    model: $model,
+                    vae: $vae,
+                    clip: $clip,
+                    image_width: $image_width,
+                    image_height: $image_height,
+                    seed: $seed,
+                    steps: $steps,
+                    cfg: $cfg
+                }) RETURN c
+                """,
+                parameters_={
+                    "id": image_config.id,
+                    "model": image_config.model,
+                    "vae": image_config.vae,
+                    "clip": image_config.clip,
+                    "image_width": image_config.image_width,
+                    "image_height": image_config.image_height,
+                    "seed": image_config.seed,
+                    "steps": image_config.steps,
+                    "cfg": image_config.cfg,
+                }
+            )
+            return _comfyui_image_from_node(result.records[0]["c"])
+        else:
+            raise TypeError(f"Expected ImageModelConfigUnion, got {type(image_config)}")
+
+    async def list_images(self) -> list[ImageModelConfigUnion]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ComfyUiImageModelConfig)
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            ORDER BY c.id
+            """
+        )
+
+        return [
+            _image_from_node(record["config"], record["config_labels"], record["connection"])
+            for record in result.records
+        ]
+
+    async def get_image(self, config_id: str) -> ImageModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ComfyUiImageModelConfig {id: $config_id})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={"config_id": config_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _image_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def get_image_by_source(self,
+                                  source_id: str,
+                                  component: ComponentType,
+                                  ) -> ImageModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+                -[:USES {component: $component}]->
+                (c:ComfyUiImageModelConfig)
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            }
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _image_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def list_images_by_source(self,
+                                    source_id: str,
+                                    ) -> dict[ComponentType, ImageModelConfigUnion]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+                -[uses:USES]->
+                (c:ComfyUiImageModelConfig)
+            WHERE uses.component IS NOT NULL
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN uses.component AS component, labels(c) AS config_labels, c AS config, connection
+            ORDER BY uses.component
+            """,
+            parameters_={"source_id": source_id},
+        )
+
+        return {
+            ComponentType(record["component"]): _image_from_node(
+                record["config"],
+                record["config_labels"],
+                record["connection"],
+            )
+            for record in result.records
+        }
+
+    async def link_image(self,
+                         source_id: str,
+                         config_id: str,
+                         component: ComponentType,
+                         ) -> ImageModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:World|Simulation {id: $source_id})
+            MATCH (c:ComfyUiImageModelConfig {id: $config_id})
+            OPTIONAL MATCH (s)-[previous:USES {component: $component}]->(
+                :ComfyUiImageModelConfig
+            )
+            DELETE previous
+            MERGE (s) -[:USES {component: $component}]-> (c)
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "source_id": source_id,
+                "config_id": config_id,
+                "component": component,
+            }
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _image_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def unlink_image(self,
+                           source_id: str,
+                           component: ComponentType,
+                           ) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (source:World|Simulation {id: $source_id})
+            OPTIONAL MATCH (source)-[uses:USES {component: $component}]->(
+                :ComfyUiImageModelConfig
+            )
+            DELETE uses
+            RETURN count(source) AS source_count
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["source_count"])
+
+    async def update_image(self,
+                           config_id: str,
+                           properties: dict,
+                           ) -> ImageModelConfigUnion | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ComfyUiImageModelConfig {id: $config_id})
+            SET c += $properties
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "config_id": config_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _image_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def delete_image(self, config_id: str) -> bool:
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:ComfyUiImageModelConfig {id: $config_id})
+            WITH collect(c) AS configs
+            FOREACH (config IN configs | DETACH DELETE config)
+            RETURN size(configs) AS deleted
+            """,
+            parameters_={"config_id": config_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
+    async def get_image_generation_config(self, simulation_id: str) -> ImageGenerationConfig | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Simulation {id: $simulation_id})-[:HAS_IMAGE_GENERATION_CONFIG]->(c:ImageGenerationConfig)
+            RETURN c
+            """,
+            parameters_={"simulation_id": simulation_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _image_generation_config_from_node(record["c"])
+
+    async def set_image_generation_config(self,
+                                          simulation_id: str,
+                                          config: ImageGenerationConfig,
+                                          ) -> ImageGenerationConfig | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:Simulation {id: $simulation_id})
+            MERGE (s)-[:HAS_IMAGE_GENERATION_CONFIG]->(c:ImageGenerationConfig)
+            SET c.id = $id, c.mode = $mode, c.fallback_turns = $fallback_turns
+            RETURN c
+            """,
+            parameters_={
+                "simulation_id": simulation_id,
+                "id": config.id,
+                "mode": config.mode,
+                "fallback_turns": config.fallback_turns,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _image_generation_config_from_node(record["c"])

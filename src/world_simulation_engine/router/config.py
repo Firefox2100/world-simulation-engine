@@ -1,11 +1,13 @@
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType, ConnectionType
+from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ImageGenerationMode
 from world_simulation_engine.model import ConnectionConfig, OllamaChatModelConfig, OpenAiChatModelConfig, \
-    ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion
+    ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, \
+    ImageGenerationConfig
 from .utils import db_dep
 
 
@@ -53,6 +55,19 @@ class EmbedConfigUpdate(BaseModel):
     model: Optional[str] = Field(None, description="The model to use for embedding")
     dimension: Optional[int] = Field(None, description="The dimensionality of the model")
     context_window: Optional[int] = Field(None, description="The context window to use for embedding")
+
+
+class ImageGenerationConfigUpdate(BaseModel):
+    """
+    DTO model for updating a simulation's auto image generation configuration
+    """
+
+    mode: ImageGenerationMode = Field(..., description="manual, auto, or always")
+    fallback_turns: int = Field(
+        10,
+        ge=1,
+        description="In auto mode, force a generation if this many turns passed without one",
+    )
 
 
 class ConfigConnectionUpdate(BaseModel):
@@ -820,3 +835,34 @@ async def delete_world_embedding_connection(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"World {world_id} not found",
         )
+
+
+@config_router.get(
+    "/simulations/{simulation_id}/image-generation-config",
+    response_model=ImageGenerationConfig,
+)
+async def get_simulation_image_generation_config(simulation_id: str, db: db_dep):
+    await _validate_simulation(simulation_id, db)
+
+    config = await db.config.get_image_generation_config(simulation_id)
+    return config or ImageGenerationConfig()
+
+
+@config_router.put(
+    "/simulations/{simulation_id}/image-generation-config",
+    response_model=ImageGenerationConfig,
+)
+async def set_simulation_image_generation_config(
+        simulation_id: str,
+        config_update: ImageGenerationConfigUpdate,
+        db: db_dep,
+):
+    await _validate_simulation(simulation_id, db)
+
+    existing = await db.config.get_image_generation_config(simulation_id)
+    config = ImageGenerationConfig(
+        id=existing.id if existing else str(uuid4()),
+        mode=config_update.mode,
+        fallback_turns=config_update.fallback_turns,
+    )
+    return await db.config.set_image_generation_config(simulation_id, config)
