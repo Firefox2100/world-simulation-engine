@@ -11,6 +11,14 @@ export const simulatorComponents = [
     "state_committer",
 ];
 
+export const imageComponents = [
+    "character_image_generator",
+    "character_portrait_image_generator",
+    "location_image_generator",
+    "item_image_generator",
+    "scene_image_generator",
+];
+
 export async function fetchConnections() {
     return apiRequest("/config/connections");
 }
@@ -329,5 +337,115 @@ export async function setSimulationTtsConfig(simulationId, configId) {
             component: "narrator_tts",
             config_id: configId,
         }),
+    });
+}
+
+export async function fetchImageConfigs() {
+    return apiRequest("/config/images");
+}
+
+export async function createImageConfig(provider, config) {
+    return apiRequest(`/config/images/${provider}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function updateImageConfig(configId, config) {
+    return apiRequest(`/config/images/${configId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function deleteImageConfig(configId) {
+    await apiRequest(`/config/images/${configId}`, {
+        method: "DELETE",
+    });
+}
+
+export async function setImageConfigConnection(configId, connectionId) {
+    return apiRequest(`/config/images/${configId}/connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            connection_id: connectionId,
+        }),
+    });
+}
+
+export async function deleteImageConfigConnection(configId) {
+    await apiRequest(`/config/images/${configId}/connection`, {
+        method: "DELETE",
+    });
+}
+
+export async function fetchSimulationImageConfigs(simulationId) {
+    return apiRequest(`/simulations/${simulationId}/image-connections`);
+}
+
+export async function setSimulationImageConfigs(simulationId, assignments) {
+    return apiRequest(`/simulations/${simulationId}/image-connections`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ assignments }),
+    });
+}
+
+export async function fetchSttConfigs() {
+    return apiRequest("/config/stt");
+}
+
+export async function createSttConfig(provider, config) {
+    return apiRequest(`/config/stt/${provider}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function updateSttConfig(configId, config) {
+    return apiRequest(`/config/stt/${configId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function deleteSttConfig(configId) {
+    await apiRequest(`/config/stt/${configId}`, {
+        method: "DELETE",
+    });
+}
+
+export async function setSttConfigConnection(configId, connectionId) {
+    return apiRequest(`/config/stt/${configId}/connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            connection_id: connectionId,
+        }),
+    });
+}
+
+export async function deleteSttConfigConnection(configId) {
+    await apiRequest(`/config/stt/${configId}/connection`, {
+        method: "DELETE",
     });
 }

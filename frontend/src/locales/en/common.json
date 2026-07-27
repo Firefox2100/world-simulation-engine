@@ -84,6 +84,18 @@
     "suggestions": {
       "title": "Suggested actions",
       "useSuggestion": "Use this suggestion"
+    },
+    "voiceInput": {
+      "start": "Record a voice message",
+      "stop": "Stop recording",
+      "cancel": "Discard recording",
+      "recording": "Recording {{time}} - press to stop",
+      "slideToCancelWithTime": "Recording {{time}} - slide left to cancel",
+      "releaseToCancel": "Release to cancel",
+      "transcribing": "Transcribing...",
+      "permissionDenied": "Microphone access was denied. Allow microphone access in your browser settings to use voice input.",
+      "startError": "Unable to start recording.",
+      "unsupported": "Voice input is not supported in this browser."
     }
   },
   "simulationDetails": {
@@ -356,18 +368,24 @@
       "connections": "Connections",
       "embeddings": "Embeddings",
       "llms": "LLMs",
-      "tts": "TTS"
+      "tts": "TTS",
+      "images": "Images",
+      "stt": "Speech recognition"
     },
     "empty": {
       "connections": "No connections are available.",
       "embeddings": "No embedding configurations are available.",
       "llms": "No LLM configurations are available.",
-      "tts": "No TTS configurations are available."
+      "tts": "No TTS configurations are available.",
+      "images": "No image generation configurations are available.",
+      "stt": "No speech recognition backend is configured yet. Only one is needed - it is shared by every simulation."
     },
     "providers": {
       "openai": "OpenAI",
       "ollama": "Ollama",
       "alltalk": "AllTalk",
+      "whispercpp": "whisper.cpp",
+      "comfyui": "ComfyUI",
       "xtts": "XTTS",
       "piper": "Piper",
       "vits": "VITS",
@@ -381,7 +399,10 @@
       "contextWindow": "{{value}} context",
       "temperature": "temperature {{value}}",
       "narratorVoice": "voice {{value}}",
-      "speed": "speed {{value}}"
+      "speed": "speed {{value}}",
+      "imageSize": "{{width}}x{{height}}",
+      "steps": "{{value}} steps",
+      "language": "language {{value}}"
     },
     "actions": {
       "edit": "Edit",
@@ -390,7 +411,9 @@
         "connections": "Create connection",
         "embeddings": "Create embedding",
         "llms": "Create LLM",
-        "tts": "Create TTS configuration"
+        "tts": "Create TTS configuration",
+        "images": "Create image configuration",
+        "stt": "Create speech recognition configuration"
       }
     },
     "fields": {
@@ -436,7 +459,17 @@
       "outputFileTimestamp": "Output file timestamp",
       "serverAutoplay": "Play on AllTalk server",
       "autoplayVolume": "Server autoplay volume",
-      "notSet": "Not set"
+      "notSet": "Not set",
+      "vae": "VAE",
+      "clip": "CLIP",
+      "imageWidth": "Image width",
+      "imageHeight": "Image height",
+      "steps": "Steps",
+      "cfg": "CFG scale",
+      "translate": "Translate to English",
+      "temperatureInc": "Temperature increment",
+      "initialPrompt": "Initial prompt",
+      "carryInitialPrompt": "Carry initial prompt"
     },
     "modal": {
       "close": "Close configuration dialog",
@@ -449,13 +482,17 @@
         "connections": "Create connection",
         "embeddings": "Create embedding configuration",
         "llms": "Create LLM configuration",
-        "tts": "Create TTS configuration"
+        "tts": "Create TTS configuration",
+        "images": "Create image configuration",
+        "stt": "Create speech recognition configuration"
       },
       "edit": {
         "connections": "Edit connection",
         "embeddings": "Edit embedding configuration",
         "llms": "Edit LLM configuration",
-        "tts": "Edit TTS configuration"
+        "tts": "Edit TTS configuration",
+        "images": "Edit image configuration",
+        "stt": "Edit speech recognition configuration"
       }
     }
   },
@@ -600,7 +637,12 @@
         "narrator": "Narrator",
         "perspective_resolver": "Perspective resolver",
         "scene_coordinator": "Scene coordinator",
-        "state_committer": "State committer"
+        "state_committer": "State committer",
+        "character_image_generator": "Character image",
+        "character_portrait_image_generator": "Character portrait",
+        "location_image_generator": "Location image",
+        "item_image_generator": "Item image",
+        "scene_image_generator": "Scene image"
       },
       "tabs": {
         "world": "World",
@@ -646,6 +688,7 @@
         "component": "Component",
         "llmConfig": "LLM configuration",
         "embeddingConfig": "Embedding configuration",
+        "imageConfig": "Image configuration",
         "name": "Name",
         "description": "Description",
         "parent_location_id": "Parent location",

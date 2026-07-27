@@ -3166,6 +3166,702 @@
         }
       }
     },
+    "/config/images": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Image Configs",
+        "operationId": "list_image_configs_config_images_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "provider",
+                      "mapping": {
+                        "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                      }
+                    }
+                  },
+                  "type": "array",
+                  "title": "Response List Image Configs Config Images Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/images/comfyui": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Comfyui Image Config",
+        "operationId": "create_comfyui_image_config_config_images_comfyui_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/images/{config_id}": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Image Config",
+        "operationId": "get_image_config_config_images__config_id__get",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  },
+                  "title": "Response Get Image Config Config Images  Config Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Update Image Config",
+        "operationId": "update_image_config_config_images__config_id__patch",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  },
+                  "title": "Response Update Image Config Config Images  Config Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Image Config",
+        "operationId": "delete_image_config_config_images__config_id__delete",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/images/{config_id}/connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Image Config Connection",
+        "operationId": "set_image_config_connection_config_images__config_id__connection_put",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigConnectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Image Config Connection",
+        "operationId": "get_image_config_connection_config_images__config_id__connection_get",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Image Config Connection",
+        "operationId": "delete_image_config_connection_config_images__config_id__connection_delete",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/stt": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Stt Configs",
+        "operationId": "list_stt_configs_config_stt_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/WhisperCppSttModelConfig"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "provider",
+                      "mapping": {
+                        "whispercpp": "#/components/schemas/WhisperCppSttModelConfig"
+                      }
+                    }
+                  },
+                  "type": "array",
+                  "title": "Response List Stt Configs Config Stt Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/stt/whispercpp": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Whisper Cpp Stt Config",
+        "operationId": "create_whisper_cpp_stt_config_config_stt_whispercpp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhisperCppSttModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhisperCppSttModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/stt/{config_id}": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Stt Config",
+        "operationId": "get_stt_config_config_stt__config_id__get",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WhisperCppSttModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "whispercpp": "#/components/schemas/WhisperCppSttModelConfig"
+                    }
+                  },
+                  "title": "Response Get Stt Config Config Stt  Config Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Update Stt Config",
+        "operationId": "update_stt_config_config_stt__config_id__patch",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SttConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/WhisperCppSttModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "whispercpp": "#/components/schemas/WhisperCppSttModelConfig"
+                    }
+                  },
+                  "title": "Response Update Stt Config Config Stt  Config Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Stt Config",
+        "operationId": "delete_stt_config_config_stt__config_id__delete",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/stt/{config_id}/connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Stt Config Connection",
+        "operationId": "set_stt_config_connection_config_stt__config_id__connection_put",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigConnectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Stt Config Connection",
+        "operationId": "get_stt_config_connection_config_stt__config_id__connection_get",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Stt Config Connection",
+        "operationId": "delete_stt_config_connection_config_stt__config_id__connection_delete",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/simulations/{simulation_id}/llm-connection": {
       "put": {
         "tags": [
@@ -4015,6 +4711,273 @@
         }
       }
     },
+    "/simulations/{simulation_id}/image-connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Image Connection",
+        "operationId": "set_simulation_image_connection_simulations__simulation_id__image_connection_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationModelConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  },
+                  "title": "Response Set Simulation Image Connection Simulations  Simulation Id  Image Connection Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Simulation Image Connection",
+        "operationId": "get_simulation_image_connection_simulations__simulation_id__image_connection_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The simulation component using the config"
+            },
+            "description": "The simulation component using the config"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  },
+                  "title": "Response Get Simulation Image Connection Simulations  Simulation Id  Image Connection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Simulation Image Connection",
+        "operationId": "delete_simulation_image_connection_simulations__simulation_id__image_connection_delete",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The simulation component using the config"
+            },
+            "description": "The simulation component using the config"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/image-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Simulation Image Connections",
+        "operationId": "list_simulation_image_connections_simulations__simulation_id__image_connections_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentImageConfig"
+                  },
+                  "title": "Response List Simulation Image Connections Simulations  Simulation Id  Image Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Image Connections",
+        "operationId": "set_simulation_image_connections_simulations__simulation_id__image_connections_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentImageConfig"
+                  },
+                  "title": "Response Set Simulation Image Connections Simulations  Simulation Id  Image Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/worlds/{world_id}/llm-connection": {
       "put": {
         "tags": [
@@ -4847,6 +5810,273 @@
                     "$ref": "#/components/schemas/ComponentTtsConfig"
                   },
                   "title": "Response Set World Tts Connections Worlds  World Id  Tts Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/image-connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Image Connection",
+        "operationId": "set_world_image_connection_worlds__world_id__image_connection_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationModelConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  },
+                  "title": "Response Set World Image Connection Worlds  World Id  Image Connection Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get World Image Connection",
+        "operationId": "get_world_image_connection_worlds__world_id__image_connection_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "provider",
+                    "mapping": {
+                      "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+                    }
+                  },
+                  "title": "Response Get World Image Connection Worlds  World Id  Image Connection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete World Image Connection",
+        "operationId": "delete_world_image_connection_worlds__world_id__image_connection_delete",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/image-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List World Image Connections",
+        "operationId": "list_world_image_connections_worlds__world_id__image_connections_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentImageConfig"
+                  },
+                  "title": "Response List World Image Connections Worlds  World Id  Image Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Image Connections",
+        "operationId": "set_world_image_connections_worlds__world_id__image_connections_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentImageConfig"
+                  },
+                  "title": "Response Set World Image Connections Worlds  World Id  Image Connections Put"
                 }
               }
             }
@@ -14676,6 +15906,48 @@
         }
       }
     },
+    "/speech-recognition/transcribe": {
+      "post": {
+        "tags": [
+          "Speech Recognition"
+        ],
+        "summary": "Transcribe Speech",
+        "description": "STT is global rather than per-simulation - every simulation shares the one configured\nbackend, so there is no source_id to resolve here (unlike image/TTS generation).",
+        "operationId": "transcribe_speech_speech_recognition_transcribe_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribe_speech_speech_recognition_transcribe_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SttTranscriptionResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/turns": {
       "get": {
         "tags": [
@@ -17258,6 +18530,32 @@
         ],
         "title": "Body_create_media_media_post"
       },
+      "Body_transcribe_speech_speech_recognition_transcribe_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Override the configured language for this call"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_transcribe_speech_speech_recognition_transcribe_post"
+      },
       "Body_upload_background_character_media_background_characters__character_id__media_post": {
         "properties": {
           "file": {
@@ -18315,6 +19613,132 @@
         "title": "ChatConfigUpdate",
         "description": "DTO model for updating chat model configs"
       },
+      "ComfyUiImageModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this image model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "comfyui",
+            "title": "Provider",
+            "description": "Provider for this image model config",
+            "default": "comfyui"
+          },
+          "vae": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vae",
+            "description": "Name of the vae model to use"
+          },
+          "clip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip",
+            "description": "Name of the clip model to use"
+          },
+          "image_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Width",
+            "description": "Width of the image to generate"
+          },
+          "image_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Height",
+            "description": "Height of the image to generate"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Seed for the random number generator"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps",
+            "description": "Number of steps to generate for each image"
+          },
+          "cfg": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cfg",
+            "description": "Configuration parameters"
+          }
+        },
+        "type": "object",
+        "title": "ComfyUiImageModelConfig",
+        "description": "The specialised configuration for using an image generation model with ComfyUI."
+      },
       "ComponentChatConfig": {
         "properties": {
           "component": {
@@ -18382,6 +19806,36 @@
         ],
         "title": "ComponentEmbedConfig",
         "description": "DTO model for a component-specific embedding config assignment"
+      },
+      "ComponentImageConfig": {
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/ComponentType",
+            "description": "The component using the config"
+          },
+          "config": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ComfyUiImageModelConfig"
+              }
+            ],
+            "title": "Config",
+            "description": "The assigned image model config",
+            "discriminator": {
+              "propertyName": "provider",
+              "mapping": {
+                "comfyui": "#/components/schemas/ComfyUiImageModelConfig"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "component",
+          "config"
+        ],
+        "title": "ComponentImageConfig",
+        "description": "DTO model for a component-specific image config assignment"
       },
       "ComponentModelConfigBatchUpdate": {
         "properties": {
@@ -18602,7 +20056,8 @@
           "ollama",
           "openai",
           "comfyui",
-          "alltalk"
+          "alltalk",
+          "whispercpp"
         ],
         "title": "ConnectionType"
       },
@@ -20271,6 +21726,109 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ImageConfigUpdate": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use"
+          },
+          "vae": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vae",
+            "description": "Name of the vae model to use"
+          },
+          "clip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clip",
+            "description": "Name of the clip model to use"
+          },
+          "image_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Width",
+            "description": "Width of the image to generate"
+          },
+          "image_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Height",
+            "description": "Height of the image to generate"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Seed for the random number generator"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps",
+            "description": "Number of steps to generate for each image"
+          },
+          "cfg": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cfg",
+            "description": "Configuration parameters"
+          }
+        },
+        "type": "object",
+        "title": "ImageConfigUpdate",
+        "description": "DTO model for updating image model configs"
       },
       "ImageGenerationConfig": {
         "properties": {
@@ -23253,6 +24811,124 @@
         ],
         "title": "StackRelationshipUpdate"
       },
+      "SttConfigUpdate": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Spoken language code, e.g. 'en' or 'auto'"
+          },
+          "translate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translate",
+            "description": "Whether to translate the transcription into English"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Sampling temperature for decoding"
+          },
+          "temperature_inc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Inc",
+            "description": "Temperature increment used on decoding fallback"
+          },
+          "initial_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Prompt",
+            "description": "Initial prompt text to bias vocabulary/context"
+          },
+          "carry_initial_prompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Initial Prompt",
+            "description": "Whether to always prepend the initial prompt"
+          }
+        },
+        "type": "object",
+        "title": "SttConfigUpdate",
+        "description": "DTO model for updating STT model configs"
+      },
+      "SttTranscriptionResult": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The transcribed text"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Language used for the transcription, if known"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "SttTranscriptionResult",
+        "description": "The result of a file-based STT transcription call."
+      },
       "SubjectiveClaimCategory": {
         "type": "string",
         "enum": [
@@ -23969,6 +25645,120 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WhisperCppSttModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use, for providers that support switching the underlying STT model"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this STT model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "whispercpp",
+            "title": "Provider",
+            "description": "Provider for this STT model config",
+            "default": "whispercpp"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Spoken language code, e.g. 'en' or 'auto' to detect. Server defaults to 'en' if omitted"
+          },
+          "translate": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translate",
+            "description": "Whether to translate the transcription into English"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Sampling temperature for decoding"
+          },
+          "temperature_inc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature Inc",
+            "description": "Temperature increment used on decoding fallback"
+          },
+          "initial_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initial Prompt",
+            "description": "Initial prompt text to bias vocabulary/context for the transcription"
+          },
+          "carry_initial_prompt": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carry Initial Prompt",
+            "description": "Whether to always prepend the initial prompt, rather than only on the first window"
+          }
+        },
+        "type": "object",
+        "title": "WhisperCppSttModelConfig",
+        "description": "Configuration for whisper.cpp's official HTTP server (examples/server). The server loads one\nmodel at startup, so `model` is informational only here rather than sent per-request."
       },
       "WorkflowAssignment": {
         "properties": {

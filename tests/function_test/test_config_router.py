@@ -137,6 +137,40 @@ def alltalk_piper_payload() -> dict:
     }
 
 
+def comfyui_connection_payload(name: str = "Local ComfyUI") -> dict:
+    return {
+        "type": ConnectionType.COMFYUI,
+        "name": name,
+        "base_url": "http://localhost:8188",
+        "api_key": "test-key",
+    }
+
+
+def comfyui_image_payload() -> dict:
+    return {
+        "model": "sd_xl_base.safetensors",
+        "image_width": 1024,
+        "image_height": 1024,
+        "steps": 20,
+    }
+
+
+def whisper_cpp_connection_payload(name: str = "Local whisper.cpp") -> dict:
+    return {
+        "type": ConnectionType.WHISPERCPP,
+        "name": name,
+        "base_url": "http://localhost:8080",
+        "api_key": "test-key",
+    }
+
+
+def whisper_cpp_stt_payload() -> dict:
+    return {
+        "language": "en",
+        "temperature": 0.0,
+    }
+
+
 def test_connection_config_crud(config_api):
     client = config_api.client
 
@@ -420,6 +454,181 @@ def test_simulation_and_world_tts_config_links(config_api):
     ).json() == tts_config
 
 
+def test_image_config_crud_and_connection_link(config_api):
+    client = config_api.client
+    connection = client.post("/config/connections", json=comfyui_connection_payload()).json()
+    create_response = client.post("/config/images/comfyui", json=comfyui_image_payload())
+
+    assert create_response.status_code == 200
+    image_config = create_response.json()
+    assert image_config["provider"] == "comfyui"
+    assert client.get(f"/config/images/{image_config['id']}").json() == image_config
+    assert client.get("/config/images").json() == [image_config]
+
+    link_response = client.put(
+        f"/config/images/{image_config['id']}/connection",
+        json={"connection_id": connection["id"]},
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json() == connection
+    assert client.get(f"/config/images/{image_config['id']}/connection").json() == connection
+    assert client.get(f"/config/images/{image_config['id']}").json() == {
+        **image_config,
+        "connection": connection,
+    }
+    assert client.delete(f"/config/images/{image_config['id']}/connection").status_code == 204
+    assert client.get(f"/config/images/{image_config['id']}/connection").status_code == 404
+    assert client.put(
+        f"/config/images/{image_config['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
+    linked_image_config = {
+        **image_config,
+        "connection": connection,
+    }
+
+    update_response = client.patch(
+        f"/config/images/{image_config['id']}",
+        json={
+            "steps": 25,
+            "cfg": 7,
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json() == {
+        **linked_image_config,
+        "steps": 25,
+        "cfg": 7,
+    }
+
+    delete_response = client.delete(f"/config/images/{image_config['id']}")
+
+    assert delete_response.status_code == 204
+    assert client.get(f"/config/images/{image_config['id']}").status_code == 404
+
+
+def test_stt_config_crud_and_connection_link(config_api):
+    client = config_api.client
+    connection = client.post("/config/connections", json=whisper_cpp_connection_payload()).json()
+    create_response = client.post("/config/stt/whispercpp", json=whisper_cpp_stt_payload())
+
+    assert create_response.status_code == 200
+    stt_config = create_response.json()
+    assert stt_config["provider"] == "whispercpp"
+    assert client.get(f"/config/stt/{stt_config['id']}").json() == stt_config
+    assert client.get("/config/stt").json() == [stt_config]
+
+    link_response = client.put(
+        f"/config/stt/{stt_config['id']}/connection",
+        json={"connection_id": connection["id"]},
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json() == connection
+    assert client.get(f"/config/stt/{stt_config['id']}/connection").json() == connection
+    assert client.get(f"/config/stt/{stt_config['id']}").json() == {
+        **stt_config,
+        "connection": connection,
+    }
+    assert client.delete(f"/config/stt/{stt_config['id']}/connection").status_code == 204
+    assert client.get(f"/config/stt/{stt_config['id']}/connection").status_code == 404
+    assert client.put(
+        f"/config/stt/{stt_config['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
+    linked_stt_config = {
+        **stt_config,
+        "connection": connection,
+    }
+
+    update_response = client.patch(
+        f"/config/stt/{stt_config['id']}",
+        json={
+            "temperature": 0.5,
+            "initial_prompt": "World Simulation Engine",
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json() == {
+        **linked_stt_config,
+        "temperature": 0.5,
+        "initial_prompt": "World Simulation Engine",
+    }
+
+    delete_response = client.delete(f"/config/stt/{stt_config['id']}")
+
+    assert delete_response.status_code == 204
+    assert client.get(f"/config/stt/{stt_config['id']}").status_code == 404
+
+
+def test_simulation_and_world_image_config_links(config_api):
+    client = config_api.client
+    image_config = client.post("/config/images/comfyui", json=comfyui_image_payload()).json()
+    replacement_image_config = client.post(
+        "/config/images/comfyui", json={**comfyui_image_payload(), "steps": 30},
+    ).json()
+
+    link_response = client.put(
+        f"/simulations/{config_api.simulation.id}/image-connection",
+        json={
+            "component": ComponentType.SCENE_IMAGE_GENERATOR,
+            "config_id": image_config["id"],
+        },
+    )
+    replacement_link_response = client.put(
+        f"/simulations/{config_api.simulation.id}/image-connection",
+        json={
+            "component": ComponentType.SCENE_IMAGE_GENERATOR,
+            "config_id": replacement_image_config["id"],
+        },
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json() == image_config
+    assert replacement_link_response.status_code == 200
+    assert replacement_link_response.json() == replacement_image_config
+    assert client.get(
+        f"/simulations/{config_api.simulation.id}/image-connection",
+        params={"component": ComponentType.SCENE_IMAGE_GENERATOR},
+    ).json() == replacement_image_config
+    assert client.get(f"/simulations/{config_api.simulation.id}/image-connections").json() == [
+        {"component": ComponentType.SCENE_IMAGE_GENERATOR, "config": replacement_image_config},
+    ]
+    assert client.delete(
+        f"/simulations/{config_api.simulation.id}/image-connection",
+        params={"component": ComponentType.SCENE_IMAGE_GENERATOR},
+    ).status_code == 204
+    assert client.get(
+        f"/simulations/{config_api.simulation.id}/image-connection",
+        params={"component": ComponentType.SCENE_IMAGE_GENERATOR},
+    ).status_code == 404
+
+    world_link_response = client.put(
+        f"/worlds/{config_api.world.id}/image-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.SCENE_IMAGE_GENERATOR,
+                    "config_id": image_config["id"],
+                },
+            ],
+        },
+    )
+
+    assert world_link_response.status_code == 200
+    assert world_link_response.json() == [
+        {"component": ComponentType.SCENE_IMAGE_GENERATOR, "config": image_config},
+    ]
+    assert client.get(f"/worlds/{config_api.world.id}/image-connections").json() == world_link_response.json()
+    assert client.get(
+        f"/worlds/{config_api.world.id}/image-connection",
+        params={"component": ComponentType.SCENE_IMAGE_GENERATOR},
+    ).json() == image_config
+
+
 def test_simulation_model_config_links(config_api):
     client = config_api.client
     connection = client.post("/config/connections", json=connection_payload()).json()
@@ -597,6 +806,8 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
     chat = client.post("/config/llm/openai", json=openai_chat_payload()).json()
     embed = client.post("/config/embeddings/openai", json=openai_embed_payload()).json()
     tts = client.post("/config/tts/alltalk/xtts", json=alltalk_xtts_payload()).json()
+    image = client.post("/config/images/comfyui", json=comfyui_image_payload()).json()
+    stt = client.post("/config/stt/whispercpp", json=whisper_cpp_stt_payload()).json()
 
     assert client.get(f"/config/connections/{missing_id}").status_code == 404
     assert client.patch(f"/config/connections/{missing_id}", json={"name": "Missing"}).status_code == 404
@@ -669,6 +880,66 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
             ],
         },
     ).status_code == 404
+    assert client.get(f"/config/images/{missing_id}").status_code == 404
+    assert client.patch(f"/config/images/{missing_id}", json={"steps": 20}).status_code == 404
+    assert client.delete(f"/config/images/{missing_id}").status_code == 404
+    assert client.put(
+        f"/config/images/{missing_id}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 404
+    assert client.put(
+        f"/config/images/{image['id']}/connection",
+        json={"connection_id": missing_id},
+    ).status_code == 404
+    assert client.get(f"/config/images/{missing_id}/connection").status_code == 404
+    assert client.delete(f"/config/images/{missing_id}/connection").status_code == 404
+    assert client.put(
+        f"/simulations/{missing_id}/image-connection",
+        json={
+            "component": ComponentType.SCENE_IMAGE_GENERATOR,
+            "config_id": image["id"],
+        },
+    ).status_code == 404
+    assert client.put(
+        f"/simulations/{config_api.simulation.id}/image-connection",
+        json={
+            "component": ComponentType.SCENE_IMAGE_GENERATOR,
+            "config_id": missing_id,
+        },
+    ).status_code == 404
+    assert client.get(
+        f"/simulations/{missing_id}/image-connection",
+        params={"component": ComponentType.SCENE_IMAGE_GENERATOR},
+    ).status_code == 404
+    assert client.delete(
+        f"/simulations/{missing_id}/image-connection",
+        params={"component": ComponentType.SCENE_IMAGE_GENERATOR},
+    ).status_code == 404
+    assert client.get(f"/simulations/{missing_id}/image-connections").status_code == 404
+    assert client.put(
+        f"/worlds/{config_api.world.id}/image-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.SCENE_IMAGE_GENERATOR,
+                    "config_id": missing_id,
+                },
+            ],
+        },
+    ).status_code == 404
+    assert client.get(f"/config/stt/{missing_id}").status_code == 404
+    assert client.patch(f"/config/stt/{missing_id}", json={"temperature": 1.0}).status_code == 404
+    assert client.delete(f"/config/stt/{missing_id}").status_code == 404
+    assert client.put(
+        f"/config/stt/{missing_id}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 404
+    assert client.put(
+        f"/config/stt/{stt['id']}/connection",
+        json={"connection_id": missing_id},
+    ).status_code == 404
+    assert client.get(f"/config/stt/{missing_id}/connection").status_code == 404
+    assert client.delete(f"/config/stt/{missing_id}/connection").status_code == 404
     assert client.put(
         f"/simulations/{missing_id}/llm-connection",
         json={

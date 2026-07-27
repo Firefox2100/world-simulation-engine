@@ -5,3 +5,5 @@ from .llm_service import LlmService
 from .storage_service import StorageService
 from .tts_service.tts_service import TtsService
 from .tts_service.tts_result import TtsFileResult
+from .stt_service.stt_service import SttService
+from .stt_service.stt_result import SttTranscriptionResult

@@ -54,6 +54,7 @@ class ConnectionType(StrEnum):
     OPENAI = "openai"
     COMFYUI = "comfyui"
     ALLTALK = "alltalk"
+    WHISPERCPP = "whispercpp"
 
 
 class ContainerState(StrEnum):

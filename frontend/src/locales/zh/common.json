@@ -84,6 +84,18 @@
     "suggestions": {
       "title": "建议的行动",
       "useSuggestion": "使用这条建议"
+    },
+    "voiceInput": {
+      "start": "录制语音消息",
+      "stop": "停止录音",
+      "cancel": "放弃录音",
+      "recording": "正在录音 {{time}} - 点击停止",
+      "slideToCancelWithTime": "正在录音 {{time}} - 向左滑动取消",
+      "releaseToCancel": "松开以取消",
+      "transcribing": "正在转换为文字...",
+      "permissionDenied": "麦克风访问被拒绝。请在浏览器设置中允许麦克风访问以使用语音输入。",
+      "startError": "无法开始录音。",
+      "unsupported": "此浏览器不支持语音输入。"
     }
   },
   "simulationDetails": {
@@ -356,18 +368,24 @@
       "connections": "连接",
       "embeddings": "嵌入",
       "llms": "LLM",
-      "tts": "TTS"
+      "tts": "TTS",
+      "images": "图像",
+      "stt": "语音识别"
     },
     "empty": {
       "connections": "暂无连接配置。",
       "embeddings": "暂无嵌入配置。",
       "llms": "暂无 LLM 配置。",
-      "tts": "暂无 TTS 配置。"
+      "tts": "暂无 TTS 配置。",
+      "images": "暂无图像生成配置。",
+      "stt": "尚未配置语音识别后端。只需要一个，所有模拟都会共用它。"
     },
     "providers": {
       "openai": "OpenAI",
       "ollama": "Ollama",
       "alltalk": "AllTalk",
+      "whispercpp": "whisper.cpp",
+      "comfyui": "ComfyUI",
       "xtts": "XTTS",
       "piper": "Piper",
       "vits": "VITS",
@@ -381,7 +399,10 @@
       "contextWindow": "{{value}} 上下文",
       "temperature": "温度 {{value}}",
       "narratorVoice": "音色 {{value}}",
-      "speed": "语速 {{value}}"
+      "speed": "语速 {{value}}",
+      "imageSize": "{{width}}x{{height}}",
+      "steps": "{{value}} 步",
+      "language": "语言 {{value}}"
     },
     "actions": {
       "edit": "编辑",
@@ -390,7 +411,9 @@
         "connections": "创建连接",
         "embeddings": "创建嵌入",
         "llms": "创建 LLM",
-        "tts": "创建 TTS 配置"
+        "tts": "创建 TTS 配置",
+        "images": "创建图像配置",
+        "stt": "创建语音识别配置"
       }
     },
     "fields": {
@@ -436,7 +459,17 @@
       "outputFileTimestamp": "输出文件加时间戳",
       "serverAutoplay": "在 AllTalk 服务器播放",
       "autoplayVolume": "服务器自动播放音量",
-      "notSet": "未设置"
+      "notSet": "未设置",
+      "vae": "VAE",
+      "clip": "CLIP",
+      "imageWidth": "图像宽度",
+      "imageHeight": "图像高度",
+      "steps": "步数",
+      "cfg": "CFG 强度",
+      "translate": "翻译为英文",
+      "temperatureInc": "温度增量",
+      "initialPrompt": "初始提示词",
+      "carryInitialPrompt": "始终携带初始提示词"
     },
     "modal": {
       "close": "关闭配置对话框",
@@ -449,13 +482,17 @@
         "connections": "创建连接",
         "embeddings": "创建嵌入配置",
         "llms": "创建 LLM 配置",
-        "tts": "创建 TTS 配置"
+        "tts": "创建 TTS 配置",
+        "images": "创建图像配置",
+        "stt": "创建语音识别配置"
       },
       "edit": {
         "connections": "编辑连接",
         "embeddings": "编辑嵌入配置",
         "llms": "编辑 LLM 配置",
-        "tts": "编辑 TTS 配置"
+        "tts": "编辑 TTS 配置",
+        "images": "编辑图像配置",
+        "stt": "编辑语音识别配置"
       }
     }
   },
@@ -600,7 +637,12 @@
         "narrator": "叙述",
         "perspective_resolver": "视角解析",
         "scene_coordinator": "场景协调",
-        "state_committer": "状态提交"
+        "state_committer": "状态提交",
+        "character_image_generator": "角色图像",
+        "character_portrait_image_generator": "角色肖像",
+        "location_image_generator": "地点图像",
+        "item_image_generator": "物品图像",
+        "scene_image_generator": "场景图像"
       },
       "tabs": {
         "world": "世界",
@@ -646,6 +688,7 @@
         "component": "组件",
         "llmConfig": "LLM 配置",
         "embeddingConfig": "嵌入配置",
+        "imageConfig": "图像配置",
         "name": "名称",
         "description": "描述",
         "parent_location_id": "上级地点",

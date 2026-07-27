@@ -4,13 +4,18 @@ import { useTranslation } from "react-i18next";
 
 import {
     fetchEmbeddingConfigs,
+    fetchImageConfigs,
     fetchLlmConfigs,
     fetchSimulationEmbeddingConfigs,
+    fetchSimulationImageConfigs,
     fetchSimulationImageGenerationConfig,
     fetchSimulationLlmConfigs,
     fetchSimulationTtsGenerationConfig,
+    fetchSttConfigs,
     fetchTtsConfigs,
+    imageComponents,
     setSimulationEmbeddingConfigs,
+    setSimulationImageConfigs,
     setSimulationImageGenerationConfig,
     setSimulationLlmConfigs,
     setSimulationTtsConfig,
@@ -57,6 +62,8 @@ import { getMediaUrl } from "@/api/media";
 import { ensureAudioUnlockListeners, playAudioUrlSequence } from "@/utils/audioPlayback";
 import { waitForBlocksVoiced } from "@/utils/turnVoicePolling";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
+import { VoiceRecorderButton } from "@/components/VoiceRecorderButton";
+import { useMediaQuery } from "@/shared/useMediaQuery";
 import placeholderImage from "@/assets/placeholder/world.svg";
 import characterPlaceholderImage from "@/assets/placeholder/character.svg";
 import locationPlaceholderImage from "@/assets/placeholder/location.svg";
@@ -772,19 +779,19 @@ function configLabel(config, fallback) {
     return config?.name || config?.model || config?.id || fallback;
 }
 
-function emptyComponentConfigMap() {
-    return Object.fromEntries(simulatorComponents.map((component) => [component, ""]));
+function emptyComponentConfigMap(components) {
+    return Object.fromEntries(components.map((component) => [component, ""]));
 }
 
-function componentConfigMapFromAssignments(assignments) {
+function componentConfigMapFromAssignments(components, assignments) {
     return assignments.reduce((result, assignment) => {
         result[assignment.component] = assignment.config?.id ?? "";
         return result;
-    }, emptyComponentConfigMap());
+    }, emptyComponentConfigMap(components));
 }
 
-function componentAssignmentsFromMap(configsByComponent) {
-    return simulatorComponents.map((component) => ({
+function componentAssignmentsFromMap(components, configsByComponent) {
+    return components.map((component) => ({
         component,
         config_id: configsByComponent[component] || null,
     }));
@@ -1028,8 +1035,12 @@ function SimulationConfigEditor({ simulationId }) {
     const { t } = useTranslation();
     const [llmConfigs, setLlmConfigs] = useState([]);
     const [embeddingConfigs, setEmbeddingConfigs] = useState([]);
-    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(() => emptyComponentConfigMap());
-    const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(() => emptyComponentConfigMap());
+    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(
+        () => emptyComponentConfigMap(simulatorComponents),
+    );
+    const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(
+        () => emptyComponentConfigMap(simulatorComponents),
+    );
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [notice, setNotice] = useState(null);
@@ -1053,8 +1064,12 @@ function SimulationConfigEditor({ simulationId }) {
                 if (!cancelled) {
                     setLlmConfigs(llms);
                     setEmbeddingConfigs(embeddings);
-                    setLlmConfigsByComponent(componentConfigMapFromAssignments(llmAssignments));
-                    setEmbeddingConfigsByComponent(componentConfigMapFromAssignments(embeddingAssignments));
+                    setLlmConfigsByComponent(
+                        componentConfigMapFromAssignments(simulatorComponents, llmAssignments),
+                    );
+                    setEmbeddingConfigsByComponent(
+                        componentConfigMapFromAssignments(simulatorComponents, embeddingAssignments),
+                    );
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -1089,10 +1104,13 @@ function SimulationConfigEditor({ simulationId }) {
             setNotice(null);
             setError(null);
             await Promise.all([
-                setSimulationLlmConfigs(simulationId, componentAssignmentsFromMap(llmConfigsByComponent)),
+                setSimulationLlmConfigs(
+                    simulationId,
+                    componentAssignmentsFromMap(simulatorComponents, llmConfigsByComponent),
+                ),
                 setSimulationEmbeddingConfigs(
                     simulationId,
-                    componentAssignmentsFromMap(embeddingConfigsByComponent),
+                    componentAssignmentsFromMap(simulatorComponents, embeddingConfigsByComponent),
                 ),
             ]);
             setNotice(t("simulationDetails.configSaved"));
@@ -1275,6 +1293,124 @@ function ImageGenerationConfigEditor({ simulationId }) {
             {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
             <div className="modal-actions inline-actions">
                 <button type="button" className="primary-button" disabled={saving} onClick={saveConfig}>
+                    {saving ? t("simulationDetails.configSaving") : t("simulationDetails.saveConfigurations")}
+                </button>
+            </div>
+        </section>
+    );
+}
+
+function ImageModelConfigEditor({ simulationId }) {
+    const { t } = useTranslation();
+    const [imageConfigs, setImageConfigs] = useState([]);
+    const [imageConfigsByComponent, setImageConfigsByComponent] = useState(
+        () => emptyComponentConfigMap(imageComponents),
+    );
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadConfigurations() {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const [images, imageAssignments] = await Promise.all([
+                    fetchImageConfigs(),
+                    fetchSimulationImageConfigs(simulationId),
+                ]);
+
+                if (!cancelled) {
+                    setImageConfigs(images);
+                    setImageConfigsByComponent(
+                        componentConfigMapFromAssignments(imageComponents, imageAssignments),
+                    );
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadConfigurations();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [simulationId]);
+
+    function updateComponentConfig(component, configId) {
+        setImageConfigsByComponent((current) => ({
+            ...current,
+            [component]: configId,
+        }));
+    }
+
+    async function saveConfigurations() {
+        try {
+            setSaving(true);
+            setNotice(null);
+            setError(null);
+            await setSimulationImageConfigs(
+                simulationId,
+                componentAssignmentsFromMap(imageComponents, imageConfigsByComponent),
+            );
+            setNotice(t("simulationDetails.configSaved"));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return <p className="status-text">{t("simulationDetails.configLoading")}</p>;
+    }
+
+    return (
+        <section className="world-editor-form">
+            {error ? (
+                <p className="status-text error-text">
+                    {t("simulationDetails.configError", { error })}
+                </p>
+            ) : null}
+            <div className="world-editor-config-matrix">
+                <div className="world-editor-config-matrix-header">
+                    <span>{t("worldCreate.newEditor.fields.component")}</span>
+                    <span>{t("worldCreate.newEditor.fields.imageConfig")}</span>
+                </div>
+                {imageComponents.map((component) => (
+                    <div className="world-editor-config-row" key={component}>
+                        <div className="world-editor-component-name">
+                            {t(`worldCreate.newEditor.components.${component}`, { defaultValue: component })}
+                        </div>
+                        <select
+                            className="single-line-input"
+                            value={imageConfigsByComponent[component] ?? ""}
+                            onChange={(event) => updateComponentConfig(component, event.target.value)}
+                        >
+                            <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                            {imageConfigs.map((config) => (
+                                <option key={config.id} value={config.id}>
+                                    {configLabel(config, config.id)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                ))}
+            </div>
+            {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
+            <div className="modal-actions inline-actions">
+                <button type="button" className="primary-button" disabled={saving} onClick={saveConfigurations}>
                     {saving ? t("simulationDetails.configSaving") : t("simulationDetails.saveConfigurations")}
                 </button>
             </div>
@@ -1792,7 +1928,11 @@ function SimulationDetailsModal({
                         {activeSection === "configs" ? (
                             <SimulationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "imageGeneration" ? (
-                            <ImageGenerationConfigEditor simulationId={simulation.id} />
+                            <>
+                                <ImageModelConfigEditor simulationId={simulation.id} />
+                                <div className="simulation-details-separator" />
+                                <ImageGenerationConfigEditor simulationId={simulation.id} />
+                            </>
                         ) : activeSection === "ttsGeneration" ? (
                             <TtsGenerationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "prompts" ? (
@@ -2037,6 +2177,29 @@ export function SimulationChatPage() {
     const [selectedCharacterIds, setSelectedCharacterIds] = useState({});
     const [selectedLocationIds, setSelectedLocationIds] = useState({});
     const [selectedEntityIds, setSelectedEntityIds] = useState({});
+    const [sttAvailable, setSttAvailable] = useState(false);
+    const [voiceBusy, setVoiceBusy] = useState(false);
+    const isDesktop = useMediaQuery("(min-width: 768px)");
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetchSttConfigs()
+            .then((configs) => {
+                if (!cancelled) {
+                    setSttAvailable(configs.length > 0);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setSttAvailable(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const listedSimulation = useMemo(
         () => simulations.find((simulation) => String(simulation.id) === String(simulationId)),
@@ -2067,7 +2230,8 @@ export function SimulationChatPage() {
         () => (input.trim().length > 0 ? validateInputMarkup(input) : null),
         [input],
     );
-    const sendDisabled = sending || streamingRecord?.active || Boolean(inputFormatError);
+    const voiceInputDisabled = sending || Boolean(streamingRecord?.active);
+    const sendDisabled = sending || streamingRecord?.active || Boolean(inputFormatError) || voiceBusy;
 
     async function refreshSimulationDetails(id) {
         try {
@@ -2714,6 +2878,15 @@ export function SimulationChatPage() {
         handleSend();
     }
 
+    function handleVoiceTranscribed(text) {
+        if (!text) {
+            return;
+        }
+
+        setInput((current) => (current.trim().length === 0 ? text : `${current.trimEnd()} ${text}`));
+        composerInputRef.current?.focus();
+    }
+
     if (loading) {
         return <p className="status-text">{t("simulationChat.loading")}</p>;
     }
@@ -2821,6 +2994,7 @@ export function SimulationChatPage() {
                             className="chat-composer-input"
                             value={input}
                             rows={2}
+                            disabled={voiceBusy}
                             placeholder={t("simulationChat.inputPlaceholder")}
                             onChange={(event) => setInput(event.target.value)}
                             onKeyDown={handleComposerKeyDown}
@@ -2831,6 +3005,14 @@ export function SimulationChatPage() {
                             <p className="chat-send-error">{t("simulationChat.sendError", { error: sendError })}</p>
                         ) : null}
                     </div>
+                    {sttAvailable ? (
+                        <VoiceRecorderButton
+                            disabled={voiceInputDisabled}
+                            isDesktop={isDesktop}
+                            onBusyChange={setVoiceBusy}
+                            onTranscribed={handleVoiceTranscribed}
+                        />
+                    ) : null}
                     <button
                         type="submit"
                         className="chat-send-button"

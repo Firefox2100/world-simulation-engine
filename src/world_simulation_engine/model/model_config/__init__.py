@@ -4,3 +4,4 @@ from .embed_config import OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedM
 from .image_config import ComfyUiImageModelConfig, ImageModelConfigUnion
 from .tts_config import AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
     AllTalkTtsModelConfigUnion, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion
+from .stt_config import SttModelConfig, SttModelConfigUnion, WhisperCppSttModelConfig

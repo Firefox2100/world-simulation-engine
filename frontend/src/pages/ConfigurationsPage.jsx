@@ -4,33 +4,45 @@ import { useTranslation } from "react-i18next";
 import {
     createConnection,
     createEmbeddingConfig,
+    createImageConfig,
     createLlmConfig,
+    createSttConfig,
     createTtsConfig,
     deleteConnection,
     deleteEmbeddingConfig,
+    deleteImageConfig,
     deleteLlmConfig,
+    deleteSttConfig,
     deleteTtsConfig,
     fetchConnections,
     fetchEmbeddingConfigs,
+    fetchImageConfigs,
     fetchLlmConfigs,
+    fetchSttConfigs,
     fetchTtsConfigs,
     setEmbeddingConfigConnection,
+    setImageConfigConnection,
     setLlmConfigConnection,
+    setSttConfigConnection,
     setTtsConfigConnection,
     updateConnection,
     updateEmbeddingConfig,
+    updateImageConfig,
     updateLlmConfig,
+    updateSttConfig,
     updateTtsConfig,
 } from "@/api/configurations";
 import { ConnectionProviderIcon } from "@/components/ConnectionProviderIcon";
 
-const tabs = ["connections", "embeddings", "llms", "tts"];
-const connectionProviders = ["openai", "ollama", "alltalk"];
+const tabs = ["connections", "embeddings", "llms", "tts", "images", "stt"];
+const connectionProviders = ["openai", "ollama", "alltalk", "whispercpp", "comfyui"];
 const modelProviders = ["openai", "ollama"];
 const ttsEngines = ["xtts", "piper", "vits", "parler", "f5tts"];
 const ttsLanguageEngines = ["xtts", "vits", "f5tts"];
 const ttsTemperatureEngines = ["xtts", "parler"];
 const ttsRepetitionPenaltyEngines = ["xtts"];
+const imageProviders = ["comfyui"];
+const sttProviders = ["whispercpp"];
 const ollamaLlmFields = [
     "mirostat",
     "mirostat_eta",
@@ -114,6 +126,35 @@ function makeFormState(kind, item = null) {
         };
     }
 
+    if (kind === "images") {
+        return {
+            provider: "comfyui",
+            connection_id: item?.connection?.id ?? "",
+            model: item?.model ?? "",
+            vae: item?.vae ?? "",
+            clip: item?.clip ?? "",
+            image_width: item?.image_width == null ? "" : String(item.image_width),
+            image_height: item?.image_height == null ? "" : String(item.image_height),
+            seed: item?.seed == null ? "" : String(item.seed),
+            steps: item?.steps == null ? "" : String(item.steps),
+            cfg: item?.cfg == null ? "" : String(item.cfg),
+        };
+    }
+
+    if (kind === "stt") {
+        return {
+            provider: "whispercpp",
+            connection_id: item?.connection?.id ?? "",
+            model: item?.model ?? "",
+            language: item?.language ?? "",
+            translate: item?.translate ?? false,
+            temperature: item?.temperature == null ? "" : String(item.temperature),
+            temperature_inc: item?.temperature_inc == null ? "" : String(item.temperature_inc),
+            initial_prompt: item?.initial_prompt ?? "",
+            carry_initial_prompt: item?.carry_initial_prompt ?? false,
+        };
+    }
+
     return {
         provider: item ? inferLlmProvider(item) : "openai",
         connection_id: item?.connection?.id ?? "",
@@ -185,6 +226,31 @@ function buildPayload(kind, form, editing) {
         return payload;
     }
 
+    if (kind === "images") {
+        return {
+            model: cleanText(form.model),
+            vae: cleanText(form.vae),
+            clip: cleanText(form.clip),
+            image_width: numberOrNull(form.image_width, Number.parseInt),
+            image_height: numberOrNull(form.image_height, Number.parseInt),
+            seed: numberOrNull(form.seed, Number.parseInt),
+            steps: numberOrNull(form.steps, Number.parseInt),
+            cfg: numberOrNull(form.cfg, Number.parseInt),
+        };
+    }
+
+    if (kind === "stt") {
+        return {
+            model: cleanText(form.model),
+            language: cleanText(form.language),
+            translate: form.translate,
+            temperature: numberOrNull(form.temperature),
+            temperature_inc: numberOrNull(form.temperature_inc),
+            initial_prompt: cleanText(form.initial_prompt),
+            carry_initial_prompt: form.carry_initial_prompt,
+        };
+    }
+
     const payload = {
         name: form.name.trim(),
         model: form.model.trim(),
@@ -225,8 +291,8 @@ function isConfigFormValid(kind, form) {
         return hasValue(form.provider) && hasValue(form.connection_id) && hasValue(form.name) && hasValue(form.model);
     }
 
-    if (kind === "tts") {
-        return hasValue(form.engine) && hasValue(form.connection_id);
+    if (kind === "tts" || kind === "images" || kind === "stt") {
+        return hasValue(form.connection_id);
     }
 
     return hasValue(form.provider) && hasValue(form.model);
@@ -245,6 +311,14 @@ function titleFor(kind, item) {
         return item.model || item.narrator_voice || item.engine;
     }
 
+    if (kind === "images") {
+        return item.model || "ComfyUI";
+    }
+
+    if (kind === "stt") {
+        return item.model || "whisper.cpp";
+    }
+
     return item.model;
 }
 
@@ -255,6 +329,10 @@ function providerFor(kind, item) {
 
     if (kind === "tts") {
         return item.engine;
+    }
+
+    if (kind === "images" || kind === "stt") {
+        return item.provider;
     }
 
     return kind === "embeddings" ? inferEmbeddingProvider(item) : inferLlmProvider(item);
@@ -333,6 +411,34 @@ function detailText(kind, item, t) {
             .join(" · ");
     }
 
+    if (kind === "images") {
+        return [
+            t("configurations.providers.comfyui"),
+            item.connection
+                ? t("configurations.details.connection", { name: item.connection.name })
+                : t("configurations.details.noConnection"),
+            item.image_width && item.image_height
+                ? t("configurations.details.imageSize", { width: item.image_width, height: item.image_height })
+                : null,
+            item.steps != null ? t("configurations.details.steps", { value: item.steps }) : null,
+        ]
+            .filter(Boolean)
+            .join(" · ");
+    }
+
+    if (kind === "stt") {
+        return [
+            t("configurations.providers.whispercpp"),
+            item.connection
+                ? t("configurations.details.connection", { name: item.connection.name })
+                : t("configurations.details.noConnection"),
+            item.language ? t("configurations.details.language", { value: item.language }) : null,
+            item.temperature != null ? t("configurations.details.temperature", { value: item.temperature }) : null,
+        ]
+            .filter(Boolean)
+            .join(" · ");
+    }
+
     return [
         t(`configurations.providers.${providerFor(kind, item)}`, { defaultValue: providerFor(kind, item) }),
         item.connection
@@ -395,6 +501,16 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
                     ? await updateTtsConfig(item.id, payload)
                     : await createTtsConfig(form.engine, payload);
                 await setTtsConfigConnection(savedConfig.id, form.connection_id);
+            } else if (kind === "images") {
+                savedConfig = editing
+                    ? await updateImageConfig(item.id, payload)
+                    : await createImageConfig(form.provider, payload);
+                await setImageConfigConnection(savedConfig.id, form.connection_id);
+            } else if (kind === "stt") {
+                savedConfig = editing
+                    ? await updateSttConfig(item.id, payload)
+                    : await createSttConfig(form.provider, payload);
+                await setSttConfigConnection(savedConfig.id, form.connection_id);
             } else {
                 savedConfig = editing ? await updateLlmConfig(item.id, payload) : await createLlmConfig(form.provider, payload);
                 await setLlmConfigConnection(savedConfig.id, form.connection_id);
@@ -463,7 +579,15 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
 function ConfigurationFields({ kind, editing, form, connections, onChange }) {
     const { t } = useTranslation();
     const providerField = kind === "connections" ? "type" : kind === "tts" ? "engine" : "provider";
-    const providerOptions = kind === "connections" ? connectionProviders : kind === "tts" ? ttsEngines : modelProviders;
+    const providerOptions = kind === "connections"
+        ? connectionProviders
+        : kind === "tts"
+            ? ttsEngines
+            : kind === "images"
+                ? imageProviders
+                : kind === "stt"
+                    ? sttProviders
+                    : modelProviders;
     const providerLabel = kind === "tts" ? t("configurations.fields.engine") : t("configurations.fields.provider");
 
     return (
@@ -485,7 +609,7 @@ function ConfigurationFields({ kind, editing, form, connections, onChange }) {
                 </select>
             </div>
 
-            {kind !== "embeddings" && kind !== "tts" ? (
+            {kind !== "embeddings" && kind !== "tts" && kind !== "images" && kind !== "stt" ? (
                 <TextField
                     id="configuration-name"
                     label={t("configurations.fields.name")}
@@ -553,11 +677,15 @@ function ModelFields({ kind, form, connections, onChange, t }) {
                 label={t("configurations.fields.model")}
                 value={form.model}
                 onChange={(value) => onChange("model", value)}
-                required={kind !== "tts"}
+                required={kind !== "tts" && kind !== "images" && kind !== "stt"}
             />
 
             {kind === "tts" ? (
                 <TtsModelFields form={form} onChange={onChange} t={t} />
+            ) : kind === "images" ? (
+                <ImageModelFields form={form} onChange={onChange} t={t} />
+            ) : kind === "stt" ? (
+                <SttModelFields form={form} onChange={onChange} t={t} />
             ) : kind === "embeddings" ? (
                 <>
                     <TextField
@@ -741,6 +869,107 @@ function TtsModelFields({ form, onChange, t }) {
     );
 }
 
+function ImageModelFields({ form, onChange, t }) {
+    return (
+        <>
+            <TextField
+                id="configuration-vae"
+                label={t("configurations.fields.vae")}
+                value={form.vae}
+                onChange={(value) => onChange("vae", value)}
+            />
+            <TextField
+                id="configuration-clip"
+                label={t("configurations.fields.clip")}
+                value={form.clip}
+                onChange={(value) => onChange("clip", value)}
+            />
+            <TextField
+                id="configuration-image-width"
+                label={t("configurations.fields.imageWidth")}
+                value={form.image_width}
+                onChange={(value) => onChange("image_width", value)}
+                type="number"
+            />
+            <TextField
+                id="configuration-image-height"
+                label={t("configurations.fields.imageHeight")}
+                value={form.image_height}
+                onChange={(value) => onChange("image_height", value)}
+                type="number"
+            />
+            <TextField
+                id="configuration-seed"
+                label={t("configurations.fields.seed")}
+                value={form.seed}
+                onChange={(value) => onChange("seed", value)}
+                type="number"
+            />
+            <TextField
+                id="configuration-steps"
+                label={t("configurations.fields.steps")}
+                value={form.steps}
+                onChange={(value) => onChange("steps", value)}
+                type="number"
+            />
+            <TextField
+                id="configuration-cfg"
+                label={t("configurations.fields.cfg")}
+                value={form.cfg}
+                onChange={(value) => onChange("cfg", value)}
+                type="number"
+            />
+        </>
+    );
+}
+
+function SttModelFields({ form, onChange, t }) {
+    return (
+        <>
+            <TextField
+                id="configuration-language"
+                label={t("configurations.fields.language")}
+                value={form.language}
+                onChange={(value) => onChange("language", value)}
+            />
+            <CheckboxField
+                id="configuration-translate"
+                label={t("configurations.fields.translate")}
+                checked={form.translate}
+                onChange={(value) => onChange("translate", value)}
+            />
+            <TextField
+                id="configuration-temperature"
+                label={t("configurations.fields.temperature")}
+                value={form.temperature}
+                onChange={(value) => onChange("temperature", value)}
+                type="number"
+                step="0.1"
+            />
+            <TextField
+                id="configuration-temperature-inc"
+                label={t("configurations.fields.temperatureInc")}
+                value={form.temperature_inc}
+                onChange={(value) => onChange("temperature_inc", value)}
+                type="number"
+                step="0.1"
+            />
+            <TextField
+                id="configuration-initial-prompt"
+                label={t("configurations.fields.initialPrompt")}
+                value={form.initial_prompt}
+                onChange={(value) => onChange("initial_prompt", value)}
+            />
+            <CheckboxField
+                id="configuration-carry-initial-prompt"
+                label={t("configurations.fields.carryInitialPrompt")}
+                checked={form.carry_initial_prompt}
+                onChange={(value) => onChange("carry_initial_prompt", value)}
+            />
+        </>
+    );
+}
+
 function CheckboxField({ id, label, checked, onChange }) {
     return (
         <div className="form-field inline-field modal-form-field">
@@ -813,6 +1042,8 @@ export function ConfigurationsPage() {
     const [embeddings, setEmbeddings] = useState([]);
     const [llms, setLlms] = useState([]);
     const [ttsConfigs, setTtsConfigs] = useState([]);
+    const [imageConfigs, setImageConfigs] = useState([]);
+    const [sttConfigs, setSttConfigs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [actionError, setActionError] = useState(null);
@@ -824,8 +1055,10 @@ export function ConfigurationsPage() {
             embeddings,
             llms,
             tts: ttsConfigs,
+            images: imageConfigs,
+            stt: sttConfigs,
         }),
-        [connections, embeddings, llms, ttsConfigs],
+        [connections, embeddings, llms, ttsConfigs, imageConfigs, sttConfigs],
     );
 
     async function loadConfigurations() {
@@ -833,17 +1066,21 @@ export function ConfigurationsPage() {
             setLoading(true);
             setError(null);
 
-            const [connectionData, embeddingData, llmData, ttsData] = await Promise.all([
+            const [connectionData, embeddingData, llmData, ttsData, imageData, sttData] = await Promise.all([
                 fetchConnections(),
                 fetchEmbeddingConfigs(),
                 fetchLlmConfigs(),
                 fetchTtsConfigs(),
+                fetchImageConfigs(),
+                fetchSttConfigs(),
             ]);
 
             setConnections(connectionData);
             setEmbeddings(embeddingData);
             setLlms(llmData);
             setTtsConfigs(ttsData);
+            setImageConfigs(imageData);
+            setSttConfigs(sttData);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -856,6 +1093,10 @@ export function ConfigurationsPage() {
             loadConfigurations();
         });
     }, []);
+
+    // STT is global - simulations don't pick their own backend, so at most one config should
+    // exist. Once one is set up, editing it is done via the row's own edit action instead.
+    const sttCreateDisabled = activeTab === "stt" && sttConfigs.length > 0;
 
     async function handleDelete(kind, item) {
         const name = titleFor(kind, item);
@@ -871,6 +1112,10 @@ export function ConfigurationsPage() {
                 await deleteEmbeddingConfig(item.id);
             } else if (kind === "tts") {
                 await deleteTtsConfig(item.id);
+            } else if (kind === "images") {
+                await deleteImageConfig(item.id);
+            } else if (kind === "stt") {
+                await deleteSttConfig(item.id);
             } else {
                 await deleteLlmConfig(item.id);
             }
@@ -893,13 +1138,15 @@ export function ConfigurationsPage() {
                     <h1>{t("configurations.title")}</h1>
                     <p>{t("configurations.subtitle")}</p>
                 </div>
-                <button
-                    type="button"
-                    className="primary-button"
-                    onClick={() => setModalState({ kind: activeTab, item: null })}
-                >
-                    {t(`configurations.actions.create.${activeTab}`)}
-                </button>
+                {sttCreateDisabled ? null : (
+                    <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() => setModalState({ kind: activeTab, item: null })}
+                    >
+                        {t(`configurations.actions.create.${activeTab}`)}
+                    </button>
+                )}
             </div>
 
             <div className="configuration-tabs" role="tablist" aria-label={t("configurations.tabsLabel")}>

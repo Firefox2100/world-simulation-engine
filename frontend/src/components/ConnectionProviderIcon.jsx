@@ -11,7 +11,7 @@ export function ConnectionProviderIcon({ provider }) {
         return <Ollama size={iconSize} />;
     }
 
-    if (provider === "comfy_ui") {
+    if (provider === "comfy_ui" || provider === "comfyui") {
         return <ComfyUI size={iconSize} />;
     }
 

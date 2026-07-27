@@ -9,7 +9,8 @@ from world_simulation_engine.misc.enums import ComponentType, ConnectionType, Im
 from world_simulation_engine.model import ConnectionConfig, OllamaChatModelConfig, OpenAiChatModelConfig, \
     ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, \
     ImageGenerationConfig, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
-    AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, TtsGenerationConfig
+    AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, TtsGenerationConfig, \
+    SttModelConfigUnion, WhisperCppSttModelConfig, ComfyUiImageModelConfig, ImageModelConfigUnion
 from .utils import db_dep
 
 
@@ -88,6 +89,37 @@ class TtsConfigUpdate(BaseModel):
     )
 
 
+class ImageConfigUpdate(BaseModel):
+    """
+    DTO model for updating image model configs
+    """
+
+    model: Optional[str] = Field(None, description="Name of the model to use")
+    vae: Optional[str] = Field(None, description="Name of the vae model to use")
+    clip: Optional[str] = Field(None, description="Name of the clip model to use")
+    image_width: Optional[int] = Field(None, description="Width of the image to generate")
+    image_height: Optional[int] = Field(None, description="Height of the image to generate")
+    seed: Optional[int] = Field(None, description="Seed for the random number generator")
+    steps: Optional[int] = Field(None, description="Number of steps to generate for each image")
+    cfg: Optional[int] = Field(None, description="Configuration parameters")
+
+
+class SttConfigUpdate(BaseModel):
+    """
+    DTO model for updating STT model configs
+    """
+
+    model: Optional[str] = Field(None, description="Name of the model to use")
+    language: Optional[str] = Field(None, description="Spoken language code, e.g. 'en' or 'auto'")
+    translate: Optional[bool] = Field(None, description="Whether to translate the transcription into English")
+    temperature: Optional[float] = Field(None, description="Sampling temperature for decoding")
+    temperature_inc: Optional[float] = Field(None, description="Temperature increment used on decoding fallback")
+    initial_prompt: Optional[str] = Field(None, description="Initial prompt text to bias vocabulary/context")
+    carry_initial_prompt: Optional[bool] = Field(
+        None, description="Whether to always prepend the initial prompt",
+    )
+
+
 class ImageGenerationConfigUpdate(BaseModel):
     """
     DTO model for updating a simulation's auto image generation configuration
@@ -157,6 +189,15 @@ class ComponentTtsConfig(BaseModel):
 
     component: ComponentType = Field(..., description="The component using the config")
     config: TtsModelConfigUnion = Field(..., description="The assigned TTS model config")
+
+
+class ComponentImageConfig(BaseModel):
+    """
+    DTO model for a component-specific image config assignment
+    """
+
+    component: ComponentType = Field(..., description="The component using the config")
+    config: ImageModelConfigUnion = Field(..., description="The assigned image model config")
 
 
 class ComponentModelConfigUpdate(BaseModel):
@@ -237,6 +278,27 @@ async def _list_tts_assignments(source_id: str, db: db_dep) -> list[ComponentTts
     configs = await db.config.list_ttss_by_source(source_id)
     return [
         ComponentTtsConfig(component=component, config=config)
+        for component, config in configs.items()
+    ]
+
+
+async def _apply_image_assignments(source_id: str, assignments: list[ComponentModelConfigUpdate], db: db_dep):
+    for assignment in assignments:
+        if assignment.config_id:
+            if not await db.config.get_image(assignment.config_id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Image config {assignment.config_id} not found",
+                )
+            await db.config.link_image(source_id, assignment.config_id, assignment.component)
+        else:
+            await db.config.unlink_image(source_id, assignment.component)
+
+
+async def _list_image_assignments(source_id: str, db: db_dep) -> list[ComponentImageConfig]:
+    configs = await db.config.list_images_by_source(source_id)
+    return [
+        ComponentImageConfig(component=component, config=config)
         for component, config in configs.items()
     ]
 
@@ -645,6 +707,210 @@ async def delete_tts_config_connection(config_id: str, db: db_dep):
         )
 
 
+@config_router.get("/config/images", response_model=list[ImageModelConfigUnion], response_model_exclude_none=True)
+async def list_image_configs(db: db_dep):
+    return await db.config.list_images()
+
+
+@config_router.post(
+    "/config/images/comfyui", response_model=ComfyUiImageModelConfig, response_model_exclude_none=True,
+)
+async def create_comfyui_image_config(image_config: ComfyUiImageModelConfig, db: db_dep):
+    return await db.config.create_image(image_config)
+
+
+@config_router.get(
+    "/config/images/{config_id}", response_model=ImageModelConfigUnion, response_model_exclude_none=True,
+)
+async def get_image_config(config_id: str, db: db_dep):
+    image_config = await db.config.get_image(config_id)
+    if not image_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+
+    return image_config
+
+
+@config_router.patch(
+    "/config/images/{config_id}", response_model=ImageModelConfigUnion, response_model_exclude_none=True,
+)
+async def update_image_config(config_id: str, image_update: ImageConfigUpdate, db: db_dep):
+    image_config = await db.config.update_image(
+        config_id,
+        image_update.model_dump(exclude_unset=True),
+    )
+    if not image_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+
+    return image_config
+
+
+@config_router.delete("/config/images/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_image_config(config_id: str, db: db_dep):
+    deleted = await db.config.delete_image(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+
+
+@config_router.put("/config/images/{config_id}/connection", response_model=ConnectionConfig)
+async def set_image_config_connection(config_id: str, connection_update: ConfigConnectionUpdate, db: db_dep):
+    if not await db.config.get_image(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+    if not await db.config.get_connection(connection_update.connection_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection config {connection_update.connection_id} not found",
+        )
+
+    return await db.config.link_connection(config_id, connection_update.connection_id)
+
+
+@config_router.get("/config/images/{config_id}/connection", response_model=ConnectionConfig)
+async def get_image_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_image(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+
+    connection = await db.config.get_connection_by_image_source(config_id)
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection for image config {config_id} not found",
+        )
+
+    return connection
+
+
+@config_router.delete("/config/images/{config_id}/connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_image_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_image(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+
+    deleted = await db.config.unlink_connection(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_id} not found",
+        )
+
+
+@config_router.get("/config/stt", response_model=list[SttModelConfigUnion], response_model_exclude_none=True)
+async def list_stt_configs(db: db_dep):
+    return await db.config.list_stts()
+
+
+@config_router.post(
+    "/config/stt/whispercpp", response_model=WhisperCppSttModelConfig, response_model_exclude_none=True,
+)
+async def create_whisper_cpp_stt_config(stt_config: WhisperCppSttModelConfig, db: db_dep):
+    return await db.config.create_stt(stt_config)
+
+
+@config_router.get("/config/stt/{config_id}", response_model=SttModelConfigUnion, response_model_exclude_none=True)
+async def get_stt_config(config_id: str, db: db_dep):
+    stt_config = await db.config.get_stt(config_id)
+    if not stt_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+
+    return stt_config
+
+
+@config_router.patch(
+    "/config/stt/{config_id}", response_model=SttModelConfigUnion, response_model_exclude_none=True,
+)
+async def update_stt_config(config_id: str, stt_update: SttConfigUpdate, db: db_dep):
+    stt_config = await db.config.update_stt(
+        config_id,
+        stt_update.model_dump(exclude_unset=True),
+    )
+    if not stt_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+
+    return stt_config
+
+
+@config_router.delete("/config/stt/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_stt_config(config_id: str, db: db_dep):
+    deleted = await db.config.delete_stt(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+
+
+@config_router.put("/config/stt/{config_id}/connection", response_model=ConnectionConfig)
+async def set_stt_config_connection(config_id: str, connection_update: ConfigConnectionUpdate, db: db_dep):
+    if not await db.config.get_stt(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+    if not await db.config.get_connection(connection_update.connection_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection config {connection_update.connection_id} not found",
+        )
+
+    return await db.config.link_connection(config_id, connection_update.connection_id)
+
+
+@config_router.get("/config/stt/{config_id}/connection", response_model=ConnectionConfig)
+async def get_stt_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_stt(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+
+    connection = await db.config.get_connection_by_stt_source(config_id)
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection for STT config {config_id} not found",
+        )
+
+    return connection
+
+
+@config_router.delete("/config/stt/{config_id}/connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_stt_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_stt(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+
+    deleted = await db.config.unlink_connection(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"STT config {config_id} not found",
+        )
+
+
 @config_router.put(
     "/simulations/{simulation_id}/llm-connection",
     response_model=ChatModelConfigUnion,
@@ -943,6 +1209,105 @@ async def delete_simulation_tts_connection(
 
 
 @config_router.put(
+    "/simulations/{simulation_id}/image-connection",
+    response_model=ImageModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def set_simulation_image_connection(
+        simulation_id: str,
+        config_update: SimulationModelConfigUpdate,
+        db: db_dep,
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+    if not await db.config.get_image(config_update.config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_update.config_id} not found",
+        )
+
+    return await db.config.link_image(
+        simulation_id,
+        config_update.config_id,
+        config_update.component,
+    )
+
+
+@config_router.get(
+    "/simulations/{simulation_id}/image-connections",
+    response_model=list[ComponentImageConfig],
+    response_model_exclude_none=True,
+)
+async def list_simulation_image_connections(simulation_id: str, db: db_dep):
+    await _validate_simulation(simulation_id, db)
+    return await _list_image_assignments(simulation_id, db)
+
+
+@config_router.put(
+    "/simulations/{simulation_id}/image-connections",
+    response_model=list[ComponentImageConfig],
+    response_model_exclude_none=True,
+)
+async def set_simulation_image_connections(
+        simulation_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_simulation(simulation_id, db)
+    await _apply_image_assignments(simulation_id, config_update.assignments, db)
+    return await _list_image_assignments(simulation_id, db)
+
+
+@config_router.get(
+    "/simulations/{simulation_id}/image-connection",
+    response_model=ImageModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def get_simulation_image_connection(
+        simulation_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The simulation component using the config"),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    image_config = await db.config.get_image_by_source(simulation_id, component)
+    if not image_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config for simulation {simulation_id} and component {component} not found",
+        )
+
+    return image_config
+
+
+@config_router.delete("/simulations/{simulation_id}/image-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_simulation_image_connection(
+        simulation_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The simulation component using the config"),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    deleted = await db.config.unlink_image(simulation_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+
+@config_router.put(
     "/worlds/{world_id}/llm-connection",
     response_model=ChatModelConfigUnion,
     response_model_exclude_none=True,
@@ -1232,6 +1597,105 @@ async def delete_world_tts_connection(
         )
 
     deleted = await db.config.unlink_tts(world_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+
+@config_router.put(
+    "/worlds/{world_id}/image-connection",
+    response_model=ImageModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def set_world_image_connection(
+        world_id: str,
+        config_update: SimulationModelConfigUpdate,
+        db: db_dep,
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+    if not await db.config.get_image(config_update.config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config {config_update.config_id} not found",
+        )
+
+    return await db.config.link_image(
+        world_id,
+        config_update.config_id,
+        config_update.component,
+    )
+
+
+@config_router.get(
+    "/worlds/{world_id}/image-connections",
+    response_model=list[ComponentImageConfig],
+    response_model_exclude_none=True,
+)
+async def list_world_image_connections(world_id: str, db: db_dep):
+    await _validate_world(world_id, db)
+    return await _list_image_assignments(world_id, db)
+
+
+@config_router.put(
+    "/worlds/{world_id}/image-connections",
+    response_model=list[ComponentImageConfig],
+    response_model_exclude_none=True,
+)
+async def set_world_image_connections(
+        world_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_world(world_id, db)
+    await _apply_image_assignments(world_id, config_update.assignments, db)
+    return await _list_image_assignments(world_id, db)
+
+
+@config_router.get(
+    "/worlds/{world_id}/image-connection",
+    response_model=ImageModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def get_world_image_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    image_config = await db.config.get_image_by_source(world_id, component)
+    if not image_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Image config for world {world_id} and component {component} not found",
+        )
+
+    return image_config
+
+
+@config_router.delete("/worlds/{world_id}/image-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_world_image_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    deleted = await db.config.unlink_image(world_id, component)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

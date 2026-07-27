@@ -5,13 +5,15 @@ from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion
     OpenAiChatModelConfig, EmbedModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
     ComfyUiImageModelConfig, ImageModelConfigUnion, ImageGenerationConfig, AllTalkF5ttsModelConfig, \
     AllTalkParlerModelConfig, AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, \
-    TtsModelConfigUnion, TtsGenerationConfig
+    TtsModelConfigUnion, TtsGenerationConfig, SttModelConfigUnion, WhisperCppSttModelConfig
 
 
 TTS_CONFIG_LABELS = (
     "AllTalkXttsModelConfig|AllTalkPiperModelConfig|AllTalkVitsModelConfig|"
     "AllTalkParlerModelConfig|AllTalkF5ttsModelConfig"
 )
+
+STT_CONFIG_LABELS = "WhisperCppSttModelConfig"
 
 
 def _connection_from_node(connection_node) -> ConnectionConfig:
@@ -206,6 +208,26 @@ def _tts_from_node(config_node, labels: list[str], connection_node=None) -> TtsM
     raise ValueError(f"Unknown config labels {labels}")
 
 
+def _whisper_cpp_stt_from_node(config_node, connection_node=None) -> WhisperCppSttModelConfig:
+    return WhisperCppSttModelConfig(
+        id=config_node["id"],
+        model=config_node.get("model"),
+        language=config_node.get("language"),
+        translate=config_node.get("translate"),
+        temperature=config_node.get("temperature"),
+        temperature_inc=config_node.get("temperature_inc"),
+        initial_prompt=config_node.get("initial_prompt"),
+        carry_initial_prompt=config_node.get("carry_initial_prompt"),
+        connection=_connection_from_optional_node(connection_node),
+    )
+
+
+def _stt_from_node(config_node, labels: list[str], connection_node=None) -> SttModelConfigUnion:
+    if "WhisperCppSttModelConfig" in labels:
+        return _whisper_cpp_stt_from_node(config_node, connection_node)
+    raise ValueError(f"Unknown config labels {labels}")
+
+
 class ConfigStore:
     def __init__(self,
                  driver: AsyncDriver,
@@ -327,6 +349,23 @@ class ConfigStore:
 
         return _connection_from_node(record["c"])
 
+    async def get_connection_by_stt_source(self, source_id: str) -> ConnectionConfig | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (s:{STT_CONFIG_LABELS} {{id: $source_id}})
+                -[:USES]->
+                (c:ConnectionConfig)
+            RETURN c LIMIT 1
+            """,
+            parameters_={"source_id": source_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _connection_from_node(record["c"])
+
     async def link_connection(self,
                               source_id: str,
                               connection_id: str,
@@ -334,7 +373,7 @@ class ConfigStore:
         result = await self._driver.execute_query(
             f"""
             MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
-                |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS} {{
+                |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS}|{STT_CONFIG_LABELS} {{
                 id: $source_id
             }})
             MATCH (c:ConnectionConfig {{id: $connection_id}})
@@ -359,7 +398,7 @@ class ConfigStore:
         result = await self._driver.execute_query(
             f"""
             MATCH (source:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
-                |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS} {{
+                |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS}|{STT_CONFIG_LABELS} {{
                 id: $source_id
             }})
             OPTIONAL MATCH (source)-[uses:USES]->(:ConnectionConfig)
@@ -1431,6 +1470,129 @@ class ConfigStore:
         result = await self._driver.execute_query(
             f"""
             MATCH (c:{TTS_CONFIG_LABELS} {{id: $config_id}})
+            WITH collect(c) AS configs
+            FOREACH (config IN configs | DETACH DELETE config)
+            RETURN size(configs) AS deleted
+            """,
+            parameters_={"config_id": config_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
+    async def create_stt(self, stt_config: SttModelConfigUnion):
+        if isinstance(stt_config, WhisperCppSttModelConfig):
+            result = await self._driver.execute_query(
+                """
+                CREATE (c:WhisperCppSttModelConfig {
+                    id: $id,
+                    model: $model,
+                    language: $language,
+                    translate: $translate,
+                    temperature: $temperature,
+                    temperature_inc: $temperature_inc,
+                    initial_prompt: $initial_prompt,
+                    carry_initial_prompt: $carry_initial_prompt
+                }) RETURN c
+                """,
+                parameters_={
+                    "id": stt_config.id,
+                    "model": stt_config.model,
+                    "language": stt_config.language,
+                    "translate": stt_config.translate,
+                    "temperature": stt_config.temperature,
+                    "temperature_inc": stt_config.temperature_inc,
+                    "initial_prompt": stt_config.initial_prompt,
+                    "carry_initial_prompt": stt_config.carry_initial_prompt,
+                }
+            )
+            return _whisper_cpp_stt_from_node(result.records[0]["c"])
+        else:
+            raise TypeError(f"Expected SttModelConfigUnion, got {type(stt_config)}")
+
+    async def list_stts(self) -> list[SttModelConfigUnion]:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{STT_CONFIG_LABELS})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            ORDER BY c.id
+            """
+        )
+
+        return [
+            _stt_from_node(record["config"], record["config_labels"], record["connection"])
+            for record in result.records
+        ]
+
+    async def get_global_stt(self) -> SttModelConfigUnion | None:
+        """STT is not per-simulation/world like chat/embed/image/TTS - there is a single shared
+        backend, so this returns the only STT config expected to exist rather than looking one up
+        by source/component."""
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{STT_CONFIG_LABELS})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            ORDER BY c.id LIMIT 1
+            """
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _stt_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def get_stt(self, config_id: str) -> SttModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{STT_CONFIG_LABELS} {{id: $config_id}})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={"config_id": config_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _stt_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def update_stt(self,
+                         config_id: str,
+                         properties: dict,
+                         ) -> SttModelConfigUnion | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{STT_CONFIG_LABELS} {{id: $config_id}})
+            SET c += $properties
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "config_id": config_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _stt_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def delete_stt(self, config_id: str) -> bool:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{STT_CONFIG_LABELS} {{id: $config_id}})
             WITH collect(c) AS configs
             FOREACH (config IN configs | DETACH DELETE config)
             RETURN size(configs) AS deleted

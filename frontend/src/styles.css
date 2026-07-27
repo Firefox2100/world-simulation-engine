@@ -1430,6 +1430,105 @@ body {
     font-size: 0.88rem;
 }
 
+.voice-recorder {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+.voice-recorder-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.voice-record-button {
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 14px;
+    background: #f3f4f6;
+    color: #111827;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+}
+
+.voice-record-button svg {
+    width: 22px;
+    height: 22px;
+    fill: currentcolor;
+}
+
+.voice-record-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.voice-record-button.active {
+    background: #dc2626;
+    color: white;
+    animation: voice-record-pulse 1.6s ease-in-out infinite;
+}
+
+.voice-record-button.armed {
+    background: #b45309;
+    animation: none;
+}
+
+.voice-cancel-button {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 50%;
+    background: #f3f4f6;
+    color: #374151;
+    cursor: pointer;
+}
+
+.voice-cancel-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.voice-recorder-status {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #111827;
+    color: white;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    box-shadow: 0 4px 10px rgb(0 0 0 / 0.15);
+}
+
+.voice-recorder-status.armed {
+    background: #b45309;
+}
+
+@keyframes voice-record-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgb(220 38 38 / 0.35);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgb(220 38 38 / 0);
+    }
+}
+
 .user-avatar {
     display: flex;
     align-items: center;
