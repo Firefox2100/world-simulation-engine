@@ -125,6 +125,18 @@ class TurnStore:
 
         return self.turn_from_node(record["turn"])
 
+    async def get_simulation_id_for_turn(self, turn_id: str) -> str | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (simulation:Simulation)-[:CONTAINS]->(turn:Turn {id: $turn_id})
+            RETURN simulation.id AS simulation_id LIMIT 1
+            """,
+            parameters_={"turn_id": turn_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return record["simulation_id"] if record else None
+
     async def list_turns(self,
                          source_id: str | None = None,
                          limit: int = 10,

@@ -197,8 +197,9 @@ class CharacterStore:
             OPTIONAL MATCH (c)-[:HOLDS]->(stack:ItemStack)
             OPTIONAL MATCH (c)-[:HAS_EMOTION_STATE]->(emotion:EmotionState)
             OPTIONAL MATCH (audit:EmotionChangeAudit)-[:CHANGED]->(emotion)
+            OPTIONAL MATCH (c)-[:HAS_CONFIG]->(tts_config:CharacterTtsConfig)
             WITH collect(DISTINCT c) + collect(DISTINCT intent) + collect(DISTINCT stack)
-                + collect(DISTINCT emotion) + collect(DISTINCT audit) AS nodes,
+                + collect(DISTINCT emotion) + collect(DISTINCT audit) + collect(DISTINCT tts_config) AS nodes,
                 1 AS deleted
             FOREACH (node IN nodes | DETACH DELETE node)
             RETURN deleted

@@ -3,8 +3,10 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from world_simulation_engine.component.tts_generator import TurnVoiceTrigger
 from world_simulation_engine.misc.enums import TurnType
 from world_simulation_engine.model import (
+    GeneratedVoiceMediaFile,
     NarrationProposal,
     PresentedTurn,
     PresentationBlockType,
@@ -14,7 +16,7 @@ from world_simulation_engine.model import (
     TurnPresentationBlock,
     TurnPresentationRendering,
 )
-from .utils import db_dep
+from .utils import db_dep, storage_dep
 
 
 turn_router = APIRouter(
@@ -236,6 +238,29 @@ async def replace_turn_presentation(
     if stored is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Could not replace presentation")
     return stored
+
+
+@turn_router.post(
+    "/turn-presentations/blocks/{block_id}/voice",
+    response_model=GeneratedVoiceMediaFile,
+)
+async def generate_presentation_block_voice(block_id: str, db: db_dep, storage: storage_dep):
+    """Generate (or return already-generated) TTS audio for one narration/speech segment,
+    regardless of the simulation's auto-generation mode."""
+    block = await db.turn_presentation.get_block(block_id)
+    if not block:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Presentation block {block_id} not found")
+
+    trigger = TurnVoiceTrigger(database=db, storage=storage)
+    try:
+        return await trigger.generate_for_block(block_id=block_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"TTS generation failed: {exc}",
+        ) from exc
 
 
 @turn_router.post("/worlds/{world_id}/turns", response_model=Turn)

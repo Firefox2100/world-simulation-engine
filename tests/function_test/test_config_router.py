@@ -114,6 +114,29 @@ def openai_embed_payload() -> dict:
     }
 
 
+def alltalk_connection_payload(name: str = "Local AllTalk") -> dict:
+    return {
+        "type": ConnectionType.ALLTALK,
+        "name": name,
+        "base_url": "http://localhost:7851",
+        "api_key": "test-key",
+    }
+
+
+def alltalk_xtts_payload() -> dict:
+    return {
+        "language": "en",
+        "temperature": 0.75,
+        "repetition_penalty": 10,
+    }
+
+
+def alltalk_piper_payload() -> dict:
+    return {
+        "speed": 1.1,
+    }
+
+
 def test_connection_config_crud(config_api):
     client = config_api.client
 
@@ -271,6 +294,130 @@ def test_embedding_config_crud_and_connection_link(config_api):
 
     assert delete_response.status_code == 204
     assert client.get(f"/config/embeddings/{ollama_embed['id']}").status_code == 404
+
+
+def test_tts_config_crud_and_connection_link(config_api):
+    client = config_api.client
+    connection = client.post("/config/connections", json=alltalk_connection_payload()).json()
+    xtts_create_response = client.post("/config/tts/alltalk/xtts", json=alltalk_xtts_payload())
+    piper_create_response = client.post("/config/tts/alltalk/piper", json=alltalk_piper_payload())
+
+    assert xtts_create_response.status_code == 200
+    assert piper_create_response.status_code == 200
+    xtts_config = xtts_create_response.json()
+    piper_config = piper_create_response.json()
+    assert xtts_config["provider"] == "alltalk"
+    assert xtts_config["engine"] == "xtts"
+    assert piper_config["engine"] == "piper"
+    assert client.get(f"/config/tts/{xtts_config['id']}").json() == xtts_config
+    listed = client.get("/config/tts").json()
+    assert {c["id"] for c in listed} == {xtts_config["id"], piper_config["id"]}
+
+    link_response = client.put(
+        f"/config/tts/{xtts_config['id']}/connection",
+        json={"connection_id": connection["id"]},
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json() == connection
+    assert client.get(f"/config/tts/{xtts_config['id']}/connection").json() == connection
+    assert client.get(f"/config/tts/{xtts_config['id']}").json() == {
+        **xtts_config,
+        "connection": connection,
+    }
+    assert client.delete(f"/config/tts/{xtts_config['id']}/connection").status_code == 204
+    assert client.get(f"/config/tts/{xtts_config['id']}/connection").status_code == 404
+    assert client.put(
+        f"/config/tts/{xtts_config['id']}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 200
+    linked_xtts_config = {
+        **xtts_config,
+        "connection": connection,
+    }
+
+    update_response = client.patch(
+        f"/config/tts/{xtts_config['id']}",
+        json={
+            "temperature": 0.5,
+            "speed": 1.2,
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json() == {
+        **linked_xtts_config,
+        "temperature": 0.5,
+        "speed": 1.2,
+    }
+
+    delete_response = client.delete(f"/config/tts/{xtts_config['id']}")
+
+    assert delete_response.status_code == 204
+    assert client.get(f"/config/tts/{xtts_config['id']}").status_code == 404
+
+
+def test_simulation_and_world_tts_config_links(config_api):
+    client = config_api.client
+    tts_config = client.post("/config/tts/alltalk/xtts", json=alltalk_xtts_payload()).json()
+    replacement_tts_config = client.post("/config/tts/alltalk/piper", json=alltalk_piper_payload()).json()
+
+    link_response = client.put(
+        f"/simulations/{config_api.simulation.id}/tts-connection",
+        json={
+            "component": ComponentType.NARRATOR_TTS,
+            "config_id": tts_config["id"],
+        },
+    )
+    replacement_link_response = client.put(
+        f"/simulations/{config_api.simulation.id}/tts-connection",
+        json={
+            "component": ComponentType.NARRATOR_TTS,
+            "config_id": replacement_tts_config["id"],
+        },
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json() == tts_config
+    assert replacement_link_response.status_code == 200
+    assert replacement_link_response.json() == replacement_tts_config
+    assert client.get(
+        f"/simulations/{config_api.simulation.id}/tts-connection",
+        params={"component": ComponentType.NARRATOR_TTS},
+    ).json() == replacement_tts_config
+    assert client.get(f"/simulations/{config_api.simulation.id}/tts-connections").json() == [
+        {"component": ComponentType.NARRATOR_TTS, "config": replacement_tts_config},
+    ]
+    assert client.delete(
+        f"/simulations/{config_api.simulation.id}/tts-connection",
+        params={"component": ComponentType.NARRATOR_TTS},
+    ).status_code == 204
+    assert client.get(
+        f"/simulations/{config_api.simulation.id}/tts-connection",
+        params={"component": ComponentType.NARRATOR_TTS},
+    ).status_code == 404
+
+    world_link_response = client.put(
+        f"/worlds/{config_api.world.id}/tts-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.NARRATOR_TTS,
+                    "config_id": tts_config["id"],
+                },
+            ],
+        },
+    )
+
+    assert world_link_response.status_code == 200
+    assert world_link_response.json() == [
+        {"component": ComponentType.NARRATOR_TTS, "config": tts_config},
+    ]
+    assert client.get(f"/worlds/{config_api.world.id}/tts-connections").json() == world_link_response.json()
+    assert client.get(
+        f"/worlds/{config_api.world.id}/tts-connection",
+        params={"component": ComponentType.NARRATOR_TTS},
+    ).json() == tts_config
 
 
 def test_simulation_model_config_links(config_api):
@@ -449,6 +596,7 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
     connection = client.post("/config/connections", json=connection_payload()).json()
     chat = client.post("/config/llm/openai", json=openai_chat_payload()).json()
     embed = client.post("/config/embeddings/openai", json=openai_embed_payload()).json()
+    tts = client.post("/config/tts/alltalk/xtts", json=alltalk_xtts_payload()).json()
 
     assert client.get(f"/config/connections/{missing_id}").status_code == 404
     assert client.patch(f"/config/connections/{missing_id}", json={"name": "Missing"}).status_code == 404
@@ -474,6 +622,53 @@ def test_config_endpoints_return_404_for_missing_resources(config_api):
     ).status_code == 404
     assert client.get(f"/config/embeddings/{missing_id}/connection").status_code == 404
     assert client.delete(f"/config/embeddings/{missing_id}/connection").status_code == 404
+    assert client.get(f"/config/tts/{missing_id}").status_code == 404
+    assert client.patch(f"/config/tts/{missing_id}", json={"speed": 1.0}).status_code == 404
+    assert client.delete(f"/config/tts/{missing_id}").status_code == 404
+    assert client.put(
+        f"/config/tts/{missing_id}/connection",
+        json={"connection_id": connection["id"]},
+    ).status_code == 404
+    assert client.put(
+        f"/config/tts/{tts['id']}/connection",
+        json={"connection_id": missing_id},
+    ).status_code == 404
+    assert client.get(f"/config/tts/{missing_id}/connection").status_code == 404
+    assert client.delete(f"/config/tts/{missing_id}/connection").status_code == 404
+    assert client.put(
+        f"/simulations/{missing_id}/tts-connection",
+        json={
+            "component": ComponentType.NARRATOR_TTS,
+            "config_id": tts["id"],
+        },
+    ).status_code == 404
+    assert client.put(
+        f"/simulations/{config_api.simulation.id}/tts-connection",
+        json={
+            "component": ComponentType.NARRATOR_TTS,
+            "config_id": missing_id,
+        },
+    ).status_code == 404
+    assert client.get(
+        f"/simulations/{missing_id}/tts-connection",
+        params={"component": ComponentType.NARRATOR_TTS},
+    ).status_code == 404
+    assert client.delete(
+        f"/simulations/{missing_id}/tts-connection",
+        params={"component": ComponentType.NARRATOR_TTS},
+    ).status_code == 404
+    assert client.get(f"/simulations/{missing_id}/tts-connections").status_code == 404
+    assert client.put(
+        f"/worlds/{config_api.world.id}/tts-connections",
+        json={
+            "assignments": [
+                {
+                    "component": ComponentType.NARRATOR_TTS,
+                    "config_id": missing_id,
+                },
+            ],
+        },
+    ).status_code == 404
     assert client.put(
         f"/simulations/{missing_id}/llm-connection",
         json={

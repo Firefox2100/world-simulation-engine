@@ -15,7 +15,7 @@ class TurnPresentationStore:
         self._driver = driver
 
     @staticmethod
-    def block_from_node(node) -> TurnPresentationBlock:
+    def block_from_node(node, voice_media_id: str | None = None) -> TurnPresentationBlock:
         created_at = node["created_at"]
         updated_at = node["updated_at"]
         if hasattr(created_at, "to_native"):
@@ -33,6 +33,7 @@ class TurnPresentationStore:
             speaker_id=node.get("speaker_id"),
             speaker_name=node.get("speaker_name"),
             media_id=node.get("media_id"),
+            voice_media_id=voice_media_id,
             completion=node["completion"],
             created_at=created_at,
             updated_at=updated_at,
@@ -72,7 +73,9 @@ class TurnPresentationStore:
             })
             MERGE (turn)-[:HAS_PRESENTATION]->(block)
             MERGE (source)-[:CONTAINS]->(block)
-            RETURN block
+            WITH block
+            OPTIONAL MATCH (block)-[:HAS_VOICE]->(voice:Media)
+            RETURN block, voice.id AS voice_media_id
             ORDER BY block.sequence
             """,
             parameters_={
@@ -91,7 +94,10 @@ class TurnPresentationStore:
             )
             return rendering if turn_result.records else None
         return rendering.model_copy(update={
-            "blocks": [self.block_from_node(record["block"]) for record in result.records],
+            "blocks": [
+                self.block_from_node(record["block"], record["voice_media_id"])
+                for record in result.records
+            ],
         })
 
     async def list_blocks(
@@ -112,7 +118,8 @@ class TurnPresentationStore:
             WHERE turn.id IN $turn_ids
               AND (block.locale = $locale OR (block.locale IS NULL AND $locale IS NULL))
               AND ($include_incomplete OR block.completion = 'complete')
-            RETURN block
+            OPTIONAL MATCH (block)-[:HAS_VOICE]->(voice:Media)
+            RETURN block, voice.id AS voice_media_id
             ORDER BY turn.sequence, block.sequence, block.id
             """,
             parameters_={
@@ -122,7 +129,26 @@ class TurnPresentationStore:
                 "include_incomplete": include_incomplete,
             },
         )
-        return [self.block_from_node(record["block"]) for record in result.records]
+        return [
+            self.block_from_node(record["block"], record["voice_media_id"])
+            for record in result.records
+        ]
+
+    async def get_block(self, block_id: str) -> TurnPresentationBlock | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (block:TurnPresentationBlock {id: $block_id})
+            OPTIONAL MATCH (block)-[:HAS_VOICE]->(voice:Media)
+            RETURN block, voice.id AS voice_media_id LIMIT 1
+            """,
+            parameters_={"block_id": block_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.block_from_node(record["block"], record["voice_media_id"])
 
     async def copy_presentations(
             self,

@@ -2,8 +2,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ImageGenerationMode
-from world_simulation_engine.model import ComfyUiImageModelConfig, ConnectionConfig, ImageGenerationConfig, \
-    OllamaChatModelConfig, OpenAiChatModelConfig, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, Simulation
+from world_simulation_engine.model import AllTalkPiperModelConfig, AllTalkXttsModelConfig, ComfyUiImageModelConfig, \
+    ConnectionConfig, ImageGenerationConfig, OllamaChatModelConfig, OpenAiChatModelConfig, OllamaEmbedModelConfig, \
+    OpenAiEmbedModelConfig, Simulation
 from world_simulation_engine.service.database.config_store import ConfigStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from tests.integration_test.database_service.helpers import create_world
@@ -353,3 +354,101 @@ async def test_image_generation_config_get_and_set(clean_neo4j):
     assert resaved == updated_config
     assert await store.get_image_generation_config(simulation.id) == updated_config
     assert await store.get_image_generation_config(str(uuid4())) is None
+
+
+async def test_tts_config_crud_and_connection_link(clean_neo4j):
+    store = ConfigStore(clean_neo4j)
+    connection = ConnectionConfig(
+        id=str(uuid4()),
+        type=ConnectionType.ALLTALK,
+        name="Local AllTalk",
+        base_url="http://localhost:7851",
+    )
+    xtts_config = AllTalkXttsModelConfig(
+        id=str(uuid4()),
+        language="en",
+        temperature=0.75,
+        repetition_penalty=10,
+    )
+    piper_config = AllTalkPiperModelConfig(
+        id=str(uuid4()),
+        speed=1.1,
+    )
+
+    await store.create_connection(connection)
+    assert await store.create_tts(xtts_config) == xtts_config
+    assert await store.create_tts(piper_config) == piper_config
+    assert await store.list_ttss() == sorted([xtts_config, piper_config], key=lambda c: c.id)
+    assert await store.get_tts(xtts_config.id) == xtts_config
+    assert await store.link_connection(xtts_config.id, connection.id) == connection
+    xtts_config_with_connection = AllTalkXttsModelConfig(
+        **{
+            **xtts_config.model_dump(),
+            "connection": connection,
+        },
+    )
+    assert await store.get_tts(xtts_config.id) == xtts_config_with_connection
+    assert await store.get_connection_by_tts_source(xtts_config.id) == connection
+    assert await store.unlink_connection(xtts_config.id) is True
+    assert await store.get_connection_by_tts_source(xtts_config.id) is None
+    assert await store.link_connection(xtts_config.id, connection.id) == connection
+
+    updated_tts = await store.update_tts(
+        xtts_config.id,
+        {
+            "temperature": 0.5,
+            "speed": 1.2,
+        },
+    )
+
+    assert updated_tts == AllTalkXttsModelConfig(
+        **{
+            **xtts_config.model_dump(),
+            "temperature": 0.5,
+            "speed": 1.2,
+            "connection": connection,
+        },
+    )
+    assert await store.delete_tts(xtts_config.id) is True
+    assert await store.get_tts(xtts_config.id) is None
+    assert await store.delete_tts(str(uuid4())) is False
+
+
+async def test_simulation_and_world_link_to_tts_config_by_component(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="TTS Config Simulation",
+        description="A simulation configured with a TTS model config",
+        current_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    store = ConfigStore(clean_neo4j)
+    tts_config = AllTalkXttsModelConfig(
+        id=str(uuid4()),
+    )
+    replacement_tts_config = AllTalkPiperModelConfig(
+        id=str(uuid4()),
+    )
+
+    await SimulationStore(clean_neo4j).create_simulation(simulation, world.id)
+    await store.create_tts(tts_config)
+    await store.create_tts(replacement_tts_config)
+
+    assert await store.link_tts(simulation.id, tts_config.id, ComponentType.NARRATOR_TTS) == tts_config
+    assert await store.get_tts_by_source(simulation.id, ComponentType.NARRATOR_TTS) == tts_config
+    assert await store.link_tts(
+        simulation.id, replacement_tts_config.id, ComponentType.NARRATOR_TTS,
+    ) == replacement_tts_config
+    assert await store.get_tts_by_source(simulation.id, ComponentType.NARRATOR_TTS) == replacement_tts_config
+    assert await store.list_ttss_by_source(simulation.id) == {
+        ComponentType.NARRATOR_TTS: replacement_tts_config,
+    }
+    assert await store.unlink_tts(simulation.id, ComponentType.NARRATOR_TTS) is True
+    assert await store.get_tts_by_source(simulation.id, ComponentType.NARRATOR_TTS) is None
+    assert await store.list_ttss_by_source(simulation.id) == {}
+    assert await store.unlink_tts(str(uuid4()), ComponentType.NARRATOR_TTS) is False
+
+    assert await store.link_tts(world.id, tts_config.id, ComponentType.NARRATOR_TTS) == tts_config
+    assert await store.get_tts_by_source(world.id, ComponentType.NARRATOR_TTS) == tts_config
+    assert await store.unlink_tts(world.id, ComponentType.NARRATOR_TTS) is True
+    assert await store.get_tts_by_source(world.id, ComponentType.NARRATOR_TTS) is None

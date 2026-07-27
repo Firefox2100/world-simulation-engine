@@ -100,3 +100,30 @@ class GeneratedImageMediaFile(MediaFile):
         None,
         description="Negative prompt used to steer the generation away from unwanted qualities",
     )
+
+
+class GeneratedVoiceMediaFile(MediaFile):
+    type: MediaType = Field(
+        MediaType.WAV,
+        description="Type of the generated voice media file",
+    )
+    presentation_block_id: str = Field(
+        ...,
+        description="The turn presentation block (narration or speech segment) this voice clip was generated for",
+    )
+    turn_id: str = Field(
+        ...,
+        description="The turn this voice clip belongs to",
+    )
+    character_id: Optional[str] = Field(
+        None,
+        description="The speaking character's id, for a speech segment. None for a narration segment",
+    )
+    text: str = Field(
+        ...,
+        description="The exact text that was synthesized",
+    )
+    voice_reference: Optional[str] = Field(
+        None,
+        description="The character or narrator voice reference used for this generation",
+    )

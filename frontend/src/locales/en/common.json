@@ -79,6 +79,8 @@
     "send": "Send",
     "sendError": "Unable to send message: {{error}}",
     "cancelled": "Generation was cancelled.",
+    "playVoice": "Play voice",
+    "generateVoice": "Generate voice",
     "suggestions": {
       "title": "Suggested actions",
       "useSuggestion": "Use this suggestion"
@@ -117,6 +119,7 @@
       "worldEntries": "World entries",
       "configs": "Configurations",
       "imageGeneration": "Image generation",
+      "ttsGeneration": "Voice generation",
       "prompts": "Prompts",
       "observability": "Observability"
     },
@@ -178,6 +181,23 @@
         "always": "Every turn generates a scene image in the background, without delaying the turn."
       }
     },
+    "ttsGeneration": {
+      "mode": "Voice generation mode",
+      "modes": {
+        "manual": "Manual",
+        "auto": "Auto"
+      },
+      "modeHints": {
+        "manual": "Voice audio is only generated when explicitly requested for a segment.",
+        "auto": "Every narration and speech segment of a turn is voiced automatically once the turn is committed."
+      },
+      "narratorVoice": "Narrator voice",
+      "narratorVoiceHint": "Configure a TTS backend for this simulation to set a narrator voice.",
+      "autoplayInBrowser": "Play automatically in browser",
+      "autoplayInBrowserHint": "When Auto mode generates a turn's audio, play the segments back-to-back in your browser automatically once they're ready. Requires at least one interaction with the page first, since browsers otherwise block audio playback.",
+      "backend": "TTS backend",
+      "noBackend": "No backend selected"
+    },
     "fields": {
       "id": "ID",
       "name": "Name",
@@ -199,7 +219,8 @@
       "attributes": "Attributes",
       "stats": "Stats",
       "inventory": "Inventory",
-      "emotion": "Effective private emotion"
+      "emotion": "Effective private emotion",
+      "voice": "TTS voice"
     },
     "inventory": {
       "items": "Items",
@@ -334,23 +355,33 @@
     "tabs": {
       "connections": "Connections",
       "embeddings": "Embeddings",
-      "llms": "LLMs"
+      "llms": "LLMs",
+      "tts": "TTS"
     },
     "empty": {
       "connections": "No connections are available.",
       "embeddings": "No embedding configurations are available.",
-      "llms": "No LLM configurations are available."
+      "llms": "No LLM configurations are available.",
+      "tts": "No TTS configurations are available."
     },
     "providers": {
       "openai": "OpenAI",
-      "ollama": "Ollama"
+      "ollama": "Ollama",
+      "alltalk": "AllTalk",
+      "xtts": "XTTS",
+      "piper": "Piper",
+      "vits": "VITS",
+      "parler": "Parler",
+      "f5tts": "F5-TTS"
     },
     "details": {
       "connection": "connection {{name}}",
       "noConnection": "no provider connection",
       "dimension": "{{value}} dimensions",
       "contextWindow": "{{value}} context",
-      "temperature": "temperature {{value}}"
+      "temperature": "temperature {{value}}",
+      "narratorVoice": "voice {{value}}",
+      "speed": "speed {{value}}"
     },
     "actions": {
       "edit": "Edit",
@@ -358,7 +389,8 @@
       "create": {
         "connections": "Create connection",
         "embeddings": "Create embedding",
-        "llms": "Create LLM"
+        "llms": "Create LLM",
+        "tts": "Create TTS configuration"
       }
     },
     "fields": {
@@ -380,7 +412,31 @@
       "mirostat_tau": "Mirostat tau",
       "num_predict": "Num predict",
       "repeat_penalty_window": "Repeat penalty window",
-      "repeat_penalty": "Repeat penalty"
+      "repeat_penalty": "Repeat penalty",
+      "engine": "Engine",
+      "narratorVoice": "Narrator voice",
+      "narratorEnabled": "Narrator enabled",
+      "textFiltering": "Text filtering",
+      "textFilteringOptions": {
+        "none": "None",
+        "standard": "Standard",
+        "html": "HTML"
+      },
+      "textNotInside": "Text outside tags",
+      "textNotInsideOptions": {
+        "character": "Character",
+        "narrator": "Narrator",
+        "silent": "Silent"
+      },
+      "rvcNarratorVoice": "RVC narrator voice",
+      "rvcNarratorPitch": "RVC narrator pitch",
+      "language": "Language",
+      "speed": "Speed",
+      "repetitionPenalty": "Repetition penalty",
+      "outputFileTimestamp": "Output file timestamp",
+      "serverAutoplay": "Play on AllTalk server",
+      "autoplayVolume": "Server autoplay volume",
+      "notSet": "Not set"
     },
     "modal": {
       "close": "Close configuration dialog",
@@ -392,12 +448,14 @@
       "create": {
         "connections": "Create connection",
         "embeddings": "Create embedding configuration",
-        "llms": "Create LLM configuration"
+        "llms": "Create LLM configuration",
+        "tts": "Create TTS configuration"
       },
       "edit": {
         "connections": "Edit connection",
         "embeddings": "Edit embedding configuration",
-        "llms": "Edit LLM configuration"
+        "llms": "Edit LLM configuration",
+        "tts": "Edit TTS configuration"
       }
     }
   },
@@ -532,19 +590,19 @@
       "emptySelect": "None",
       "editing": "Editing {{name}}",
       "confirmDelete": "Delete {{name}}?",
-        "configSaved": "Configurations saved.",
-        "configEndpointMissing": "World-level model configuration binding is not exposed by the current API yet. These selectors show available configurations for reference.",
-        "components": {
-          "action_validator": "Action validator",
-          "character_simulator": "Character simulator",
-          "input_interpreter": "Input interpreter",
-          "memory_summarizer": "Memory summarizer",
-          "narrator": "Narrator",
-          "perspective_resolver": "Perspective resolver",
-          "scene_coordinator": "Scene coordinator",
-          "state_committer": "State committer"
-        },
-        "tabs": {
+      "configSaved": "Configurations saved.",
+      "configEndpointMissing": "World-level model configuration binding is not exposed by the current API yet. These selectors show available configurations for reference.",
+      "components": {
+        "action_validator": "Action validator",
+        "character_simulator": "Character simulator",
+        "input_interpreter": "Input interpreter",
+        "memory_summarizer": "Memory summarizer",
+        "narrator": "Narrator",
+        "perspective_resolver": "Perspective resolver",
+        "scene_coordinator": "Scene coordinator",
+        "state_committer": "State committer"
+      },
+      "tabs": {
         "world": "World",
         "author": "Author",
         "configs": "Configurations",

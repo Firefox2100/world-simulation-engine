@@ -1,7 +1,8 @@
 from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
-from world_simulation_engine.model import GeneratedImageMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
+from world_simulation_engine.model import GeneratedImageMediaFile, GeneratedVoiceMediaFile, MediaFile, \
+    PromptMediaFile, WorkflowMediaFile
 
 
 def _media_from_node(media_node) -> MediaFile:
@@ -30,6 +31,15 @@ def _media_from_node(media_node) -> MediaFile:
             transient_tags=media_node.get("transient_tags") or [],
             transient_description=media_node.get("transient_description") or "",
             negative_prompt=media_node.get("negative_prompt"),
+        )
+    if media_node.get("presentation_block_id") is not None:
+        return GeneratedVoiceMediaFile(
+            **data,
+            presentation_block_id=media_node["presentation_block_id"],
+            turn_id=media_node["turn_id"],
+            character_id=media_node.get("character_id"),
+            text=media_node["text"],
+            voice_reference=media_node.get("voice_reference"),
         )
     if media_node.get("workflow_name") is not None:
         return WorkflowMediaFile(
@@ -69,7 +79,12 @@ class MediaStore:
                 canonical_description: $canonical_description,
                 transient_tags: $transient_tags,
                 transient_description: $transient_description,
-                negative_prompt: $negative_prompt
+                negative_prompt: $negative_prompt,
+                presentation_block_id: $presentation_block_id,
+                turn_id: $turn_id,
+                character_id: $character_id,
+                text: $text,
+                voice_reference: $voice_reference
             })
             RETURN m
             """,
@@ -89,6 +104,11 @@ class MediaStore:
                 "transient_tags": getattr(media, "transient_tags", None),
                 "transient_description": getattr(media, "transient_description", None),
                 "negative_prompt": getattr(media, "negative_prompt", None),
+                "presentation_block_id": getattr(media, "presentation_block_id", None),
+                "turn_id": getattr(media, "turn_id", None),
+                "character_id": getattr(media, "character_id", None),
+                "text": getattr(media, "text", None),
+                "voice_reference": getattr(media, "voice_reference", None),
             },
         )
 
@@ -357,6 +377,54 @@ class MediaStore:
             ORDER BY media.filename, media.id
             """,
             parameters_={"turn_id": turn_id},
+        )
+
+        return [
+            _media_from_node(record["media"])
+            for record in result.records
+        ]
+
+    async def link_presentation_block_voice(self,
+                                            block_id: str,
+                                            media_id: str,
+                                            ) -> MediaFile | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (block:TurnPresentationBlock {id: $block_id})
+            MATCH (media:Media {id: $media_id})
+            MERGE (block)-[:HAS_VOICE]->(media)
+            RETURN media LIMIT 1
+            """,
+            parameters_={
+                "block_id": block_id,
+                "media_id": media_id,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _media_from_node(record["media"])
+
+    async def list_voice_media_to_prune(self,
+                                        simulation_id: str,
+                                        keep_last_turns: int,
+                                        ) -> list[MediaFile]:
+        """Voice media for turns older than the most recent `keep_last_turns` turns of the simulation."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (simulation:Simulation {id: $simulation_id})-[:CONTAINS]->(turn:Turn)
+            WITH simulation, max(turn.sequence) AS max_sequence
+            MATCH (simulation)-[:CONTAINS]->(turn:Turn)
+            WHERE turn.sequence <= max_sequence - $keep_last_turns
+            MATCH (turn)-[:HAS_PRESENTATION]->(:TurnPresentationBlock)-[:HAS_VOICE]->(media:Media)
+            RETURN DISTINCT media
+            """,
+            parameters_={
+                "simulation_id": simulation_id,
+                "keep_last_turns": keep_last_turns,
+            },
         )
 
         return [

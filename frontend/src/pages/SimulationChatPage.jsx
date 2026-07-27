@@ -8,14 +8,20 @@ import {
     fetchSimulationEmbeddingConfigs,
     fetchSimulationImageGenerationConfig,
     fetchSimulationLlmConfigs,
+    fetchSimulationTtsGenerationConfig,
+    fetchTtsConfigs,
     setSimulationEmbeddingConfigs,
     setSimulationImageGenerationConfig,
     setSimulationLlmConfigs,
+    setSimulationTtsConfig,
+    setSimulationTtsGenerationConfig,
     simulatorComponents,
+    updateTtsConfig,
 } from "@/api/configurations";
 import {
     fetchCharacterInventory,
     fetchCharacterEmotion,
+    fetchCharacterTtsConfig,
     fetchSimulation,
     fetchSimulationBackgroundCharacters,
     fetchSimulationCharacters,
@@ -31,6 +37,9 @@ import {
     fetchSimulationAuditEvents,
     fetchSimulationStacks,
     fetchSimulations,
+    fetchSimulationTtsBackendConfig,
+    fetchTurnPresentation,
+    generateBlockVoice,
     getSimulationRunUrl,
     getSimulationBackgroundCharacterImageUrl,
     getSimulationCharacterImageUrl,
@@ -42,7 +51,11 @@ import {
     getSimulationStackImageUrl,
     getSimulationCoverUrl,
     sendSimulationInput,
+    setCharacterTtsConfig,
 } from "@/api/simulations";
+import { getMediaUrl } from "@/api/media";
+import { ensureAudioUnlockListeners, playAudioUrlSequence } from "@/utils/audioPlayback";
+import { waitForBlocksVoiced } from "@/utils/turnVoicePolling";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
 import placeholderImage from "@/assets/placeholder/world.svg";
 import characterPlaceholderImage from "@/assets/placeholder/character.svg";
@@ -56,6 +69,7 @@ const detailSections = [
     "basic",
     "configs",
     "imageGeneration",
+    "ttsGeneration",
     "prompts",
     "locations",
     "landmarks",
@@ -391,10 +405,86 @@ function CharacterAvatar({ simulationId, character, label }) {
     );
 }
 
-function NarrationBlocks({ blocks, simulationId, charactersById, userCharacter = null, userRecord = false }) {
+function SegmentVoiceButton({ block, onVoiceGenerated }) {
+    const { t } = useTranslation();
+    const audioRef = useRef(null);
+    const justGeneratedRef = useRef(false);
+    const [voiceMediaId, setVoiceMediaId] = useState(block.voice_media_id ?? null);
+    const [generating, setGenerating] = useState(false);
+    const [error, setError] = useState(null);
+
+    async function handleClick() {
+        if (voiceMediaId) {
+            setError(null);
+            audioRef.current?.play();
+            return;
+        }
+
+        try {
+            setGenerating(true);
+            setError(null);
+            const media = await generateBlockVoice(block.id);
+            justGeneratedRef.current = true;
+            setVoiceMediaId(media.id);
+            onVoiceGenerated?.(block.id, media.id);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setGenerating(false);
+        }
+    }
+
+    useEffect(() => {
+        // Only auto-play right after this component generated the clip itself, never on mount
+        // (which would otherwise autoplay every already-generated segment when history loads).
+        if (justGeneratedRef.current && audioRef.current) {
+            justGeneratedRef.current = false;
+            audioRef.current.play().catch(() => {});
+        }
+    }, [voiceMediaId]);
+
+    const label = error
+        ? error
+        : voiceMediaId
+          ? t("simulationChat.playVoice")
+          : t("simulationChat.generateVoice");
+
+    return (
+        <span className="segment-voice-control">
+            <button
+                type="button"
+                className={`segment-voice-button${voiceMediaId ? " generated" : ""}${error ? " error" : ""}`}
+                onClick={handleClick}
+                disabled={generating}
+                title={label}
+                aria-label={label}
+            >
+                {generating ? "…" : voiceMediaId ? "▶" : "🔊"}
+            </button>
+            {voiceMediaId ? (
+                <audio ref={audioRef} src={getMediaUrl(voiceMediaId)} preload="none" />
+            ) : null}
+        </span>
+    );
+}
+
+function NarrationBlocks({
+    blocks,
+    simulationId,
+    charactersById,
+    userCharacter = null,
+    userRecord = false,
+    allowVoice = false,
+}) {
     return (
         <>
             {blocks.map((block, index) => {
+                const voiceButton = allowVoice
+                    && (block.type === "speech" || block.type === "narration")
+                    && block.id
+                    ? <SegmentVoiceButton block={block} />
+                    : null;
+
                 if (block.type === "speech") {
                     const speakerId = block.speaker_id ?? block.character_id;
                     const character = charactersById[String(speakerId)];
@@ -416,6 +506,7 @@ function NarrationBlocks({ blocks, simulationId, charactersById, userCharacter =
                                     <p>{block.text}</p>
                                 </div>
                             </div>
+                            {voiceButton}
                         </article>
                     );
                 }
@@ -465,6 +556,7 @@ function NarrationBlocks({ blocks, simulationId, charactersById, userCharacter =
                                 <p>{block.text}</p>
                             )}
                         </div>
+                        {voiceButton}
                     </article>
                 );
             })}
@@ -486,6 +578,7 @@ function ChatRecord({ record, simulation, charactersById, userCharacter }) {
                 charactersById={charactersById}
                 userCharacter={userCharacter}
                 userRecord={userRecord}
+                allowVoice
             />
         );
     }
@@ -1189,6 +1282,270 @@ function ImageGenerationConfigEditor({ simulationId }) {
     );
 }
 
+const ttsGenerationModes = ["manual", "auto"];
+
+function TtsGenerationConfigEditor({ simulationId }) {
+    const { t } = useTranslation();
+    const [mode, setMode] = useState("manual");
+    const [autoplayInBrowser, setAutoplayInBrowser] = useState(false);
+    const [availableBackends, setAvailableBackends] = useState([]);
+    const [backendConfigId, setBackendConfigId] = useState(null);
+    const [narratorVoice, setNarratorVoice] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadConfig() {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const [genConfig, backend, backends] = await Promise.all([
+                    fetchSimulationTtsGenerationConfig(simulationId),
+                    fetchSimulationTtsBackendConfig(simulationId).catch(() => null),
+                    fetchTtsConfigs().catch(() => []),
+                ]);
+
+                if (!cancelled) {
+                    setMode(genConfig.mode ?? "manual");
+                    setAutoplayInBrowser(Boolean(genConfig.autoplay_in_browser));
+                    setAvailableBackends(backends);
+                    setBackendConfigId(backend?.id ?? null);
+                    setNarratorVoice(backend?.narrator_voice ?? "");
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadConfig();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [simulationId]);
+
+    function handleBackendChange(nextBackendConfigId) {
+        setBackendConfigId(nextBackendConfigId || null);
+        const nextBackend = availableBackends.find((backend) => backend.id === nextBackendConfigId);
+        setNarratorVoice(nextBackend?.narrator_voice ?? "");
+    }
+
+    async function saveConfig() {
+        try {
+            setSaving(true);
+            setNotice(null);
+            setError(null);
+            const saved = await setSimulationTtsGenerationConfig(simulationId, {
+                mode,
+                autoplay_in_browser: autoplayInBrowser,
+            });
+            setMode(saved.mode ?? mode);
+            setAutoplayInBrowser(Boolean(saved.autoplay_in_browser));
+            if (backendConfigId) {
+                await setSimulationTtsConfig(simulationId, backendConfigId);
+                await updateTtsConfig(backendConfigId, { narrator_voice: narratorVoice || null });
+            }
+            setNotice(t("simulationDetails.configSaved"));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return <p className="status-text">{t("simulationDetails.configLoading")}</p>;
+    }
+
+    return (
+        <section className="world-editor-form">
+            {error ? (
+                <p className="status-text error-text">
+                    {t("simulationDetails.configError", { error })}
+                </p>
+            ) : null}
+            <label className="form-field inline-field">
+                <span className="world-editor-field-label">
+                    <span>{t("simulationDetails.ttsGeneration.mode")}</span>
+                </span>
+                <select
+                    className="single-line-input"
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value)}
+                >
+                    {ttsGenerationModes.map((option) => (
+                        <option key={option} value={option}>
+                            {t(`simulationDetails.ttsGeneration.modes.${option}`)}
+                        </option>
+                    ))}
+                </select>
+            </label>
+            <p className="simulation-details-empty-line">
+                {t(`simulationDetails.ttsGeneration.modeHints.${mode}`)}
+            </p>
+            <label className="form-field inline-field">
+                <span className="world-editor-field-label">
+                    <span>{t("simulationDetails.ttsGeneration.autoplayInBrowser")}</span>
+                </span>
+                <input
+                    type="checkbox"
+                    checked={autoplayInBrowser}
+                    onChange={(event) => setAutoplayInBrowser(event.target.checked)}
+                />
+            </label>
+            <p className="simulation-details-empty-line">
+                {t("simulationDetails.ttsGeneration.autoplayInBrowserHint")}
+            </p>
+            <label className="form-field inline-field">
+                <span className="world-editor-field-label">
+                    <span>{t("simulationDetails.ttsGeneration.backend")}</span>
+                </span>
+                <select
+                    className="single-line-input"
+                    value={backendConfigId ?? ""}
+                    onChange={(event) => handleBackendChange(event.target.value)}
+                >
+                    <option value="">{t("simulationDetails.ttsGeneration.noBackend")}</option>
+                    {availableBackends.map((backend) => (
+                        <option key={backend.id} value={backend.id}>
+                            {backend.model || backend.engine} ({backend.engine})
+                        </option>
+                    ))}
+                </select>
+            </label>
+            <div className="compact-form-field">
+                <label htmlFor="tts-generation-narrator-voice">
+                    {t("simulationDetails.ttsGeneration.narratorVoice")}
+                </label>
+                <input
+                    id="tts-generation-narrator-voice"
+                    className="single-line-input"
+                    type="text"
+                    value={narratorVoice}
+                    disabled={!backendConfigId}
+                    onChange={(event) => setNarratorVoice(event.target.value)}
+                />
+            </div>
+            {!backendConfigId ? (
+                <p className="simulation-details-empty-line">
+                    {t("simulationDetails.ttsGeneration.narratorVoiceHint")}
+                </p>
+            ) : null}
+            {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
+            <div className="modal-actions inline-actions">
+                <button type="button" className="primary-button" disabled={saving} onClick={saveConfig}>
+                    {saving ? t("simulationDetails.configSaving") : t("simulationDetails.saveConfigurations")}
+                </button>
+            </div>
+        </section>
+    );
+}
+
+function CharacterVoiceEditor({ simulationId, characterId }) {
+    const { t } = useTranslation();
+    const [voice, setVoice] = useState("");
+    const [backendConfigId, setBackendConfigId] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadConfig() {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const [ttsConfig, backend] = await Promise.all([
+                    fetchCharacterTtsConfig(characterId).catch(() => null),
+                    fetchSimulationTtsBackendConfig(simulationId).catch(() => null),
+                ]);
+
+                if (!cancelled) {
+                    setVoice(ttsConfig?.character_voice ?? "");
+                    setBackendConfigId(backend?.id ?? null);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadConfig();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [simulationId, characterId]);
+
+    async function saveVoice() {
+        try {
+            setSaving(true);
+            setNotice(null);
+            setError(null);
+            const payload = { character_voice: voice || null };
+            if (backendConfigId) {
+                payload.backend_config_id = backendConfigId;
+            }
+            const saved = await setCharacterTtsConfig(characterId, payload);
+            setVoice(saved.character_voice ?? "");
+            setNotice(t("simulationDetails.configSaved"));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return null;
+    }
+
+    return (
+        <section className="world-editor-form">
+            {error ? (
+                <p className="status-text error-text">
+                    {t("simulationDetails.configError", { error })}
+                </p>
+            ) : null}
+            <div className="compact-form-field">
+                <label htmlFor="character-voice-input">{t("simulationDetails.characterFields.voice")}</label>
+                <input
+                    id="character-voice-input"
+                    className="single-line-input"
+                    type="text"
+                    value={voice}
+                    onChange={(event) => setVoice(event.target.value)}
+                />
+            </div>
+            {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
+            <div className="modal-actions inline-actions">
+                <button type="button" className="primary-button" disabled={saving} onClick={saveVoice}>
+                    {saving ? t("simulationDetails.configSaving") : t("simulationDetails.saveConfigurations")}
+                </button>
+            </div>
+        </section>
+    );
+}
+
 function SimulationDetailsModal({
     simulation,
     characters,
@@ -1253,6 +1610,8 @@ function SimulationDetailsModal({
                     ? t("simulationDetails.tabs.configs")
                     : activeSection === "imageGeneration"
                       ? t("simulationDetails.tabs.imageGeneration")
+                    : activeSection === "ttsGeneration"
+                      ? t("simulationDetails.tabs.ttsGeneration")
                     : activeSection === "prompts"
                       ? t("simulationDetails.tabs.prompts")
                     : activeSection === "observability"
@@ -1264,7 +1623,6 @@ function SimulationDetailsModal({
         { label: t("simulationDetails.fields.name"), value: simulation.name },
         { label: t("simulationDetails.fields.language"), value: simulation.language },
         { label: t("simulationDetails.fields.actForUser"), value: formatBoolean(simulation.act_for_user, t) },
-        { label: t("simulationDetails.fields.enableTts"), value: formatBoolean(simulation.enable_tts, t) },
         {
             label: t("simulationDetails.fields.enableImageGeneration"),
             value: formatBoolean(simulation.enable_image_generation, t),
@@ -1435,6 +1793,8 @@ function SimulationDetailsModal({
                             <SimulationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "imageGeneration" ? (
                             <ImageGenerationConfigEditor simulationId={simulation.id} />
+                        ) : activeSection === "ttsGeneration" ? (
+                            <TtsGenerationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "prompts" ? (
                             <PromptAssignmentEditor sourceType="simulation" sourceId={simulation.id} />
                         ) : activeSection === "observability" ? (
@@ -1542,6 +1902,11 @@ function SimulationDetailsModal({
                                         </section>
                                     </div>
 
+                                    <CharacterVoiceEditor
+                                        simulationId={simulation.id}
+                                        characterId={selectedCharacter.id}
+                                    />
+
                                     <ObjectList
                                         title={t("simulationDetails.characterFields.attributes")}
                                         values={selectedCharacter.attributes}
@@ -1645,6 +2010,9 @@ export function SimulationChatPage() {
     const composerInputRef = useRef(null);
     const streamErrorRef = useRef(null);
     const streamReceivedNarrationRef = useRef(false);
+    const lastRecordIdBeforeRunRef = useRef(null);
+    const autoplayedTurnIdsRef = useRef(new Set());
+    const autoplayControllerRef = useRef(null);
     const [simulations, setSimulations] = useState([]);
     const [simulationDetails, setSimulationDetails] = useState({});
     const [characterCache, setCharacterCache] = useState({});
@@ -1873,6 +2241,15 @@ export function SimulationChatPage() {
     }
 
     useEffect(() => {
+        ensureAudioUnlockListeners();
+
+        return () => {
+            autoplayControllerRef.current?.cancel?.();
+            autoplayControllerRef.current = null;
+        };
+    }, []);
+
+    useEffect(() => {
         let ignore = false;
 
         async function loadSimulations() {
@@ -2034,11 +2411,75 @@ export function SimulationChatPage() {
             ...current,
             [id]: sortedTurns.at(-1)?.narration ?? "",
         }));
+
+        return sortedTurns;
+    }
+
+    async function autoplayTurnIfEnabled(id, turn) {
+        if (!turn?.id || autoplayedTurnIdsRef.current.has(turn.id)) {
+            return;
+        }
+
+        let genConfig;
+        try {
+            genConfig = await fetchSimulationTtsGenerationConfig(id);
+        } catch {
+            return;
+        }
+
+        if (genConfig.mode !== "auto" || !genConfig.autoplay_in_browser) {
+            return;
+        }
+
+        const voiceBlocks = (narrationBlocksFromValue(turn.narration_blocks) ?? []).filter(
+            (block) => (block.type === "narration" || block.type === "speech") && block.id,
+        );
+
+        if (voiceBlocks.length === 0) {
+            return;
+        }
+
+        autoplayedTurnIdsRef.current.add(turn.id);
+        autoplayControllerRef.current?.cancel?.();
+
+        const poll = waitForBlocksVoiced({
+            turnId: turn.id,
+            blockIds: voiceBlocks.map((block) => block.id),
+            fetchTurnPresentation,
+        });
+        autoplayControllerRef.current = poll;
+
+        const voiced = await poll.done;
+
+        // A newer turn's autoplay (or unmount cleanup) may have superseded this one while polling.
+        if (autoplayControllerRef.current !== poll) {
+            return;
+        }
+
+        const voicedById = new Map(voiced.map((block) => [block.id, block]));
+        const orderedUrls = voiceBlocks
+            .map((block) => voicedById.get(block.id))
+            .filter(Boolean)
+            .map((block) => getMediaUrl(block.voice_media_id));
+
+        if (orderedUrls.length === 0) {
+            autoplayControllerRef.current = null;
+            return;
+        }
+
+        const playback = playAudioUrlSequence(orderedUrls);
+        autoplayControllerRef.current = playback;
+        await playback.done;
+
+        if (autoplayControllerRef.current === playback) {
+            autoplayControllerRef.current = null;
+        }
     }
 
     function finishRunStream({ runId, error = null }) {
         closeRunStream();
         const finalError = error ?? streamErrorRef.current;
+        const previousLastId = lastRecordIdBeforeRunRef.current;
 
         setStreamingRecord((current) => {
             if (!current || current.runId !== runId) {
@@ -2053,9 +2494,14 @@ export function SimulationChatPage() {
         });
 
         refreshSimulationTurns()
-            .then(() => {
+            .then((sortedTurns) => {
                 if (!finalError) {
                     setStreamingRecord((current) => (current?.runId === runId ? null : current));
+                }
+
+                const newestTurn = sortedTurns?.at(-1);
+                if (!finalError && newestTurn && newestTurn.id !== previousLastId) {
+                    autoplayTurnIfEnabled(simulationId, newestTurn).catch(() => {});
                 }
             })
             .catch((err) => {
@@ -2202,6 +2648,7 @@ export function SimulationChatPage() {
         const trimmedInput = rawInput.trim();
         const userInput = trimmedInput.length === 0 ? null : rawInput;
         const localRecordId = `local-user-${Date.now()}`;
+        lastRecordIdBeforeRunRef.current = records.at(-1)?.id ?? null;
 
         try {
             setSending(true);

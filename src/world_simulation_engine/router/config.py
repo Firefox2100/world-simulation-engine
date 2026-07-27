@@ -4,10 +4,12 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ImageGenerationMode
+from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ImageGenerationMode, \
+    TtsGenerationMode, TtsTextFilteringMode, TtsTextNotInsideMode
 from world_simulation_engine.model import ConnectionConfig, OllamaChatModelConfig, OpenAiChatModelConfig, \
     ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, \
-    ImageGenerationConfig
+    ImageGenerationConfig, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
+    AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, TtsGenerationConfig
 from .utils import db_dep
 
 
@@ -57,6 +59,35 @@ class EmbedConfigUpdate(BaseModel):
     context_window: Optional[int] = Field(None, description="The context window to use for embedding")
 
 
+class TtsConfigUpdate(BaseModel):
+    """
+    DTO model for updating TTS model configs. Fields span every AllTalk engine; only the ones
+    applicable to the target config's engine have any effect.
+    """
+
+    model: Optional[str] = Field(None, description="Name of the model to use")
+    character_voice: Optional[str] = Field(None, description="Reference to the character voice to use")
+    text_filtering: Optional[TtsTextFilteringMode] = Field(None, description="Text filtering mode")
+    text_not_inside: Optional[TtsTextNotInsideMode] = Field(
+        None, description="How to voice text that is not inside quotes",
+    )
+    narrator_enabled: Optional[bool] = Field(None, description="Whether to enable the narrator voice")
+    narrator_voice: Optional[str] = Field(None, description="Reference to the narrator voice to use")
+    rvc_character_voice: Optional[str] = Field(None, description="RVC voice model for the character")
+    rvc_character_pitch: Optional[int] = Field(None, description="Pitch adjustment for the character RVC voice")
+    rvc_narrator_voice: Optional[str] = Field(None, description="RVC voice model for the narrator")
+    rvc_narrator_pitch: Optional[int] = Field(None, description="Pitch adjustment for the narrator RVC voice")
+    output_file_timestamp: Optional[bool] = Field(None, description="Append a timestamp to the output file name")
+    autoplay: Optional[bool] = Field(None, description="Play the generated audio at the provider's terminal")
+    autoplay_volume: Optional[float] = Field(None, description="Playback volume if autoplay is enabled")
+    language: Optional[str] = Field(None, description="Language for the TTS generation, if the engine supports it")
+    speed: Optional[float] = Field(None, description="Speed of the generated speech, if the engine supports it")
+    temperature: Optional[float] = Field(None, description="Sampling temperature, if the engine supports it")
+    repetition_penalty: Optional[float] = Field(
+        None, description="Repetition penalty, if the engine supports it",
+    )
+
+
 class ImageGenerationConfigUpdate(BaseModel):
     """
     DTO model for updating a simulation's auto image generation configuration
@@ -67,6 +98,20 @@ class ImageGenerationConfigUpdate(BaseModel):
         10,
         ge=1,
         description="In auto mode, force a generation if this many turns passed without one",
+    )
+
+
+class TtsGenerationConfigUpdate(BaseModel):
+    """
+    DTO model for updating a simulation's auto TTS generation configuration
+    """
+
+    mode: TtsGenerationMode = Field(
+        ..., description="manual: voice must be generated per-segment on demand. auto: every "
+                          "narration/speech segment is voiced automatically",
+    )
+    autoplay_in_browser: bool = Field(
+        False, description="Whether the frontend should auto-play a turn's segments once generated",
     )
 
 
@@ -103,6 +148,15 @@ class ComponentEmbedConfig(BaseModel):
 
     component: ComponentType = Field(..., description="The component using the config")
     config: EmbedModelConfigUnion = Field(..., description="The assigned embedding model config")
+
+
+class ComponentTtsConfig(BaseModel):
+    """
+    DTO model for a component-specific TTS config assignment
+    """
+
+    component: ComponentType = Field(..., description="The component using the config")
+    config: TtsModelConfigUnion = Field(..., description="The assigned TTS model config")
 
 
 class ComponentModelConfigUpdate(BaseModel):
@@ -164,6 +218,27 @@ async def _apply_embed_assignments(source_id: str, assignments: list[ComponentMo
             await db.config.link_embed(source_id, assignment.config_id, assignment.component)
         else:
             await db.config.unlink_embed(source_id, assignment.component)
+
+
+async def _apply_tts_assignments(source_id: str, assignments: list[ComponentModelConfigUpdate], db: db_dep):
+    for assignment in assignments:
+        if assignment.config_id:
+            if not await db.config.get_tts(assignment.config_id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"TTS config {assignment.config_id} not found",
+                )
+            await db.config.link_tts(source_id, assignment.config_id, assignment.component)
+        else:
+            await db.config.unlink_tts(source_id, assignment.component)
+
+
+async def _list_tts_assignments(source_id: str, db: db_dep) -> list[ComponentTtsConfig]:
+    configs = await db.config.list_ttss_by_source(source_id)
+    return [
+        ComponentTtsConfig(component=component, config=config)
+        for component, config in configs.items()
+    ]
 
 
 async def _list_chat_assignments(source_id: str, db: db_dep) -> list[ComponentChatConfig]:
@@ -441,6 +516,135 @@ async def delete_embed_config_connection(config_id: str, db: db_dep):
         )
 
 
+@config_router.get("/config/tts", response_model=list[TtsModelConfigUnion], response_model_exclude_none=True)
+async def list_tts_configs(db: db_dep):
+    return await db.config.list_ttss()
+
+
+@config_router.post(
+    "/config/tts/alltalk/xtts", response_model=AllTalkXttsModelConfig, response_model_exclude_none=True,
+)
+async def create_alltalk_xtts_config(tts_config: AllTalkXttsModelConfig, db: db_dep):
+    return await db.config.create_tts(tts_config)
+
+
+@config_router.post(
+    "/config/tts/alltalk/piper", response_model=AllTalkPiperModelConfig, response_model_exclude_none=True,
+)
+async def create_alltalk_piper_config(tts_config: AllTalkPiperModelConfig, db: db_dep):
+    return await db.config.create_tts(tts_config)
+
+
+@config_router.post(
+    "/config/tts/alltalk/vits", response_model=AllTalkVitsModelConfig, response_model_exclude_none=True,
+)
+async def create_alltalk_vits_config(tts_config: AllTalkVitsModelConfig, db: db_dep):
+    return await db.config.create_tts(tts_config)
+
+
+@config_router.post(
+    "/config/tts/alltalk/parler", response_model=AllTalkParlerModelConfig, response_model_exclude_none=True,
+)
+async def create_alltalk_parler_config(tts_config: AllTalkParlerModelConfig, db: db_dep):
+    return await db.config.create_tts(tts_config)
+
+
+@config_router.post(
+    "/config/tts/alltalk/f5tts", response_model=AllTalkF5ttsModelConfig, response_model_exclude_none=True,
+)
+async def create_alltalk_f5tts_config(tts_config: AllTalkF5ttsModelConfig, db: db_dep):
+    return await db.config.create_tts(tts_config)
+
+
+@config_router.get("/config/tts/{config_id}", response_model=TtsModelConfigUnion, response_model_exclude_none=True)
+async def get_tts_config(config_id: str, db: db_dep):
+    tts_config = await db.config.get_tts(config_id)
+    if not tts_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+
+    return tts_config
+
+
+@config_router.patch(
+    "/config/tts/{config_id}", response_model=TtsModelConfigUnion, response_model_exclude_none=True,
+)
+async def update_tts_config(config_id: str, tts_update: TtsConfigUpdate, db: db_dep):
+    tts_config = await db.config.update_tts(
+        config_id,
+        tts_update.model_dump(exclude_unset=True),
+    )
+    if not tts_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+
+    return tts_config
+
+
+@config_router.delete("/config/tts/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tts_config(config_id: str, db: db_dep):
+    deleted = await db.config.delete_tts(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+
+
+@config_router.put("/config/tts/{config_id}/connection", response_model=ConnectionConfig)
+async def set_tts_config_connection(config_id: str, connection_update: ConfigConnectionUpdate, db: db_dep):
+    if not await db.config.get_tts(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+    if not await db.config.get_connection(connection_update.connection_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection config {connection_update.connection_id} not found",
+        )
+
+    return await db.config.link_connection(config_id, connection_update.connection_id)
+
+
+@config_router.get("/config/tts/{config_id}/connection", response_model=ConnectionConfig)
+async def get_tts_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_tts(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+
+    connection = await db.config.get_connection_by_tts_source(config_id)
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection for TTS config {config_id} not found",
+        )
+
+    return connection
+
+
+@config_router.delete("/config/tts/{config_id}/connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tts_config_connection(config_id: str, db: db_dep):
+    if not await db.config.get_tts(config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+
+    deleted = await db.config.unlink_connection(config_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_id} not found",
+        )
+
+
 @config_router.put(
     "/simulations/{simulation_id}/llm-connection",
     response_model=ChatModelConfigUnion,
@@ -632,6 +836,105 @@ async def delete_simulation_embedding_connection(
         )
 
     deleted = await db.config.unlink_embed(simulation_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+
+@config_router.put(
+    "/simulations/{simulation_id}/tts-connection",
+    response_model=TtsModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def set_simulation_tts_connection(
+        simulation_id: str,
+        config_update: SimulationModelConfigUpdate,
+        db: db_dep,
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+    if not await db.config.get_tts(config_update.config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_update.config_id} not found",
+        )
+
+    return await db.config.link_tts(
+        simulation_id,
+        config_update.config_id,
+        config_update.component,
+    )
+
+
+@config_router.get(
+    "/simulations/{simulation_id}/tts-connections",
+    response_model=list[ComponentTtsConfig],
+    response_model_exclude_none=True,
+)
+async def list_simulation_tts_connections(simulation_id: str, db: db_dep):
+    await _validate_simulation(simulation_id, db)
+    return await _list_tts_assignments(simulation_id, db)
+
+
+@config_router.put(
+    "/simulations/{simulation_id}/tts-connections",
+    response_model=list[ComponentTtsConfig],
+    response_model_exclude_none=True,
+)
+async def set_simulation_tts_connections(
+        simulation_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_simulation(simulation_id, db)
+    await _apply_tts_assignments(simulation_id, config_update.assignments, db)
+    return await _list_tts_assignments(simulation_id, db)
+
+
+@config_router.get(
+    "/simulations/{simulation_id}/tts-connection",
+    response_model=TtsModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def get_simulation_tts_connection(
+        simulation_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The simulation component using the config"),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    tts_config = await db.config.get_tts_by_source(simulation_id, component)
+    if not tts_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config for simulation {simulation_id} and component {component} not found",
+        )
+
+    return tts_config
+
+
+@config_router.delete("/simulations/{simulation_id}/tts-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_simulation_tts_connection(
+        simulation_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The simulation component using the config"),
+):
+    if not await db.simulation.get_simulation(simulation_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    deleted = await db.config.unlink_tts(simulation_id, component)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -837,6 +1140,105 @@ async def delete_world_embedding_connection(
         )
 
 
+@config_router.put(
+    "/worlds/{world_id}/tts-connection",
+    response_model=TtsModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def set_world_tts_connection(
+        world_id: str,
+        config_update: SimulationModelConfigUpdate,
+        db: db_dep,
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+    if not await db.config.get_tts(config_update.config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_update.config_id} not found",
+        )
+
+    return await db.config.link_tts(
+        world_id,
+        config_update.config_id,
+        config_update.component,
+    )
+
+
+@config_router.get(
+    "/worlds/{world_id}/tts-connections",
+    response_model=list[ComponentTtsConfig],
+    response_model_exclude_none=True,
+)
+async def list_world_tts_connections(world_id: str, db: db_dep):
+    await _validate_world(world_id, db)
+    return await _list_tts_assignments(world_id, db)
+
+
+@config_router.put(
+    "/worlds/{world_id}/tts-connections",
+    response_model=list[ComponentTtsConfig],
+    response_model_exclude_none=True,
+)
+async def set_world_tts_connections(
+        world_id: str,
+        config_update: ComponentModelConfigBatchUpdate,
+        db: db_dep,
+):
+    await _validate_world(world_id, db)
+    await _apply_tts_assignments(world_id, config_update.assignments, db)
+    return await _list_tts_assignments(world_id, db)
+
+
+@config_router.get(
+    "/worlds/{world_id}/tts-connection",
+    response_model=TtsModelConfigUnion,
+    response_model_exclude_none=True,
+)
+async def get_world_tts_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    tts_config = await db.config.get_tts_by_source(world_id, component)
+    if not tts_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config for world {world_id} and component {component} not found",
+        )
+
+    return tts_config
+
+
+@config_router.delete("/worlds/{world_id}/tts-connection", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_world_tts_connection(
+        world_id: str,
+        db: db_dep,
+        component: ComponentType = Query(..., description="The world component using the config"),
+):
+    if not await db.world.get_world(world_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    deleted = await db.config.unlink_tts(world_id, component)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+
 @config_router.get(
     "/simulations/{simulation_id}/image-generation-config",
     response_model=ImageGenerationConfig,
@@ -866,3 +1268,34 @@ async def set_simulation_image_generation_config(
         fallback_turns=config_update.fallback_turns,
     )
     return await db.config.set_image_generation_config(simulation_id, config)
+
+
+@config_router.get(
+    "/simulations/{simulation_id}/tts-generation-config",
+    response_model=TtsGenerationConfig,
+)
+async def get_simulation_tts_generation_config(simulation_id: str, db: db_dep):
+    await _validate_simulation(simulation_id, db)
+
+    config = await db.config.get_tts_generation_config(simulation_id)
+    return config or TtsGenerationConfig()
+
+
+@config_router.put(
+    "/simulations/{simulation_id}/tts-generation-config",
+    response_model=TtsGenerationConfig,
+)
+async def set_simulation_tts_generation_config(
+        simulation_id: str,
+        config_update: TtsGenerationConfigUpdate,
+        db: db_dep,
+):
+    await _validate_simulation(simulation_id, db)
+
+    existing = await db.config.get_tts_generation_config(simulation_id)
+    config = TtsGenerationConfig(
+        id=existing.id if existing else str(uuid4()),
+        mode=config_update.mode,
+        autoplay_in_browser=config_update.autoplay_in_browser,
+    )
+    return await db.config.set_tts_generation_config(simulation_id, config)

@@ -1,11 +1,12 @@
 from typing import Optional
+from uuid import uuid4
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.component.image_generator import CharacterImageGenerator, \
     schedule_cover_image_generation
-from world_simulation_engine.model import Character, Container, CurrentActivity, EmotionState, EmotionVector, \
-    InventoryEquipment, InventoryStack, SubjectiveEntityClaim
+from world_simulation_engine.model import Character, CharacterTtsConfig, Container, CurrentActivity, \
+    EmotionState, EmotionVector, InventoryEquipment, InventoryStack, SubjectiveEntityClaim
 from .utils import db_dep, prompt_loader_dep, storage_dep, workflow_loader_dep
 
 
@@ -159,6 +160,23 @@ class EmotionStateUpdate(BaseModel):
 class EffectiveEmotionState(BaseModel):
     state: EmotionState
     effective: EmotionVector
+
+
+class CharacterTtsConfigUpdate(BaseModel):
+    """
+    DTO model for setting a character's TTS voice. backend_config_id links this character to the shared
+    TTS backend config (e.g. an AllTalkXttsModelConfig) that provides the engine/sampling parameters -
+    many characters typically link to the same backend config while each having their own voice.
+    """
+
+    character_voice: Optional[str] = Field(None, description="Reference to this character's voice")
+    rvc_character_voice: Optional[str] = Field(None, description="RVC voice model for this character")
+    rvc_character_pitch: Optional[int] = Field(
+        None, description="Pitch adjustment for this character's RVC voice",
+    )
+    backend_config_id: Optional[str] = Field(
+        None, description="The shared TTS backend config id to use for this character's voice",
+    )
 
 
 async def validate_character_relationships(
@@ -356,6 +374,69 @@ async def update_character_emotion(
         state=stored,
         effective=db.emotion.combined_vector(stored),
     )
+
+
+@character_router.get("/characters/{character_id}/tts-config", response_model=CharacterTtsConfig)
+async def get_character_tts_config(character_id: str, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+
+    config = await db.character_tts_config.get_character_tts_config(character_id)
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config for character {character_id} not found",
+        )
+
+    return config
+
+
+@character_router.put("/characters/{character_id}/tts-config", response_model=CharacterTtsConfig)
+async def set_character_tts_config(character_id: str, config_update: CharacterTtsConfigUpdate, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+    if config_update.backend_config_id and not await db.config.get_tts(config_update.backend_config_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config {config_update.backend_config_id} not found",
+        )
+
+    existing = await db.character_tts_config.get_character_tts_config(character_id)
+    config = CharacterTtsConfig(
+        id=existing.id if existing else str(uuid4()),
+        character_voice=config_update.character_voice,
+        rvc_character_voice=config_update.rvc_character_voice,
+        rvc_character_pitch=config_update.rvc_character_pitch,
+    )
+    saved = await db.character_tts_config.set_character_tts_config(character_id, config)
+    if config_update.backend_config_id:
+        saved = await db.character_tts_config.link_character_tts_backend(
+            character_id, config_update.backend_config_id,
+        )
+
+    return saved
+
+
+@character_router.delete("/characters/{character_id}/tts-config", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_character_tts_config(character_id: str, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+
+    deleted = await db.character_tts_config.delete_character_tts_config(character_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"TTS config for character {character_id} not found",
+        )
 
 
 @character_router.patch("/characters/{character_id}", response_model=Character)

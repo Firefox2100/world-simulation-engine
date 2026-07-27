@@ -39,6 +39,12 @@ class TurnPresentationBlock(BaseModel):
     speaker_id: str | None = None
     speaker_name: str | None = Field(default=None, max_length=200)
     media_id: str | None = None
+    voice_media_id: str | None = Field(
+        default=None,
+        description="Id of the generated voice Media for this segment, if TTS audio has been "
+                    "generated for it (narration/speech blocks only). Read-only: never set via "
+                    "PresentationBlockWrite, only populated from the HAS_VOICE relationship.",
+    )
     completion: PresentationCompletion = PresentationCompletion.COMPLETE
     created_at: datetime
     updated_at: datetime

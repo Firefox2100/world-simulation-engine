@@ -1216,6 +1216,131 @@
         }
       }
     },
+    "/characters/{character_id}/tts-config": {
+      "get": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Get Character Tts Config",
+        "operationId": "get_character_tts_config_characters__character_id__tts_config_get",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterTtsConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Set Character Tts Config",
+        "operationId": "set_character_tts_config_characters__character_id__tts_config_put",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CharacterTtsConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CharacterTtsConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Delete Character Tts Config",
+        "operationId": "delete_character_tts_config_characters__character_id__tts_config_delete",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/characters/{character_id}/location": {
       "put": {
         "tags": [
@@ -2481,6 +2606,566 @@
         }
       }
     },
+    "/config/tts": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Tts Configs",
+        "operationId": "list_tts_configs_config_tts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "engine",
+                      "mapping": {
+                        "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                        "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                        "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                        "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                        "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                      }
+                    }
+                  },
+                  "type": "array",
+                  "title": "Response List Tts Configs Config Tts Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/alltalk/xtts": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Alltalk Xtts Config",
+        "operationId": "create_alltalk_xtts_config_config_tts_alltalk_xtts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/alltalk/piper": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Alltalk Piper Config",
+        "operationId": "create_alltalk_piper_config_config_tts_alltalk_piper_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/alltalk/vits": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Alltalk Vits Config",
+        "operationId": "create_alltalk_vits_config_config_tts_alltalk_vits_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/alltalk/parler": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Alltalk Parler Config",
+        "operationId": "create_alltalk_parler_config_config_tts_alltalk_parler_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/alltalk/f5tts": {
+      "post": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Create Alltalk F5Tts Config",
+        "operationId": "create_alltalk_f5tts_config_config_tts_alltalk_f5tts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/{config_id}": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Tts Config",
+        "operationId": "get_tts_config_config_tts__config_id__get",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "engine",
+                    "mapping": {
+                      "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                      "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                      "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                      "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                      "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  },
+                  "title": "Response Get Tts Config Config Tts  Config Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Update Tts Config",
+        "operationId": "update_tts_config_config_tts__config_id__patch",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TtsConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "engine",
+                    "mapping": {
+                      "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                      "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                      "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                      "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                      "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  },
+                  "title": "Response Update Tts Config Config Tts  Config Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Tts Config",
+        "operationId": "delete_tts_config_config_tts__config_id__delete",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tts/{config_id}/connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Tts Config Connection",
+        "operationId": "set_tts_config_connection_config_tts__config_id__connection_put",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigConnectionUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Tts Config Connection",
+        "operationId": "get_tts_config_connection_config_tts__config_id__connection_get",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Tts Config Connection",
+        "operationId": "delete_tts_config_connection_config_tts__config_id__connection_delete",
+        "parameters": [
+          {
+            "name": "config_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Config Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/simulations/{simulation_id}/llm-connection": {
       "put": {
         "tags": [
@@ -3014,6 +3699,305 @@
                     "$ref": "#/components/schemas/ComponentEmbedConfig"
                   },
                   "title": "Response Set Simulation Embedding Connections Simulations  Simulation Id  Embedding Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/tts-connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Tts Connection",
+        "operationId": "set_simulation_tts_connection_simulations__simulation_id__tts_connection_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationModelConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "engine",
+                    "mapping": {
+                      "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                      "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                      "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                      "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                      "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  },
+                  "title": "Response Set Simulation Tts Connection Simulations  Simulation Id  Tts Connection Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Simulation Tts Connection",
+        "operationId": "get_simulation_tts_connection_simulations__simulation_id__tts_connection_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The simulation component using the config"
+            },
+            "description": "The simulation component using the config"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "engine",
+                    "mapping": {
+                      "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                      "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                      "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                      "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                      "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  },
+                  "title": "Response Get Simulation Tts Connection Simulations  Simulation Id  Tts Connection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete Simulation Tts Connection",
+        "operationId": "delete_simulation_tts_connection_simulations__simulation_id__tts_connection_delete",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The simulation component using the config"
+            },
+            "description": "The simulation component using the config"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/tts-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Simulation Tts Connections",
+        "operationId": "list_simulation_tts_connections_simulations__simulation_id__tts_connections_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentTtsConfig"
+                  },
+                  "title": "Response List Simulation Tts Connections Simulations  Simulation Id  Tts Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Tts Connections",
+        "operationId": "set_simulation_tts_connections_simulations__simulation_id__tts_connections_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentTtsConfig"
+                  },
+                  "title": "Response Set Simulation Tts Connections Simulations  Simulation Id  Tts Connections Put"
                 }
               }
             }
@@ -3581,6 +4565,305 @@
         }
       }
     },
+    "/worlds/{world_id}/tts-connection": {
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Tts Connection",
+        "operationId": "set_world_tts_connection_worlds__world_id__tts_connection_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulationModelConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "engine",
+                    "mapping": {
+                      "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                      "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                      "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                      "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                      "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  },
+                  "title": "Response Set World Tts Connection Worlds  World Id  Tts Connection Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get World Tts Connection",
+        "operationId": "get_world_tts_connection_worlds__world_id__tts_connection_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "engine",
+                    "mapping": {
+                      "xtts": "#/components/schemas/AllTalkXttsModelConfig",
+                      "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                      "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                      "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                      "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig"
+                    }
+                  },
+                  "title": "Response Get World Tts Connection Worlds  World Id  Tts Connection Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Delete World Tts Connection",
+        "operationId": "delete_world_tts_connection_worlds__world_id__tts_connection_delete",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "component",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ComponentType",
+              "description": "The world component using the config"
+            },
+            "description": "The world component using the config"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/tts-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List World Tts Connections",
+        "operationId": "list_world_tts_connections_worlds__world_id__tts_connections_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentTtsConfig"
+                  },
+                  "title": "Response List World Tts Connections Worlds  World Id  Tts Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set World Tts Connections",
+        "operationId": "set_world_tts_connections_worlds__world_id__tts_connections_put",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentTtsConfig"
+                  },
+                  "title": "Response Set World Tts Connections Worlds  World Id  Tts Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/simulations/{simulation_id}/image-generation-config": {
       "get": {
         "tags": [
@@ -3656,6 +4939,98 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ImageGenerationConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/tts-generation-config": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Simulation Tts Generation Config",
+        "operationId": "get_simulation_tts_generation_config_simulations__simulation_id__tts_generation_config_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsGenerationConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Simulation Tts Generation Config",
+        "operationId": "set_simulation_tts_generation_config_simulations__simulation_id__tts_generation_config_put",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TtsGenerationConfigUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TtsGenerationConfig"
                 }
               }
             }
@@ -13618,6 +14993,49 @@
         }
       }
     },
+    "/turn-presentations/blocks/{block_id}/voice": {
+      "post": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "Generate Presentation Block Voice",
+        "description": "Generate (or return already-generated) TTS audio for one narration/speech segment,\nregardless of the simulation's auto-generation mode.",
+        "operationId": "generate_presentation_block_voice_turn_presentations_blocks__block_id__voice_post",
+        "parameters": [
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Block Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneratedVoiceMediaFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/worlds/{world_id}/turns": {
       "post": {
         "tags": [
@@ -14577,6 +15995,949 @@
   },
   "components": {
     "schemas": {
+      "AllTalkF5ttsModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use, for providers that support switching the underlying TTS model"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this TTS model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "alltalk",
+            "title": "Provider",
+            "description": "Provider for this TTS model config",
+            "default": "alltalk"
+          },
+          "text_filtering": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextFilteringMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text filtering mode applied to the input text before synthesis"
+          },
+          "text_not_inside": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextNotInsideMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How to voice text that is not inside quotes, when the narrator is enabled"
+          },
+          "narrator_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Enabled",
+            "description": "Whether to enable the narrator voice for text outside quotes"
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
+          },
+          "output_file_timestamp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Timestamp",
+            "description": "Whether to append a timestamp to the generated output file name"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay",
+            "description": "Whether the AllTalk server should play the generated audio at its own terminal"
+          },
+          "autoplay_volume": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay Volume",
+            "description": "Playback volume used by the AllTalk server when autoplay is enabled"
+          },
+          "engine": {
+            "type": "string",
+            "const": "f5tts",
+            "title": "Engine",
+            "description": "AllTalk TTS engine backing this config",
+            "default": "f5tts"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Language for the TTS generation. F5-TTS only supports 'en' and 'zh-cn'"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.25
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "Speed of the generated speech"
+          }
+        },
+        "type": "object",
+        "title": "AllTalkF5ttsModelConfig",
+        "description": "Configuration for AllTalk's F5-TTS engine: voice cloning from a reference WAV sample, English and\nChinese only. Flow-matching generation, so no sampling temperature/repetition penalty or pitch\nadjustment - only playback speed is tunable."
+      },
+      "AllTalkParlerModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use, for providers that support switching the underlying TTS model"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this TTS model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "alltalk",
+            "title": "Provider",
+            "description": "Provider for this TTS model config",
+            "default": "alltalk"
+          },
+          "text_filtering": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextFilteringMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text filtering mode applied to the input text before synthesis"
+          },
+          "text_not_inside": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextNotInsideMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How to voice text that is not inside quotes, when the narrator is enabled"
+          },
+          "narrator_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Enabled",
+            "description": "Whether to enable the narrator voice for text outside quotes"
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
+          },
+          "output_file_timestamp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Timestamp",
+            "description": "Whether to append a timestamp to the generated output file name"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay",
+            "description": "Whether the AllTalk server should play the generated audio at its own terminal"
+          },
+          "autoplay_volume": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay Volume",
+            "description": "Playback volume used by the AllTalk server when autoplay is enabled"
+          },
+          "engine": {
+            "type": "string",
+            "const": "parler",
+            "title": "Engine",
+            "description": "AllTalk TTS engine backing this config",
+            "default": "parler"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.25
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "Speed of the generated speech"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Sampling temperature for the TTS engine"
+          }
+        },
+        "type": "object",
+        "title": "AllTalkParlerModelConfig",
+        "description": "Configuration for AllTalk's Parler engine: voices are described in natural language rather than\nselected from a WAV sample (narrator_voice here, and character_voice on CharacterTtsConfig, hold the\nwritten voice description instead of a filename). Supports sampling temperature but not repetition\npenalty or pitch adjustment."
+      },
+      "AllTalkPiperModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use, for providers that support switching the underlying TTS model"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this TTS model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "alltalk",
+            "title": "Provider",
+            "description": "Provider for this TTS model config",
+            "default": "alltalk"
+          },
+          "text_filtering": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextFilteringMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text filtering mode applied to the input text before synthesis"
+          },
+          "text_not_inside": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextNotInsideMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How to voice text that is not inside quotes, when the narrator is enabled"
+          },
+          "narrator_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Enabled",
+            "description": "Whether to enable the narrator voice for text outside quotes"
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
+          },
+          "output_file_timestamp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Timestamp",
+            "description": "Whether to append a timestamp to the generated output file name"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay",
+            "description": "Whether the AllTalk server should play the generated audio at its own terminal"
+          },
+          "autoplay_volume": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay Volume",
+            "description": "Playback volume used by the AllTalk server when autoplay is enabled"
+          },
+          "engine": {
+            "type": "string",
+            "const": "piper",
+            "title": "Engine",
+            "description": "AllTalk TTS engine backing this config",
+            "default": "piper"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.25
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "Speed of the generated speech"
+          }
+        },
+        "type": "object",
+        "title": "AllTalkPiperModelConfig",
+        "description": "Configuration for AllTalk's Piper engine: fast, deterministic ONNX voice models. No voice cloning,\nno sampling parameters (temperature/repetition penalty), no runtime language switching, and no pitch\nadjustment - only playback speed is tunable."
+      },
+      "AllTalkVitsModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use, for providers that support switching the underlying TTS model"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this TTS model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "alltalk",
+            "title": "Provider",
+            "description": "Provider for this TTS model config",
+            "default": "alltalk"
+          },
+          "text_filtering": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextFilteringMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text filtering mode applied to the input text before synthesis"
+          },
+          "text_not_inside": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextNotInsideMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How to voice text that is not inside quotes, when the narrator is enabled"
+          },
+          "narrator_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Enabled",
+            "description": "Whether to enable the narrator voice for text outside quotes"
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
+          },
+          "output_file_timestamp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Timestamp",
+            "description": "Whether to append a timestamp to the generated output file name"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay",
+            "description": "Whether the AllTalk server should play the generated audio at its own terminal"
+          },
+          "autoplay_volume": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay Volume",
+            "description": "Playback volume used by the AllTalk server when autoplay is enabled"
+          },
+          "engine": {
+            "type": "string",
+            "const": "vits",
+            "title": "Engine",
+            "description": "AllTalk TTS engine backing this config",
+            "default": "vits"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Language for the TTS generation, if supported by the loaded VITS model file"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.25
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "Speed of the generated speech"
+          }
+        },
+        "type": "object",
+        "title": "AllTalkVitsModelConfig",
+        "description": "Configuration for AllTalk's VITS engine: individual voice model files, with multi-language support\ndepending on the loaded model. No sampling parameters (temperature/repetition penalty) or pitch\nadjustment."
+      },
+      "AllTalkXttsModelConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the model"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use, for providers that support switching the underlying TTS model"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider connection used by this TTS model config"
+          },
+          "provider": {
+            "type": "string",
+            "const": "alltalk",
+            "title": "Provider",
+            "description": "Provider for this TTS model config",
+            "default": "alltalk"
+          },
+          "text_filtering": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextFilteringMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text filtering mode applied to the input text before synthesis"
+          },
+          "text_not_inside": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextNotInsideMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How to voice text that is not inside quotes, when the narrator is enabled"
+          },
+          "narrator_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Enabled",
+            "description": "Whether to enable the narrator voice for text outside quotes"
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
+          },
+          "output_file_timestamp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Timestamp",
+            "description": "Whether to append a timestamp to the generated output file name"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay",
+            "description": "Whether the AllTalk server should play the generated audio at its own terminal"
+          },
+          "autoplay_volume": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay Volume",
+            "description": "Playback volume used by the AllTalk server when autoplay is enabled"
+          },
+          "engine": {
+            "type": "string",
+            "const": "xtts",
+            "title": "Engine",
+            "description": "AllTalk TTS engine backing this config",
+            "default": "xtts"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Language for the TTS generation, e.g. 'en', 'zh-cn', or 'auto'"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.25
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "Speed of the generated speech"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Sampling temperature for the TTS engine"
+          },
+          "repetition_penalty": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repetition Penalty",
+            "description": "Repetition penalty for the TTS engine"
+          }
+        },
+        "type": "object",
+        "title": "AllTalkXttsModelConfig",
+        "description": "Configuration for AllTalk's XTTS engine (Coqui XTTSv2): zero-shot voice cloning from a WAV sample,\nmulti-language, sampling-based generation. Does not support pitch adjustment."
+      },
       "Author": {
         "properties": {
           "id": {
@@ -15492,6 +17853,149 @@
         ],
         "title": "CharacterLocationUpdate"
       },
+      "CharacterTtsConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the character TTS config"
+          },
+          "character_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Voice",
+            "description": "Reference to this character's voice. Meaning depends on the backend's engine: a WAV sample for voice-cloning engines (xtts, f5tts), a voice model name for piper/vits, or a written voice description for parler"
+          },
+          "rvc_character_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Character Voice",
+            "description": "RVC voice model applied to this character's voice, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_character_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Character Pitch",
+            "description": "Pitch adjustment applied to this character's RVC voice"
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "engine",
+                  "mapping": {
+                    "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig",
+                    "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                    "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                    "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                    "xtts": "#/components/schemas/AllTalkXttsModelConfig"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend",
+            "description": "The shared TTS backend config this character's voice uses, resolved via USE_CONFIG"
+          }
+        },
+        "type": "object",
+        "title": "CharacterTtsConfig",
+        "description": "Per-character TTS voice selection.\n\nCharacter-specific bits (which voice a character speaks with, and any RVC tuning for that voice) live\nhere. Engine/backend/sampling parameters are NOT duplicated per character - they live on the shared\nbackend config this character config points to, so many characters can each pick their own voice while\nall sharing the same TTS backend: Character -[:HAS_CONFIG]-> CharacterTtsConfig -[:USE_CONFIG]->\nAllTalk*ModelConfig."
+      },
+      "CharacterTtsConfigUpdate": {
+        "properties": {
+          "character_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Voice",
+            "description": "Reference to this character's voice"
+          },
+          "rvc_character_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Character Voice",
+            "description": "RVC voice model for this character"
+          },
+          "rvc_character_pitch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Character Pitch",
+            "description": "Pitch adjustment for this character's RVC voice"
+          },
+          "backend_config_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend Config Id",
+            "description": "The shared TTS backend config id to use for this character's voice"
+          }
+        },
+        "type": "object",
+        "title": "CharacterTtsConfigUpdate",
+        "description": "DTO model for setting a character's TTS voice. backend_config_id links this character to the shared\nTTS backend config (e.g. an AllTalkXttsModelConfig) that provides the engine/sampling parameters -\nmany characters typically link to the same backend config while each having their own voice."
+      },
       "CharacterUpdate": {
         "properties": {
           "user_controlled": {
@@ -15960,6 +18464,52 @@
         ],
         "title": "ComponentPromptAssignment"
       },
+      "ComponentTtsConfig": {
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/ComponentType",
+            "description": "The component using the config"
+          },
+          "config": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AllTalkXttsModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/AllTalkPiperModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/AllTalkVitsModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/AllTalkParlerModelConfig"
+              },
+              {
+                "$ref": "#/components/schemas/AllTalkF5ttsModelConfig"
+              }
+            ],
+            "title": "Config",
+            "description": "The assigned TTS model config",
+            "discriminator": {
+              "propertyName": "engine",
+              "mapping": {
+                "f5tts": "#/components/schemas/AllTalkF5ttsModelConfig",
+                "parler": "#/components/schemas/AllTalkParlerModelConfig",
+                "piper": "#/components/schemas/AllTalkPiperModelConfig",
+                "vits": "#/components/schemas/AllTalkVitsModelConfig",
+                "xtts": "#/components/schemas/AllTalkXttsModelConfig"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "component",
+          "config"
+        ],
+        "title": "ComponentTtsConfig",
+        "description": "DTO model for a component-specific TTS config assignment"
+      },
       "ComponentType": {
         "type": "string",
         "enum": [
@@ -15978,7 +18528,8 @@
           "location_image_generator",
           "item_image_generator",
           "scene_image_generator",
-          "turn_image_trigger"
+          "turn_image_trigger",
+          "narrator_tts"
         ],
         "title": "ComponentType"
       },
@@ -16050,7 +18601,8 @@
         "enum": [
           "ollama",
           "openai",
-          "comfyui"
+          "comfyui",
+          "alltalk"
         ],
         "title": "ConnectionType"
       },
@@ -17420,6 +19972,90 @@
           "workflow_name"
         ],
         "title": "GeneratedImageMediaFile"
+      },
+      "GeneratedVoiceMediaFile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the media file"
+          },
+          "type": {
+            "$ref": "#/components/schemas/MediaType",
+            "description": "Type of the generated voice media file",
+            "default": "audio/wav"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "Title of the media file"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash",
+            "description": "Hash of the media file"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "Filename of the media file, no format suffix"
+          },
+          "presentation_block_id": {
+            "type": "string",
+            "title": "Presentation Block Id",
+            "description": "The turn presentation block (narration or speech segment) this voice clip was generated for"
+          },
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id",
+            "description": "The turn this voice clip belongs to"
+          },
+          "character_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Id",
+            "description": "The speaking character's id, for a speech segment. None for a narration segment"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The exact text that was synthesized"
+          },
+          "voice_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Reference",
+            "description": "The character or narrator voice reference used for this generation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hash",
+          "filename",
+          "presentation_block_id",
+          "turn_id",
+          "text"
+        ],
+        "title": "GeneratedVoiceMediaFile"
       },
       "GenerationJob": {
         "properties": {
@@ -19058,7 +21694,8 @@
         "type": "string",
         "enum": [
           "image/png",
-          "application/json"
+          "application/json",
+          "audio/wav"
         ],
         "title": "MediaType"
       },
@@ -20754,6 +23391,284 @@
         ],
         "title": "SupportedLanguage"
       },
+      "TtsConfigUpdate": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Name of the model to use"
+          },
+          "character_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Voice",
+            "description": "Reference to the character voice to use"
+          },
+          "text_filtering": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextFilteringMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Text filtering mode"
+          },
+          "text_not_inside": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TtsTextNotInsideMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How to voice text that is not inside quotes"
+          },
+          "narrator_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Enabled",
+            "description": "Whether to enable the narrator voice"
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator voice to use"
+          },
+          "rvc_character_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Character Voice",
+            "description": "RVC voice model for the character"
+          },
+          "rvc_character_pitch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Character Pitch",
+            "description": "Pitch adjustment for the character RVC voice"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment for the narrator RVC voice"
+          },
+          "output_file_timestamp": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output File Timestamp",
+            "description": "Append a timestamp to the output file name"
+          },
+          "autoplay": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay",
+            "description": "Play the generated audio at the provider's terminal"
+          },
+          "autoplay_volume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autoplay Volume",
+            "description": "Playback volume if autoplay is enabled"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Language for the TTS generation, if the engine supports it"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed",
+            "description": "Speed of the generated speech, if the engine supports it"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Sampling temperature, if the engine supports it"
+          },
+          "repetition_penalty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repetition Penalty",
+            "description": "Repetition penalty, if the engine supports it"
+          }
+        },
+        "type": "object",
+        "title": "TtsConfigUpdate",
+        "description": "DTO model for updating TTS model configs. Fields span every AllTalk engine; only the ones\napplicable to the target config's engine have any effect."
+      },
+      "TtsGenerationConfig": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Unique identifier for the configuration"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/TtsGenerationMode",
+            "description": "manual: voice must be generated per-segment on demand. auto: every narration/speech segment of a turn is voiced automatically once the turn is committed.",
+            "default": "manual"
+          },
+          "autoplay_in_browser": {
+            "type": "boolean",
+            "title": "Autoplay In Browser",
+            "description": "Whether the frontend should automatically play a turn's narration/speech segments back-to-back in the browser once auto-generation finishes, without requiring the user to click each segment. Only meaningful when mode is 'auto'. Distinct from AllTalkTtsModelConfig.autoplay, which plays audio at the AllTalk server's own terminal, not in the user's browser.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TtsGenerationConfig",
+        "description": "Per-simulation configuration for automatically triggering TTS generation after a turn."
+      },
+      "TtsGenerationConfigUpdate": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/TtsGenerationMode",
+            "description": "manual: voice must be generated per-segment on demand. auto: every narration/speech segment is voiced automatically"
+          },
+          "autoplay_in_browser": {
+            "type": "boolean",
+            "title": "Autoplay In Browser",
+            "description": "Whether the frontend should auto-play a turn's segments once generated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "TtsGenerationConfigUpdate",
+        "description": "DTO model for updating a simulation's auto TTS generation configuration"
+      },
+      "TtsGenerationMode": {
+        "type": "string",
+        "enum": [
+          "manual",
+          "auto"
+        ],
+        "title": "TtsGenerationMode"
+      },
+      "TtsTextFilteringMode": {
+        "type": "string",
+        "enum": [
+          "none",
+          "standard",
+          "html"
+        ],
+        "title": "TtsTextFilteringMode"
+      },
+      "TtsTextNotInsideMode": {
+        "type": "string",
+        "enum": [
+          "character",
+          "narrator",
+          "silent"
+        ],
+        "title": "TtsTextNotInsideMode"
+      },
       "Turn": {
         "properties": {
           "id": {
@@ -20907,6 +23822,18 @@
               }
             ],
             "title": "Media Id"
+          },
+          "voice_media_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Media Id",
+            "description": "Id of the generated voice Media for this segment, if TTS audio has been generated for it (narration/speech blocks only). Read-only: never set via PresentationBlockWrite, only populated from the HAS_VOICE relationship."
           },
           "completion": {
             "$ref": "#/components/schemas/PresentationCompletion",

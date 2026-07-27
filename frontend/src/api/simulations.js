@@ -32,6 +32,11 @@ export async function fetchSimulationRecords(options) {
     return fetchSimulationTurns(options);
 }
 
+export async function fetchTurnPresentation(turnId) {
+    const presentedTurn = await apiRequest(`/turns/${turnId}/presentation`);
+    return normalizeTurn(presentedTurn);
+}
+
 function query(path, params) {
     const search = new URLSearchParams();
 
@@ -113,6 +118,30 @@ export async function fetchCharacterInventory(characterId) {
 
 export async function fetchCharacterEmotion({ simulationId, characterId }) {
     return query(`/characters/${characterId}/emotion`, { simulation_id: simulationId });
+}
+
+export async function fetchCharacterTtsConfig(characterId) {
+    return apiRequest(`/characters/${characterId}/tts-config`);
+}
+
+export async function setCharacterTtsConfig(characterId, config) {
+    return apiRequest(`/characters/${characterId}/tts-config`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function fetchSimulationTtsBackendConfig(simulationId) {
+    return query(`/simulations/${simulationId}/tts-connection`, { component: "narrator_tts" });
+}
+
+export async function generateBlockVoice(blockId) {
+    return apiRequest(`/turn-presentations/blocks/${blockId}/voice`, {
+        method: "POST",
+    });
 }
 
 export async function fetchEventsByTurn(turnId) {

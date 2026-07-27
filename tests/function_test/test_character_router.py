@@ -12,7 +12,7 @@ from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.misc.enums import ContainerState, SupportedLanguage
 from world_simulation_engine.model import Author, Character, Container, CurrentActivity, Equipment, Item, ItemStack, Landmark, Location, Simulation, World
-from world_simulation_engine.router import character_router
+from world_simulation_engine.router import character_router, config_router
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
 
@@ -119,6 +119,7 @@ def character_api(neo4j_container, tmp_path):
 
     app = FastAPI(lifespan=lifespan)
     app.include_router(character_router)
+    app.include_router(config_router)
 
     with TestClient(app) as client:
         yield CharacterRouterTestClient(
@@ -376,3 +377,66 @@ def test_get_character_inventory_returns_404_for_missing_character(character_api
     response = character_api.client.get(f"/characters/{uuid4()}/inventory")
 
     assert response.status_code == 404
+
+
+def test_character_tts_config_crud_and_shared_backend_link(character_api):
+    client = character_api.client
+    character_id = character_api.inventory_character.id
+
+    assert client.get(f"/characters/{character_id}/tts-config").status_code == 404
+
+    backend = client.post(
+        "/config/tts/alltalk/xtts",
+        json={"language": "en", "temperature": 0.75},
+    ).json()
+
+    set_response = client.put(
+        f"/characters/{character_id}/tts-config",
+        json={
+            "character_voice": "female_01.wav",
+            "rvc_character_voice": "voices/female.pth",
+            "rvc_character_pitch": 2,
+            "backend_config_id": backend["id"],
+        },
+    )
+
+    assert set_response.status_code == 200
+    body = set_response.json()
+    assert body["character_voice"] == "female_01.wav"
+    assert body["rvc_character_pitch"] == 2
+    assert body["backend"]["id"] == backend["id"]
+    assert body["backend"]["engine"] == "xtts"
+
+    get_response = client.get(f"/characters/{character_id}/tts-config")
+    assert get_response.status_code == 200
+    assert get_response.json() == body
+
+    # Updating just the voice must not disturb the linked backend.
+    revoice_response = client.put(
+        f"/characters/{character_id}/tts-config",
+        json={"character_voice": "male_01.wav"},
+    )
+    assert revoice_response.status_code == 200
+    assert revoice_response.json()["character_voice"] == "male_01.wav"
+    assert revoice_response.json()["backend"]["id"] == backend["id"]
+
+    delete_response = client.delete(f"/characters/{character_id}/tts-config")
+    assert delete_response.status_code == 204
+    assert client.get(f"/characters/{character_id}/tts-config").status_code == 404
+
+
+def test_character_tts_config_returns_404_for_missing_character_or_backend(character_api):
+    client = character_api.client
+    missing_character_id = str(uuid4())
+    character_id = character_api.inventory_character.id
+
+    assert client.get(f"/characters/{missing_character_id}/tts-config").status_code == 404
+    assert client.put(
+        f"/characters/{missing_character_id}/tts-config",
+        json={"character_voice": "female_01.wav"},
+    ).status_code == 404
+    assert client.delete(f"/characters/{missing_character_id}/tts-config").status_code == 404
+    assert client.put(
+        f"/characters/{character_id}/tts-config",
+        json={"backend_config_id": str(uuid4())},
+    ).status_code == 404

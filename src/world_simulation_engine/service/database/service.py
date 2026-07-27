@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 from world_simulation_engine.model import Character, Location, Landmark
 from .character_store import CharacterStore
+from .character_tts_config_store import CharacterTtsConfigStore
 from .config_store import ConfigStore
 from .container_store import ContainerStore
 from .equipment_store import EquipmentStore
@@ -37,6 +38,7 @@ class DatabaseService:
         self._driver = driver
 
         self._character = CharacterStore(self._driver)
+        self._character_tts_config = CharacterTtsConfigStore(self._driver)
         self._config = ConfigStore(self._driver)
         self._container = ContainerStore(self._driver)
         self._equipment = EquipmentStore(self._driver)
@@ -69,6 +71,10 @@ class DatabaseService:
     @property
     def character(self) -> CharacterStore:
         return self._character
+
+    @property
+    def character_tts_config(self) -> CharacterTtsConfigStore:
+        return self._character_tts_config
 
     @property
     def config(self) -> ConfigStore:

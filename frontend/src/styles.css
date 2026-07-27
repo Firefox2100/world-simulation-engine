@@ -1095,6 +1095,7 @@ body {
 }
 
 .chat-message {
+    position: relative;
     max-width: min(680px, 84%);
     display: flex;
     align-items: flex-end;
@@ -1170,6 +1171,58 @@ body {
     font-size: 0.9rem;
     line-height: 1.45;
     text-align: center;
+}
+
+.segment-voice-control {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+}
+
+.chat-message:hover .segment-voice-control {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.segment-voice-button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: white;
+    color: #6b7280;
+    font-size: 0.85rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+}
+
+.segment-voice-button:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.segment-voice-button.generated {
+    background: #111827;
+    color: white;
+    border-color: #111827;
+}
+
+.segment-voice-button.generated:hover:not(:disabled) {
+    background: #1f2937;
+}
+
+.segment-voice-button.error {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+.segment-voice-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .chat-narration-card p {

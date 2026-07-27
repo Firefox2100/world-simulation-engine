@@ -256,3 +256,78 @@ export async function setSimulationImageGenerationConfig(simulationId, config) {
         body: JSON.stringify(config),
     });
 }
+
+export async function fetchSimulationTtsGenerationConfig(simulationId) {
+    return apiRequest(`/simulations/${simulationId}/tts-generation-config`);
+}
+
+export async function setSimulationTtsGenerationConfig(simulationId, config) {
+    return apiRequest(`/simulations/${simulationId}/tts-generation-config`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function updateTtsConfig(configId, config) {
+    return apiRequest(`/config/tts/${configId}`, {
+        method: "PATCH",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function fetchTtsConfigs() {
+    return apiRequest("/config/tts");
+}
+
+export async function createTtsConfig(engine, config) {
+    return apiRequest(`/config/tts/alltalk/${engine}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(config),
+    });
+}
+
+export async function deleteTtsConfig(configId) {
+    await apiRequest(`/config/tts/${configId}`, {
+        method: "DELETE",
+    });
+}
+
+export async function setTtsConfigConnection(configId, connectionId) {
+    return apiRequest(`/config/tts/${configId}/connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            connection_id: connectionId,
+        }),
+    });
+}
+
+export async function deleteTtsConfigConnection(configId) {
+    await apiRequest(`/config/tts/${configId}/connection`, {
+        method: "DELETE",
+    });
+}
+
+export async function setSimulationTtsConfig(simulationId, configId) {
+    return apiRequest(`/simulations/${simulationId}/tts-connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            component: "narrator_tts",
+            config_id: configId,
+        }),
+    });
+}

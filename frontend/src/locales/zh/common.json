@@ -79,6 +79,8 @@
     "send": "发送",
     "sendError": "无法发送消息：{{error}}",
     "cancelled": "生成已取消。",
+    "playVoice": "播放语音",
+    "generateVoice": "生成语音",
     "suggestions": {
       "title": "建议的行动",
       "useSuggestion": "使用这条建议"
@@ -117,6 +119,7 @@
       "worldEntries": "世界条目",
       "configs": "配置",
       "imageGeneration": "图像生成",
+      "ttsGeneration": "语音生成",
       "prompts": "提示词",
       "observability": "可观测性"
     },
@@ -178,6 +181,23 @@
         "always": "每个回合都会在后台生成场景图像，不会延迟回合本身。"
       }
     },
+    "ttsGeneration": {
+      "mode": "语音生成模式",
+      "modes": {
+        "manual": "手动",
+        "auto": "自动"
+      },
+      "modeHints": {
+        "manual": "只有在为某个片段明确请求时才会生成语音。",
+        "auto": "回合提交后，其所有旁白和台词片段都会自动生成语音。"
+      },
+      "narratorVoice": "旁白声音",
+      "narratorVoiceHint": "请先为该模拟配置 TTS 后端，才能设置旁白声音。",
+      "autoplayInBrowser": "在浏览器中自动播放",
+      "autoplayInBrowserHint": "自动模式生成回合语音后，一旦语音片段准备就绪，将在浏览器中依次自动播放。需要先与页面进行一次交互，否则浏览器会阻止音频播放。",
+      "backend": "TTS 后端",
+      "noBackend": "未选择后端"
+    },
     "fields": {
       "id": "ID",
       "name": "名称",
@@ -199,7 +219,8 @@
       "attributes": "属性",
       "stats": "数值",
       "inventory": "库存",
-      "emotion": "当前私密情绪"
+      "emotion": "当前私密情绪",
+      "voice": "TTS 声音"
     },
     "inventory": {
       "items": "物品",
@@ -334,23 +355,33 @@
     "tabs": {
       "connections": "连接",
       "embeddings": "嵌入",
-      "llms": "LLM"
+      "llms": "LLM",
+      "tts": "TTS"
     },
     "empty": {
       "connections": "暂无连接配置。",
       "embeddings": "暂无嵌入配置。",
-      "llms": "暂无 LLM 配置。"
+      "llms": "暂无 LLM 配置。",
+      "tts": "暂无 TTS 配置。"
     },
     "providers": {
       "openai": "OpenAI",
-      "ollama": "Ollama"
+      "ollama": "Ollama",
+      "alltalk": "AllTalk",
+      "xtts": "XTTS",
+      "piper": "Piper",
+      "vits": "VITS",
+      "parler": "Parler",
+      "f5tts": "F5-TTS"
     },
     "details": {
       "connection": "连接 {{name}}",
       "noConnection": "未配置提供商连接",
       "dimension": "{{value}} 维",
       "contextWindow": "{{value}} 上下文",
-      "temperature": "温度 {{value}}"
+      "temperature": "温度 {{value}}",
+      "narratorVoice": "音色 {{value}}",
+      "speed": "语速 {{value}}"
     },
     "actions": {
       "edit": "编辑",
@@ -358,7 +389,8 @@
       "create": {
         "connections": "创建连接",
         "embeddings": "创建嵌入",
-        "llms": "创建 LLM"
+        "llms": "创建 LLM",
+        "tts": "创建 TTS 配置"
       }
     },
     "fields": {
@@ -380,7 +412,31 @@
       "mirostat_tau": "Mirostat tau",
       "num_predict": "预测数量",
       "repeat_penalty_window": "重复惩罚窗口",
-      "repeat_penalty": "重复惩罚"
+      "repeat_penalty": "重复惩罚",
+      "engine": "引擎",
+      "narratorVoice": "旁白音色",
+      "narratorEnabled": "启用旁白",
+      "textFiltering": "文本过滤",
+      "textFilteringOptions": {
+        "none": "无",
+        "standard": "标准",
+        "html": "HTML"
+      },
+      "textNotInside": "标签外文本",
+      "textNotInsideOptions": {
+        "character": "角色",
+        "narrator": "旁白",
+        "silent": "静音"
+      },
+      "rvcNarratorVoice": "RVC 旁白音色",
+      "rvcNarratorPitch": "RVC 旁白音高",
+      "language": "语言",
+      "speed": "语速",
+      "repetitionPenalty": "重复惩罚",
+      "outputFileTimestamp": "输出文件加时间戳",
+      "serverAutoplay": "在 AllTalk 服务器播放",
+      "autoplayVolume": "服务器自动播放音量",
+      "notSet": "未设置"
     },
     "modal": {
       "close": "关闭配置对话框",
@@ -392,12 +448,14 @@
       "create": {
         "connections": "创建连接",
         "embeddings": "创建嵌入配置",
-        "llms": "创建 LLM 配置"
+        "llms": "创建 LLM 配置",
+        "tts": "创建 TTS 配置"
       },
       "edit": {
         "connections": "编辑连接",
         "embeddings": "编辑嵌入配置",
-        "llms": "编辑 LLM 配置"
+        "llms": "编辑 LLM 配置",
+        "tts": "编辑 TTS 配置"
       }
     }
   },
@@ -532,19 +590,19 @@
       "emptySelect": "无",
       "editing": "正在编辑 {{name}}",
       "confirmDelete": "删除 {{name}}？",
-        "configSaved": "配置已保存。",
-        "configEndpointMissing": "当前 API 尚未暴露世界级模型配置绑定接口。这里的选择器仅用于查看可用配置。",
-        "components": {
-          "action_validator": "行动校验",
-          "character_simulator": "角色模拟",
-          "input_interpreter": "输入解析",
-          "memory_summarizer": "记忆总结",
-          "narrator": "叙述",
-          "perspective_resolver": "视角解析",
-          "scene_coordinator": "场景协调",
-          "state_committer": "状态提交"
-        },
-        "tabs": {
+      "configSaved": "配置已保存。",
+      "configEndpointMissing": "当前 API 尚未暴露世界级模型配置绑定接口。这里的选择器仅用于查看可用配置。",
+      "components": {
+        "action_validator": "行动校验",
+        "character_simulator": "角色模拟",
+        "input_interpreter": "输入解析",
+        "memory_summarizer": "记忆总结",
+        "narrator": "叙述",
+        "perspective_resolver": "视角解析",
+        "scene_coordinator": "场景协调",
+        "state_committer": "状态提交"
+      },
+      "tabs": {
         "world": "世界",
         "author": "作者",
         "configs": "配置",

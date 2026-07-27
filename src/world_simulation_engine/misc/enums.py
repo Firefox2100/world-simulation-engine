@@ -46,12 +46,14 @@ class ComponentType(StrEnum):
     ITEM_IMAGE_GENERATOR = "item_image_generator"
     SCENE_IMAGE_GENERATOR = "scene_image_generator"
     TURN_IMAGE_TRIGGER = "turn_image_trigger"
+    NARRATOR_TTS = "narrator_tts"
 
 
 class ConnectionType(StrEnum):
     OLLAMA = "ollama"
     OPENAI = "openai"
     COMFYUI = "comfyui"
+    ALLTALK = "alltalk"
 
 
 class ContainerState(StrEnum):
@@ -117,9 +119,35 @@ class ImageGenerationMode(StrEnum):
     ALWAYS = "always"
 
 
+class TtsGenerationMode(StrEnum):
+    MANUAL = "manual"
+    AUTO = "auto"
+
+
+class TtsEngine(StrEnum):
+    XTTS = "xtts"
+    PIPER = "piper"
+    VITS = "vits"
+    PARLER = "parler"
+    F5TTS = "f5tts"
+
+
+class TtsTextFilteringMode(StrEnum):
+    NONE = "none"
+    STANDARD = "standard"
+    HTML = "html"
+
+
+class TtsTextNotInsideMode(StrEnum):
+    CHARACTER = "character"
+    NARRATOR = "narrator"
+    SILENT = "silent"
+
+
 class MediaType(StrEnum):
     PNG = "image/png"
     JSON = "application/json"
+    WAV = "audio/wav"
 
 
 class MessageRole(StrEnum):

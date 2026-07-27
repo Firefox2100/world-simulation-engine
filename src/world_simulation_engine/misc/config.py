@@ -41,5 +41,15 @@ class Settings(BaseSettings):
         description="Folder where the media data is stored"
     )
 
+    tts_max_concurrency: int = Field(
+        3,
+        description="Maximum number of concurrent outbound TTS generation requests to the backend"
+    )
+    tts_media_retention_turns: int = Field(
+        50,
+        description="How many most-recent turns' generated voice media to keep per simulation, "
+                    "before older ones are automatically pruned"
+    )
+
 
 CONFIG = Settings(_env_file=os.getenv('WSE_ENV_FILE', '.env'))      # type: ignore

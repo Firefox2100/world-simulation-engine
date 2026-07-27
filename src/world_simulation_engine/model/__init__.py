@@ -1,4 +1,5 @@
 from .character import CurrentActivity, Character, BackgroundCharacter
+from .character_tts_config import CharacterTtsConfig
 from .container import Container
 from .equipment import Equipment, InventoryEquipment
 from .emotion import EmotionChangeAudit, EmotionState, EmotionUpdateProposal, EmotionVector, \
@@ -36,10 +37,12 @@ from .generation_job import GenerationJob
 from .image_generation_config import ImageGenerationConfig
 from .simulation_audit import SimulationAuditEvent
 from .intent import Intent
-from .media import GeneratedImageMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
+from .tts_generation_config import TtsGenerationConfig
+from .media import GeneratedImageMediaFile, GeneratedVoiceMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig, \
     OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, ComfyUiImageModelConfig, \
-    ImageModelConfigUnion
+    ImageModelConfigUnion, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
+    AllTalkTtsModelConfigUnion, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion
 from .prompt_message import PromptMessage
 from .simulation import Simulation
 from .turn import Turn

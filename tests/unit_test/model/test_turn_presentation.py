@@ -59,3 +59,12 @@ def test_rendering_rejects_gaps_cross_variant_blocks_and_invalid_payloads():
         block(type=PresentationBlockType.SPEECH)
     with pytest.raises(ValidationError, match="media_id"):
         block(type=PresentationBlockType.MEDIA, text=None)
+
+
+def test_voice_media_id_defaults_to_none_and_is_independent_of_media_id():
+    narration = block()
+    assert narration.voice_media_id is None
+
+    voiced = block(voice_media_id="media_1")
+    assert voiced.voice_media_id == "media_1"
+    assert voiced.media_id is None

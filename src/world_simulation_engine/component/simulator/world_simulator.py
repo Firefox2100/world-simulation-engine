@@ -24,6 +24,7 @@ from world_simulation_engine.model import AcceptedSceneAction, ActionValidationR
     PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Turn, \
     TurnPresentationBlock, TurnPresentationRendering, SimulationAuditEvent
 from world_simulation_engine.component.image_generator import TurnImageTrigger
+from world_simulation_engine.component.tts_generator import TurnVoiceTrigger
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.service import DatabaseService
@@ -219,6 +220,11 @@ class WorldSimulator:
             prompt_loader=prompt_loader,
         )
         self._turn_image_generation_tasks: set[asyncio.Task] = set()
+        self._turn_voice_trigger = TurnVoiceTrigger(
+            database=database,
+            storage=storage,
+        )
+        self._turn_voice_generation_tasks: set[asyncio.Task] = set()
 
         self._action_suggester = ActionSuggester(
             database=database,
@@ -634,13 +640,15 @@ class WorldSimulator:
         return bool(normalized_name and f" {normalized_name} " in f" {normalized_text} ")
 
     async def shutdown(self):
-        tasks = list(self._off_scene_workers.values()) + list(self._turn_image_generation_tasks)
+        tasks = list(self._off_scene_workers.values()) + list(self._turn_image_generation_tasks) \
+            + list(self._turn_voice_generation_tasks)
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._off_scene_workers.clear()
         self._turn_image_generation_tasks.clear()
+        self._turn_voice_generation_tasks.clear()
 
     def _graph_for_request_type(self, request_type: SimulationGenerationRequestType) -> CompiledStateGraph:
         if request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
@@ -800,6 +808,26 @@ class WorldSimulator:
         ))
         self._turn_image_generation_tasks.add(task)
         task.add_done_callback(self._turn_image_generation_tasks.discard)
+
+    def _schedule_turn_voice_generation(
+            self,
+            *,
+            simulation_id: str,
+            turn: Turn,
+    ) -> None:
+        """Fire-and-forget: evaluate the simulation's TTS generation mode and, if in auto mode,
+        voice this turn's narration/speech segments. Runs fully in the background so it never
+        delays the turn's own graph run or streamed output."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._turn_voice_trigger.maybe_generate_for_turn(
+            simulation_id=simulation_id,
+            turn=turn,
+        ))
+        self._turn_voice_generation_tasks.add(task)
+        task.add_done_callback(self._turn_voice_generation_tasks.discard)
 
     def _ensure_off_scene_worker(self, simulation_id: str):
         worker = self._off_scene_workers.get(simulation_id)
@@ -1933,6 +1961,10 @@ class WorldSimulator:
             turn=turn,
             narration=Narrator.render_text(state.narration),
             coordination_result=state.character_action_coordination,
+        )
+        self._schedule_turn_voice_generation(
+            simulation_id=simulation_id,
+            turn=turn,
         )
         return {
             "committed_turn": turn,

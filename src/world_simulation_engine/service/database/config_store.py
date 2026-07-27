@@ -3,7 +3,15 @@ from neo4j import AsyncDriver
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion, OllamaChatModelConfig, \
     OpenAiChatModelConfig, EmbedModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
-    ComfyUiImageModelConfig, ImageModelConfigUnion, ImageGenerationConfig
+    ComfyUiImageModelConfig, ImageModelConfigUnion, ImageGenerationConfig, AllTalkF5ttsModelConfig, \
+    AllTalkParlerModelConfig, AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, \
+    TtsModelConfigUnion, TtsGenerationConfig
+
+
+TTS_CONFIG_LABELS = (
+    "AllTalkXttsModelConfig|AllTalkPiperModelConfig|AllTalkVitsModelConfig|"
+    "AllTalkParlerModelConfig|AllTalkF5ttsModelConfig"
+)
 
 
 def _connection_from_node(connection_node) -> ConnectionConfig:
@@ -118,6 +126,86 @@ def _image_generation_config_from_node(config_node) -> ImageGenerationConfig:
     )
 
 
+def _tts_generation_config_from_node(config_node) -> TtsGenerationConfig:
+    return TtsGenerationConfig(
+        id=config_node["id"],
+        mode=config_node["mode"],
+        autoplay_in_browser=config_node.get("autoplay_in_browser", False),
+    )
+
+
+def _alltalk_common_fields_from_node(config_node, connection_node=None) -> dict:
+    return {
+        "id": config_node["id"],
+        "model": config_node.get("model"),
+        "text_filtering": config_node.get("text_filtering"),
+        "text_not_inside": config_node.get("text_not_inside"),
+        "narrator_enabled": config_node.get("narrator_enabled"),
+        "narrator_voice": config_node.get("narrator_voice"),
+        "rvc_narrator_voice": config_node.get("rvc_narrator_voice"),
+        "rvc_narrator_pitch": config_node.get("rvc_narrator_pitch"),
+        "output_file_timestamp": config_node.get("output_file_timestamp"),
+        "autoplay": config_node.get("autoplay"),
+        "autoplay_volume": config_node.get("autoplay_volume"),
+        "connection": _connection_from_optional_node(connection_node),
+    }
+
+
+def _alltalk_xtts_from_node(config_node, connection_node=None) -> AllTalkXttsModelConfig:
+    return AllTalkXttsModelConfig(
+        **_alltalk_common_fields_from_node(config_node, connection_node),
+        language=config_node.get("language"),
+        speed=config_node.get("speed"),
+        temperature=config_node.get("temperature"),
+        repetition_penalty=config_node.get("repetition_penalty"),
+    )
+
+
+def _alltalk_piper_from_node(config_node, connection_node=None) -> AllTalkPiperModelConfig:
+    return AllTalkPiperModelConfig(
+        **_alltalk_common_fields_from_node(config_node, connection_node),
+        speed=config_node.get("speed"),
+    )
+
+
+def _alltalk_vits_from_node(config_node, connection_node=None) -> AllTalkVitsModelConfig:
+    return AllTalkVitsModelConfig(
+        **_alltalk_common_fields_from_node(config_node, connection_node),
+        language=config_node.get("language"),
+        speed=config_node.get("speed"),
+    )
+
+
+def _alltalk_parler_from_node(config_node, connection_node=None) -> AllTalkParlerModelConfig:
+    return AllTalkParlerModelConfig(
+        **_alltalk_common_fields_from_node(config_node, connection_node),
+        speed=config_node.get("speed"),
+        temperature=config_node.get("temperature"),
+    )
+
+
+def _alltalk_f5tts_from_node(config_node, connection_node=None) -> AllTalkF5ttsModelConfig:
+    return AllTalkF5ttsModelConfig(
+        **_alltalk_common_fields_from_node(config_node, connection_node),
+        language=config_node.get("language"),
+        speed=config_node.get("speed"),
+    )
+
+
+def _tts_from_node(config_node, labels: list[str], connection_node=None) -> TtsModelConfigUnion:
+    if "AllTalkXttsModelConfig" in labels:
+        return _alltalk_xtts_from_node(config_node, connection_node)
+    if "AllTalkPiperModelConfig" in labels:
+        return _alltalk_piper_from_node(config_node, connection_node)
+    if "AllTalkVitsModelConfig" in labels:
+        return _alltalk_vits_from_node(config_node, connection_node)
+    if "AllTalkParlerModelConfig" in labels:
+        return _alltalk_parler_from_node(config_node, connection_node)
+    if "AllTalkF5ttsModelConfig" in labels:
+        return _alltalk_f5tts_from_node(config_node, connection_node)
+    raise ValueError(f"Unknown config labels {labels}")
+
+
 class ConfigStore:
     def __init__(self,
                  driver: AsyncDriver,
@@ -222,17 +310,34 @@ class ConfigStore:
 
         return _connection_from_node(record["c"])
 
+    async def get_connection_by_tts_source(self, source_id: str) -> ConnectionConfig | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (s:{TTS_CONFIG_LABELS} {{id: $source_id}})
+                -[:USES]->
+                (c:ConnectionConfig)
+            RETURN c LIMIT 1
+            """,
+            parameters_={"source_id": source_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _connection_from_node(record["c"])
+
     async def link_connection(self,
                               source_id: str,
                               connection_id: str,
                               ) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
-            """
+            f"""
             MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
-                |ComfyUiImageModelConfig {
+                |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS} {{
                 id: $source_id
-            })
-            MATCH (c:ConnectionConfig {id: $connection_id})
+            }})
+            MATCH (c:ConnectionConfig {{id: $connection_id}})
             OPTIONAL MATCH (s)-[previous:USES]->(:ConnectionConfig)
             DELETE previous
             MERGE (s) -[:USES]-> (c)
@@ -252,11 +357,11 @@ class ConfigStore:
 
     async def unlink_connection(self, source_id: str) -> bool:
         result = await self._driver.execute_query(
-            """
+            f"""
             MATCH (source:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
-                |ComfyUiImageModelConfig {
+                |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS} {{
                 id: $source_id
-            })
+            }})
             OPTIONAL MATCH (source)-[uses:USES]->(:ConnectionConfig)
             DELETE uses
             RETURN count(source) AS source_count
@@ -1011,3 +1116,327 @@ class ConfigStore:
             return None
 
         return _image_generation_config_from_node(record["c"])
+
+    async def get_tts_generation_config(self, simulation_id: str) -> TtsGenerationConfig | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Simulation {id: $simulation_id})-[:HAS_TTS_GENERATION_CONFIG]->(c:TtsGenerationConfig)
+            RETURN c
+            """,
+            parameters_={"simulation_id": simulation_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _tts_generation_config_from_node(record["c"])
+
+    async def set_tts_generation_config(self,
+                                        simulation_id: str,
+                                        config: TtsGenerationConfig,
+                                        ) -> TtsGenerationConfig | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (s:Simulation {id: $simulation_id})
+            MERGE (s)-[:HAS_TTS_GENERATION_CONFIG]->(c:TtsGenerationConfig)
+            SET c.id = $id, c.mode = $mode, c.autoplay_in_browser = $autoplay_in_browser
+            RETURN c
+            """,
+            parameters_={
+                "simulation_id": simulation_id,
+                "id": config.id,
+                "mode": config.mode,
+                "autoplay_in_browser": config.autoplay_in_browser,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _tts_generation_config_from_node(record["c"])
+
+    async def create_tts(self, tts_config: TtsModelConfigUnion):
+        common_parameters = {
+            "id": tts_config.id,
+            "model": tts_config.model,
+            "text_filtering": tts_config.text_filtering,
+            "text_not_inside": tts_config.text_not_inside,
+            "narrator_enabled": tts_config.narrator_enabled,
+            "narrator_voice": tts_config.narrator_voice,
+            "rvc_narrator_voice": tts_config.rvc_narrator_voice,
+            "rvc_narrator_pitch": tts_config.rvc_narrator_pitch,
+            "output_file_timestamp": tts_config.output_file_timestamp,
+            "autoplay": tts_config.autoplay,
+            "autoplay_volume": tts_config.autoplay_volume,
+        }
+        common_properties_cypher = """
+                id: $id,
+                model: $model,
+                text_filtering: $text_filtering,
+                text_not_inside: $text_not_inside,
+                narrator_enabled: $narrator_enabled,
+                narrator_voice: $narrator_voice,
+                rvc_narrator_voice: $rvc_narrator_voice,
+                rvc_narrator_pitch: $rvc_narrator_pitch,
+                output_file_timestamp: $output_file_timestamp,
+                autoplay: $autoplay,
+                autoplay_volume: $autoplay_volume
+        """
+
+        if isinstance(tts_config, AllTalkXttsModelConfig):
+            result = await self._driver.execute_query(
+                f"""
+                CREATE (c:AllTalkXttsModelConfig {{
+                    {common_properties_cypher},
+                    language: $language,
+                    speed: $speed,
+                    temperature: $temperature,
+                    repetition_penalty: $repetition_penalty
+                }}) RETURN c
+                """,
+                parameters_={
+                    **common_parameters,
+                    "language": tts_config.language,
+                    "speed": tts_config.speed,
+                    "temperature": tts_config.temperature,
+                    "repetition_penalty": tts_config.repetition_penalty,
+                }
+            )
+            return _alltalk_xtts_from_node(result.records[0]["c"])
+        elif isinstance(tts_config, AllTalkPiperModelConfig):
+            result = await self._driver.execute_query(
+                f"""
+                CREATE (c:AllTalkPiperModelConfig {{
+                    {common_properties_cypher},
+                    speed: $speed
+                }}) RETURN c
+                """,
+                parameters_={
+                    **common_parameters,
+                    "speed": tts_config.speed,
+                }
+            )
+            return _alltalk_piper_from_node(result.records[0]["c"])
+        elif isinstance(tts_config, AllTalkVitsModelConfig):
+            result = await self._driver.execute_query(
+                f"""
+                CREATE (c:AllTalkVitsModelConfig {{
+                    {common_properties_cypher},
+                    language: $language,
+                    speed: $speed
+                }}) RETURN c
+                """,
+                parameters_={
+                    **common_parameters,
+                    "language": tts_config.language,
+                    "speed": tts_config.speed,
+                }
+            )
+            return _alltalk_vits_from_node(result.records[0]["c"])
+        elif isinstance(tts_config, AllTalkParlerModelConfig):
+            result = await self._driver.execute_query(
+                f"""
+                CREATE (c:AllTalkParlerModelConfig {{
+                    {common_properties_cypher},
+                    speed: $speed,
+                    temperature: $temperature
+                }}) RETURN c
+                """,
+                parameters_={
+                    **common_parameters,
+                    "speed": tts_config.speed,
+                    "temperature": tts_config.temperature,
+                }
+            )
+            return _alltalk_parler_from_node(result.records[0]["c"])
+        elif isinstance(tts_config, AllTalkF5ttsModelConfig):
+            result = await self._driver.execute_query(
+                f"""
+                CREATE (c:AllTalkF5ttsModelConfig {{
+                    {common_properties_cypher},
+                    language: $language,
+                    speed: $speed
+                }}) RETURN c
+                """,
+                parameters_={
+                    **common_parameters,
+                    "language": tts_config.language,
+                    "speed": tts_config.speed,
+                }
+            )
+            return _alltalk_f5tts_from_node(result.records[0]["c"])
+        else:
+            raise TypeError(f"Expected TtsModelConfigUnion, got {type(tts_config)}")
+
+    async def list_ttss(self) -> list[TtsModelConfigUnion]:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{TTS_CONFIG_LABELS})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            ORDER BY c.id
+            """
+        )
+
+        return [
+            _tts_from_node(record["config"], record["config_labels"], record["connection"])
+            for record in result.records
+        ]
+
+    async def get_tts(self, config_id: str) -> TtsModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{TTS_CONFIG_LABELS} {{id: $config_id}})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={"config_id": config_id}
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _tts_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def get_tts_by_source(self,
+                                source_id: str,
+                                component: ComponentType,
+                                ) -> TtsModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+                -[:USES {{component: $component}}]->
+                (c:{TTS_CONFIG_LABELS})
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            }
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _tts_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def list_ttss_by_source(self,
+                                  source_id: str,
+                                  ) -> dict[ComponentType, TtsModelConfigUnion]:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+                -[uses:USES]->
+                (c:{TTS_CONFIG_LABELS})
+            WHERE uses.component IS NOT NULL
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN uses.component AS component, labels(c) AS config_labels, c AS config, connection
+            ORDER BY uses.component
+            """,
+            parameters_={"source_id": source_id},
+        )
+
+        return {
+            ComponentType(record["component"]): _tts_from_node(
+                record["config"],
+                record["config_labels"],
+                record["connection"],
+            )
+            for record in result.records
+        }
+
+    async def link_tts(self,
+                       source_id: str,
+                       config_id: str,
+                       component: ComponentType,
+                       ) -> TtsModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+            MATCH (c:{TTS_CONFIG_LABELS} {{id: $config_id}})
+            OPTIONAL MATCH (s)-[previous:USES {{component: $component}}]->(:{TTS_CONFIG_LABELS})
+            DELETE previous
+            MERGE (s) -[:USES {{component: $component}}]-> (c)
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "source_id": source_id,
+                "config_id": config_id,
+                "component": component,
+            }
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _tts_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def unlink_tts(self,
+                         source_id: str,
+                         component: ComponentType,
+                         ) -> bool:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (source:World|Simulation {{id: $source_id}})
+            OPTIONAL MATCH (source)-[uses:USES {{component: $component}}]->(:{TTS_CONFIG_LABELS})
+            DELETE uses
+            RETURN count(source) AS source_count
+            """,
+            parameters_={
+                "source_id": source_id,
+                "component": component,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["source_count"])
+
+    async def update_tts(self,
+                         config_id: str,
+                         properties: dict,
+                         ) -> TtsModelConfigUnion | None:
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{TTS_CONFIG_LABELS} {{id: $config_id}})
+            SET c += $properties
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={
+                "config_id": config_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _tts_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def delete_tts(self, config_id: str) -> bool:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{TTS_CONFIG_LABELS} {{id: $config_id}})
+            WITH collect(c) AS configs
+            FOREACH (config IN configs | DETACH DELETE config)
+            RETURN size(configs) AS deleted
+            """,
+            parameters_={"config_id": config_id},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
