@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from uuid import uuid4
 
-from neo4j import AsyncDriver
+from neo4j import AsyncDriver, AsyncManagedTransaction
 
 from world_simulation_engine.model import CurrentActivity, StateCommitProposal, StateCommitEntityRef, StateCommitFieldChange
 
@@ -41,6 +41,25 @@ class StateCommitStore:
                  driver: AsyncDriver,
                  ):
         self._driver = driver
+
+    async def _run_query(self,
+                         tx: AsyncManagedTransaction | None,
+                         query: str,
+                         **parameters,
+                         ):
+        """Run one query either inside a caller-supplied transaction or standalone.
+
+        apply_state_commit_proposal passes a shared tx so every operation in one proposal
+        commits or rolls back together; every other caller (including direct callers of
+        create_entity/change_entity_state/change_relationship outside a proposal) keeps using
+        the driver's own auto-committing execute_query, unchanged.
+        """
+        if tx is not None:
+            result = await tx.run(query, **parameters)
+            return [record async for record in result]
+
+        result = await self._driver.execute_query(query, parameters_=parameters)
+        return result.records
 
     @classmethod
     def _label_for_type(cls, entity_type: str) -> str:
@@ -107,7 +126,27 @@ class StateCommitStore:
                                           source_id: str,
                                           turn_id: str,
                                           ):
-        for operation in proposal.operations:
+        """Apply every operation in one proposal as a single all-or-nothing transaction.
+
+        A proposal's operations describe one coherent turn outcome; if a later operation fails
+        (a bad reference, a constraint violation) after earlier ones already wrote to the graph,
+        the turn would be left half-applied - some entities/relationships updated, others not,
+        with no record of which. Running the whole proposal in one write transaction means a
+        failure rolls back everything from this call instead of leaving that partial state.
+        """
+        if not proposal.operations:
+            return
+
+        async with self._driver.session() as session:
+            await session.execute_write(self._apply_operations, proposal.operations, source_id, turn_id)
+
+    async def _apply_operations(self,
+                                tx: AsyncManagedTransaction,
+                                operations,
+                                source_id: str,
+                                turn_id: str,
+                                ):
+        for operation in operations:
             if operation.type == "create":
                 await self.create_entity(
                     entity_type=operation.entity_type,
@@ -115,6 +154,7 @@ class StateCommitStore:
                     source_id=source_id,
                     turn_id=turn_id,
                     proposed_id=operation.proposed_id,
+                    tx=tx,
                 )
                 for relationship in operation.initial_relationships:
                     await self.change_relationship(
@@ -125,12 +165,14 @@ class StateCommitStore:
                         properties=relationship.properties,
                         ended=relationship.ended,
                         turn_id=turn_id,
+                        tx=tx,
                     )
             elif operation.type == "state_change":
                 await self.change_entity_state(
                     entity=operation.entity,
                     field_changes=operation.field_changes,
                     turn_id=turn_id,
+                    tx=tx,
                 )
             elif operation.type == "promote":
                 target_ref = await self.create_entity(
@@ -138,11 +180,13 @@ class StateCommitStore:
                     properties=operation.target_properties,
                     source_id=source_id,
                     turn_id=turn_id,
+                    tx=tx,
                 )
                 await self.change_entity_state(
                     entity=operation.source_entity,
                     field_changes=operation.source_state_changes,
                     turn_id=turn_id,
+                    tx=tx,
                 )
                 await self.change_relationship(
                     relationship_type="derived_from",
@@ -152,6 +196,7 @@ class StateCommitStore:
                     properties={},
                     ended=False,
                     turn_id=turn_id,
+                    tx=tx,
                 )
                 for relationship in operation.relationship_changes:
                     await self.change_relationship(
@@ -162,6 +207,7 @@ class StateCommitStore:
                         properties=relationship.properties,
                         ended=relationship.ended,
                         turn_id=turn_id,
+                        tx=tx,
                     )
             elif operation.type == "relationship_change":
                 await self.change_relationship(
@@ -172,6 +218,7 @@ class StateCommitStore:
                     properties=operation.properties,
                     ended=operation.ended,
                     turn_id=turn_id,
+                    tx=tx,
                 )
 
     async def create_entity(self,
@@ -181,6 +228,7 @@ class StateCommitStore:
                             source_id: str,
                             turn_id: str,
                             proposed_id: str | None = None,
+                            tx: AsyncManagedTransaction | None = None,
                             ) -> StateCommitEntityRef:
         label = self._label_for_type(entity_type)
         entity_id = proposed_id or properties.get("id") or str(uuid4())
@@ -189,7 +237,8 @@ class StateCommitStore:
             "id": entity_id,
         })
 
-        await self._driver.execute_query(
+        await self._run_query(
+            tx,
             f"""
             MATCH (source:World|Simulation {{id: $source_id}})
             MATCH (turn:Turn {{id: $turn_id}})
@@ -199,24 +248,21 @@ class StateCommitStore:
             MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(entity)
             RETURN entity
             """,
-            parameters_={
-                "source_id": source_id,
-                "turn_id": turn_id,
-                "properties": node_properties,
-            },
+            source_id=source_id,
+            turn_id=turn_id,
+            properties=node_properties,
         )
 
         if entity_type == "item_stack" and properties.get("item_id"):
-            await self._driver.execute_query(
+            await self._run_query(
+                tx,
                 """
                 MATCH (stack:ItemStack {id: $stack_id})
                 MATCH (item:Item {id: $item_id})
                 MERGE (stack)-[:OF_TYPE]->(item)
                 """,
-                parameters_={
-                    "stack_id": entity_id,
-                    "item_id": properties["item_id"],
-                },
+                stack_id=entity_id,
+                item_id=properties["item_id"],
             )
 
         return StateCommitEntityRef(
@@ -230,6 +276,7 @@ class StateCommitStore:
                                   entity: StateCommitEntityRef,
                                   field_changes: list[StateCommitFieldChange],
                                   turn_id: str,
+                                  tx: AsyncManagedTransaction | None = None,
                                   ):
         if not entity.id or not field_changes:
             return
@@ -242,6 +289,7 @@ class StateCommitStore:
                 entity_id=entity.id,
                 field_changes=current_activity_changes,
                 turn_id=turn_id,
+                tx=tx,
             )
 
         properties = self._safe_properties({
@@ -251,18 +299,17 @@ class StateCommitStore:
         if not properties:
             return
 
-        await self._driver.execute_query(
+        await self._run_query(
+            tx,
             f"""
             MATCH (entity:{label} {{id: $entity_id}})
             MATCH (turn:Turn {{id: $turn_id}})
             SET entity += $properties
             MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(entity)
             """,
-            parameters_={
-                "entity_id": entity.id,
-                "turn_id": turn_id,
-                "properties": properties,
-            },
+            entity_id=entity.id,
+            turn_id=turn_id,
+            properties=properties,
         )
 
     async def change_character_current_activity(self,
@@ -270,16 +317,18 @@ class StateCommitStore:
                                                 entity_id: str,
                                                 field_changes: list[StateCommitFieldChange],
                                                 turn_id: str,
+                                                tx: AsyncManagedTransaction | None = None,
                                                 ):
-        result = await self._driver.execute_query(
+        records = await self._run_query(
+            tx,
             """
             MATCH (entity:Character {id: $entity_id})
             RETURN entity.current_activity AS current_activity
             LIMIT 1
             """,
-            parameters_={"entity_id": entity_id},
+            entity_id=entity_id,
         )
-        record = result.records[0] if result.records else None
+        record = records[0] if records else None
         if not record:
             return
 
@@ -290,18 +339,17 @@ class StateCommitStore:
                 current_activity[field_name] = change.new_value
 
         serialized_activity = CurrentActivity.model_validate(current_activity).model_dump_json()
-        await self._driver.execute_query(
+        await self._run_query(
+            tx,
             """
             MATCH (entity:Character {id: $entity_id})
             MATCH (turn:Turn {id: $turn_id})
             SET entity.current_activity = $current_activity
             MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(entity)
             """,
-            parameters_={
-                "entity_id": entity_id,
-                "turn_id": turn_id,
-                "current_activity": serialized_activity,
-            },
+            entity_id=entity_id,
+            turn_id=turn_id,
+            current_activity=serialized_activity,
         )
 
     async def change_relationship(self,
@@ -313,6 +361,7 @@ class StateCommitStore:
                                   properties: dict,
                                   ended: bool,
                                   turn_id: str,
+                                  tx: AsyncManagedTransaction | None = None,
                                   ):
         if not subject.id:
             return
@@ -343,7 +392,8 @@ class StateCommitStore:
         safe_properties = self._safe_properties(properties)
 
         if old_subject and old_subject.id and old_target and old_target.id:
-            await self._driver.execute_query(
+            await self._run_query(
+                tx,
                 f"""
                 MATCH (subject:{old_subject_label} {{id: $subject_id}})-[relationship:{rel_type}]->(old_object:{old_target_label} {{id: $old_object_id}})
                 MATCH (turn:Turn {{id: $turn_id}})
@@ -351,16 +401,15 @@ class StateCommitStore:
                     relationship.ended_at_turn_id = $turn_id
                 MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(subject)
                 """,
-                parameters_={
-                    "subject_id": old_subject.id,
-                    "old_object_id": old_target.id,
-                    "turn_id": turn_id,
-                },
+                subject_id=old_subject.id,
+                old_object_id=old_target.id,
+                turn_id=turn_id,
             )
 
         if ended:
             if object and object.id:
-                await self._driver.execute_query(
+                await self._run_query(
+                    tx,
                     f"""
                     MATCH (subject:{subject_label} {{id: $subject_id}})-[relationship:{rel_type}]->(object:{object_label} {{id: $object_id}})
                     MATCH (turn:Turn {{id: $turn_id}})
@@ -368,18 +417,17 @@ class StateCommitStore:
                         relationship.ended_at_turn_id = $turn_id
                     MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(subject)
                     """,
-                    parameters_={
-                        "subject_id": subject.id,
-                        "object_id": object.id,
-                        "turn_id": turn_id,
-                    },
+                    subject_id=subject.id,
+                    object_id=object.id,
+                    turn_id=turn_id,
                 )
             return
 
         if not object or not object.id:
             return
 
-        await self._driver.execute_query(
+        await self._run_query(
+            tx,
             f"""
             MATCH (subject:{subject_label} {{id: $subject_id}})
             MATCH (object:{object_label} {{id: $object_id}})
@@ -390,10 +438,8 @@ class StateCommitStore:
                 relationship.updated_at_turn_id = $turn_id
             MERGE (turn)-[:PROPOSED_STATE_CHANGE]->(subject)
             """,
-            parameters_={
-                "subject_id": subject.id,
-                "object_id": object.id,
-                "turn_id": turn_id,
-                "properties": safe_properties,
-            },
+            subject_id=subject.id,
+            object_id=object.id,
+            turn_id=turn_id,
+            properties=safe_properties,
         )

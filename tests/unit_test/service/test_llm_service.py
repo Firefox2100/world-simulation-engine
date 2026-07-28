@@ -67,6 +67,57 @@ def test_parse_raw_with_output_model_uses_model_normalizers_after_parser_failure
     assert [operation.type for operation in parsed.operations] == ["create_event", "create_intent"]
 
 
+def test_parse_raw_with_output_model_repairs_state_commit_missing_operation_types():
+    # Reproduces a live failure: a local model's structured output for StateCommitProposal
+    # dropped the "type" discriminator on every operation, which previously failed the whole
+    # turn after exhausting all retries. The first operation also wraps a relationship_change
+    # in a promote-shaped container with no promote-specific fields, which must be unwrapped
+    # rather than accepted as an actual promotion (that would create a spurious entity).
+    payload = {
+        "operations": [
+            {
+                "source_entity": {"type": "character", "id": "f6c11ed5-1e5c-473c-9ef4-67894a9fe9a0"},
+                "target_entity_type": "character",
+                "reason": "Arthur approaches and directly engages with Clara at the bar.",
+                "relationship_changes": [
+                    {
+                        "relationship_type": "interacting_with",
+                        "subject": {"type": "character", "id": "f6c11ed5-1e5c-473c-9ef4-67894a9fe9a0"},
+                        "reason": "Arthur approaches and directly engages with Clara at the bar.",
+                        "object": {"type": "character", "id": "343ced70-96dd-405a-8832-040107b9d013"},
+                        "old_object": None,
+                        "properties": {},
+                        "ended": False,
+                        "source_action_refs": ["accepted:0"],
+                    }
+                ],
+                "source_action_refs": ["accepted:0"],
+            },
+            {
+                "reason": "Speech only; Arthur's current activity, location, and public state remain consistent.",
+                "source_action_refs": ["accepted:1"],
+            },
+        ],
+        "unchanged_action_refs": [],
+        "committer_notes": [
+            "Arthur is already at the bar with Clara behind it; approach confirms interaction.",
+            "Room rental query and history are abstract dialogue updates, not physical changes.",
+        ],
+    }
+    raw = AIMessage(content=json.dumps(payload))
+
+    parsed = LlmService._parse_raw_with_output_model(StateCommitProposal, raw)
+
+    assert parsed is not None
+    assert [operation.type for operation in parsed.operations] == [
+        "relationship_change",
+        "no_physical_change",
+    ]
+    relationship_operation = parsed.operations[0]
+    assert relationship_operation.relationship_type == "interacting_with"
+    assert relationship_operation.object.id == "343ced70-96dd-405a-8832-040107b9d013"
+
+
 def test_parse_raw_with_output_model_extracts_first_json_object_from_prose():
     raw = AIMessage(
         content=(

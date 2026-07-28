@@ -117,6 +117,12 @@ class InputInterpretation(BaseModel):
         if normalized.get("type") == "InputInterpretation":
             normalized.pop("type")
 
+        if isinstance(normalized.get("items"), list):
+            normalized["items"] = [
+                cls._infer_item_type(item) if isinstance(item, dict) else item
+                for item in normalized["items"]
+            ]
+
         if "unparsed_text" in normalized and isinstance(normalized["unparsed_text"], list):
             normalized["unparsed_text"] = [
                 fragment
@@ -138,6 +144,25 @@ class InputInterpretation(BaseModel):
             ]
 
         return normalized
+
+    @staticmethod
+    def _infer_item_type(item: dict[str, Any]) -> dict[str, Any]:
+        """Repair a missing "type" discriminator on one InputSequenceItem when unambiguous.
+
+        "action" and "command_text"+"normalized_intent" are each unique to exactly one variant,
+        and UserActionSequenceItem/OOCCommand still run their own validators (misplaced-field
+        normalization, exact-marker matching) after this, so a wrong or missing guess simply
+        fails validation instead of silently misclassifying user input.
+        """
+        if item.get("type"):
+            return item
+
+        fields = set(item)
+        if "action" in fields:
+            return {"type": "action", **item}
+        if {"command_text", "normalized_intent"} <= fields:
+            return {"type": "ooc", **item}
+        return item
 
     items: list[InputSequenceItem] = Field(
         description="All interpreted actions and OOC commands in exact source order.",

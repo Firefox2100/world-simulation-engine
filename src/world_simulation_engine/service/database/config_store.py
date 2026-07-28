@@ -75,6 +75,7 @@ def _chat_from_node(config_node, labels: list[str], connection_node=None) -> Cha
 def _ollama_embed_from_node(config_node, connection_node=None) -> OllamaEmbedModelConfig:
     return OllamaEmbedModelConfig(
         id=config_node["id"],
+        name=config_node.get("name"),
         model=config_node["model"],
         dimension=config_node.get("dimension"),
         context_window=config_node.get("context_window"),
@@ -85,6 +86,7 @@ def _ollama_embed_from_node(config_node, connection_node=None) -> OllamaEmbedMod
 def _openai_embed_from_node(config_node, connection_node=None) -> OpenAiEmbedModelConfig:
     return OpenAiEmbedModelConfig(
         id=config_node["id"],
+        name=config_node.get("name"),
         model=config_node["model"],
         dimension=config_node.get("dimension"),
         connection=_connection_from_optional_node(connection_node),
@@ -702,6 +704,7 @@ class ConfigStore:
                 """
                 CREATE (c:OllamaEmbedModelConfig {
                     id: $id,
+                    name: $name,
                     model: $model,
                     dimension: $dimension,
                     context_window: $context_window
@@ -709,6 +712,7 @@ class ConfigStore:
                 """,
                 parameters_={
                     "id": embed_config.id,
+                    "name": embed_config.name,
                     "model": embed_config.model,
                     "dimension": embed_config.dimension,
                     "context_window": embed_config.context_window,
@@ -720,12 +724,14 @@ class ConfigStore:
                 """
                 CREATE (c:OpenAiEmbedModelConfig {
                     id: $id,
+                    name: $name,
                     model: $model,
                     dimension: $dimension
                 }) RETURN c
                 """,
                 parameters_={
                     "id": embed_config.id,
+                    "name": embed_config.name,
                     "model": embed_config.model,
                     "dimension": embed_config.dimension,
                 }

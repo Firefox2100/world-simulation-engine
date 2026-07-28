@@ -14,6 +14,10 @@ class EmbedModelConfig(BaseModel):
         default_factory=lambda: str(uuid4()),
         description="Unique identifier for the model",
     )
+    name: Optional[str] = Field(
+        None,
+        description="Display name of the embedding config, falls back to the model identifier when unset",
+    )
     model: str = Field(
         ...,
         description="The model to use for embedding",

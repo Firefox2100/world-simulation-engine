@@ -55,6 +55,7 @@ class EmbedConfigUpdate(BaseModel):
     DTO model for updating embedding model configs
     """
 
+    name: Optional[str] = Field(None, description="The name of the embedding config")
     model: Optional[str] = Field(None, description="The model to use for embedding")
     dimension: Optional[int] = Field(None, description="The dimensionality of the model")
     context_window: Optional[int] = Field(None, description="The context window to use for embedding")

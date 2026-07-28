@@ -166,7 +166,18 @@
       "start_time": "Start time",
       "created_at": "Created at",
       "attributes": "Attributes",
-      "stats": "Stats"
+      "stats": "Stats",
+      "keywords": "Keywords",
+      "desired_state": "Desired state",
+      "deadline": "Deadline",
+      "success_conditions": "Success conditions",
+      "failure_conditions": "Failure conditions",
+      "maintenance_conditions": "Maintenance conditions",
+      "constraints": "Constraints",
+      "current_plan": "Current plan",
+      "next_action_biases": "Next action biases",
+      "blockers": "Blockers",
+      "open_threads": "Open threads"
     },
     "configLoading": "Loading configurations...",
     "observability": {

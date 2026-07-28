@@ -10,8 +10,64 @@ class FakeNode(dict):
     pass
 
 
+class FakeResult:
+    def __init__(self, records):
+        self._records = records
+
+    def __aiter__(self):
+        return self._aiter()
+
+    async def _aiter(self):
+        for record in self._records:
+            yield record
+
+
+class FakeTransaction:
+    """Records each query run through it, mirroring driver.execute_query's call shape."""
+
+    def __init__(self, records_by_call: list | None = None):
+        self.calls: list = []
+        self._records_by_call = records_by_call or []
+
+    async def run(self, query, **parameters):
+        call_index = len(self.calls)
+        self.calls.append(SimpleNamespace(args=(query,), kwargs={"parameters_": parameters}))
+        records = (
+            self._records_by_call[call_index]
+            if call_index < len(self._records_by_call)
+            else []
+        )
+        return FakeResult(records)
+
+
+class FakeSession:
+    def __init__(self, tx: FakeTransaction):
+        self._tx = tx
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def execute_write(self, transaction_function, *args, **kwargs):
+        return await transaction_function(self._tx, *args, **kwargs)
+
+
+class FakeTransactionalDriver:
+    """Fake driver whose .session()/.execute_write() route through one shared FakeTransaction,
+    so apply_state_commit_proposal's queries can be asserted on without a real Neo4j instance."""
+
+    def __init__(self, records_by_call: list | None = None):
+        self.tx = FakeTransaction(records_by_call)
+        self.execute_query = AsyncMock(return_value=SimpleNamespace(records=[]))
+
+    def session(self):
+        return FakeSession(self.tx)
+
+
 async def test_apply_state_commit_proposal_writes_state_and_relationship_changes():
-    driver = SimpleNamespace(execute_query=AsyncMock(return_value=SimpleNamespace(records=[])))
+    driver = FakeTransactionalDriver()
     store = StateCommitStore(driver)
     proposal = StateCommitProposal.model_validate(
         {
@@ -54,9 +110,11 @@ async def test_apply_state_commit_proposal_writes_state_and_relationship_changes
         turn_id="turn_1",
     )
 
-    assert driver.execute_query.await_count == 2
-    state_call = driver.execute_query.await_args_list[0]
-    relationship_call = driver.execute_query.await_args_list[1]
+    # All operations from one proposal must run through the single shared transaction, not the
+    # driver's own auto-committing execute_query, so a later failure can roll back earlier writes.
+    driver.execute_query.assert_not_called()
+    assert len(driver.tx.calls) == 2
+    state_call, relationship_call = driver.tx.calls
     assert "Character" in state_call.args[0]
     assert state_call.kwargs["parameters_"]["properties"] == {
         "public_state": "holding a glass",
@@ -64,6 +122,77 @@ async def test_apply_state_commit_proposal_writes_state_and_relationship_changes
     assert "HOLDS" in relationship_call.args[0]
     assert relationship_call.kwargs["parameters_"]["subject_id"] == "character_1"
     assert relationship_call.kwargs["parameters_"]["object_id"] == "stack_1"
+
+
+async def test_apply_state_commit_proposal_with_no_operations_skips_transaction():
+    driver = FakeTransactionalDriver()
+    store = StateCommitStore(driver)
+
+    await store.apply_state_commit_proposal(
+        proposal=StateCommitProposal.model_validate({"operations": []}),
+        source_id="simulation_1",
+        turn_id="turn_1",
+    )
+
+    assert driver.tx.calls == []
+    driver.execute_query.assert_not_called()
+
+
+async def test_apply_state_commit_proposal_propagates_failure_from_the_shared_transaction():
+    class FailingTransaction(FakeTransaction):
+        async def run(self, query, **parameters):
+            if len(self.calls) == 1:
+                raise RuntimeError("simulated write failure on the second operation")
+            return await super().run(query, **parameters)
+
+    class FailingDriver(FakeTransactionalDriver):
+        def __init__(self):
+            super().__init__()
+            self.tx = FailingTransaction()
+
+    driver = FailingDriver()
+    store = StateCommitStore(driver)
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "type": "state_change",
+                    "entity": {"type": "character", "id": "character_1"},
+                    "field_changes": [
+                        {
+                            "field_path": "public_state",
+                            "new_value": "holding a glass",
+                            "reason": "Alex picked up a glass.",
+                        }
+                    ],
+                    "reason": "First operation succeeds.",
+                },
+                {
+                    "type": "relationship_change",
+                    "relationship_type": "held_by",
+                    "subject": {"type": "item_stack", "id": "stack_1"},
+                    "object": {"type": "character", "id": "character_1"},
+                    "reason": "Second operation fails.",
+                },
+            ],
+        }
+    )
+
+    try:
+        await store.apply_state_commit_proposal(
+            proposal=proposal,
+            source_id="simulation_1",
+            turn_id="turn_1",
+        )
+        raise AssertionError("expected the simulated failure to propagate")
+    except RuntimeError as exc:
+        assert "simulated write failure" in str(exc)
+
+    # Only the first (successful) query was recorded before the second one raised. Both ran
+    # against the same shared transaction object, and a real Neo4j transaction only commits when
+    # execute_write's function returns normally - since it raised instead, the driver would roll
+    # back everything from this call, including the first write, rather than leaving it applied.
+    assert len(driver.tx.calls) == 1
 
 
 async def test_create_entity_serializes_nested_properties():

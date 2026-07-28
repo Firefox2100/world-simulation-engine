@@ -150,6 +150,10 @@ def test_create_list_get_update_and_delete_item(item_api):
     list_response = client.get("/items")
     world_filter_response = client.get("/items", params={"world_id": item_api.world.id})
     simulation_filter_response = client.get("/items", params={"simulation_id": item_api.simulation.id})
+    combined_filter_response = client.get(
+        "/items",
+        params={"world_id": item_api.world.id, "simulation_id": item_api.simulation.id},
+    )
 
     assert list_response.status_code == 200
     assert {
@@ -161,8 +165,19 @@ def test_create_list_get_update_and_delete_item(item_api):
     }
     assert world_filter_response.status_code == 200
     assert world_filter_response.json() == [world_item]
+    # The simulation inherits the world's item catalog (only stacks are physically copied, the
+    # conceptual items stay on the World and are reached through BASED_ON), so both the item
+    # created directly on the world and the one created directly on the simulation must show up.
     assert simulation_filter_response.status_code == 200
-    assert simulation_filter_response.json() == [simulation_item]
+    assert {item["id"] for item in simulation_filter_response.json()} == {
+        world_item["id"],
+        simulation_item["id"],
+    }
+    assert combined_filter_response.status_code == 200
+    assert {item["id"] for item in combined_filter_response.json()} == {
+        world_item["id"],
+        simulation_item["id"],
+    }
 
     get_response = client.get(f"/items/{world_item['id']}")
 
@@ -360,6 +375,33 @@ def test_item_endpoints_return_404_for_missing_resources(item_api):
     assert missing_location_response.json()["detail"] == f"Location {missing_location_id} not found"
     assert missing_holder_response.status_code == 404
     assert missing_holder_response.json()["detail"].startswith("Holder ")
+
+
+def test_stack_creation_rejected_for_missing_item(item_api):
+    client = item_api.client
+    missing_item_id = str(uuid4())
+
+    world_response = client.post(
+        f"/worlds/{item_api.world.id}/items/{missing_item_id}/stacks",
+        json={
+            "quantity": 1,
+            "location_id": item_api.location.id,
+        },
+    )
+    simulation_response = client.post(
+        f"/simulations/{item_api.simulation.id}/items/{missing_item_id}/stacks",
+        json={
+            "quantity": 1,
+            "location_id": item_api.location.id,
+        },
+    )
+
+    assert world_response.status_code == 404
+    assert world_response.json()["detail"] == f"Item {missing_item_id} not found"
+    assert simulation_response.status_code == 404
+    assert simulation_response.json()["detail"] == f"Item {missing_item_id} not found"
+
+    assert client.get("/stacks").json() == []
 
 
 def test_stack_cannot_be_placed_and_held_at_the_same_time(item_api):

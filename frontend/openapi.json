@@ -20570,6 +20570,18 @@
       },
       "EmbedConfigUpdate": {
         "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "The name of the embedding config"
+          },
           "model": {
             "anyOf": [
               {
@@ -22826,6 +22838,17 @@
             ],
             "title": "Quality",
             "description": "Optional quality modifier of the item in this stack"
+          },
+          "item": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Item"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The conceptual item type this stack is of. Populated when the stack is read back from storage; not required when constructing a stack for creation."
           }
         },
         "type": "object",
@@ -23714,6 +23737,18 @@
             "title": "Id",
             "description": "Unique identifier for the model"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the embedding config, falls back to the model identifier when unset"
+          },
           "model": {
             "type": "string",
             "title": "Model",
@@ -23873,6 +23908,18 @@
             "type": "string",
             "title": "Id",
             "description": "Unique identifier for the model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the embedding config, falls back to the model identifier when unset"
           },
           "model": {
             "type": "string",

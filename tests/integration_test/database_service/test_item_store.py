@@ -61,6 +61,43 @@ async def test_list_update_and_delete_item(clean_neo4j):
     assert await item_store.delete_item(item.id) is False
 
 
+async def test_list_items_includes_items_inherited_from_base_world(clean_neo4j):
+    # Items are conceptual types owned by the World; when a Simulation is spawned from a
+    # World, only its ItemStacks (physical instances) are copied over - the Items themselves
+    # stay put and are reached through BASED_ON. list_items must follow that link for both the
+    # simulation-only and world+simulation filters, or a simulation's item catalog would appear
+    # empty even though its copied stacks still reference those items.
+    world = await create_world(clean_neo4j)
+    item_store = ItemStore(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    world_item = Item(id=str(uuid4()), name="Apple", description="Fresh fruit", unique=False)
+    simulation_item = Item(id=str(uuid4()), name="Ledger", description="A simulation-only item", unique=False)
+    simulation = Simulation(
+        id=str(uuid4()),
+        name="Test Simulation",
+        description="A test simulation",
+        current_time=world.starting_time,
+    )
+
+    await item_store.create_item(world_item, source_id=world.id)
+    await simulation_store.create_simulation(simulation, world.id)
+    await item_store.create_item(simulation_item, source_id=simulation.id)
+
+    expected = sorted([world_item, simulation_item], key=lambda item: item.name)
+    assert (
+        sorted(await item_store.list_items(simulation_id=simulation.id), key=lambda item: item.name)
+        == expected
+    )
+    assert (
+        sorted(
+            await item_store.list_items(world_id=world.id, simulation_id=simulation.id),
+            key=lambda item: item.name,
+        )
+        == expected
+    )
+    assert await item_store.list_items(world_id=world.id) == [world_item]
+
+
 async def test_stack_inventory_holder_and_owner(clean_neo4j):
     world = await create_world(clean_neo4j)
     item_store = ItemStore(clean_neo4j)
@@ -75,7 +112,7 @@ async def test_stack_inventory_holder_and_owner(clean_neo4j):
         stack,
         holder_id=holder.id,
         owner_id=owner.id,
-    ) == stack
+    ) == stack.model_copy(update={"item": item})
 
     inventory = await item_store.get_inventory(holder.id)
 
@@ -115,6 +152,7 @@ async def test_list_update_and_delete_stack_with_relationship_filters(clean_neo4
     await item_store.create_item(item, source_id=world.id)
     await item_store.create_stack(item.id, stack, location_id=location.id, source_id=world.id)
     await item_store.assign_stack(stack.id, owner_id=owner.id)
+    stack = stack.model_copy(update={"item": item})
 
     assert await item_store.get_stack(stack.id) == stack
     assert await item_store.list_stacks() == [stack]
@@ -135,7 +173,7 @@ async def test_list_update_and_delete_stack_with_relationship_filters(clean_neo4
         },
     )
 
-    assert updated_stack == ItemStack(id=stack.id, quantity=2, quality="bruised")
+    assert updated_stack == ItemStack(id=stack.id, quantity=2, quality="bruised", item=item)
     assert await item_store.assign_stack(stack.id, holder_id=holder.id) == updated_stack
     assert await item_store.list_stacks(holder_id=holder.id) == [updated_stack]
     assert await item_store.list_stacks(location_id=location.id) == []
@@ -166,7 +204,7 @@ async def test_create_stack_can_assign_physical_stack_to_simulation(clean_neo4j)
         stack,
         source_id=simulation.id,
         holder_id=holder.id,
-    ) == stack
+    ) == stack.model_copy(update={"item": item})
 
     result = await clean_neo4j.execute_query(
         """
@@ -236,13 +274,17 @@ async def test_copy_stacks_preserves_location_holder_owner_and_item_type(clean_n
     )
 
     assert len(copied_stacks) == 2
+    source_stacks_with_item = [
+        source_stack.model_copy(update={"item": item})
+        for source_stack in sorted([held_stack, located_stack], key=lambda entry: entry.quantity)
+    ]
     assert [
         stack.model_copy(update={"id": source_stack.id})
         for stack, source_stack in zip(
             sorted(copied_stacks, key=lambda entry: entry.quantity),
-            sorted([held_stack, located_stack], key=lambda entry: entry.quantity),
+            source_stacks_with_item,
         )
-    ] == sorted([held_stack, located_stack], key=lambda entry: entry.quantity)
+    ] == source_stacks_with_item
     assert {
         pair["source_id"]
         for pair in stack_pairs
@@ -340,7 +382,7 @@ async def test_stack_location_assignment(clean_neo4j):
     await item_store.create_stack(item.id, stack, location_id=location.id, position="on the stall")
 
     assert await item_store.get_stacks_by_location(location.id) == [
-        (item, stack, location, "on the stall", None)
+        (item, stack.model_copy(update={"item": item}), location, "on the stall", None)
     ]
 
 

@@ -191,6 +191,81 @@ StateCommitOperation = Annotated[
 ]
 
 
+def _unwrap_relationship_only_promotion(operation: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Detect a mistagged promotion wrapper that in fact carries only relationship data."""
+    if not ({"source_entity", "target_entity_type"} <= set(operation)):
+        return None
+    if (
+        operation.get("target_properties")
+        or operation.get("source_state_changes")
+        or "preserve_source_as_state" in operation
+    ):
+        return None
+
+    relationship_changes = operation.get("relationship_changes")
+    if not isinstance(relationship_changes, list) or not relationship_changes:
+        return None
+
+    return [
+        {"type": "relationship_change", **change}
+        if isinstance(change, dict) and not change.get("type") else change
+        for change in relationship_changes
+    ]
+
+
+def _infer_operation_type(operation: dict[str, Any]) -> str | None:
+    fields = set(operation)
+    if {"relationship_type", "subject"} <= fields:
+        return "relationship_change"
+    if "entity_type" in fields:
+        return "create"
+    if "entity" in fields:
+        return "state_change"
+    if fields <= {"source_action_refs", "reason"}:
+        return "no_physical_change"
+    return None
+
+
+def repair_state_commit_operations(operations: Any) -> Any:
+    """Repair discriminator omissions in a raw list of StateCommitOperation dicts.
+
+    Local models under schema-constrained decoding still sometimes omit the "type" tag on a
+    StateCommitOperation despite the schema marking it required, which otherwise fails the whole
+    proposal with a discriminator error even though the intended variant is obvious from the
+    other fields present (e.g. relationship_type+subject can only be a relationship_change).
+
+    "promote" is deliberately never guessed: applying it calls create_entity, so a wrong guess
+    would leave a spurious duplicate entity node in the graph - a real data-corruption risk, not
+    just a rejected proposal. In observed failures the model instead wraps a plain relationship
+    change in a source_entity/target_entity_type container with no other promote-specific field
+    populated; that shape is unwrapped into its own relationship_change operation(s) rather than
+    tagged as a promotion.
+
+    Shared by StateCommitProposal.operations and OOCWorldStateMutation.operations, since both
+    reach apply_state_commit_proposal and carry the identical entity-creation risk.
+    """
+    if not isinstance(operations, list):
+        return operations
+
+    repaired_operations = []
+    for operation in operations:
+        if not isinstance(operation, dict) or operation.get("type"):
+            repaired_operations.append(operation)
+            continue
+
+        unwrapped = _unwrap_relationship_only_promotion(operation)
+        if unwrapped is not None:
+            repaired_operations.extend(unwrapped)
+            continue
+
+        inferred_type = _infer_operation_type(operation)
+        repaired_operations.append(
+            {"type": inferred_type, **operation}
+            if inferred_type else operation
+        )
+    return repaired_operations
+
+
 class StateCommitProposal(BaseModel):
     """
     Non-authoritative proposed physical state changes for one coordinated turn.
@@ -201,6 +276,14 @@ class StateCommitProposal(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_missing_operation_types(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or not isinstance(value.get("operations"), list):
+            return value
+
+        return {**value, "operations": repair_state_commit_operations(value["operations"])}
 
     operations: list[StateCommitOperation] = Field(default_factory=list)
     unchanged_action_refs: list[str] = Field(

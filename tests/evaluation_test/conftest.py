@@ -28,6 +28,8 @@ from world_simulation_engine.model import (
     Character,
     Container,
     CurrentActivity,
+    EmotionState,
+    EmotionVector,
     Equipment,
     Event,
     Intent,
@@ -126,12 +128,14 @@ def evaluation_embed_model_config(evaluation_connection_config: ConnectionConfig
     if evaluation_connection_config.type == ConnectionType.OPENAI:
         return OpenAiEmbedModelConfig(
             id=os.getenv("WSE_EVAL_EMBED_CONFIG_ID", "eval_embed"),
+            name=os.getenv("WSE_EVAL_EMBED_CONFIG_NAME", "Evaluation embedding"),
             model=os.getenv("WSE_EVAL_EMBED_MODEL", "text-embedding-3-small"),
             dimension=_env_optional_int("WSE_EVAL_EMBED_DIMENSION"),
         )
 
     return OllamaEmbedModelConfig(
         id=os.getenv("WSE_EVAL_EMBED_CONFIG_ID", "eval_embed"),
+        name=os.getenv("WSE_EVAL_EMBED_CONFIG_NAME", "Evaluation embedding"),
         model=os.getenv("WSE_EVAL_EMBED_MODEL", "nomic-embed-text"),
         dimension=_env_optional_int("WSE_EVAL_EMBED_DIMENSION"),
         context_window=_env_optional_int("WSE_EVAL_EMBED_CONTEXT_WINDOW"),
@@ -239,6 +243,12 @@ class CharacterPlacement:
 
 
 @dataclass(frozen=True)
+class CharacterEmotionSeed:
+    character_id: str
+    baseline: EmotionVector
+
+
+@dataclass(frozen=True)
 class ItemStackPlacement:
     item_id: str
     stack: ItemStack
@@ -306,6 +316,7 @@ class GraphWorldSetup:
     memories: tuple[MemorySeed, ...]
     intents: tuple[Intent, ...]
     intent_character_ids: dict[str, str]
+    character_emotions: tuple[CharacterEmotionSeed, ...]
     metadata: dict[str, str] = field(default_factory=dict)
 
     async def load_into_database(self, database):
@@ -415,6 +426,16 @@ class GraphWorldSetup:
             await database.intent.create_intent(
                 intent=intent,
                 character_id=self.intent_character_ids[intent.id],
+            )
+
+        for emotion_seed in self.character_emotions:
+            await database.emotion.create_state(
+                EmotionState(
+                    simulation_id=self.simulation.id,
+                    character_id=emotion_seed.character_id,
+                    baseline=emotion_seed.baseline,
+                    last_updated_at=self.simulation.current_time,
+                )
             )
 
 
@@ -575,6 +596,32 @@ def mock_character_placements() -> tuple[CharacterPlacement, ...]:
         CharacterPlacement("character_marcus_reed", "location_observatory_directors_office", "reviewing papers"),
         CharacterPlacement("character_clara_whitlock", "location_iron_stag_bar", "behind the bar"),
         CharacterPlacement("character_arthur_moore", "location_iron_stag_bar", "at the bar"),
+    )
+
+
+@pytest.fixture(scope="session")
+def mock_character_emotions() -> tuple[CharacterEmotionSeed, ...]:
+    return (
+        CharacterEmotionSeed(
+            # Composed and controlled on the surface, but wary of what Arthur's visit might expose.
+            character_id="character_eleanor_graves",
+            baseline=EmotionVector(valence=-0.1, arousal=0.3, dominance=0.5),
+        ),
+        CharacterEmotionSeed(
+            # Anxious and on edge, worried the missing notebook will surface his unauthorized experiments.
+            character_id="character_marcus_reed",
+            baseline=EmotionVector(valence=-0.4, arousal=0.6, dominance=-0.3),
+        ),
+        CharacterEmotionSeed(
+            # Outwardly cheerful and curious, quietly excited by the mystery unfolding around her inn.
+            character_id="character_clara_whitlock",
+            baseline=EmotionVector(valence=0.3, arousal=0.4, dominance=0.1),
+        ),
+        CharacterEmotionSeed(
+            # Professionally composed and watchful, guarded rather than warm with strangers.
+            character_id="character_arthur_moore",
+            baseline=EmotionVector(valence=0.0, arousal=0.2, dominance=0.3),
+        ),
     )
 
 
@@ -1222,6 +1269,7 @@ def mock_graph_world_setup(
     mock_memories: tuple[MemorySeed, ...],
     mock_intents: tuple[Intent, ...],
     mock_intent_character_ids: dict[str, str],
+    mock_character_emotions: tuple[CharacterEmotionSeed, ...],
 ) -> GraphWorldSetup:
     return GraphWorldSetup(
         author=mock_author,
@@ -1246,6 +1294,7 @@ def mock_graph_world_setup(
         memories=mock_memories,
         intents=mock_intents,
         intent_character_ids=mock_intent_character_ids,
+        character_emotions=mock_character_emotions,
         metadata={
             "source_branch": "main",
             "source_fixture": "tests/conftest.py development world setup",

@@ -564,6 +564,10 @@ body {
     align-items: start;
 }
 
+.simulation-details-hero-no-image {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .simulation-details-cover {
     width: 150px;
     aspect-ratio: 2 / 3;

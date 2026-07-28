@@ -234,7 +234,9 @@ async def test_container_can_hold_items_equipment_and_containers(clean_neo4j):
     await container_store.put_equipment_in_container(equipment.id, parent.id)
     assert await container_store.put_container_in_container(child.id, parent.id) == parent
 
-    assert await container_store.get_held_stacks(parent.id) == [(item, stack)]
+    assert await container_store.get_held_stacks(parent.id) == [
+        (item, stack.model_copy(update={"item": item}))
+    ]
     assert await container_store.get_held_equipment(parent.id) == [equipment]
     assert await container_store.get_held_containers(parent.id) == [child]
     assert await container_store.remove_held_stacks(parent.id, [stack.id]) is True

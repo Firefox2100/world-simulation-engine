@@ -56,6 +56,7 @@ def build_sample_setup():
     memories = _fixture("mock_memories")
     intents = _fixture("mock_intents")
     intent_character_ids = _fixture("mock_intent_character_ids")
+    character_emotions = _fixture("mock_character_emotions")
     return _fixture(
         "mock_graph_world_setup",
         author,
@@ -80,6 +81,7 @@ def build_sample_setup():
         memories,
         intents,
         intent_character_ids,
+        character_emotions,
     )
 
 
@@ -98,6 +100,9 @@ class Api:
 
     def put(self, path: str, **kwargs):
         return self._request("PUT", path, **kwargs)
+
+    def patch(self, path: str, **kwargs):
+        return self._request("PATCH", path, **kwargs)
 
     def delete(self, path: str, **kwargs):
         return self._request("DELETE", path, **kwargs)
@@ -421,6 +426,23 @@ def create_intents(api: Api, setup, character_ids: dict[str, str]) -> dict[str, 
     return intent_ids
 
 
+def create_character_emotions(
+    api: Api,
+    setup,
+    simulation_id: str,
+    character_ids: dict[str, str],
+) -> None:
+    for emotion_seed in setup.character_emotions:
+        character_id = character_ids.get(emotion_seed.character_id)
+        if not character_id:
+            continue
+        api.patch(
+            f"/characters/{character_id}/emotion",
+            params={"simulation_id": simulation_id},
+            json={"baseline": emotion_seed.baseline.model_dump(mode="json")},
+        )
+
+
 def create_turns(api: Api, setup, world_id: str) -> dict[str, str]:
     turn = setup.initial_turn
     payload = model_payload(turn)
@@ -601,6 +623,7 @@ def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
         intent_ids = create_intents(api, setup, character_ids)
         event_ids = create_events(api, setup, simulation_turn_ids, character_ids)
         memory_ids = create_memories(api, setup, event_ids, character_ids)
+        create_character_emotions(api, setup, simulation["id"], character_ids)
 
         return {
             "base_url": base_url,
@@ -620,6 +643,7 @@ def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
                 "events": len(event_ids),
                 "memories": len(memory_ids),
                 "intents": len(intent_ids),
+                "character_emotions": len(setup.character_emotions),
             },
             "id_map": {
                 "locations": location_ids,

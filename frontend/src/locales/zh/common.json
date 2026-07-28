@@ -166,7 +166,18 @@
       "start_time": "开始时间",
       "created_at": "创建时间",
       "attributes": "属性",
-      "stats": "数值"
+      "stats": "数值",
+      "keywords": "关键词",
+      "desired_state": "目标状态",
+      "deadline": "截止时间",
+      "success_conditions": "成功条件",
+      "failure_conditions": "失败条件",
+      "maintenance_conditions": "维持条件",
+      "constraints": "限制条件",
+      "current_plan": "当前计划",
+      "next_action_biases": "下一步行动倾向",
+      "blockers": "阻碍因素",
+      "open_threads": "未解决线索"
     },
     "configLoading": "正在加载配置...",
     "observability": {

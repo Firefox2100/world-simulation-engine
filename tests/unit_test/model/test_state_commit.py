@@ -89,65 +89,105 @@ def test_state_commit_proposal_accepts_physical_operation_mix():
     ]
 
 
-def test_state_commit_proposal_rejects_operations_without_discriminator():
-    with pytest.raises(ValidationError):
-        StateCommitProposal.model_validate(
-            {
-                "operations": [
-                    {
-                        "entity": {
-                            "type": "character",
-                            "id": "character_1",
-                        },
-                        "reason": "Alex focuses their questioning on Room 7.",
-                        "field_changes": [
-                            {
-                                "field_path": "current_activity.name",
-                                "new_value": "asking about Room 7",
-                                "old_value": None,
-                                "reason": "The accepted action is a focused inquiry.",
-                            }
-                        ],
-                        "source_action_refs": ["accepted:0"],
-                    }
-                ],
-                "unchanged_action_refs": [],
-                "committer_notes": [],
-            }
-        )
+def test_state_commit_proposal_infers_state_change_type_when_discriminator_missing():
+    # Local models under schema-constrained decoding still sometimes drop the "type" tag; the
+    # shape below is unambiguously a state_change (its "entity" field is unique to that variant)
+    # and carries no entity-creation risk, so it's repaired instead of rejected.
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "entity": {
+                        "type": "character",
+                        "id": "character_1",
+                    },
+                    "reason": "Alex focuses their questioning on Room 7.",
+                    "field_changes": [
+                        {
+                            "field_path": "current_activity.name",
+                            "new_value": "asking about Room 7",
+                            "old_value": None,
+                            "reason": "The accepted action is a focused inquiry.",
+                        }
+                    ],
+                    "source_action_refs": ["accepted:0"],
+                }
+            ],
+            "unchanged_action_refs": [],
+            "committer_notes": [],
+        }
+    )
+
+    assert proposal.operations[0].type == "state_change"
+    assert proposal.operations[0].entity.id == "character_1"
 
 
-def test_state_commit_proposal_rejects_legacy_relationship_change_container():
+def test_state_commit_proposal_unwraps_relationship_only_promotion_container():
+    # Observed local-model failure: a plain relationship_change is wrapped in a
+    # source_entity/target_entity_type container (the promote shape) with no other
+    # promote-specific field populated. Tagging the wrapper "promote" would be syntactically
+    # valid but semantically wrong - applying it calls create_entity and leaves a spurious
+    # duplicate character node in the graph - so it must be unwrapped into a standalone
+    # relationship_change instead of guessed as a promotion.
+    proposal = StateCommitProposal.model_validate(
+        {
+            "operations": [
+                {
+                    "source_entity": {
+                        "type": "character",
+                        "id": "character_1",
+                    },
+                    "target_entity_type": "character",
+                    "reason": "Clara speaks directly to Arthur regarding Room 7's occupancy status.",
+                    "relationship_changes": [
+                        {
+                            "relationship_type": "interacting_with",
+                            "subject": {
+                                "type": "character",
+                                "id": "character_1",
+                            },
+                            "reason": "Clara speaks directly to Arthur regarding Room 7's occupancy status.",
+                            "object": {
+                                "type": "character",
+                                "id": "character_2",
+                            },
+                            "old_object": None,
+                            "properties": {},
+                            "ended": False,
+                            "source_action_refs": ["accepted:0"],
+                        }
+                    ],
+                    "source_action_refs": ["accepted:1", "accepted:0"],
+                },
+            ],
+            "unchanged_action_refs": [],
+            "committer_notes": [],
+        }
+    )
+
+    assert [operation.type for operation in proposal.operations] == ["relationship_change"]
+    operation = proposal.operations[0]
+    assert operation.relationship_type == "interacting_with"
+    assert operation.subject.id == "character_1"
+    assert operation.object.id == "character_2"
+
+
+def test_state_commit_proposal_still_rejects_ambiguous_promotion_without_relationship_changes():
+    # A promote-shaped dict with no relationship_changes escape hatch and no explicit "type" has
+    # no safe fallback interpretation - "promote" is never guessed (it would call create_entity),
+    # so this must still fail rather than silently creating an entity.
     with pytest.raises(ValidationError):
         StateCommitProposal.model_validate(
             {
                 "operations": [
                     {
                         "source_entity": {
-                            "type": "character",
-                            "id": "character_1",
+                            "type": "item",
+                            "id": "item_basket",
                         },
-                        "target_entity_type": "character",
-                        "reason": "Clara speaks directly to Arthur regarding Room 7's occupancy status.",
-                        "relationship_changes": [
-                            {
-                                "relationship_type": "interacting_with",
-                                "subject": {
-                                    "type": "character",
-                                    "id": "character_1",
-                                },
-                                "reason": "Clara speaks directly to Arthur regarding Room 7's occupancy status.",
-                                "object": {
-                                    "type": "character",
-                                    "id": "character_2",
-                                },
-                                "old_object": None,
-                                "properties": {},
-                                "ended": False,
-                                "source_action_refs": ["accepted:0"],
-                            }
-                        ],
-                        "source_action_refs": ["accepted:1", "accepted:0"],
+                        "target_entity_type": "equipment",
+                        "reason": "The basket is now being worn as a hat.",
+                        "source_action_refs": ["accepted:0"],
                     },
                 ],
                 "unchanged_action_refs": [],

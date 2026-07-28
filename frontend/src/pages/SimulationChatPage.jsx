@@ -53,7 +53,6 @@ import {
     getSimulationItemImageUrl,
     getSimulationLandmarkImageUrl,
     getSimulationLocationImageUrl,
-    getSimulationStackImageUrl,
     getSimulationCoverUrl,
     sendSimulationInput,
     setCharacterTtsConfig,
@@ -805,6 +804,21 @@ function DetailLink({ children, onClick }) {
     );
 }
 
+function formatObjectListValue(value, emptyValue) {
+    if (Array.isArray(value)) {
+        return value.length > 0 ? value.join(", ") : emptyValue;
+    }
+
+    if (value && typeof value === "object") {
+        const nestedEntries = Object.entries(value);
+        return nestedEntries.length > 0
+            ? nestedEntries.map(([nestedKey, nestedValue]) => `${nestedKey}: ${nestedValue}`).join(", ")
+            : emptyValue;
+    }
+
+    return value ?? emptyValue;
+}
+
 function ObjectList({ title, values, emptyValue }) {
     const entries = Object.entries(values ?? {});
 
@@ -819,9 +833,7 @@ function ObjectList({ title, values, emptyValue }) {
                 {entries.map(([key, value]) => (
                     <div key={key} className="simulation-details-chip">
                         <span>{key}</span>
-                        <strong>
-                            {Array.isArray(value) ? value.join(", ") : (value ?? emptyValue)}
-                        </strong>
+                        <strong>{formatObjectListValue(value, emptyValue)}</strong>
                     </div>
                 ))}
             </div>
@@ -829,25 +841,82 @@ function ObjectList({ title, values, emptyValue }) {
     );
 }
 
+function truncateText(text, maxLength = 60) {
+    if (!text) {
+        return text;
+    }
+
+    return text.length > maxLength ? `${text.slice(0, maxLength).trimEnd()}…` : text;
+}
+
+// Entities like Turn and Memory have no short "name" field, only long free text
+// (narration/content/summary). Falling back to that raw text as a title would blow up the
+// heading and overflow the subtab pill, so it's truncated into a short preview instead.
 function entityTitle(entity) {
-    return entity?.name || entity?.summary || entity?.content || entity?.id || "";
+    return (
+        entity?.name ||
+        entity?.item?.name ||
+        truncateText(entity?.narration) ||
+        truncateText(entity?.summary) ||
+        truncateText(entity?.content) ||
+        entity?.id ||
+        ""
+    );
+}
+
+// Whichever field describeEntity draws its text from - entityRows excludes it so the
+// same text isn't shown twice (once as the description, once as a generic field row).
+// Turn records are normalized with a `narration` field (the properly assembled, per-viewer
+// text) alongside the raw `content` they were built from; narration wins here so `content`
+// stays available for the permanent exclusion below instead of leaking through as a row.
+function describeEntityField(entity) {
+    if (entity?.description) {
+        return "description";
+    }
+    if (entity?.item?.description) {
+        return "item";
+    }
+    if (entity?.narration) {
+        return "narration";
+    }
+    if (entity?.summary) {
+        return "summary";
+    }
+    if (entity?.content) {
+        return "content";
+    }
+    return null;
 }
 
 function describeEntity(entity) {
-    return entity?.description || entity?.summary || entity?.content || "";
+    const field = describeEntityField(entity);
+    return (field ? entity[field]?.description ?? entity[field] : "") || "";
 }
 
+// content/turn_number/rendering_id are Turn-specific synthetic fields (see normalizeTurn in
+// api/simulations.js) that always duplicate narration/sequence once those are shown, so they're
+// dropped from the generic grid outright rather than case-by-case per entity.
+const alwaysHiddenEntityFields = ["attributes", "stats", "embedding", "content", "turn_number", "rendering_id"];
+
 function entityRows(entity, t) {
+    const descriptionField = describeEntityField(entity);
+
     return Object.entries(entity ?? {})
         .filter(([key, value]) => {
-            if (["attributes", "stats", "embedding"].includes(key)) {
+            if (alwaysHiddenEntityFields.includes(key) || key === descriptionField) {
                 return false;
             }
-            return value !== null && value !== undefined && typeof value !== "object";
+            if (value === null || value === undefined) {
+                return false;
+            }
+            if (Array.isArray(value)) {
+                return value.length > 0 && value.every((entry) => entry !== null && typeof entry !== "object");
+            }
+            return typeof value !== "object";
         })
         .map(([key, value]) => ({
             label: t(`simulationDetails.genericFields.${key}`, { defaultValue: key.replaceAll("_", " ") }),
-            value: String(value),
+            value: Array.isArray(value) ? value.join(", ") : String(value),
         }));
 }
 
@@ -860,7 +929,7 @@ function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImag
 
     return (
         <>
-            <div className="simulation-details-hero">
+            <div className={`simulation-details-hero${imageUrl ? "" : " simulation-details-hero-no-image"}`}>
                 {imageUrl ? (
                     <EntityImage
                         imageUrl={imageUrl}
@@ -1818,7 +1887,9 @@ function SimulationDetailsModal({
             return getSimulationItemImageUrl(selectedEntity.id);
         }
         if (activeSection === "stacks") {
-            return getSimulationStackImageUrl(selectedEntity.id);
+            // Stacks are physical instances of an Item and don't get their own generated
+            // image - show the item's cover image instead.
+            return selectedEntity.item?.id ? getSimulationItemImageUrl(selectedEntity.item.id) : null;
         }
         if (activeSection === "equipment") {
             return getSimulationEquipmentImageUrl(selectedEntity.id);

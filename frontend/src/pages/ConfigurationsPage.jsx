@@ -97,8 +97,9 @@ function makeFormState(kind, item = null) {
 
     if (kind === "embeddings") {
         return {
-            provider: item ? inferEmbeddingProvider(item) : "openai",
+            provider: item ? inferEmbeddingProvider(item) : "",
             connection_id: item?.connection?.id ?? "",
+            name: item?.name ?? "",
             model: item?.model ?? "",
             dimension: item?.dimension == null ? "" : String(item.dimension),
             context_window: item?.context_window == null ? "" : String(item.context_window),
@@ -128,7 +129,7 @@ function makeFormState(kind, item = null) {
 
     if (kind === "images") {
         return {
-            provider: "comfyui",
+            provider: imageProviders[0],
             connection_id: item?.connection?.id ?? "",
             model: item?.model ?? "",
             vae: item?.vae ?? "",
@@ -143,7 +144,7 @@ function makeFormState(kind, item = null) {
 
     if (kind === "stt") {
         return {
-            provider: "whispercpp",
+            provider: sttProviders[0],
             connection_id: item?.connection?.id ?? "",
             model: item?.model ?? "",
             language: item?.language ?? "",
@@ -156,7 +157,7 @@ function makeFormState(kind, item = null) {
     }
 
     return {
-        provider: item ? inferLlmProvider(item) : "openai",
+        provider: item ? inferLlmProvider(item) : "",
         connection_id: item?.connection?.id ?? "",
         name: item?.name ?? "",
         model: item?.model ?? "",
@@ -187,6 +188,7 @@ function buildPayload(kind, form, editing) {
 
     if (kind === "embeddings") {
         const payload = {
+            name: cleanText(form.name),
             model: form.model.trim(),
             dimension: numberOrNull(form.dimension, Number.parseInt),
         };
@@ -303,7 +305,7 @@ function titleFor(kind, item) {
         return item.name;
     }
 
-    if (kind === "llms") {
+    if (kind === "llms" || kind === "embeddings") {
         return item.name || item.model;
     }
 
@@ -472,11 +474,22 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
     }, [onClose]);
 
     function updateField(field, value) {
-        setForm((current) => ({
-            ...current,
-            [field]: value,
-            ...(field === "provider" || field === "engine" ? { connection_id: "" } : {}),
-        }));
+        setForm((current) => {
+            const next = {
+                ...current,
+                [field]: value,
+                ...(field === "engine" ? { connection_id: "" } : {}),
+            };
+
+            // The provider/type is no longer picked directly - it's implied by whichever
+            // connection is selected, since a connection already carries that information.
+            if (field === "connection_id" && kind !== "connections" && kind !== "tts") {
+                const selectedConnection = connections.find((connection) => connection.id === value);
+                next.provider = selectedConnection?.type ?? "";
+            }
+
+            return next;
+        });
     }
 
     async function handleSubmit(event) {
@@ -578,44 +591,39 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
 
 function ConfigurationFields({ kind, editing, form, connections, onChange }) {
     const { t } = useTranslation();
-    const providerField = kind === "connections" ? "type" : kind === "tts" ? "engine" : "provider";
-    const providerOptions = kind === "connections"
-        ? connectionProviders
-        : kind === "tts"
-            ? ttsEngines
-            : kind === "images"
-                ? imageProviders
-                : kind === "stt"
-                    ? sttProviders
-                    : modelProviders;
+    const showProviderSelect = kind === "connections" || kind === "tts";
+    const providerField = kind === "connections" ? "type" : "engine";
+    const providerOptions = kind === "connections" ? connectionProviders : ttsEngines;
     const providerLabel = kind === "tts" ? t("configurations.fields.engine") : t("configurations.fields.provider");
 
     return (
         <>
-            <div className="form-field inline-field modal-form-field">
-                <FieldLabel htmlFor="configuration-provider" label={providerLabel} required />
-                <select
-                    id="configuration-provider"
-                    className="single-line-input"
-                    value={form[providerField]}
-                    disabled={editing}
-                    onChange={(event) => onChange(providerField, event.target.value)}
-                >
-                    {providerOptions.map((option) => (
-                        <option key={option} value={option}>
-                            {t(`configurations.providers.${option}`)}
-                        </option>
-                    ))}
-                </select>
-            </div>
+            {showProviderSelect ? (
+                <div className="form-field inline-field modal-form-field">
+                    <FieldLabel htmlFor="configuration-provider" label={providerLabel} required />
+                    <select
+                        id="configuration-provider"
+                        className="single-line-input"
+                        value={form[providerField]}
+                        disabled={editing}
+                        onChange={(event) => onChange(providerField, event.target.value)}
+                    >
+                        {providerOptions.map((option) => (
+                            <option key={option} value={option}>
+                                {t(`configurations.providers.${option}`)}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            ) : null}
 
-            {kind !== "embeddings" && kind !== "tts" && kind !== "images" && kind !== "stt" ? (
+            {kind !== "tts" && kind !== "images" && kind !== "stt" ? (
                 <TextField
                     id="configuration-name"
                     label={t("configurations.fields.name")}
                     value={form.name}
                     onChange={(value) => onChange("name", value)}
-                    required
+                    required={kind !== "embeddings"}
                 />
             ) : null}
 
@@ -636,17 +644,27 @@ function ConfigurationFields({ kind, editing, form, connections, onChange }) {
                     />
                 </>
             ) : (
-                <ModelFields kind={kind} form={form} connections={connections} onChange={onChange} t={t} />
+                <ModelFields kind={kind} editing={editing} form={form} connections={connections} onChange={onChange} t={t} />
             )}
         </>
     );
 }
 
-function ModelFields({ kind, form, connections, onChange, t }) {
+function ModelFields({ kind, editing, form, connections, onChange, t }) {
     const showOllamaFields = form.provider === "ollama";
     const matchingConnections = kind === "tts"
         ? connections.filter((connection) => connection.type === "alltalk")
-        : connections.filter((connection) => connection.type === form.provider);
+        : kind === "images"
+            ? connections.filter((connection) => imageProviders.includes(connection.type))
+            : kind === "stt"
+                ? connections.filter((connection) => sttProviders.includes(connection.type))
+                // Editing an existing embedding/LLM config can't change its provider (the
+                // Neo4j node label is fixed at creation), so only offer connections that
+                // still match it. Creating a new one lets any supported provider's
+                // connections through - picking one derives the provider automatically.
+                : editing
+                    ? connections.filter((connection) => connection.type === form.provider)
+                    : connections.filter((connection) => modelProviders.includes(connection.type));
 
     return (
         <>

@@ -431,6 +431,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert copied_held_stack == {
         **simulation_api.stack.model_dump(mode="json"),
         "id": copied_held_stack["id"],
+        "item": simulation_api.item.model_dump(mode="json"),
     }
     assert client.get(
         "/stacks",
@@ -452,6 +453,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert copied_contained_stack == {
         **simulation_api.contained_stack.model_dump(mode="json"),
         "id": copied_contained_stack["id"],
+        "item": simulation_api.item.model_dump(mode="json"),
     }
     assert client.get(f"/containers/{copied_container['id']}/equipment").json() == [copied_equipment]
     assert client.get(f"/containers/{copied_container['id']}/unlocking-items").json() == [

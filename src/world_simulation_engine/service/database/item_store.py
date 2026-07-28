@@ -33,11 +33,12 @@ class ItemStore:
         )
 
     @staticmethod
-    def stack_from_node(stack_node) -> ItemStack:
+    def stack_from_node(stack_node, item_node=None) -> ItemStack:
         return ItemStack(
             id=stack_node["id"],
             quantity=stack_node["quantity"],
             quality=stack_node.get("quality"),
+            item=ItemStore.item_from_node(item_node) if item_node is not None else None,
         )
 
     async def entity_exists(self, entity_id: str) -> bool:
@@ -90,7 +91,13 @@ class ItemStore:
         if world_id is not None and simulation_id is not None:
             result = await self._driver.execute_query(
                 """
-                MATCH (:World {id: $world_id})<-[:BASED_ON]-(:Simulation {id: $simulation_id})-[:CONTAINS]->(i:Item)
+                MATCH (w:World {id: $world_id})<-[:BASED_ON]-(s:Simulation {id: $simulation_id})
+                OPTIONAL MATCH (s)-[:CONTAINS]->(direct_item:Item)
+                OPTIONAL MATCH (w)-[:CONTAINS]->(world_item:Item)
+                WITH collect(DISTINCT direct_item) + collect(DISTINCT world_item) AS items
+                UNWIND items AS i
+                WITH DISTINCT i
+                WHERE i IS NOT NULL
                 RETURN i
                 ORDER BY i.name
                 """,
@@ -109,9 +116,20 @@ class ItemStore:
                 parameters_={"world_id": world_id},
             )
         elif simulation_id is not None:
+            # Items are conceptual types owned by the World; a Simulation only ever gets its
+            # own direct Items when one is created mid-simulation. Items originating from the
+            # base World are never copied (unlike ItemStacks), so they must be reached through
+            # BASED_ON here - otherwise a simulation spawned from a world with an item catalog
+            # would report no items at all, even though its copied stacks still reference them.
             result = await self._driver.execute_query(
                 """
-                MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(i:Item)
+                MATCH (s:Simulation {id: $simulation_id})
+                OPTIONAL MATCH (s)-[:CONTAINS]->(direct_item:Item)
+                OPTIONAL MATCH (s)-[:BASED_ON]->(:World)-[:CONTAINS]->(world_item:Item)
+                WITH collect(DISTINCT direct_item) + collect(DISTINCT world_item) AS items
+                UNWIND items AS i
+                WITH DISTINCT i
+                WHERE i IS NOT NULL
                 RETURN i
                 ORDER BY i.name
                 """,
@@ -241,7 +259,7 @@ class ItemStore:
                 END |
                     MERGE (owner)-[:OWNS]->(stack)
                 )
-                RETURN stack
+                RETURN stack, item
                 """,
                 parameters_={
                     "source_id": source_id,
@@ -297,7 +315,7 @@ class ItemStore:
                 END |
                     MERGE (owner)-[:OWNS]->(stack)
                 )
-                RETURN stack
+                RETURN stack, item
                 """,
                 parameters_={
                     "item_id": item_id,
@@ -315,7 +333,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["stack"])
+        return self.stack_from_node(record["stack"], record["item"])
 
     async def list_stacks(self,
                           world_id: str | None = None,
@@ -362,7 +380,7 @@ class ItemStore:
                         MATCH ()-[:HOLDS]->(stack)
                     }
                 ))
-            RETURN DISTINCT stack
+            RETURN DISTINCT stack, item
             ORDER BY stack.id
             """,
             parameters_={
@@ -376,15 +394,15 @@ class ItemStore:
         )
 
         return [
-            self.stack_from_node(record["stack"])
+            self.stack_from_node(record["stack"], record["item"])
             for record in result.records
         ]
 
     async def get_stack(self, stack_id: str) -> ItemStack | None:
         result = await self._driver.execute_query(
             """
-            MATCH (stack:ItemStack {id: $id})
-            RETURN stack LIMIT 1
+            MATCH (stack:ItemStack {id: $id})-[:OF_TYPE]->(item:Item)
+            RETURN stack, item LIMIT 1
             """,
             parameters_={"id": stack_id},
         )
@@ -393,7 +411,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["stack"])
+        return self.stack_from_node(record["stack"], record["item"])
 
     async def copy_stacks(self,
                           source_id: str,
@@ -414,7 +432,7 @@ class ItemStore:
             })
             MERGE (target)-[:CONTAINS]->(stack)
             MERGE (stack)-[:OF_TYPE]->(item)
-            RETURN source_stack.id AS source_id, stack.id AS copy_id, stack
+            RETURN source_stack.id AS source_id, stack.id AS copy_id, stack, item
             ORDER BY stack.id
             """,
             parameters_={
@@ -490,7 +508,7 @@ class ItemStore:
 
         return (
             [
-                self.stack_from_node(record["stack"])
+                self.stack_from_node(record["stack"], record["item"])
                 for record in result.records
             ],
             stack_pairs,
@@ -508,9 +526,9 @@ class ItemStore:
 
         result = await self._driver.execute_query(
             """
-            MATCH (stack:ItemStack {id: $id})
+            MATCH (stack:ItemStack {id: $id})-[:OF_TYPE]->(item:Item)
             SET stack += $properties
-            RETURN stack LIMIT 1
+            RETURN stack, item LIMIT 1
             """,
             parameters_={
                 "id": stack_id,
@@ -522,7 +540,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["stack"])
+        return self.stack_from_node(record["stack"], record["item"])
 
     async def delete_stack(self, stack_id: str) -> bool:
         result = await self._driver.execute_query(
@@ -545,14 +563,14 @@ class ItemStore:
                                       ) -> ItemStack | None:
         result = await self._driver.execute_query(
             """
-            MATCH (s:ItemStack {id: $stack_id})
+            MATCH (s:ItemStack {id: $stack_id})-[:OF_TYPE]->(item:Item)
             OPTIONAL MATCH (holder)-[hold:HOLDS]->(s)
             OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(s)
             MATCH (loc:Location {id: $location_id})
             DELETE hold, present
             MERGE (s)-[new_present:PRESENT_IN]->(loc)
             SET new_present.position = $position
-            RETURN s
+            RETURN s, item
             """,
             parameters_={
                 "stack_id": stack_id,
@@ -565,7 +583,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["s"])
+        return self.stack_from_node(record["s"], record["item"])
 
     async def assign_stack(self,
                            stack_id: str,
@@ -579,13 +597,13 @@ class ItemStore:
         if holder_id:
             result = await self._driver.execute_query(
                 """
-                MATCH (s:ItemStack {id: $stack_id})
+                MATCH (s:ItemStack {id: $stack_id})-[:OF_TYPE]->(item:Item)
                 OPTIONAL MATCH (o)-[r:HOLDS]->(s)
                 OPTIONAL MATCH (:Location)<-[present:PRESENT_IN]-(s)
                 MATCH (h {id: $holder_id})
                 DELETE r, present
                 MERGE (h) -[:HOLDS]-> (s)
-                RETURN s
+                RETURN s, item
                 """,
                 parameters_={
                     "stack_id": stack_id,
@@ -595,17 +613,17 @@ class ItemStore:
             record = result.records[0] if result.records else None
             if not record:
                 return None
-            stack = self.stack_from_node(record["s"])
+            stack = self.stack_from_node(record["s"], record["item"])
 
         if owner_id:
             result = await self._driver.execute_query(
                 """
-                MATCH (s:ItemStack {id: $stack_id})
+                MATCH (s:ItemStack {id: $stack_id})-[:OF_TYPE]->(item:Item)
                 OPTIONAL MATCH (previous_owner)-[r:OWNS]->(s)
                 MATCH (owner {id: $owner_id})
                 DELETE r
                 MERGE (owner) -[:OWNS]-> (s)
-                RETURN s
+                RETURN s, item
                 """,
                 parameters_={
                     "stack_id": stack_id,
@@ -615,7 +633,7 @@ class ItemStore:
             record = result.records[0] if result.records else None
             if not record:
                 return None
-            stack = self.stack_from_node(record["s"])
+            stack = self.stack_from_node(record["s"], record["item"])
 
         return stack
 
@@ -668,7 +686,7 @@ class ItemStore:
         return [
             (
                 self.item_from_node(record["item"]),
-                self.stack_from_node(record["stack"]),
+                self.stack_from_node(record["stack"], record["item"]),
                 LocationStore.location_from_node(record["location"]),
                 record["position"],
                 record["owner_id"],

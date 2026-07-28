@@ -421,7 +421,10 @@ class ContainerStore:
         )
 
         return [
-            (ItemStore.item_from_node(record["item"]), ItemStore.stack_from_node(record["stack"]))
+            (
+                ItemStore.item_from_node(record["item"]),
+                ItemStore.stack_from_node(record["stack"], record["item"]),
+            )
             for record in result.records
         ]
 

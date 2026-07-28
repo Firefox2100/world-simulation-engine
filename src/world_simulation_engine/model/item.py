@@ -35,6 +35,11 @@ class ItemStack(BaseModel):
         None,
         description="Optional quality modifier of the item in this stack",
     )
+    item: Optional[Item] = Field(
+        None,
+        description="The conceptual item type this stack is of. Populated when the stack is read "
+                    "back from storage; not required when constructing a stack for creation.",
+    )
 
 
 class InventoryStack(BaseModel):
