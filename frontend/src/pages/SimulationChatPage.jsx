@@ -13,6 +13,7 @@ import {
     fetchSimulationTtsGenerationConfig,
     fetchSttConfigs,
     fetchTtsConfigs,
+    imageChatComponents,
     imageComponents,
     setSimulationEmbeddingConfigs,
     setSimulationImageConfigs,
@@ -24,8 +25,10 @@ import {
     updateTtsConfig,
 } from "@/api/configurations";
 import {
+    fetchBlockGeneratedImages,
     fetchCharacterInventory,
     fetchCharacterEmotion,
+    fetchCharacterLocation,
     fetchCharacterTtsConfig,
     fetchSimulation,
     fetchSimulationBackgroundCharacters,
@@ -43,8 +46,14 @@ import {
     fetchSimulationStacks,
     fetchSimulations,
     fetchSimulationTtsBackendConfig,
+    fetchTurnGeneratedImages,
     fetchTurnPresentation,
     generateBlockVoice,
+    generateCharacterCoverImage,
+    generateCharacterPortraitImage,
+    generateItemCoverImage,
+    generateLocationCoverImage,
+    generateSceneImage,
     getSimulationRunUrl,
     getSimulationBackgroundCharacterImageUrl,
     getSimulationCharacterImageUrl,
@@ -71,6 +80,7 @@ import entityPlaceholderImage from "@/assets/placeholder/banner.svg";
 const simulationLimit = 24;
 const recordLimit = 50;
 const emptyList = [];
+const emptyObject = {};
 const detailSections = [
     "basic",
     "configs",
@@ -146,7 +156,155 @@ function useOptionalImage(imageUrl, fallbackSrc) {
         };
     }, [imageUrl]);
 
-    return loadedImage.sourceUrl === imageUrl ? loadedImage.objectUrl : fallbackSrc;
+    const isLoaded = loadedImage.sourceUrl === imageUrl && Boolean(loadedImage.objectUrl);
+    return { src: isLoaded ? loadedImage.objectUrl : fallbackSrc, isLoaded };
+}
+
+function ImageLightbox({ imageUrl, alt = "", onClose }) {
+    useEffect(() => {
+        function onKeyDown(event) {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        }
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [onClose]);
+
+    return (
+        <div className="image-lightbox-backdrop" role="presentation" onMouseDown={onClose}>
+            <img
+                src={imageUrl}
+                alt={alt}
+                className="image-lightbox-image"
+                onMouseDown={(event) => event.stopPropagation()}
+            />
+        </div>
+    );
+}
+
+function EnlargeableImage({ src, isLoaded, alt = "", className }) {
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+
+    return (
+        <>
+            <img
+                src={src}
+                alt={alt}
+                className={`${className}${isLoaded ? " enlargeable-image" : ""}`}
+                onClick={isLoaded ? () => setLightboxOpen(true) : undefined}
+            />
+            {lightboxOpen ? (
+                <ImageLightbox imageUrl={src} alt={alt} onClose={() => setLightboxOpen(false)} />
+            ) : null}
+        </>
+    );
+}
+
+function fetchImagesForSource(sourceType, sourceId) {
+    return sourceType === "turn"
+        ? fetchTurnGeneratedImages(sourceId)
+        : fetchBlockGeneratedImages(sourceId);
+}
+
+// Loads the images already generated for one turn/block, and lets a sibling generate action
+// append a freshly generated one immediately, without waiting on a refetch.
+function useBubbleImages(sourceType, sourceId) {
+    const [images, setImages] = useState([]);
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    useEffect(() => {
+        if (!sourceId) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        fetchImagesForSource(sourceType, sourceId)
+            .then((fetched) => {
+                if (!cancelled) {
+                    setImages(fetched);
+                    setActiveIndex(Math.max(fetched.length - 1, 0));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setImages([]);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [sourceType, sourceId]);
+
+    function addImage(media) {
+        setImages((current) => {
+            const next = [...current, media];
+            setActiveIndex(next.length - 1);
+            return next;
+        });
+    }
+
+    return { images, activeIndex, setActiveIndex, addImage };
+}
+
+function BubbleImageGallery({ images, activeIndex, onIndexChange }) {
+    const { t } = useTranslation();
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const activeImage = images[activeIndex];
+
+    if (!activeImage) {
+        return null;
+    }
+
+    const imageUrl = getMediaUrl(activeImage.id);
+
+    function showRelative(offset) {
+        onIndexChange((activeIndex + offset + images.length) % images.length);
+    }
+
+    return (
+        <div className="bubble-image">
+            <img
+                src={imageUrl}
+                alt=""
+                className="bubble-image-media"
+                onClick={() => setLightboxOpen(true)}
+            />
+            {images.length > 1 ? (
+                <>
+                    <button
+                        type="button"
+                        className="bubble-image-nav bubble-image-nav-prev"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            showRelative(-1);
+                        }}
+                        aria-label={t("simulationChat.previousImage")}
+                    >
+                        ‹
+                    </button>
+                    <button
+                        type="button"
+                        className="bubble-image-nav bubble-image-nav-next"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            showRelative(1);
+                        }}
+                        aria-label={t("simulationChat.nextImage")}
+                    >
+                        ›
+                    </button>
+                    <span className="bubble-image-counter">{activeIndex + 1}/{images.length}</span>
+                </>
+            ) : null}
+            {lightboxOpen ? (
+                <ImageLightbox imageUrl={imageUrl} onClose={() => setLightboxOpen(false)} />
+            ) : null}
+        </div>
+    );
 }
 
 function sortRecords(records) {
@@ -361,14 +519,15 @@ function stageFromStateChunk(chunk) {
 }
 
 function SimulationAvatar({ simulation, className = "chat-avatar" }) {
-    const imageSrc = useOptionalImage(
+    const { src, isLoaded } = useOptionalImage(
         simulation?.id ? getSimulationCoverUrl(simulation.id) : null,
         placeholderImage,
     );
 
     return (
-        <img
-            src={imageSrc}
+        <EnlargeableImage
+            src={src}
+            isLoaded={isLoaded}
             alt={simulation?.name ?? ""}
             className={className}
         />
@@ -395,7 +554,7 @@ function SimulationConversationItem({ simulation, preview }) {
 }
 
 function CharacterAvatar({ simulationId, character, label }) {
-    const imageSrc = useOptionalImage(
+    const { src, isLoaded } = useOptionalImage(
         simulationId && character?.id
             ? getSimulationCharacterImageUrl({ simulationId, characterId: character.id })
             : null,
@@ -403,8 +562,9 @@ function CharacterAvatar({ simulationId, character, label }) {
     );
 
     return (
-        <img
-            src={imageSrc}
+        <EnlargeableImage
+            src={src}
+            isLoaded={isLoaded}
             alt={label ?? ""}
             className="chat-avatar"
         />
@@ -456,7 +616,7 @@ function SegmentVoiceButton({ block, onVoiceGenerated }) {
           : t("simulationChat.generateVoice");
 
     return (
-        <span className="segment-voice-control">
+        <>
             <button
                 type="button"
                 className={`segment-voice-button${voiceMediaId ? " generated" : ""}${error ? " error" : ""}`}
@@ -470,7 +630,257 @@ function SegmentVoiceButton({ block, onVoiceGenerated }) {
             {voiceMediaId ? (
                 <audio ref={audioRef} src={getMediaUrl(voiceMediaId)} preload="none" />
             ) : null}
-        </span>
+        </>
+    );
+}
+
+function useImageGenerationAction(onGenerate) {
+    const [state, setState] = useState("idle");
+    const [error, setError] = useState(null);
+    const resetTimerRef = useRef(null);
+
+    useEffect(() => () => {
+        if (resetTimerRef.current) {
+            clearTimeout(resetTimerRef.current);
+        }
+    }, []);
+
+    async function trigger() {
+        if (state === "generating") {
+            return;
+        }
+
+        setState("generating");
+        setError(null);
+
+        try {
+            await onGenerate();
+            setState("success");
+        } catch (err) {
+            setError(err.message);
+            setState("error");
+        } finally {
+            resetTimerRef.current = setTimeout(() => setState("idle"), 3000);
+        }
+    }
+
+    return { state, error, trigger };
+}
+
+function SegmentImageButton({ label, onGenerate }) {
+    const { state, error, trigger } = useImageGenerationAction(onGenerate);
+    const title = state === "error" ? error : label;
+
+    return (
+        <button
+            type="button"
+            className={`segment-image-button${state === "success" ? " generated" : ""}${state === "error" ? " error" : ""}`}
+            onClick={trigger}
+            disabled={state === "generating"}
+            title={title}
+            aria-label={title}
+        >
+            {state === "generating" ? "…" : state === "success" ? "✓" : state === "error" ? "!" : "🖼"}
+        </button>
+    );
+}
+
+function GenerateCoverImageButton({ label, onGenerate }) {
+    const { t } = useTranslation();
+    const { state, error, trigger } = useImageGenerationAction(onGenerate);
+
+    return (
+        <div className="cover-image-generate-control">
+            <button
+                type="button"
+                className="secondary-button"
+                onClick={trigger}
+                disabled={state === "generating"}
+            >
+                {state === "generating" ? t("simulationDetails.generatingCoverImage") : label}
+            </button>
+            {state === "success" ? (
+                <span className="status-text">{t("simulationDetails.coverImageGenerated")}</span>
+            ) : null}
+            {state === "error" ? (
+                <span className="status-text error-text">
+                    {t("simulationDetails.coverImageError", { error })}
+                </span>
+            ) : null}
+        </div>
+    );
+}
+
+// Mirrors the backend InputInterpreter's OOC marker syntax: a user action's raw text can carry
+// an embedded `[/OOC: ...]` command, which is a player instruction to the simulator, not an
+// in-character action - it must never be treated as something to depict in a generated image.
+const OOC_MARKER_PATTERN = /\[\/OOC:[\s\S]*?\]/g;
+
+function hasInWorldActionText(text) {
+    return Boolean(text && text.replace(OOC_MARKER_PATTERN, "").trim().length > 0);
+}
+
+async function generateSceneImageForCharacter({ simulationId, userCharacterId, turnId, blockId = null, t }) {
+    const location = await fetchCharacterLocation(userCharacterId);
+    if (!location?.id) {
+        throw new Error(t("simulationChat.noCurrentLocation"));
+    }
+
+    return generateSceneImage({ simulationId, locationId: location.id, turnId, blockId });
+}
+
+function SpeechBlockMessage({ block, simulationId, charactersById, allowVoice, turnId, canGeneratePortrait }) {
+    const { t } = useTranslation();
+    const speakerId = block.speaker_id ?? block.character_id;
+    const character = charactersById[String(speakerId)];
+    const authorName = block.speaker_name || block.character_name || character?.name || speakerId;
+    const { images, activeIndex, setActiveIndex, addImage } = useBubbleImages("block", block.id ?? null);
+
+    const voiceButton = allowVoice && block.id ? <SegmentVoiceButton block={block} /> : null;
+    const imageButton = canGeneratePortrait && turnId && speakerId
+        ? (
+            <SegmentImageButton
+                label={t("simulationChat.generatePortraitImage")}
+                onGenerate={async () => {
+                    const media = await generateCharacterPortraitImage({
+                        simulationId,
+                        characterId: speakerId,
+                        turnId,
+                        blockId: block.id ?? null,
+                    });
+                    addImage(media);
+                    return media;
+                }}
+            />
+        )
+        : null;
+    const actions = voiceButton || imageButton
+        ? <span className="chat-message-actions">{voiceButton}{imageButton}</span>
+        : null;
+
+    return (
+        <article className="chat-message character">
+            <CharacterAvatar
+                simulationId={simulationId}
+                character={character}
+                label={authorName}
+            />
+            <div className="chat-message-content">
+                <div className="chat-message-author">{authorName}</div>
+                <div className="chat-bubble character-speech">
+                    <p>{block.text}</p>
+                    {images.length > 0 ? (
+                        <BubbleImageGallery images={images} activeIndex={activeIndex} onIndexChange={setActiveIndex} />
+                    ) : null}
+                </div>
+            </div>
+            {actions}
+        </article>
+    );
+}
+
+function UserActionBlockMessage({ block, simulationId, userCharacter, turnId, userCharacterId, canGenerateScene }) {
+    const { t } = useTranslation();
+    const authorName = userCharacter?.name ?? block.speaker_name ?? block.speaker_id ?? "";
+    const { images, activeIndex, setActiveIndex, addImage } = useBubbleImages("block", block.id ?? null);
+
+    const imageButton = canGenerateScene && turnId && userCharacterId
+        && hasInWorldActionText(block.text)
+        ? (
+            <SegmentImageButton
+                label={t("simulationChat.generateSceneImage")}
+                onGenerate={async () => {
+                    const media = await generateSceneImageForCharacter({
+                        simulationId,
+                        userCharacterId,
+                        turnId,
+                        blockId: block.id ?? null,
+                        t,
+                    });
+                    addImage(media);
+                    return media;
+                }}
+            />
+        )
+        : null;
+
+    return (
+        <article className="chat-message user presentation-action">
+            <CharacterAvatar
+                simulationId={simulationId}
+                character={userCharacter}
+                label={authorName}
+            />
+            <div className="chat-message-content">
+                <div className="chat-message-author">{authorName}</div>
+                <div className="chat-bubble">
+                    <FormattedUserText text={block.text ?? ""} />
+                    {images.length > 0 ? (
+                        <BubbleImageGallery images={images} activeIndex={activeIndex} onIndexChange={setActiveIndex} />
+                    ) : null}
+                </div>
+            </div>
+            {imageButton ? <span className="chat-message-actions">{imageButton}</span> : null}
+        </article>
+    );
+}
+
+function NarrationCardBlockMessage({ block, allowVoice, turnId, userCharacterId, canGenerateScene, simulationId }) {
+    const { t } = useTranslation();
+    const isNarration = block.type === "narration";
+    const { images, activeIndex, setActiveIndex, addImage } = useBubbleImages(
+        "block",
+        isNarration ? (block.id ?? null) : null,
+    );
+
+    const blockClass = block.type === "thought"
+        ? "thought-block"
+        : block.type === "system_notice"
+          ? "system-notice-block"
+          : block.type === "media"
+            ? "media-block"
+            : block.type === "action"
+              ? "action-block"
+              : "narration-block";
+    const voiceButton = allowVoice && isNarration && block.id ? <SegmentVoiceButton block={block} /> : null;
+    const imageButton = canGenerateScene && turnId && userCharacterId && isNarration
+        ? (
+            <SegmentImageButton
+                label={t("simulationChat.generateSceneImage")}
+                onGenerate={async () => {
+                    const media = await generateSceneImageForCharacter({
+                        simulationId,
+                        userCharacterId,
+                        turnId,
+                        blockId: block.id ?? null,
+                        t,
+                    });
+                    addImage(media);
+                    return media;
+                }}
+            />
+        )
+        : null;
+    const actions = voiceButton || imageButton
+        ? <span className="chat-message-actions">{voiceButton}{imageButton}</span>
+        : null;
+
+    return (
+        <article className={`chat-message ${blockClass} presentation-${block.completion ?? "complete"}`}>
+            <div className="chat-narration-card">
+                {block.type === "media" ? (
+                    <p>Media: {block.media_id}</p>
+                ) : block.type === "thought" ? (
+                    <p><em>{block.text}</em></p>
+                ) : (
+                    <p>{block.text}</p>
+                )}
+                {images.length > 0 ? (
+                    <BubbleImageGallery images={images} activeIndex={activeIndex} onIndexChange={setActiveIndex} />
+                ) : null}
+            </div>
+            {actions}
+        </article>
     );
 }
 
@@ -481,102 +891,75 @@ function NarrationBlocks({
     userCharacter = null,
     userRecord = false,
     allowVoice = false,
+    turnId = null,
+    userCharacterId = null,
+    canGenerateScene = false,
+    canGeneratePortrait = false,
 }) {
     return (
         <>
             {blocks.map((block, index) => {
-                const voiceButton = allowVoice
-                    && (block.type === "speech" || block.type === "narration")
-                    && block.id
-                    ? <SegmentVoiceButton block={block} />
-                    : null;
-
                 if (block.type === "speech") {
                     const speakerId = block.speaker_id ?? block.character_id;
-                    const character = charactersById[String(speakerId)];
-                    const authorName = block.speaker_name || block.character_name || character?.name || speakerId;
-
                     return (
-                        <article
+                        <SpeechBlockMessage
                             key={block.id ?? `${block.type}-${speakerId}-${index}`}
-                            className="chat-message character"
-                        >
-                            <CharacterAvatar
-                                simulationId={simulationId}
-                                character={character}
-                                label={authorName}
-                            />
-                            <div className="chat-message-content">
-                                <div className="chat-message-author">{authorName}</div>
-                                <div className="chat-bubble character-speech">
-                                    <p>{block.text}</p>
-                                </div>
-                            </div>
-                            {voiceButton}
-                        </article>
+                            block={block}
+                            simulationId={simulationId}
+                            charactersById={charactersById}
+                            allowVoice={allowVoice}
+                            turnId={turnId}
+                            canGeneratePortrait={canGeneratePortrait}
+                        />
                     );
                 }
 
                 if (block.type === "action" && userRecord) {
-                    const authorName = userCharacter?.name ?? block.speaker_name ?? block.speaker_id ?? "";
                     return (
-                        <article
+                        <UserActionBlockMessage
                             key={block.id ?? `${block.type}-${index}`}
-                            className="chat-message user presentation-action"
-                        >
-                            <CharacterAvatar
-                                simulationId={simulationId}
-                                character={userCharacter}
-                                label={authorName}
-                            />
-                            <div className="chat-message-content">
-                                <div className="chat-message-author">{authorName}</div>
-                                <div className="chat-bubble">
-                                    <FormattedUserText text={block.text ?? ""} />
-                                </div>
-                            </div>
-                        </article>
+                            block={block}
+                            simulationId={simulationId}
+                            userCharacter={userCharacter}
+                            turnId={turnId}
+                            userCharacterId={userCharacterId}
+                            canGenerateScene={canGenerateScene}
+                        />
                     );
                 }
 
-                const blockClass = block.type === "thought"
-                    ? "thought-block"
-                    : block.type === "system_notice"
-                      ? "system-notice-block"
-                      : block.type === "media"
-                        ? "media-block"
-                        : block.type === "action"
-                          ? "action-block"
-                          : "narration-block";
                 return (
-                    <article
+                    <NarrationCardBlockMessage
                         key={block.id ?? `${block.type}-${index}`}
-                        className={`chat-message ${blockClass} presentation-${block.completion ?? "complete"}`}
-                    >
-                        <div className="chat-narration-card">
-                            {block.type === "media" ? (
-                                <p>Media: {block.media_id}</p>
-                            ) : block.type === "thought" ? (
-                                <p><em>{block.text}</em></p>
-                            ) : (
-                                <p>{block.text}</p>
-                            )}
-                        </div>
-                        {voiceButton}
-                    </article>
+                        block={block}
+                        allowVoice={allowVoice}
+                        turnId={turnId}
+                        userCharacterId={userCharacterId}
+                        canGenerateScene={canGenerateScene}
+                        simulationId={simulationId}
+                    />
                 );
             })}
         </>
     );
 }
 
-function ChatRecord({ record, simulation, charactersById, userCharacter }) {
+function ChatRecord({
+    record,
+    simulation,
+    charactersById,
+    userCharacter,
+    canGenerateScene = false,
+    canGeneratePortrait = false,
+}) {
     const { t } = useTranslation();
     const userRecord = isUserRecord(record);
     const authorName = userRecord ? (userCharacter?.name ?? t("simulationChat.userCharacterFallback")) : simulation?.name;
     const blocks = narrationBlocksFromValue(record.narration_blocks);
+    const hasBlocks = blocks?.length > 0;
+    const { images, activeIndex, setActiveIndex, addImage } = useBubbleImages("turn", hasBlocks ? null : record.id);
 
-    if (blocks?.length > 0) {
+    if (hasBlocks) {
         return (
             <NarrationBlocks
                 blocks={blocks}
@@ -585,9 +968,32 @@ function ChatRecord({ record, simulation, charactersById, userCharacter }) {
                 userCharacter={userCharacter}
                 userRecord={userRecord}
                 allowVoice
+                turnId={record.id}
+                userCharacterId={userCharacter?.id ?? null}
+                canGenerateScene={canGenerateScene}
+                canGeneratePortrait={canGeneratePortrait}
             />
         );
     }
+
+    const imageButton = canGenerateScene && userCharacter?.id && record.id
+        && (!userRecord || hasInWorldActionText(record.narration))
+        ? (
+            <SegmentImageButton
+                label={t("simulationChat.generateSceneImage")}
+                onGenerate={async () => {
+                    const media = await generateSceneImageForCharacter({
+                        simulationId: simulation?.id,
+                        userCharacterId: userCharacter.id,
+                        turnId: record.id,
+                        t,
+                    });
+                    addImage(media);
+                    return media;
+                }}
+            />
+        )
+        : null;
 
     return (
         <article className={`chat-message${userRecord ? " user" : " simulation"}`}>
@@ -604,8 +1010,12 @@ function ChatRecord({ record, simulation, charactersById, userCharacter }) {
                 <div className="chat-message-author">{authorName}</div>
                 <div className="chat-bubble">
                     {userRecord ? <FormattedUserText text={record.narration} /> : <p>{record.narration}</p>}
+                    {images.length > 0 ? (
+                        <BubbleImageGallery images={images} activeIndex={activeIndex} onIndexChange={setActiveIndex} />
+                    ) : null}
                 </div>
             </div>
+            {imageButton ? <span className="chat-message-actions">{imageButton}</span> : null}
         </article>
     );
 }
@@ -712,7 +1122,7 @@ function ActionSuggestions({ suggestions, open, onToggle, onSelect, disabled }) 
 }
 
 function CharacterImage({ simulationId, character, className = "simulation-details-cover" }) {
-    const imageSrc = useOptionalImage(
+    const { src, isLoaded } = useOptionalImage(
         simulationId && character?.id
             ? getSimulationCharacterImageUrl({ simulationId, characterId: character.id })
             : null,
@@ -720,8 +1130,9 @@ function CharacterImage({ simulationId, character, className = "simulation-detai
     );
 
     return (
-        <img
-            src={imageSrc}
+        <EnlargeableImage
+            src={src}
+            isLoaded={isLoaded}
             alt={character?.name ?? ""}
             className={className}
         />
@@ -729,7 +1140,7 @@ function CharacterImage({ simulationId, character, className = "simulation-detai
 }
 
 function LocationImage({ simulationId, location, className = "simulation-details-cover" }) {
-    const imageSrc = useOptionalImage(
+    const { src, isLoaded } = useOptionalImage(
         simulationId && location?.id
             ? getSimulationLocationImageUrl({ simulationId, locationId: location.id })
             : null,
@@ -737,8 +1148,9 @@ function LocationImage({ simulationId, location, className = "simulation-details
     );
 
     return (
-        <img
-            src={imageSrc}
+        <EnlargeableImage
+            src={src}
+            isLoaded={isLoaded}
             alt={location ? formatLocation(location, "") : ""}
             className={className}
         />
@@ -746,14 +1158,15 @@ function LocationImage({ simulationId, location, className = "simulation-details
 }
 
 function EntityImage({ imageUrl, fallbackSrc = entityPlaceholderImage, alt = "", className = "simulation-details-cover" }) {
-    const imageSrc = useOptionalImage(
+    const { src, isLoaded } = useOptionalImage(
         imageUrl,
         fallbackSrc,
     );
 
     return (
-        <img
-            src={imageSrc}
+        <EnlargeableImage
+            src={src}
+            isLoaded={isLoaded}
             alt={alt}
             className={className}
         />
@@ -920,7 +1333,7 @@ function entityRows(entity, t) {
         }));
 }
 
-function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImage }) {
+function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImage, coverImageAction = null }) {
     const { t } = useTranslation();
 
     if (!entity) {
@@ -940,6 +1353,7 @@ function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImag
                 <div className="simulation-details-summary">
                     <h3>{entityTitle(entity)}</h3>
                     <p>{describeEntity(entity) || t("simulationDetails.noDescription")}</p>
+                    {coverImageAction}
                 </div>
             </div>
 
@@ -1371,7 +1785,11 @@ function ImageGenerationConfigEditor({ simulationId }) {
 
 function ImageModelConfigEditor({ simulationId }) {
     const { t } = useTranslation();
+    const [llmConfigs, setLlmConfigs] = useState([]);
     const [imageConfigs, setImageConfigs] = useState([]);
+    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(
+        () => emptyComponentConfigMap(imageChatComponents),
+    );
     const [imageConfigsByComponent, setImageConfigsByComponent] = useState(
         () => emptyComponentConfigMap(imageComponents),
     );
@@ -1388,13 +1806,19 @@ function ImageModelConfigEditor({ simulationId }) {
                 setLoading(true);
                 setError(null);
 
-                const [images, imageAssignments] = await Promise.all([
+                const [llms, images, llmAssignments, imageAssignments] = await Promise.all([
+                    fetchLlmConfigs(),
                     fetchImageConfigs(),
+                    fetchSimulationLlmConfigs(simulationId),
                     fetchSimulationImageConfigs(simulationId),
                 ]);
 
                 if (!cancelled) {
+                    setLlmConfigs(llms);
                     setImageConfigs(images);
+                    setLlmConfigsByComponent(
+                        componentConfigMapFromAssignments(imageChatComponents, llmAssignments),
+                    );
                     setImageConfigsByComponent(
                         componentConfigMapFromAssignments(imageComponents, imageAssignments),
                     );
@@ -1417,8 +1841,10 @@ function ImageModelConfigEditor({ simulationId }) {
         };
     }, [simulationId]);
 
-    function updateComponentConfig(component, configId) {
-        setImageConfigsByComponent((current) => ({
+    function updateComponentConfig(kind, component, configId) {
+        const setter = kind === "llm" ? setLlmConfigsByComponent : setImageConfigsByComponent;
+
+        setter((current) => ({
             ...current,
             [component]: configId,
         }));
@@ -1429,10 +1855,16 @@ function ImageModelConfigEditor({ simulationId }) {
             setSaving(true);
             setNotice(null);
             setError(null);
-            await setSimulationImageConfigs(
-                simulationId,
-                componentAssignmentsFromMap(imageComponents, imageConfigsByComponent),
-            );
+            await Promise.all([
+                setSimulationLlmConfigs(
+                    simulationId,
+                    componentAssignmentsFromMap(imageChatComponents, llmConfigsByComponent),
+                ),
+                setSimulationImageConfigs(
+                    simulationId,
+                    componentAssignmentsFromMap(imageComponents, imageConfigsByComponent),
+                ),
+            ]);
             setNotice(t("simulationDetails.configSaved"));
         } catch (err) {
             setError(err.message);
@@ -1455,25 +1887,44 @@ function ImageModelConfigEditor({ simulationId }) {
             <div className="world-editor-config-matrix">
                 <div className="world-editor-config-matrix-header">
                     <span>{t("worldCreate.newEditor.fields.component")}</span>
+                    <span>{t("worldCreate.newEditor.fields.llmConfig")}</span>
                     <span>{t("worldCreate.newEditor.fields.imageConfig")}</span>
                 </div>
-                {imageComponents.map((component) => (
+                {imageChatComponents.map((component) => (
                     <div className="world-editor-config-row" key={component}>
                         <div className="world-editor-component-name">
                             {t(`worldCreate.newEditor.components.${component}`, { defaultValue: component })}
                         </div>
                         <select
                             className="single-line-input"
-                            value={imageConfigsByComponent[component] ?? ""}
-                            onChange={(event) => updateComponentConfig(component, event.target.value)}
+                            value={llmConfigsByComponent[component] ?? ""}
+                            onChange={(event) => updateComponentConfig("llm", component, event.target.value)}
                         >
                             <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
-                            {imageConfigs.map((config) => (
+                            {llmConfigs.map((config) => (
                                 <option key={config.id} value={config.id}>
                                     {configLabel(config, config.id)}
                                 </option>
                             ))}
                         </select>
+                        {imageComponents.includes(component) ? (
+                            <select
+                                className="single-line-input"
+                                value={imageConfigsByComponent[component] ?? ""}
+                                onChange={(event) => updateComponentConfig("image", component, event.target.value)}
+                            >
+                                <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                                {imageConfigs.map((config) => (
+                                    <option key={config.id} value={config.id}>
+                                        {configLabel(config, config.id)}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="simulation-details-empty-line">
+                                {t("simulationDetails.imageGeneration.noImageModelNeeded")}
+                            </span>
+                        )}
                     </div>
                 ))}
             </div>
@@ -1759,6 +2210,7 @@ function SimulationDetailsModal({
     inventory,
     emotion,
     auditEvents,
+    imageCapabilities = emptyObject,
     activeSection,
     selectedCharacterId,
     selectedLocationId,
@@ -1770,6 +2222,9 @@ function SimulationDetailsModal({
     onClose,
 }) {
     const { t } = useTranslation();
+    const canGenerateCharacterCover = Boolean(imageCapabilities.character_image_generator);
+    const canGenerateLocationCover = Boolean(imageCapabilities.location_image_generator);
+    const canGenerateItemCover = Boolean(imageCapabilities.item_image_generator);
     const selectedCharacter =
         characters.find((character) => character.id === selectedCharacterId) ?? characters[0] ?? null;
     const selectedCharacterLocationId = selectedCharacter?.location_id ?? selectedCharacter?.location ?? null;
@@ -2019,6 +2474,17 @@ function SimulationDetailsModal({
                                 })}
                                 imageUrl={selectedEntityImageUrl}
                                 fallbackImage={selectedEntityFallback}
+                                coverImageAction={
+                                    activeSection === "items" && canGenerateItemCover && selectedEntity ? (
+                                        <GenerateCoverImageButton
+                                            label={t("simulationDetails.generateCoverImage")}
+                                            onGenerate={() => generateItemCoverImage({
+                                                sourceId: simulation.id,
+                                                itemId: selectedEntity.id,
+                                            })}
+                                        />
+                                    ) : null
+                                }
                             />
                         ) : activeSection === "locations" ? (
                             selectedLocationDetail ? (
@@ -2039,6 +2505,15 @@ function SimulationDetailsModal({
                                                 {selectedLocationDetail.description ||
                                                     t("simulationDetails.noDescription")}
                                             </p>
+                                            {canGenerateLocationCover ? (
+                                                <GenerateCoverImageButton
+                                                    label={t("simulationDetails.generateCoverImage")}
+                                                    onGenerate={() => generateLocationCoverImage({
+                                                        sourceId: simulation.id,
+                                                        locationId: selectedLocationDetail.id,
+                                                    })}
+                                                />
+                                            ) : null}
                                         </div>
                                     </div>
 
@@ -2082,6 +2557,15 @@ function SimulationDetailsModal({
                                                 {selectedCharacter.description ||
                                                     t("simulationDetails.noDescription")}
                                             </p>
+                                            {canGenerateCharacterCover ? (
+                                                <GenerateCoverImageButton
+                                                    label={t("simulationDetails.generateCoverImage")}
+                                                    onGenerate={() => generateCharacterCoverImage({
+                                                        sourceId: simulation.id,
+                                                        characterId: selectedCharacter.id,
+                                                    })}
+                                                />
+                                            ) : null}
                                         </div>
                                     </div>
 
@@ -2232,6 +2716,7 @@ export function SimulationChatPage() {
     const [inventoryCache, setInventoryCache] = useState({});
     const [emotionCache, setEmotionCache] = useState({});
     const [auditCache, setAuditCache] = useState({});
+    const [imageCapabilityCache, setImageCapabilityCache] = useState({});
     const [previews, setPreviews] = useState({});
     const [records, setRecords] = useState([]);
     const [input, setInput] = useState("");
@@ -2296,6 +2781,9 @@ export function SimulationChatPage() {
         ? emotionCache[`${simulationId}:${selectedCharacterId}`]
         : null;
     const selectedAuditEvents = auditCache[simulationId] ?? [];
+    const imageCapabilities = imageCapabilityCache[simulationId] ?? emptyObject;
+    const canGenerateSceneImage = Boolean(imageCapabilities.scene_image_generator);
+    const canGeneratePortraitImage = Boolean(imageCapabilities.character_portrait_image_generator);
     const suggestedActions = selectedSimulation?.suggested_actions ?? emptyList;
     const inputFormatError = useMemo(
         () => (input.trim().length > 0 ? validateInputMarkup(input) : null),
@@ -2438,6 +2926,18 @@ export function SimulationChatPage() {
         }
     }
 
+    async function refreshImageCapabilities(id) {
+        try {
+            const assignments = await fetchSimulationImageConfigs(id);
+            const capabilities = Object.fromEntries(
+                assignments.map((assignment) => [assignment.component, Boolean(assignment.config)]),
+            );
+            setImageCapabilityCache((current) => ({ ...current, [id]: capabilities }));
+        } catch {
+            setImageCapabilityCache((current) => ({ ...current, [id]: {} }));
+        }
+    }
+
     async function refreshCharacterInventory(id, characterId) {
         if (!id || !characterId) {
             return;
@@ -2572,6 +3072,7 @@ export function SimulationChatPage() {
                 refreshSimulationDetails(simulationId);
                 refreshCharacters(simulationId).then(() => refreshEntities(simulationId));
                 refreshLocations(simulationId);
+                refreshImageCapabilities(simulationId);
             });
         }
 
@@ -2591,6 +3092,7 @@ export function SimulationChatPage() {
         refreshCharacters(simulationId).then(() => refreshEntities(simulationId));
         refreshLocations(simulationId);
         refreshAuditEvents(simulationId);
+        refreshImageCapabilities(simulationId);
     }, [detailsOpen, refreshCharacters, simulationId]);
 
     useEffect(() => {
@@ -3025,6 +3527,8 @@ export function SimulationChatPage() {
                                     simulation={selectedSimulation}
                                     charactersById={selectedCharactersById}
                                     userCharacter={userCharacter}
+                                    canGenerateScene={canGenerateSceneImage}
+                                    canGeneratePortrait={canGeneratePortraitImage}
                                 />
                             ))
                         )}
@@ -3107,6 +3611,7 @@ export function SimulationChatPage() {
                     inventory={selectedInventory}
                     emotion={selectedEmotion}
                     auditEvents={selectedAuditEvents}
+                    imageCapabilities={imageCapabilities}
                     activeSection={detailsSection}
                     selectedCharacterId={selectedCharacterId}
                     selectedLocationId={selectedLocationId}

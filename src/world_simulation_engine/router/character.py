@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.component.image_generator import CharacterImageGenerator, \
     schedule_cover_image_generation
 from world_simulation_engine.model import Character, CharacterTtsConfig, Container, CurrentActivity, \
-    EmotionState, EmotionVector, InventoryEquipment, InventoryStack, SubjectiveEntityClaim
+    EmotionState, EmotionVector, InventoryEquipment, InventoryStack, Location, SubjectiveEntityClaim
 from .utils import db_dep, prompt_loader_dep, storage_dep, workflow_loader_dep
 
 
@@ -467,6 +467,17 @@ async def delete_character(character_id: str, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Character {character_id} not found",
         )
+
+
+@character_router.get("/characters/{character_id}/location", response_model=Optional[Location])
+async def get_character_location(character_id: str, db: db_dep):
+    if not await db.character.get_character(character_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Character {character_id} not found",
+        )
+
+    return await db.location.get_location_by_character(character_id)
 
 
 @character_router.put("/characters/{character_id}/location", response_model=Character)

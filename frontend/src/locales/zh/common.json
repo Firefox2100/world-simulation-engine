@@ -81,6 +81,11 @@
     "cancelled": "生成已取消。",
     "playVoice": "播放语音",
     "generateVoice": "生成语音",
+    "generateSceneImage": "生成场景图片",
+    "generatePortraitImage": "生成角色图片",
+    "noCurrentLocation": "你的角色当前不在任何地点。",
+    "previousImage": "上一张图片",
+    "nextImage": "下一张图片",
     "suggestions": {
       "title": "建议的行动",
       "useSuggestion": "使用这条建议"
@@ -190,6 +195,10 @@
     "configSaved": "配置已保存。",
     "configError": "无法加载配置：{{error}}",
     "saveConfigurations": "保存配置",
+    "generateCoverImage": "生成封面图片",
+    "generatingCoverImage": "正在生成...",
+    "coverImageGenerated": "封面图片已生成。",
+    "coverImageError": "无法生成封面图片：{{error}}",
     "imageGeneration": {
       "mode": "图像生成模式",
       "fallbackTurns": "兜底回合数",
@@ -202,7 +211,8 @@
         "manual": "只有在明确请求时才会生成图像。",
         "auto": "每个回合会通过重要性判断决定是否生成场景图像，若过多回合未生成则会兜底触发一次。",
         "always": "每个回合都会在后台生成场景图像，不会延迟回合本身。"
-      }
+      },
+      "noImageModelNeeded": "无需图像模型"
     },
     "ttsGeneration": {
       "mode": "语音生成模式",
@@ -653,7 +663,8 @@
         "character_portrait_image_generator": "角色肖像",
         "location_image_generator": "地点图像",
         "item_image_generator": "物品图像",
-        "scene_image_generator": "场景图像"
+        "scene_image_generator": "场景图像",
+        "turn_image_trigger": "自动图像触发器"
       },
       "tabs": {
         "world": "世界",

@@ -81,6 +81,11 @@
     "cancelled": "Generation was cancelled.",
     "playVoice": "Play voice",
     "generateVoice": "Generate voice",
+    "generateSceneImage": "Generate scene image",
+    "generatePortraitImage": "Generate character image",
+    "noCurrentLocation": "Your character is not currently in a location.",
+    "previousImage": "Previous image",
+    "nextImage": "Next image",
     "suggestions": {
       "title": "Suggested actions",
       "useSuggestion": "Use this suggestion"
@@ -190,6 +195,10 @@
     "configSaved": "Configurations saved.",
     "configError": "Unable to load configurations: {{error}}",
     "saveConfigurations": "Save configurations",
+    "generateCoverImage": "Generate cover image",
+    "generatingCoverImage": "Generating...",
+    "coverImageGenerated": "Cover image generated.",
+    "coverImageError": "Unable to generate cover image: {{error}}",
     "imageGeneration": {
       "mode": "Image generation mode",
       "fallbackTurns": "Fallback turns",
@@ -202,7 +211,8 @@
         "manual": "Images are only generated when explicitly requested.",
         "auto": "A significance check decides per turn whether to generate a scene image, with a fallback after too many turns without one.",
         "always": "Every turn generates a scene image in the background, without delaying the turn."
-      }
+      },
+      "noImageModelNeeded": "No image model needed"
     },
     "ttsGeneration": {
       "mode": "Voice generation mode",
@@ -653,7 +663,8 @@
         "character_portrait_image_generator": "Character portrait",
         "location_image_generator": "Location image",
         "item_image_generator": "Item image",
-        "scene_image_generator": "Scene image"
+        "scene_image_generator": "Scene image",
+        "turn_image_trigger": "Auto image trigger"
       },
       "tabs": {
         "world": "World",

@@ -25,6 +25,11 @@ class GenerateTurnGroundedImageRequest(BaseModel):
         None,
         description="Optional turn to use for pose/relationship context and to link via GENERATES_IMAGE",
     )
+    block_id: Optional[str] = Field(
+        None,
+        description="Optional presentation block (narration/speech/action segment) to link the "
+                     "generated image to, so it can be shown inline with that specific segment",
+    )
 
 
 async def _validate_source(source_id: str, db: db_dep) -> None:
@@ -146,6 +151,11 @@ async def generate_character_portrait_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Turn {request.turn_id} not found",
         )
+    if request.block_id and not await db.turn_presentation.get_block(request.block_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Presentation block {request.block_id} not found",
+        )
 
     generator = CharacterPortraitImageGenerator(
         database=db, storage=storage, workflow_loader=workflow_loader, prompt_loader=prompt_loader,
@@ -155,6 +165,7 @@ async def generate_character_portrait_image(
             simulation_id=simulation_id,
             character_id=character_id,
             turn_id=request.turn_id,
+            block_id=request.block_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -184,6 +195,11 @@ async def generate_scene_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Turn {request.turn_id} not found",
         )
+    if request.block_id and not await db.turn_presentation.get_block(request.block_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Presentation block {request.block_id} not found",
+        )
 
     generator = SceneImageGenerator(
         database=db, storage=storage, workflow_loader=workflow_loader, prompt_loader=prompt_loader,
@@ -193,6 +209,7 @@ async def generate_scene_image(
             simulation_id=simulation_id,
             location_id=location_id,
             turn_id=request.turn_id,
+            block_id=request.block_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

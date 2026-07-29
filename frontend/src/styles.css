@@ -1069,6 +1069,12 @@ body {
     border-top: 1px solid #e5e7eb;
 }
 
+/* Overrides .world-editor-form .single-line-input's grid-column: 1 / -1, which otherwise
+   forces every select onto its own full-width row instead of the matrix's own columns. */
+.world-editor-config-row .single-line-input {
+    grid-column: auto;
+}
+
 .prompt-assignment-matrix .world-editor-config-matrix-header,
 .prompt-assignment-matrix .world-editor-config-row {
     grid-template-columns:
@@ -1177,21 +1183,31 @@ body {
     text-align: center;
 }
 
-.segment-voice-control {
+.chat-message-actions {
     position: absolute;
-    top: -8px;
+    bottom: -8px;
     right: -8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 150ms ease;
 }
 
-.chat-message:hover .segment-voice-control {
+.chat-message.user .chat-message-actions {
+    right: auto;
+    left: -8px;
+}
+
+.chat-message:hover .chat-message-actions {
     opacity: 1;
     pointer-events: auto;
 }
 
-.segment-voice-button {
+.segment-voice-button,
+.segment-image-button {
     width: 28px;
     height: 28px;
     border: 1px solid #e5e7eb;
@@ -1204,29 +1220,41 @@ body {
     box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
 }
 
-.segment-voice-button:hover:not(:disabled) {
+.segment-voice-button:hover:not(:disabled),
+.segment-image-button:hover:not(:disabled) {
     background: #f3f4f6;
     color: #111827;
 }
 
-.segment-voice-button.generated {
+.segment-voice-button.generated,
+.segment-image-button.generated {
     background: #111827;
     color: white;
     border-color: #111827;
 }
 
-.segment-voice-button.generated:hover:not(:disabled) {
+.segment-voice-button.generated:hover:not(:disabled),
+.segment-image-button.generated:hover:not(:disabled) {
     background: #1f2937;
 }
 
-.segment-voice-button.error {
+.segment-voice-button.error,
+.segment-image-button.error {
     border-color: #dc2626;
     color: #dc2626;
 }
 
-.segment-voice-button:disabled {
+.segment-voice-button:disabled,
+.segment-image-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.cover-image-generate-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
 }
 
 .chat-narration-card p {
@@ -1237,6 +1265,106 @@ body {
 .chat-bubble p {
     margin: 0;
     white-space: pre-wrap;
+}
+
+.enlargeable-image {
+    cursor: zoom-in;
+}
+
+.bubble-image {
+    position: relative;
+    width: 100%;
+    margin-top: 8px;
+    border-radius: 12px;
+    overflow: hidden;
+    line-height: 0;
+}
+
+.bubble-image-media {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 420px;
+    height: auto;
+    object-fit: contain;
+    background: rgb(0 0 0 / 0.04);
+    cursor: zoom-in;
+}
+
+.bubble-image-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 999px;
+    background: rgb(17 24 39 / 0.55);
+    color: white;
+    font-size: 1.1rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.bubble-image:hover .bubble-image-nav {
+    opacity: 0.55;
+}
+
+.bubble-image-nav:hover {
+    opacity: 0.9 !important;
+}
+
+.bubble-image-nav-prev {
+    left: 8px;
+}
+
+.bubble-image-nav-next {
+    right: 8px;
+}
+
+.bubble-image-counter {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgb(17 24 39 / 0.55);
+    color: white;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease;
+}
+
+.bubble-image:hover .bubble-image-counter {
+    opacity: 1;
+}
+
+.image-lightbox-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    padding: 6vh 6vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgb(0 0 0 / 0.86);
+    cursor: zoom-out;
+}
+
+.image-lightbox-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 24px 80px rgb(0 0 0 / 0.5);
+    cursor: default;
 }
 
 .chat-stream-error {

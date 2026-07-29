@@ -116,6 +116,10 @@ export async function fetchCharacterInventory(characterId) {
     return apiRequest(`/characters/${characterId}/inventory`);
 }
 
+export async function fetchCharacterLocation(characterId) {
+    return apiRequest(`/characters/${characterId}/location`);
+}
+
 export async function fetchCharacterEmotion({ simulationId, characterId }) {
     return query(`/characters/${characterId}/emotion`, { simulation_id: simulationId });
 }
@@ -142,6 +146,64 @@ export async function generateBlockVoice(blockId) {
     return apiRequest(`/turn-presentations/blocks/${blockId}/voice`, {
         method: "POST",
     });
+}
+
+export async function generateCharacterCoverImage({ sourceId, characterId }) {
+    return apiRequest(`/characters/${characterId}/generate-image/state`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ source_id: sourceId }),
+    });
+}
+
+export async function generateLocationCoverImage({ sourceId, locationId }) {
+    return apiRequest(`/locations/${locationId}/generate-image/state`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ source_id: sourceId }),
+    });
+}
+
+export async function generateItemCoverImage({ sourceId, itemId }) {
+    return apiRequest(`/items/${itemId}/generate-image/state`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ source_id: sourceId }),
+    });
+}
+
+export async function generateCharacterPortraitImage({ simulationId, characterId, turnId = null, blockId = null }) {
+    return apiRequest(`/simulations/${simulationId}/characters/${characterId}/generate-image/portrait`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ turn_id: turnId, block_id: blockId }),
+    });
+}
+
+export async function generateSceneImage({ simulationId, locationId, turnId = null, blockId = null }) {
+    return apiRequest(`/simulations/${simulationId}/locations/${locationId}/generate-image/scene`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ turn_id: turnId, block_id: blockId }),
+    });
+}
+
+export async function fetchTurnGeneratedImages(turnId) {
+    return apiRequest(`/turns/${turnId}/generated-images`);
+}
+
+export async function fetchBlockGeneratedImages(blockId) {
+    return apiRequest(`/turn-presentations/blocks/${blockId}/generated-images`);
 }
 
 export async function fetchEventsByTurn(turnId) {

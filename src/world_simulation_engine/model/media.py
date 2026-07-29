@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -26,6 +27,10 @@ class MediaFile(BaseModel):
     filename: str = Field(
         ...,
         description="Filename of the media file, no format suffix",
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When this media file was created, used to order galleries of generated media",
     )
 
 

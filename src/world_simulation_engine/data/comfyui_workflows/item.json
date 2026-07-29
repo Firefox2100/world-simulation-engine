@@ -1,5 +1,5 @@
 {
-  "model": "/7/inputs/model",
+  "model": "/7/inputs/ckpt_name",
   "vae": "/1/inputs/vae_name",
   "clip": "/3/inputs/clip_name",
   "positive_prompt": "/4/inputs/text",
@@ -85,12 +85,11 @@
     },
     "7": {
       "inputs": {
-        "unet_name": "anima-base-v1.0.safetensors",
-        "weight_dtype": "default"
+        "ckpt_name": "anima-base-v1.0.safetensors"
       },
-      "class_type": "UNETLoader",
+      "class_type": "CheckpointLoaderSimple",
       "_meta": {
-        "title": "Load Diffusion Model"
+        "title": "Load Checkpoint"
       }
     },
     "8": {

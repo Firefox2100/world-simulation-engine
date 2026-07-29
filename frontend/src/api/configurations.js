@@ -19,6 +19,10 @@ export const imageComponents = [
     "scene_image_generator",
 ];
 
+// Every image generator needs a chat model too (to build the image prompt), plus the trigger
+// that decides whether a turn should be auto-illustrated - it only ever needs a chat model.
+export const imageChatComponents = [...imageComponents, "turn_image_trigger"];
+
 export async function fetchConnections() {
     return apiRequest("/config/connections");
 }

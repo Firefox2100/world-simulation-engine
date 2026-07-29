@@ -27,6 +27,7 @@ class SceneImageGenerator(ImageGeneratorComponent):
                              simulation_id: str,
                              location_id: str,
                              turn_id: str | None = None,
+                             block_id: str | None = None,
                              ) -> MediaFile:
         location = await self._get_entity(location_id)
         if not location:
@@ -83,4 +84,5 @@ class SceneImageGenerator(ImageGeneratorComponent):
             title=location.name,
             filename=location_id,
             turn_id=turn_id,
+            block_id=block_id,
         )

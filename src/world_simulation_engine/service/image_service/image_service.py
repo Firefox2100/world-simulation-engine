@@ -57,7 +57,7 @@ class ImageService:
         result = await self.model.generate(
             prompt=positive_prompt,
             negative_prompt=negative_prompt,
-            model=model,
+            model=model if model is not None else self._model_config.model,
             size=f"{self._model_config.image_width}x{self._model_config.image_height}"
                 if self._model_config.image_width and self._model_config.image_height else "auto",
         )

@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,15 @@ from world_simulation_engine.service import DatabaseService, ImageService, LlmSe
 from world_simulation_engine.service.storage_service import FormatNormaliser
 from ..prompt_loader import PromptLoader
 from ..workflow_loader import WorkflowLoader
+
+# Mirrors InputInterpreter's OOC marker syntax: raw user-input presentation blocks (and their
+# owning Turn.content) store `[/OOC: ...]` commands verbatim, but they are player instructions to
+# the simulator, not diegetic action - they must never leak into an image generation prompt.
+_OOC_MARKER_PATTERN = re.compile(r"\[/OOC:.*?\]", flags=re.DOTALL)
+
+
+def _strip_ooc_markers(text: str) -> str:
+    return _OOC_MARKER_PATTERN.sub("", text).strip()
 
 
 class ImageSubjectContext(BaseModel):
@@ -271,6 +281,7 @@ class ImageGeneratorComponent:
                                       title: str | None = None,
                                       filename: str | None = None,
                                       turn_id: str | None = None,
+                                      block_id: str | None = None,
                                       ) -> MediaFile:
         normalised = FormatNormaliser.normalise_image(image_bytes)
         stored = await self._storage.save_bytes(normalised)
@@ -293,6 +304,8 @@ class ImageGeneratorComponent:
             await self._db.media.add_generated_image_link(source_id=entity_id, media_id=media.id)
         if turn_id:
             await self._db.media.link_turn_generated_image(turn_id=turn_id, media_id=media.id)
+        if block_id:
+            await self._db.media.link_presentation_block_image(block_id=block_id, media_id=media.id)
 
         return media
 
@@ -308,6 +321,7 @@ class ImageGeneratorComponent:
                                    title: str | None = None,
                                    filename: str | None = None,
                                    turn_id: str | None = None,
+                                   block_id: str | None = None,
                                    ) -> MediaFile:
         positive_prompt = (
             f"{', '.join([*canonical_tags, *transient_tags])}. {canonical_description} {transient_description}"
@@ -329,6 +343,7 @@ class ImageGeneratorComponent:
             title=title,
             filename=filename,
             turn_id=turn_id,
+            block_id=block_id,
         )
 
     async def _ensure_participants(self,
@@ -368,6 +383,7 @@ class ImageGeneratorComponent:
                                   title: str | None = None,
                                   filename: str | None = None,
                                   turn_id: str | None = None,
+                                  block_id: str | None = None,
                                   ) -> MediaFile:
         """Generate an image depicting several participants, each with its own canonical identity."""
         subjects = await self._ensure_participants(source_id=source_id, participants=participants)
@@ -390,6 +406,7 @@ class ImageGeneratorComponent:
             title=title,
             filename=filename,
             turn_id=turn_id,
+            block_id=block_id,
         )
 
     async def _narration_for_turn(self, turn_id: str) -> str:
@@ -398,11 +415,12 @@ class ImageGeneratorComponent:
             return ""
 
         blocks = await self._db.turn_presentation.list_blocks(turn_ids=[turn_id])
-        texts = [block.text for block in blocks if block.text]
+        texts = [_strip_ooc_markers(block.text) for block in blocks if block.text]
+        texts = [text for text in texts if text]
         if texts:
             return "\n".join(texts)
 
-        return turn.content
+        return _strip_ooc_markers(turn.content)
 
     async def generate(self,
                        *,

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.component.tts_generator import TurnVoiceTrigger
 from world_simulation_engine.misc.enums import TurnType
 from world_simulation_engine.model import (
+    GeneratedImageMediaFile,
     GeneratedVoiceMediaFile,
     NarrationProposal,
     PresentedTurn,
@@ -261,6 +262,30 @@ async def generate_presentation_block_voice(block_id: str, db: db_dep, storage: 
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"TTS generation failed: {exc}",
         ) from exc
+
+
+@turn_router.get(
+    "/turns/{turn_id}/generated-images",
+    response_model=list[GeneratedImageMediaFile],
+)
+async def list_turn_generated_images(turn_id: str, db: db_dep):
+    """All images ever generated for this turn as a whole (the block-less presentation case)."""
+    if not await db.turn.get_turn(turn_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Turn {turn_id} not found")
+
+    return await db.media.list_turn_generated_images(turn_id)
+
+
+@turn_router.get(
+    "/turn-presentations/blocks/{block_id}/generated-images",
+    response_model=list[GeneratedImageMediaFile],
+)
+async def list_presentation_block_generated_images(block_id: str, db: db_dep):
+    """All images ever generated specifically for this narration/speech/action segment."""
+    if not await db.turn_presentation.get_block(block_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Presentation block {block_id} not found")
+
+    return await db.media.list_presentation_block_images(block_id)
 
 
 @turn_router.post("/worlds/{world_id}/turns", response_model=Turn)

@@ -6,6 +6,9 @@ from world_simulation_engine.model import GeneratedImageMediaFile, GeneratedVoic
 
 
 def _media_from_node(media_node) -> MediaFile:
+    created_at = media_node.get("created_at")
+    if hasattr(created_at, "to_native"):
+        created_at = created_at.to_native()
     data = {
         "id": media_node["id"],
         "type": media_node["type"],
@@ -13,6 +16,10 @@ def _media_from_node(media_node) -> MediaFile:
         "hash": media_node["hash"],
         "filename": media_node["filename"],
     }
+    # Media created before created_at existed has no property to read - fall back to "now" rather
+    # than fail validation, since there is no better information available for those older nodes.
+    if created_at is not None:
+        data["created_at"] = created_at
     if media_node.get("prompt_name") is not None:
         return PromptMediaFile(
             **data,
@@ -70,6 +77,7 @@ class MediaStore:
                 title: $title,
                 hash: $hash,
                 filename: $filename,
+                created_at: $created_at,
                 prompt_name: $prompt_name,
                 language: $language,
                 component: $component,
@@ -94,6 +102,7 @@ class MediaStore:
                 "title": media.title,
                 "hash": media.hash,
                 "filename": media.filename,
+                "created_at": media.created_at,
                 "prompt_name": getattr(media, "prompt_name", None),
                 "language": getattr(media, "language", None),
                 "component": getattr(media, "component", None),
@@ -336,7 +345,7 @@ class MediaStore:
             MATCH (source:{self._MEDIA_SOURCE_LABELS} {{id: $source_id}})
             MATCH (source)-[:HAS_IMAGE]->(media:Media)
             RETURN DISTINCT media
-            ORDER BY media.filename, media.id
+            ORDER BY media.created_at, media.id
             """,
             parameters_={"source_id": source_id},
         )
@@ -374,9 +383,47 @@ class MediaStore:
             """
             MATCH (:Turn {id: $turn_id})-[:GENERATES_IMAGE]->(media:Media)
             RETURN DISTINCT media
-            ORDER BY media.filename, media.id
+            ORDER BY media.created_at, media.id
             """,
             parameters_={"turn_id": turn_id},
+        )
+
+        return [
+            _media_from_node(record["media"])
+            for record in result.records
+        ]
+
+    async def link_presentation_block_image(self,
+                                            block_id: str,
+                                            media_id: str,
+                                            ) -> MediaFile | None:
+        result = await self._driver.execute_query(
+            """
+            MATCH (block:TurnPresentationBlock {id: $block_id})
+            MATCH (media:Media {id: $media_id})
+            MERGE (block)-[:GENERATES_IMAGE]->(media)
+            RETURN media LIMIT 1
+            """,
+            parameters_={
+                "block_id": block_id,
+                "media_id": media_id,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _media_from_node(record["media"])
+
+    async def list_presentation_block_images(self, block_id: str) -> list[MediaFile]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:TurnPresentationBlock {id: $block_id})-[:GENERATES_IMAGE]->(media:Media)
+            RETURN DISTINCT media
+            ORDER BY media.created_at, media.id
+            """,
+            parameters_={"block_id": block_id},
         )
 
         return [

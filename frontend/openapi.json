@@ -1342,6 +1342,54 @@
       }
     },
     "/characters/{character_id}/location": {
+      "get": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Get Character Location",
+        "operationId": "get_character_location_characters__character_id__location_get",
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Location"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Character Location Characters  Character Id  Location Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "put": {
         "tags": [
           "Character"
@@ -16308,6 +16356,100 @@
         }
       }
     },
+    "/turns/{turn_id}/generated-images": {
+      "get": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "List Turn Generated Images",
+        "description": "All images ever generated for this turn as a whole (the block-less presentation case).",
+        "operationId": "list_turn_generated_images_turns__turn_id__generated_images_get",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turn Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                  },
+                  "title": "Response List Turn Generated Images Turns  Turn Id  Generated Images Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/turn-presentations/blocks/{block_id}/generated-images": {
+      "get": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "List Presentation Block Generated Images",
+        "description": "All images ever generated specifically for this narration/speech/action segment.",
+        "operationId": "list_presentation_block_generated_images_turn_presentations_blocks__block_id__generated_images_get",
+        "parameters": [
+          {
+            "name": "block_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Block Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GeneratedImageMediaFile"
+                  },
+                  "title": "Response List Presentation Block Generated Images Turn Presentations Blocks  Block Id  Generated Images Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/worlds/{world_id}/turns": {
       "post": {
         "tags": [
@@ -21337,6 +21479,18 @@
             ],
             "title": "Turn Id",
             "description": "Optional turn to use for pose/relationship context and to link via GENERATES_IMAGE"
+          },
+          "block_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Id",
+            "description": "Optional presentation block (narration/speech/action segment) to link the generated image to, so it can be shown inline with that specific segment"
           }
         },
         "type": "object",
@@ -21375,6 +21529,12 @@
             "type": "string",
             "title": "Filename",
             "description": "Filename of the media file, no format suffix"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this media file was created, used to order galleries of generated media"
           },
           "generation_type": {
             "$ref": "#/components/schemas/ImageGenerationType",
@@ -21473,6 +21633,12 @@
             "type": "string",
             "title": "Filename",
             "description": "Filename of the media file, no format suffix"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this media file was created, used to order galleries of generated media"
           },
           "presentation_block_id": {
             "type": "string",
@@ -23261,6 +23427,12 @@
             "type": "string",
             "title": "Filename",
             "description": "Filename of the media file, no format suffix"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this media file was created, used to order galleries of generated media"
           }
         },
         "type": "object",
@@ -24201,6 +24373,12 @@
             "type": "string",
             "title": "Filename",
             "description": "Filename of the media file, no format suffix"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this media file was created, used to order galleries of generated media"
           },
           "prompt_name": {
             "type": "string",
@@ -25903,6 +26081,12 @@
             "type": "string",
             "title": "Filename",
             "description": "Filename of the media file, no format suffix"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When this media file was created, used to order galleries of generated media"
           },
           "workflow_name": {
             "type": "string",

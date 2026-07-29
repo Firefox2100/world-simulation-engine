@@ -26,6 +26,7 @@ class CharacterPortraitImageGenerator(ImageGeneratorComponent):
                                 simulation_id: str,
                                 character_id: str,
                                 turn_id: str | None = None,
+                                block_id: str | None = None,
                                 ) -> MediaFile:
         character = await self._get_entity(character_id)
         if not character:
@@ -79,4 +80,5 @@ class CharacterPortraitImageGenerator(ImageGeneratorComponent):
             title=character.name,
             filename=character_id,
             turn_id=turn_id,
+            block_id=block_id,
         )
