@@ -12,7 +12,7 @@ from world_simulation_engine.misc.enums import ComponentType, ConnectionType, Su
     TtsGenerationMode
 from world_simulation_engine.model import AllTalkXttsModelConfig, Author, Character, CharacterTtsConfig, \
     ConnectionConfig, CurrentActivity, PresentationBlockType, PresentationCompletion, Simulation, Turn, \
-    TurnPresentationBlock, TurnPresentationRendering, World
+    TtsGenerationConfig, TurnPresentationBlock, TurnPresentationRendering, World
 from world_simulation_engine.router import config_router, turn_router
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
@@ -104,11 +104,14 @@ def tts_generation_api(neo4j_container, tmp_path, monkeypatch):
         connection = ConnectionConfig(
             id=str(uuid4()), type=ConnectionType.ALLTALK, name="Local AllTalk", base_url="http://localhost:7851",
         )
-        backend = AllTalkXttsModelConfig(id=str(uuid4()), language="en", narrator_voice="male_01.wav")
+        backend = AllTalkXttsModelConfig(id=str(uuid4()), language="en")
         await database.config.create_connection(connection)
         await database.config.create_tts(backend)
         await database.config.link_connection(backend.id, connection.id)
         await database.config.link_tts(simulation.id, backend.id, ComponentType.NARRATOR_TTS)
+        await database.config.set_tts_generation_config(
+            simulation.id, TtsGenerationConfig(narrator_voice="male_01.wav"),
+        )
         await database.character_tts_config.set_character_tts_config(
             character.id, CharacterTtsConfig(character_voice="female_01.wav"),
         )

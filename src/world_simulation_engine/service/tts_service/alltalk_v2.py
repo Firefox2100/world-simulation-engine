@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, AsyncIterator
 from httpx import AsyncClient, Timeout
 
@@ -44,6 +45,40 @@ class TtsAllTalkV2:
         self._repetition_penalty = repetition_penalty
 
         self._client = AsyncClient(base_url=self._base_url, timeout=_REQUEST_TIMEOUT)
+
+    async def get_status(self) -> dict[str, Any]:
+        """
+        Fetch AllTalk's live, currently-loaded engine/model and capability flags, plus the voices and RVC
+        voices actually present on the server. This app never switches AllTalk's own engine/model - it only
+        reads this to know which inference-time parameters are valid and which voices exist, so config
+        editors can be driven by what the server actually has instead of a guessed/stale list.
+        """
+        settings_response, voices_response, rvc_response = await asyncio.gather(
+            self._client.get("/api/currentsettings"),
+            self._client.get("/api/voices"),
+            self._client.get("/api/rvcvoices"),
+        )
+        settings_response.raise_for_status()
+        voices_response.raise_for_status()
+        rvc_response.raise_for_status()
+
+        settings = settings_response.json()
+        voices = voices_response.json()
+        rvc_voices = rvc_response.json()
+
+        return {
+            "engine": settings.get("current_engine_loaded"),
+            "model": settings.get("current_model_loaded"),
+            "models_available": [
+                model["name"] for model in settings.get("models_available", []) if model.get("name")
+            ],
+            "languages_capable": bool(settings.get("languages_capable")),
+            "temperature_capable": bool(settings.get("temperature_capable")),
+            "repetition_penalty_capable": bool(settings.get("repetitionpenalty_capable")),
+            "generation_speed_capable": bool(settings.get("generationspeed_capable")),
+            "voices": voices.get("voices", []),
+            "rvc_voices": rvc_voices.get("rvcvoices", []),
+        }
 
     @staticmethod
     def _bool_str(value: bool) -> str:

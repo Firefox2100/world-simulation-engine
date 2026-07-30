@@ -168,7 +168,7 @@ async def test_character_tts_config_backend_link_used_for_voice_resolution(clean
     connection = ConnectionConfig(
         id=str(uuid4()), type=ConnectionType.ALLTALK, name="Local AllTalk", base_url="http://localhost:7851",
     )
-    backend = AllTalkXttsModelConfig(id=str(uuid4()), language="en", narrator_voice="male_01.wav")
+    backend = AllTalkXttsModelConfig(id=str(uuid4()), language="en")
     await config_store.create_connection(connection)
     await config_store.create_tts(backend)
     await config_store.link_connection(backend.id, connection.id)
@@ -182,6 +182,5 @@ async def test_character_tts_config_backend_link_used_for_voice_resolution(clean
     resolved_character_config = await character_tts_store.get_character_tts_config(character.id)
 
     assert resolved_backend.id == backend.id
-    assert resolved_backend.narrator_voice == "male_01.wav"
     assert resolved_connection.id == connection.id
     assert resolved_character_config.character_voice == "female_01.wav"

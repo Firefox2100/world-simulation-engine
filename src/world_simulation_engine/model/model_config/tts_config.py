@@ -8,13 +8,19 @@ from .connection_config import ConnectionConfig
 
 class TtsModelConfig(BaseModel):
     """
-    The configuration for a TTS (text-to-speech) model. This decides the voice/model to use, generation
-    parameters, etc.
+    The configuration for a TTS (text-to-speech) model: connection, engine, and shared generation
+    parameters. Deliberately holds no voice of any kind - narrator voice lives on TtsGenerationConfig and
+    each character's voice lives on CharacterTtsConfig, so many characters (and the narrator) can share one
+    backend config while each picking their own voice.
     """
 
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         description="Unique identifier for the model",
+    )
+    name: Optional[str] = Field(
+        None,
+        description="Display name of the TTS config, falls back to the model/engine identifier when unset",
     )
     model: Optional[str] = Field(
         None,
@@ -34,10 +40,11 @@ class AllTalkTtsModelConfig(TtsModelConfig):
     regardless of engine. Engine-specific generation parameters (e.g. temperature, pitch, language support)
     live on the per-engine subclasses instead, since AllTalk's engines do not all support the same knobs.
 
-    Which voice a given character uses (character_voice, rvc_character_voice, rvc_character_pitch) is NOT
-    part of this config - it lives on CharacterTtsConfig instead, so many characters can share one backend
-    config while each picking their own voice (see Character -[:HAS_CONFIG]-> CharacterTtsConfig
-    -[:USE_CONFIG]-> AllTalk*ModelConfig).
+    No voice of any kind lives here: a character's voice (character_voice, rvc_character_voice,
+    rvc_character_pitch) lives on CharacterTtsConfig, and the narrator's voice (narrator_voice,
+    rvc_narrator_voice, rvc_narrator_pitch) lives on TtsGenerationConfig, since the narrator is a
+    per-simulation concept rather than part of the shared backend (see Character -[:HAS_CONFIG]->
+    CharacterTtsConfig -[:USE_CONFIG]-> AllTalk*ModelConfig).
     """
 
     provider: Literal[ConnectionType.ALLTALK] = Field(
@@ -55,21 +62,6 @@ class AllTalkTtsModelConfig(TtsModelConfig):
     narrator_enabled: Optional[bool] = Field(
         None,
         description="Whether to enable the narrator voice for text outside quotes",
-    )
-    narrator_voice: Optional[str] = Field(
-        None,
-        description="Reference to the narrator voice to use. The narrator isn't a specific character, so "
-                    "this stays on the shared backend config rather than on a per-character config",
-    )
-    rvc_narrator_voice: Optional[str] = Field(
-        None,
-        description="RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC",
-    )
-    rvc_narrator_pitch: Optional[int] = Field(
-        None,
-        ge=-24,
-        le=24,
-        description="Pitch adjustment applied to the narrator RVC voice",
     )
     output_file_timestamp: Optional[bool] = Field(
         None,
@@ -209,6 +201,34 @@ class AllTalkF5ttsModelConfig(AllTalkTtsModelConfig):
         ge=0.25,
         le=2.0,
         description="Speed of the generated speech",
+    )
+
+
+class AllTalkStatus(BaseModel):
+    """
+    Live status reported by a running AllTalk V2 server for a given connection: the engine/model it
+    currently has loaded, which inference-time parameters that engine supports, and the voices/RVC voices
+    actually present on disk. This app never changes AllTalk's own engine/model configuration, so config
+    editors should use this - rather than a hardcoded per-engine guess - to decide which fields to show and
+    which voices are selectable.
+    """
+
+    engine: TtsEngine = Field(..., description="TTS engine currently loaded on the AllTalk server")
+    model: Optional[str] = Field(None, description="Model currently loaded for the active engine")
+    models_available: list[str] = Field(
+        default_factory=list, description="Models available for the active engine",
+    )
+    languages_capable: bool = Field(False, description="Whether the active engine supports language selection")
+    temperature_capable: bool = Field(
+        False, description="Whether the active engine supports sampling temperature",
+    )
+    repetition_penalty_capable: bool = Field(
+        False, description="Whether the active engine supports repetition penalty",
+    )
+    generation_speed_capable: bool = Field(False, description="Whether the active engine supports speed adjustment")
+    voices: list[str] = Field(default_factory=list, description="Voices currently available on the AllTalk server")
+    rvc_voices: list[str] = Field(
+        default_factory=list, description="RVC voice models currently available on the AllTalk server",
     )
 
 

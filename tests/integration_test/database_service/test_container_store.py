@@ -76,9 +76,13 @@ async def test_list_update_and_delete_container(clean_neo4j):
         position="against the wall",
     )
 
-    assert await store.list_containers() == [container]
-    assert await store.list_containers(world_id=world.id) == [container]
-    assert await store.list_containers(location_id=location.id) == [container]
+    located_container = container.model_copy(
+        update={"location_id": location.id, "position": "against the wall"}
+    )
+
+    assert await store.list_containers() == [located_container]
+    assert await store.list_containers(world_id=world.id) == [located_container]
+    assert await store.list_containers(location_id=location.id) == [located_container]
 
     updated_container = await store.update_container(
         container.id,
@@ -88,15 +92,15 @@ async def test_list_update_and_delete_container(clean_neo4j):
         },
     )
 
-    assert updated_container == Container(
-        id=container.id,
-        name="Updated Chest",
-        description=container.description,
-        state=ContainerState.UNLOCKED,
+    assert updated_container == located_container.model_copy(
+        update={"name": "Updated Chest", "state": ContainerState.UNLOCKED}
     )
-    assert await store.assign_container(container.id, holder_id=holder.id, owner_id=owner.id) == updated_container
-    assert await store.list_containers(holder_id=holder.id) == [updated_container]
-    assert await store.list_containers(owner_id=owner.id) == [updated_container]
+    held_container = updated_container.model_copy(
+        update={"holder_id": holder.id, "owner_id": owner.id, "location_id": None, "position": None}
+    )
+    assert await store.assign_container(container.id, holder_id=holder.id, owner_id=owner.id) == held_container
+    assert await store.list_containers(holder_id=holder.id) == [held_container]
+    assert await store.list_containers(owner_id=owner.id) == [held_container]
     assert await store.list_containers(location_id=location.id) == []
     assert await store.delete_container(container.id) is True
     assert await store.get_container(container.id) is None

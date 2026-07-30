@@ -121,8 +121,9 @@ async def test_equipment_inventory_hold_and_equip_states(clean_neo4j):
     await equipment_store.change_owner(equipment.id, holder.id)
     await equipment_store.change_hold_state(equipment.id, holder.id, equipped=False)
 
-    assert await equipment_store.list_equipment(owner_id=holder.id) == [equipment]
-    assert await equipment_store.list_equipment(holder_id=holder.id) == [equipment]
+    held_equipment = equipment.model_copy(update={"owner_id": holder.id, "holder_id": holder.id})
+    assert await equipment_store.list_equipment(owner_id=holder.id) == [held_equipment]
+    assert await equipment_store.list_equipment(holder_id=holder.id) == [held_equipment]
 
     held_inventory = await equipment_store.get_equipment_inventory(holder.id)
     assert held_inventory == [InventoryEquipment(**equipment.model_dump(), equipped=False)]
@@ -163,7 +164,10 @@ async def test_equipment_location_assignment(clean_neo4j):
     assert await equipment_store.get_equipment_by_location(location.id) == [
         (equipment, location, "near the entrance", None)
     ]
-    assert await equipment_store.list_equipment(location_id=location.id) == [equipment]
+    located_equipment = equipment.model_copy(
+        update={"location_id": location.id, "position": "near the entrance"}
+    )
+    assert await equipment_store.list_equipment(location_id=location.id) == [located_equipment]
 
 
 async def test_hold_equipment_removes_location_presence(clean_neo4j):

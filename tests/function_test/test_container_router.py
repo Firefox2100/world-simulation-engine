@@ -161,7 +161,9 @@ def test_create_list_get_update_and_delete_container(container_api):
 
     assert client.get("/containers", params={"world_id": container_api.world.id}).json() == [world_container]
     assert client.get("/containers", params={"simulation_id": container_api.simulation.id}).json() == [
-        container_api.child_container.model_dump(mode="json"),
+        container_api.child_container.model_copy(
+            update={"holder_id": simulation_container["id"]}
+        ).model_dump(mode="json"),
         simulation_container,
     ]
     assert client.get("/containers", params={"location_id": container_api.location.id}).json() == [

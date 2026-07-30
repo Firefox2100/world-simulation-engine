@@ -1852,6 +1852,49 @@
         }
       }
     },
+    "/config/connections/{connection_id}/alltalk-status": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Alltalk Connection Status",
+        "description": "Proxy AllTalk V2's live currently-loaded engine/model, capabilities, and voices for the given\nconnection. This app never changes AllTalk's own engine/model configuration - editors use this to know\nwhich inference-time fields are valid and which voices actually exist on the server, instead of\nguessing from a hardcoded list.",
+        "operationId": "get_alltalk_connection_status_config_connections__connection_id__alltalk_status_get",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllTalkStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/llm": {
       "get": {
         "tags": [
@@ -17416,6 +17459,18 @@
             "title": "Id",
             "description": "Unique identifier for the model"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the TTS config, falls back to the model/engine identifier when unset"
+          },
           "model": {
             "anyOf": [
               {
@@ -17479,44 +17534,6 @@
             ],
             "title": "Narrator Enabled",
             "description": "Whether to enable the narrator voice for text outside quotes"
-          },
-          "narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrator Voice",
-            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
-          },
-          "rvc_narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Voice",
-            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
-          },
-          "rvc_narrator_pitch": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 24.0,
-                "minimum": -24.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Pitch",
-            "description": "Pitch adjustment applied to the narrator RVC voice"
           },
           "output_file_timestamp": {
             "anyOf": [
@@ -17601,6 +17618,18 @@
             "title": "Id",
             "description": "Unique identifier for the model"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the TTS config, falls back to the model/engine identifier when unset"
+          },
           "model": {
             "anyOf": [
               {
@@ -17664,44 +17693,6 @@
             ],
             "title": "Narrator Enabled",
             "description": "Whether to enable the narrator voice for text outside quotes"
-          },
-          "narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrator Voice",
-            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
-          },
-          "rvc_narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Voice",
-            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
-          },
-          "rvc_narrator_pitch": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 24.0,
-                "minimum": -24.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Pitch",
-            "description": "Pitch adjustment applied to the narrator RVC voice"
           },
           "output_file_timestamp": {
             "anyOf": [
@@ -17788,6 +17779,18 @@
             "title": "Id",
             "description": "Unique identifier for the model"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the TTS config, falls back to the model/engine identifier when unset"
+          },
           "model": {
             "anyOf": [
               {
@@ -17851,44 +17854,6 @@
             ],
             "title": "Narrator Enabled",
             "description": "Whether to enable the narrator voice for text outside quotes"
-          },
-          "narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrator Voice",
-            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
-          },
-          "rvc_narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Voice",
-            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
-          },
-          "rvc_narrator_pitch": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 24.0,
-                "minimum": -24.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Pitch",
-            "description": "Pitch adjustment applied to the narrator RVC voice"
           },
           "output_file_timestamp": {
             "anyOf": [
@@ -17954,12 +17919,98 @@
         "title": "AllTalkPiperModelConfig",
         "description": "Configuration for AllTalk's Piper engine: fast, deterministic ONNX voice models. No voice cloning,\nno sampling parameters (temperature/repetition penalty), no runtime language switching, and no pitch\nadjustment - only playback speed is tunable."
       },
+      "AllTalkStatus": {
+        "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/TtsEngine",
+            "description": "TTS engine currently loaded on the AllTalk server"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model",
+            "description": "Model currently loaded for the active engine"
+          },
+          "models_available": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models Available",
+            "description": "Models available for the active engine"
+          },
+          "languages_capable": {
+            "type": "boolean",
+            "title": "Languages Capable",
+            "description": "Whether the active engine supports language selection",
+            "default": false
+          },
+          "temperature_capable": {
+            "type": "boolean",
+            "title": "Temperature Capable",
+            "description": "Whether the active engine supports sampling temperature",
+            "default": false
+          },
+          "repetition_penalty_capable": {
+            "type": "boolean",
+            "title": "Repetition Penalty Capable",
+            "description": "Whether the active engine supports repetition penalty",
+            "default": false
+          },
+          "generation_speed_capable": {
+            "type": "boolean",
+            "title": "Generation Speed Capable",
+            "description": "Whether the active engine supports speed adjustment",
+            "default": false
+          },
+          "voices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Voices",
+            "description": "Voices currently available on the AllTalk server"
+          },
+          "rvc_voices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rvc Voices",
+            "description": "RVC voice models currently available on the AllTalk server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "engine"
+        ],
+        "title": "AllTalkStatus",
+        "description": "Live status reported by a running AllTalk V2 server for a given connection: the engine/model it\ncurrently has loaded, which inference-time parameters that engine supports, and the voices/RVC voices\nactually present on disk. This app never changes AllTalk's own engine/model configuration, so config\neditors should use this - rather than a hardcoded per-engine guess - to decide which fields to show and\nwhich voices are selectable."
+      },
       "AllTalkVitsModelConfig": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id",
             "description": "Unique identifier for the model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the TTS config, falls back to the model/engine identifier when unset"
           },
           "model": {
             "anyOf": [
@@ -18024,44 +18075,6 @@
             ],
             "title": "Narrator Enabled",
             "description": "Whether to enable the narrator voice for text outside quotes"
-          },
-          "narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrator Voice",
-            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
-          },
-          "rvc_narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Voice",
-            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
-          },
-          "rvc_narrator_pitch": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 24.0,
-                "minimum": -24.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Pitch",
-            "description": "Pitch adjustment applied to the narrator RVC voice"
           },
           "output_file_timestamp": {
             "anyOf": [
@@ -18146,6 +18159,18 @@
             "title": "Id",
             "description": "Unique identifier for the model"
           },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the TTS config, falls back to the model/engine identifier when unset"
+          },
           "model": {
             "anyOf": [
               {
@@ -18209,44 +18234,6 @@
             ],
             "title": "Narrator Enabled",
             "description": "Whether to enable the narrator voice for text outside quotes"
-          },
-          "narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrator Voice",
-            "description": "Reference to the narrator voice to use. The narrator isn't a specific character, so this stays on the shared backend config rather than on a per-character config"
-          },
-          "rvc_narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Voice",
-            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
-          },
-          "rvc_narrator_pitch": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 24.0,
-                "minimum": -24.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Pitch",
-            "description": "Pitch adjustment applied to the narrator RVC voice"
           },
           "output_file_timestamp": {
             "anyOf": [
@@ -20277,6 +20264,54 @@
           "state": {
             "$ref": "#/components/schemas/ContainerState",
             "description": "The current state of the container"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id",
+            "description": "Entity that owns the container, if any. Populated when read back from storage."
+          },
+          "holder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder Id",
+            "description": "Entity that holds the container, if any. Populated when read back from storage."
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id",
+            "description": "Location the container is present in, if not held by another entity. Populated when read back from storage."
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position",
+            "description": "Position of the container in its location, if present in a location."
           }
         },
         "type": "object",
@@ -20933,6 +20968,54 @@
             ],
             "title": "Quality",
             "description": "Optional quality modifier of the equipment"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id",
+            "description": "Entity that owns the equipment, if any. Populated when read back from storage."
+          },
+          "holder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder Id",
+            "description": "Entity that holds or wears the equipment, if any. Populated when read back from storage."
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id",
+            "description": "Location the equipment is present in, if not held by another entity. Populated when read back from storage."
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position",
+            "description": "Position of the equipment in its location, if present in a location."
           }
         },
         "type": "object",
@@ -22828,6 +22911,54 @@
             "title": "Quality",
             "description": "Optional quality modifier of the equipment"
           },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id",
+            "description": "Entity that owns the equipment, if any. Populated when read back from storage."
+          },
+          "holder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder Id",
+            "description": "Entity that holds or wears the equipment, if any. Populated when read back from storage."
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id",
+            "description": "Location the equipment is present in, if not held by another entity. Populated when read back from storage."
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position",
+            "description": "Position of the equipment in its location, if present in a location."
+          },
           "equipped": {
             "type": "boolean",
             "title": "Equipped",
@@ -23015,6 +23146,54 @@
               }
             ],
             "description": "The conceptual item type this stack is of. Populated when the stack is read back from storage; not required when constructing a stack for creation."
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id",
+            "description": "Entity that owns the stack, if any. Populated when read back from storage."
+          },
+          "holder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder Id",
+            "description": "Entity that holds the stack, if any. Populated when read back from storage."
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id",
+            "description": "Location the stack is present in, if not held by another entity. Populated when read back from storage."
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position",
+            "description": "Position of the stack in its location, if present in a location."
           }
         },
         "type": "object",
@@ -25294,6 +25473,18 @@
       },
       "TtsConfigUpdate": {
         "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Display name of the TTS config"
+          },
           "model": {
             "anyOf": [
               {
@@ -25305,18 +25496,6 @@
             ],
             "title": "Model",
             "description": "Name of the model to use"
-          },
-          "character_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Character Voice",
-            "description": "Reference to the character voice to use"
           },
           "text_filtering": {
             "anyOf": [
@@ -25351,66 +25530,6 @@
             ],
             "title": "Narrator Enabled",
             "description": "Whether to enable the narrator voice"
-          },
-          "narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrator Voice",
-            "description": "Reference to the narrator voice to use"
-          },
-          "rvc_character_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Character Voice",
-            "description": "RVC voice model for the character"
-          },
-          "rvc_character_pitch": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Character Pitch",
-            "description": "Pitch adjustment for the character RVC voice"
-          },
-          "rvc_narrator_voice": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Voice",
-            "description": "RVC voice model for the narrator"
-          },
-          "rvc_narrator_pitch": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rvc Narrator Pitch",
-            "description": "Pitch adjustment for the narrator RVC voice"
           },
           "output_file_timestamp": {
             "anyOf": [
@@ -25499,7 +25618,18 @@
         },
         "type": "object",
         "title": "TtsConfigUpdate",
-        "description": "DTO model for updating TTS model configs. Fields span every AllTalk engine; only the ones\napplicable to the target config's engine have any effect."
+        "description": "DTO model for updating TTS model configs. Fields span every AllTalk engine; only the ones\napplicable to the target config's engine have any effect. Holds no voice of any kind - narrator\nvoice is updated via TtsGenerationConfigUpdate and character voice via CharacterTtsConfigUpdate."
+      },
+      "TtsEngine": {
+        "type": "string",
+        "enum": [
+          "xtts",
+          "piper",
+          "vits",
+          "parler",
+          "f5tts"
+        ],
+        "title": "TtsEngine"
       },
       "TtsGenerationConfig": {
         "properties": {
@@ -25518,11 +25648,49 @@
             "title": "Autoplay In Browser",
             "description": "Whether the frontend should automatically play a turn's narration/speech segments back-to-back in the browser once auto-generation finishes, without requiring the user to click each segment. Only meaningful when mode is 'auto'. Distinct from AllTalkTtsModelConfig.autoplay, which plays audio at the AllTalk server's own terminal, not in the user's browser.",
             "default": false
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator's voice, used for narration segments and speech with no attributed speaker"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 24.0,
+                "minimum": -24.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
           }
         },
         "type": "object",
         "title": "TtsGenerationConfig",
-        "description": "Per-simulation configuration for automatically triggering TTS generation after a turn."
+        "description": "Per-simulation configuration for automatically triggering TTS generation after a turn, and for the\nnarrator's own voice. The narrator isn't a specific character, so it has no CharacterTtsConfig to hold\nits voice - since it is a per-simulation concept, its voice lives here instead of on the shared backend\nconfig, letting many simulations share one backend while each picking its own narrator voice."
       },
       "TtsGenerationConfigUpdate": {
         "properties": {
@@ -25535,6 +25703,42 @@
             "title": "Autoplay In Browser",
             "description": "Whether the frontend should auto-play a turn's segments once generated",
             "default": false
+          },
+          "narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrator Voice",
+            "description": "Reference to the narrator's voice, used for narration segments and speech with no attributed speaker"
+          },
+          "rvc_narrator_voice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Voice",
+            "description": "RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC"
+          },
+          "rvc_narrator_pitch": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rvc Narrator Pitch",
+            "description": "Pitch adjustment applied to the narrator RVC voice"
           }
         },
         "type": "object",
@@ -25542,7 +25746,7 @@
           "mode"
         ],
         "title": "TtsGenerationConfigUpdate",
-        "description": "DTO model for updating a simulation's auto TTS generation configuration"
+        "description": "DTO model for updating a simulation's auto TTS generation configuration, and the narrator's voice."
       },
       "TtsGenerationMode": {
         "type": "string",

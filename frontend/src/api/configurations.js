@@ -53,6 +53,10 @@ export async function deleteConnection(connectionId) {
     });
 }
 
+export async function fetchAllTalkStatus(connectionId) {
+    return apiRequest(`/config/connections/${connectionId}/alltalk-status`);
+}
+
 export async function fetchLlmConfigs() {
     return apiRequest("/config/llm");
 }

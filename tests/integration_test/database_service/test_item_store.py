@@ -112,7 +112,7 @@ async def test_stack_inventory_holder_and_owner(clean_neo4j):
         stack,
         holder_id=holder.id,
         owner_id=owner.id,
-    ) == stack.model_copy(update={"item": item})
+    ) == stack.model_copy(update={"item": item, "holder_id": holder.id, "owner_id": owner.id})
 
     inventory = await item_store.get_inventory(holder.id)
 
@@ -152,7 +152,7 @@ async def test_list_update_and_delete_stack_with_relationship_filters(clean_neo4
     await item_store.create_item(item, source_id=world.id)
     await item_store.create_stack(item.id, stack, location_id=location.id, source_id=world.id)
     await item_store.assign_stack(stack.id, owner_id=owner.id)
-    stack = stack.model_copy(update={"item": item})
+    stack = stack.model_copy(update={"item": item, "location_id": location.id, "owner_id": owner.id})
 
     assert await item_store.get_stack(stack.id) == stack
     assert await item_store.list_stacks() == [stack]
@@ -173,9 +173,17 @@ async def test_list_update_and_delete_stack_with_relationship_filters(clean_neo4
         },
     )
 
-    assert updated_stack == ItemStack(id=stack.id, quantity=2, quality="bruised", item=item)
-    assert await item_store.assign_stack(stack.id, holder_id=holder.id) == updated_stack
-    assert await item_store.list_stacks(holder_id=holder.id) == [updated_stack]
+    assert updated_stack == ItemStack(
+        id=stack.id,
+        quantity=2,
+        quality="bruised",
+        item=item,
+        location_id=location.id,
+        owner_id=owner.id,
+    )
+    held_stack = updated_stack.model_copy(update={"holder_id": holder.id, "location_id": None})
+    assert await item_store.assign_stack(stack.id, holder_id=holder.id) == held_stack
+    assert await item_store.list_stacks(holder_id=holder.id) == [held_stack]
     assert await item_store.list_stacks(location_id=location.id) == []
     assert await item_store.delete_stack(stack.id) is True
     assert await item_store.get_stack(stack.id) is None
@@ -204,7 +212,7 @@ async def test_create_stack_can_assign_physical_stack_to_simulation(clean_neo4j)
         stack,
         source_id=simulation.id,
         holder_id=holder.id,
-    ) == stack.model_copy(update={"item": item})
+    ) == stack.model_copy(update={"item": item, "holder_id": holder.id})
 
     result = await clean_neo4j.execute_query(
         """

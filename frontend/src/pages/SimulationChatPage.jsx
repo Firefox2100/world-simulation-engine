@@ -3,6 +3,7 @@ import { Link, NavLink, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import {
+    fetchAllTalkStatus,
     fetchEmbeddingConfigs,
     fetchImageConfigs,
     fetchLlmConfigs,
@@ -22,7 +23,6 @@ import {
     setSimulationTtsConfig,
     setSimulationTtsGenerationConfig,
     simulatorComponents,
-    updateTtsConfig,
 } from "@/api/configurations";
 import {
     fetchBlockGeneratedImages,
@@ -95,7 +95,6 @@ const detailSections = [
     "stacks",
     "equipment",
     "containers",
-    "turns",
     "events",
     "memories",
     "intents",
@@ -108,7 +107,6 @@ const entityDetailSections = [
     "stacks",
     "equipment",
     "containers",
-    "turns",
     "events",
     "memories",
     "intents",
@@ -1182,9 +1180,7 @@ function formatLocation(location, emptyValue) {
         return emptyValue;
     }
 
-    return [location.primary_location, location.detailed_location, location.scene]
-        .filter(Boolean)
-        .join(": ") || emptyValue;
+    return location.name || emptyValue;
 }
 
 function configLabel(config, fallback) {
@@ -1309,7 +1305,15 @@ function describeEntity(entity) {
 // content/turn_number/rendering_id are Turn-specific synthetic fields (see normalizeTurn in
 // api/simulations.js) that always duplicate narration/sequence once those are shown, so they're
 // dropped from the generic grid outright rather than case-by-case per entity.
-const alwaysHiddenEntityFields = ["attributes", "stats", "embedding", "content", "turn_number", "rendering_id"];
+const alwaysHiddenEntityFields = [
+    "id",
+    "attributes",
+    "stats",
+    "embedding",
+    "content",
+    "turn_number",
+    "rendering_id",
+];
 
 function entityRows(entity, t) {
     const descriptionField = describeEntityField(entity);
@@ -1328,12 +1332,55 @@ function entityRows(entity, t) {
             return typeof value !== "object";
         })
         .map(([key, value]) => ({
+            key,
             label: t(`simulationDetails.genericFields.${key}`, { defaultValue: key.replaceAll("_", " ") }),
             value: Array.isArray(value) ? value.join(", ") : String(value),
+            refId: key.endsWith("_id") && !Array.isArray(value) ? String(value) : null,
         }));
 }
 
-function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImage, coverImageAction = null }) {
+// Sections whose entities are addressable from a generic reference field (owner_id, holder_id,
+// location_id, ...). Characters and locations are checked first since they're the most common
+// targets; order among the rest doesn't matter since ids are unique across the simulation.
+const referenceLookupSections = ["background", "items", "stacks", "equipment", "containers", "landmarks"];
+
+function resolveEntityReference(id, { characters, locations, entities }) {
+    if (!id) {
+        return null;
+    }
+
+    const character = characters?.find((candidate) => candidate.id === id);
+    if (character) {
+        return { section: "characters", label: character.name };
+    }
+
+    const location = locations?.find((candidate) => candidate.id === id);
+    if (location) {
+        return { section: "locations", label: formatLocation(location, id) };
+    }
+
+    for (const section of referenceLookupSections) {
+        const match = (entities?.[section] ?? []).find((candidate) => candidate.id === id);
+        if (match) {
+            return { section, label: entityTitle(match) };
+        }
+    }
+
+    return null;
+}
+
+function GenericEntityPanel({
+    section,
+    entity,
+    emptyText,
+    imageUrl,
+    fallbackImage,
+    coverImageAction = null,
+    characters = emptyList,
+    locations = emptyList,
+    entities = emptyObject,
+    onNavigate,
+}) {
     const { t } = useTranslation();
 
     if (!entity) {
@@ -1360,12 +1407,26 @@ function GenericEntityPanel({ section, entity, emptyText, imageUrl, fallbackImag
             <div className="simulation-details-separator" />
 
             <dl className="simulation-details-grid">
-                {entityRows(entity, t).map((row) => (
-                    <div key={`${section}-${row.label}`} className="simulation-details-row">
-                        <dt>{row.label}</dt>
-                        <dd>{row.value || t("simulationDetails.emptyValue")}</dd>
-                    </div>
-                ))}
+                {entityRows(entity, t).map((row) => {
+                    const reference = row.refId
+                        ? resolveEntityReference(row.refId, { characters, locations, entities })
+                        : null;
+
+                    return (
+                        <div key={`${section}-${row.label}`} className="simulation-details-row">
+                            <dt>{row.label}</dt>
+                            <dd>
+                                {reference ? (
+                                    <DetailLink onClick={() => onNavigate?.(reference.section, row.refId)}>
+                                        {reference.label}
+                                    </DetailLink>
+                                ) : (
+                                    row.value || t("simulationDetails.emptyValue")
+                                )}
+                            </dd>
+                        </div>
+                    );
+                })}
             </dl>
 
             <ObjectList
@@ -1947,6 +2008,10 @@ function TtsGenerationConfigEditor({ simulationId }) {
     const [availableBackends, setAvailableBackends] = useState([]);
     const [backendConfigId, setBackendConfigId] = useState(null);
     const [narratorVoice, setNarratorVoice] = useState("");
+    const [rvcNarratorVoice, setRvcNarratorVoice] = useState("");
+    const [rvcNarratorPitch, setRvcNarratorPitch] = useState("");
+    const [voiceOptions, setVoiceOptions] = useState([]);
+    const [rvcVoiceOptions, setRvcVoiceOptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [notice, setNotice] = useState(null);
@@ -1971,7 +2036,9 @@ function TtsGenerationConfigEditor({ simulationId }) {
                     setAutoplayInBrowser(Boolean(genConfig.autoplay_in_browser));
                     setAvailableBackends(backends);
                     setBackendConfigId(backend?.id ?? null);
-                    setNarratorVoice(backend?.narrator_voice ?? "");
+                    setNarratorVoice(genConfig.narrator_voice ?? "");
+                    setRvcNarratorVoice(genConfig.rvc_narrator_voice ?? "");
+                    setRvcNarratorPitch(genConfig.rvc_narrator_pitch == null ? "" : String(genConfig.rvc_narrator_pitch));
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -1991,10 +2058,40 @@ function TtsGenerationConfigEditor({ simulationId }) {
         };
     }, [simulationId]);
 
+    // The narrator's voice and RVC voice can only be ones AllTalk actually has loaded, so they're
+    // fetched live from the selected backend's connection rather than typed in freehand.
+    useEffect(() => {
+        const connectionId = availableBackends.find((backend) => backend.id === backendConfigId)?.connection?.id;
+        if (!connectionId) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        async function loadVoices() {
+            try {
+                const status = await fetchAllTalkStatus(connectionId);
+                if (!cancelled) {
+                    setVoiceOptions(status.voices ?? []);
+                    setRvcVoiceOptions(status.rvc_voices ?? []);
+                }
+            } catch {
+                if (!cancelled) {
+                    setVoiceOptions([]);
+                    setRvcVoiceOptions([]);
+                }
+            }
+        }
+
+        loadVoices();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [backendConfigId, availableBackends]);
+
     function handleBackendChange(nextBackendConfigId) {
         setBackendConfigId(nextBackendConfigId || null);
-        const nextBackend = availableBackends.find((backend) => backend.id === nextBackendConfigId);
-        setNarratorVoice(nextBackend?.narrator_voice ?? "");
     }
 
     async function saveConfig() {
@@ -2005,12 +2102,17 @@ function TtsGenerationConfigEditor({ simulationId }) {
             const saved = await setSimulationTtsGenerationConfig(simulationId, {
                 mode,
                 autoplay_in_browser: autoplayInBrowser,
+                narrator_voice: narratorVoice || null,
+                rvc_narrator_voice: rvcNarratorVoice || null,
+                rvc_narrator_pitch: rvcNarratorPitch === "" ? null : Number.parseInt(rvcNarratorPitch, 10),
             });
             setMode(saved.mode ?? mode);
             setAutoplayInBrowser(Boolean(saved.autoplay_in_browser));
+            setNarratorVoice(saved.narrator_voice ?? "");
+            setRvcNarratorVoice(saved.rvc_narrator_voice ?? "");
+            setRvcNarratorPitch(saved.rvc_narrator_pitch == null ? "" : String(saved.rvc_narrator_pitch));
             if (backendConfigId) {
                 await setSimulationTtsConfig(simulationId, backendConfigId);
-                await updateTtsConfig(backendConfigId, { narrator_voice: narratorVoice || null });
             }
             setNotice(t("simulationDetails.configSaved"));
         } catch (err) {
@@ -2075,7 +2177,7 @@ function TtsGenerationConfigEditor({ simulationId }) {
                     <option value="">{t("simulationDetails.ttsGeneration.noBackend")}</option>
                     {availableBackends.map((backend) => (
                         <option key={backend.id} value={backend.id}>
-                            {backend.model || backend.engine} ({backend.engine})
+                            {backend.name || backend.model || backend.engine} ({backend.engine})
                         </option>
                     ))}
                 </select>
@@ -2084,13 +2186,55 @@ function TtsGenerationConfigEditor({ simulationId }) {
                 <label htmlFor="tts-generation-narrator-voice">
                     {t("simulationDetails.ttsGeneration.narratorVoice")}
                 </label>
-                <input
+                <select
                     id="tts-generation-narrator-voice"
                     className="single-line-input"
-                    type="text"
                     value={narratorVoice}
                     disabled={!backendConfigId}
                     onChange={(event) => setNarratorVoice(event.target.value)}
+                >
+                    <option value="">{t("simulationDetails.ttsGeneration.noVoice")}</option>
+                    {Array.from(new Set([...voiceOptions, ...(narratorVoice ? [narratorVoice] : [])])).map(
+                        (voice) => (
+                            <option key={voice} value={voice}>
+                                {voice}
+                            </option>
+                        ),
+                    )}
+                </select>
+            </div>
+            <div className="compact-form-field">
+                <label htmlFor="tts-generation-rvc-narrator-voice">
+                    {t("simulationDetails.ttsGeneration.rvcNarratorVoice")}
+                </label>
+                <select
+                    id="tts-generation-rvc-narrator-voice"
+                    className="single-line-input"
+                    value={rvcNarratorVoice}
+                    disabled={!backendConfigId}
+                    onChange={(event) => setRvcNarratorVoice(event.target.value)}
+                >
+                    <option value="">{t("simulationDetails.ttsGeneration.noVoice")}</option>
+                    {Array.from(new Set([...rvcVoiceOptions, ...(rvcNarratorVoice ? [rvcNarratorVoice] : [])])).map(
+                        (voice) => (
+                            <option key={voice} value={voice}>
+                                {voice}
+                            </option>
+                        ),
+                    )}
+                </select>
+            </div>
+            <div className="compact-form-field">
+                <label htmlFor="tts-generation-rvc-narrator-pitch">
+                    {t("simulationDetails.ttsGeneration.rvcNarratorPitch")}
+                </label>
+                <input
+                    id="tts-generation-rvc-narrator-pitch"
+                    className="single-line-input"
+                    type="number"
+                    value={rvcNarratorPitch}
+                    disabled={!backendConfigId}
+                    onChange={(event) => setRvcNarratorPitch(event.target.value)}
                 />
             </div>
             {!backendConfigId ? (
@@ -2112,6 +2256,8 @@ function CharacterVoiceEditor({ simulationId, characterId }) {
     const { t } = useTranslation();
     const [voice, setVoice] = useState("");
     const [backendConfigId, setBackendConfigId] = useState(null);
+    const [backendConnectionId, setBackendConnectionId] = useState(null);
+    const [voiceOptions, setVoiceOptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [notice, setNotice] = useState(null);
@@ -2133,6 +2279,7 @@ function CharacterVoiceEditor({ simulationId, characterId }) {
                 if (!cancelled) {
                     setVoice(ttsConfig?.character_voice ?? "");
                     setBackendConfigId(backend?.id ?? null);
+                    setBackendConnectionId(backend?.connection?.id ?? null);
                 }
             } catch (err) {
                 if (!cancelled) {
@@ -2151,6 +2298,35 @@ function CharacterVoiceEditor({ simulationId, characterId }) {
             cancelled = true;
         };
     }, [simulationId, characterId]);
+
+    // Same reasoning as TtsGenerationConfigEditor's narrator voice - a character can only speak
+    // with a voice AllTalk actually has loaded, fetched live from the simulation's TTS backend.
+    useEffect(() => {
+        if (!backendConnectionId) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        async function loadVoices() {
+            try {
+                const status = await fetchAllTalkStatus(backendConnectionId);
+                if (!cancelled) {
+                    setVoiceOptions(status.voices ?? []);
+                }
+            } catch {
+                if (!cancelled) {
+                    setVoiceOptions([]);
+                }
+            }
+        }
+
+        loadVoices();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [backendConnectionId]);
 
     async function saveVoice() {
         try {
@@ -2184,14 +2360,26 @@ function CharacterVoiceEditor({ simulationId, characterId }) {
             ) : null}
             <div className="compact-form-field">
                 <label htmlFor="character-voice-input">{t("simulationDetails.characterFields.voice")}</label>
-                <input
+                <select
                     id="character-voice-input"
                     className="single-line-input"
-                    type="text"
                     value={voice}
+                    disabled={!backendConnectionId}
                     onChange={(event) => setVoice(event.target.value)}
-                />
+                >
+                    <option value="">{t("simulationDetails.ttsGeneration.noVoice")}</option>
+                    {Array.from(new Set([...voiceOptions, ...(voice ? [voice] : [])])).map((option) => (
+                        <option key={option} value={option}>
+                            {option}
+                        </option>
+                    ))}
+                </select>
             </div>
+            {!backendConnectionId ? (
+                <p className="simulation-details-empty-line">
+                    {t("simulationDetails.ttsGeneration.narratorVoiceHint")}
+                </p>
+            ) : null}
             {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
             <div className="modal-actions inline-actions">
                 <button type="button" className="primary-button" disabled={saving} onClick={saveVoice}>
@@ -2209,6 +2397,7 @@ function SimulationDetailsModal({
     entities,
     inventory,
     emotion,
+    characterLocation,
     auditEvents,
     imageCapabilities = emptyObject,
     activeSection,
@@ -2227,10 +2416,7 @@ function SimulationDetailsModal({
     const canGenerateItemCover = Boolean(imageCapabilities.item_image_generator);
     const selectedCharacter =
         characters.find((character) => character.id === selectedCharacterId) ?? characters[0] ?? null;
-    const selectedCharacterLocationId = selectedCharacter?.location_id ?? selectedCharacter?.location ?? null;
-    const selectedLocation = selectedCharacter
-        ? locations.find((location) => location.id === selectedCharacterLocationId)
-        : null;
+    const selectedLocation = selectedCharacter ? characterLocation ?? null : null;
     const selectedLocationDetail =
         locations.find((location) => location.id === selectedLocationId) ?? locations[0] ?? null;
     const selectedEntity = entityDetailSections.includes(activeSection)
@@ -2259,6 +2445,20 @@ function SimulationDetailsModal({
         onActiveSectionChange("locations");
     }
 
+    function navigateToEntity(section, entityId) {
+        if (section === "locations") {
+            selectLocation(entityId);
+            return;
+        }
+        if (section === "characters") {
+            onSelectedCharacterIdChange(entityId);
+            onActiveSectionChange("characters");
+            return;
+        }
+        onSelectedEntityIdChange(section, entityId);
+        onActiveSectionChange(section);
+    }
+
     const detailsTitle =
         activeSection === "characters" && selectedCharacter
             ? selectedCharacter.name
@@ -2279,7 +2479,6 @@ function SimulationDetailsModal({
                   : simulation.name;
 
     const basicRows = [
-        { label: t("simulationDetails.fields.id"), value: simulation.id },
         { label: t("simulationDetails.fields.name"), value: simulation.name },
         { label: t("simulationDetails.fields.language"), value: simulation.language },
         { label: t("simulationDetails.fields.actForUser"), value: formatBoolean(simulation.act_for_user, t) },
@@ -2294,7 +2493,6 @@ function SimulationDetailsModal({
     ];
     const characterRows = selectedCharacter
         ? [
-              { label: t("simulationDetails.characterFields.id"), value: selectedCharacter.id },
               { label: t("simulationDetails.characterFields.gender"), value: selectedCharacter.gender },
               { label: t("simulationDetails.characterFields.age"), value: selectedCharacter.age },
               {
@@ -2315,16 +2513,11 @@ function SimulationDetailsModal({
         : [];
     const locationRows = selectedLocationDetail
         ? [
-              { label: t("simulationDetails.locationFields.id"), value: selectedLocationDetail.id },
+              { label: t("simulationDetails.locationFields.name"), value: selectedLocationDetail.name },
               {
-                  label: t("simulationDetails.locationFields.primaryLocation"),
-                  value: selectedLocationDetail.primary_location,
+                  label: t("simulationDetails.locationFields.description"),
+                  value: selectedLocationDetail.description,
               },
-              {
-                  label: t("simulationDetails.locationFields.detailedLocation"),
-                  value: selectedLocationDetail.detailed_location,
-              },
-              { label: t("simulationDetails.locationFields.scene"), value: selectedLocationDetail.scene },
           ]
         : [];
     const selectedEntityImageUrl = (() => {
@@ -2435,7 +2628,7 @@ function SimulationDetailsModal({
                                         }`}
                                         onClick={() => onSelectedLocationIdChange(location.id)}
                                     >
-                                        {location.scene || t("simulationDetails.locationFields.location")}
+                                        {formatLocation(location, t("simulationDetails.locationFields.location"))}
                                     </button>
                                 ))}
                             </div>
@@ -2474,6 +2667,10 @@ function SimulationDetailsModal({
                                 })}
                                 imageUrl={selectedEntityImageUrl}
                                 fallbackImage={selectedEntityFallback}
+                                characters={characters}
+                                locations={locations}
+                                entities={entities}
+                                onNavigate={navigateToEntity}
                                 coverImageAction={
                                     activeSection === "items" && canGenerateItemCover && selectedEntity ? (
                                         <GenerateCoverImageButton
@@ -2658,19 +2855,144 @@ function SimulationDetailsModal({
     );
 }
 
+const allAuditRunsOption = "__all__";
+
+function formatAuditTimestamp(value) {
+    return value ? new Date(value).toLocaleString() : null;
+}
+
+// Groups events by run_id (every audit event carries one) so the timeline can default to
+// showing just the most recent run/operation instead of every past attempt mixed together.
+// A run's status is "failed" if any of its events failed, otherwise it takes the status of
+// its most recent event - covers runs still missing a terminal "completed" event too.
+function summarizeAuditRuns(events, t) {
+    const runsById = new Map();
+
+    for (const event of events) {
+        if (!event.run_id) {
+            continue;
+        }
+        const recordedAt = event.recorded_at ? new Date(event.recorded_at).getTime() : 0;
+        const existing = runsById.get(event.run_id);
+        if (!existing) {
+            runsById.set(event.run_id, {
+                runId: event.run_id,
+                latestRecordedAt: recordedAt,
+                latestStage: event.stage,
+                category: event.category,
+                failed: event.status === "failed",
+            });
+            continue;
+        }
+        if (event.status === "failed") {
+            existing.failed = true;
+        }
+        if (recordedAt >= existing.latestRecordedAt) {
+            existing.latestRecordedAt = recordedAt;
+            existing.latestStage = event.stage;
+            existing.category = event.category;
+        }
+    }
+
+    return Array.from(runsById.values())
+        .sort((a, b) => b.latestRecordedAt - a.latestRecordedAt)
+        .map((run) => ({
+            ...run,
+            label: t("simulationDetails.observability.runLabel", {
+                time: formatAuditTimestamp(run.latestRecordedAt) ?? t("simulationDetails.emptyValue"),
+                category: run.category,
+                status: run.failed
+                    ? t("simulationDetails.observability.statusFailed")
+                    : t("simulationDetails.observability.statusStage", { stage: run.latestStage }),
+            }),
+        }));
+}
+
+function AuditEventDetails({ details }) {
+    const { t } = useTranslation();
+    const { error_type: errorType, error_message: errorMessage, traceback, ...rest } = details ?? {};
+    const hasError = Boolean(errorType || errorMessage || traceback);
+    const hasRest = Object.keys(rest).length > 0;
+
+    if (!hasError && !hasRest) {
+        return null;
+    }
+
+    return (
+        <>
+            {hasError ? (
+                <div className="audit-event-error">
+                    <strong>{errorType || t("simulationDetails.observability.error")}</strong>
+                    {errorMessage ? <p>{errorMessage}</p> : null}
+                    {traceback ? (
+                        <details>
+                            <summary>{t("simulationDetails.observability.traceback")}</summary>
+                            <pre className="audit-event-details">{traceback}</pre>
+                        </details>
+                    ) : null}
+                </div>
+            ) : null}
+            {hasRest ? (
+                <pre className="audit-event-details">{JSON.stringify(rest, null, 2)}</pre>
+            ) : null}
+        </>
+    );
+}
+
 function AuditEventTimeline({ events }) {
     const { t } = useTranslation();
+    const [selectedRunId, setSelectedRunId] = useState(null);
+
+    const runs = useMemo(() => summarizeAuditRuns(events ?? [], t), [events, t]);
+    const effectiveRunId =
+        selectedRunId && (selectedRunId === allAuditRunsOption || runs.some((run) => run.runId === selectedRunId))
+            ? selectedRunId
+            : runs[0]?.runId ?? allAuditRunsOption;
+
     if (!events?.length) {
         return <p className="status-text">{t("simulationDetails.observability.empty")}</p>;
     }
+
+    const visibleEvents = (
+        effectiveRunId === allAuditRunsOption
+            ? events
+            : events.filter((event) => event.run_id === effectiveRunId)
+    )
+        .slice()
+        .sort((a, b) => new Date(a.recorded_at ?? 0) - new Date(b.recorded_at ?? 0));
+
     return (
         <div className="audit-timeline">
-            {events.map((event) => (
-                <article className="audit-event" key={event.id}>
+            {runs.length > 1 ? (
+                <label className="audit-run-picker">
+                    {t("simulationDetails.observability.viewingRun")}
+                    <select
+                        value={effectiveRunId}
+                        onChange={(event) => setSelectedRunId(event.target.value)}
+                    >
+                        {runs.map((run) => (
+                            <option key={run.runId} value={run.runId}>
+                                {run.label}
+                            </option>
+                        ))}
+                        <option value={allAuditRunsOption}>
+                            {t("simulationDetails.observability.allRuns")}
+                        </option>
+                    </select>
+                </label>
+            ) : null}
+            {visibleEvents.map((event) => (
+                <article
+                    className={`audit-event${event.status === "failed" ? " audit-event-failed" : ""}`}
+                    key={event.id}
+                >
                     <header>
                         <strong>{event.stage}</strong>
                         <span>{event.category} · {event.origin} · {event.status}</span>
                     </header>
+                    <small className="audit-event-timestamp">
+                        {formatAuditTimestamp(event.recorded_at) ?? t("simulationDetails.emptyValue")}
+                    </small>
                     <p>{event.summary}</p>
                     <small>
                         {event.simulation_time
@@ -2686,11 +3008,7 @@ function AuditEventTimeline({ events }) {
                             })}
                         </p>
                     ) : null}
-                    {Object.keys(event.details ?? {}).length ? (
-                        <pre className="audit-event-details">
-                            {JSON.stringify(event.details, null, 2)}
-                        </pre>
-                    ) : null}
+                    <AuditEventDetails details={event.details} />
                 </article>
             ))}
         </div>
@@ -2715,6 +3033,7 @@ export function SimulationChatPage() {
     const [entityCache, setEntityCache] = useState({});
     const [inventoryCache, setInventoryCache] = useState({});
     const [emotionCache, setEmotionCache] = useState({});
+    const [characterLocationCache, setCharacterLocationCache] = useState({});
     const [auditCache, setAuditCache] = useState({});
     const [imageCapabilityCache, setImageCapabilityCache] = useState({});
     const [previews, setPreviews] = useState({});
@@ -2779,6 +3098,9 @@ export function SimulationChatPage() {
         : null;
     const selectedEmotion = selectedCharacterId
         ? emotionCache[`${simulationId}:${selectedCharacterId}`]
+        : null;
+    const selectedCharacterLocation = selectedCharacterId
+        ? characterLocationCache[`${simulationId}:${selectedCharacterId}`]
         : null;
     const selectedAuditEvents = auditCache[simulationId] ?? [];
     const imageCapabilities = imageCapabilityCache[simulationId] ?? emptyObject;
@@ -2859,7 +3181,6 @@ export function SimulationChatPage() {
                 stacks,
                 equipment,
                 containers,
-                turns,
                 events,
                 memories,
                 intents,
@@ -2870,7 +3191,6 @@ export function SimulationChatPage() {
                 fetchSimulationStacks(id),
                 fetchSimulationEquipment(id),
                 fetchSimulationContainers(id),
-                fetchSimulationRecords({ simulationId: id, limit: recordLimit }),
                 fetchSimulationEvents(id),
                 fetchSimulationMemories(id),
                 fetchSimulationIntents(id),
@@ -2883,7 +3203,6 @@ export function SimulationChatPage() {
                 stacks,
                 equipment,
                 containers,
-                turns,
                 events,
                 memories,
                 intents,
@@ -2969,6 +3288,24 @@ export function SimulationChatPage() {
             }));
         } catch {
             setEmotionCache((current) => ({
+                ...current,
+                [`${id}:${characterId}`]: null,
+            }));
+        }
+    }
+
+    async function refreshCharacterLocation(id, characterId) {
+        if (!id || !characterId) {
+            return;
+        }
+        try {
+            const location = await fetchCharacterLocation(characterId);
+            setCharacterLocationCache((current) => ({
+                ...current,
+                [`${id}:${characterId}`]: location,
+            }));
+        } catch {
+            setCharacterLocationCache((current) => ({
                 ...current,
                 [`${id}:${characterId}`]: null,
             }));
@@ -3102,6 +3439,7 @@ export function SimulationChatPage() {
 
         refreshCharacterInventory(simulationId, selectedCharacterId);
         refreshCharacterEmotion(simulationId, selectedCharacterId);
+        refreshCharacterLocation(simulationId, selectedCharacterId);
     }, [detailsOpen, detailsSection, simulationId, selectedCharacterId]);
 
     useEffect(() => {
@@ -3610,6 +3948,7 @@ export function SimulationChatPage() {
                     entities={selectedEntities}
                     inventory={selectedInventory}
                     emotion={selectedEmotion}
+                    characterLocation={selectedCharacterLocation}
                     auditEvents={selectedAuditEvents}
                     imageCapabilities={imageCapabilities}
                     activeSection={detailsSection}

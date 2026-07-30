@@ -2,15 +2,18 @@ from typing import Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
+from httpx import HTTPError
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ImageGenerationMode, \
     TtsGenerationMode, TtsTextFilteringMode, TtsTextNotInsideMode
-from world_simulation_engine.model import ConnectionConfig, OllamaChatModelConfig, OpenAiChatModelConfig, \
-    ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, \
-    ImageGenerationConfig, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
-    AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, TtsGenerationConfig, \
-    SttModelConfigUnion, WhisperCppSttModelConfig, ComfyUiImageModelConfig, ImageModelConfigUnion
+from world_simulation_engine.model import AllTalkStatus, ConnectionConfig, OllamaChatModelConfig, \
+    OpenAiChatModelConfig, ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
+    EmbedModelConfigUnion, ImageGenerationConfig, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, \
+    AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, \
+    TtsGenerationConfig, SttModelConfigUnion, WhisperCppSttModelConfig, ComfyUiImageModelConfig, \
+    ImageModelConfigUnion
+from world_simulation_engine.service.tts_service.alltalk_v2 import TtsAllTalkV2
 from .utils import db_dep
 
 
@@ -64,21 +67,17 @@ class EmbedConfigUpdate(BaseModel):
 class TtsConfigUpdate(BaseModel):
     """
     DTO model for updating TTS model configs. Fields span every AllTalk engine; only the ones
-    applicable to the target config's engine have any effect.
+    applicable to the target config's engine have any effect. Holds no voice of any kind - narrator
+    voice is updated via TtsGenerationConfigUpdate and character voice via CharacterTtsConfigUpdate.
     """
 
+    name: Optional[str] = Field(None, description="Display name of the TTS config")
     model: Optional[str] = Field(None, description="Name of the model to use")
-    character_voice: Optional[str] = Field(None, description="Reference to the character voice to use")
     text_filtering: Optional[TtsTextFilteringMode] = Field(None, description="Text filtering mode")
     text_not_inside: Optional[TtsTextNotInsideMode] = Field(
         None, description="How to voice text that is not inside quotes",
     )
     narrator_enabled: Optional[bool] = Field(None, description="Whether to enable the narrator voice")
-    narrator_voice: Optional[str] = Field(None, description="Reference to the narrator voice to use")
-    rvc_character_voice: Optional[str] = Field(None, description="RVC voice model for the character")
-    rvc_character_pitch: Optional[int] = Field(None, description="Pitch adjustment for the character RVC voice")
-    rvc_narrator_voice: Optional[str] = Field(None, description="RVC voice model for the narrator")
-    rvc_narrator_pitch: Optional[int] = Field(None, description="Pitch adjustment for the narrator RVC voice")
     output_file_timestamp: Optional[bool] = Field(None, description="Append a timestamp to the output file name")
     autoplay: Optional[bool] = Field(None, description="Play the generated audio at the provider's terminal")
     autoplay_volume: Optional[float] = Field(None, description="Playback volume if autoplay is enabled")
@@ -136,7 +135,7 @@ class ImageGenerationConfigUpdate(BaseModel):
 
 class TtsGenerationConfigUpdate(BaseModel):
     """
-    DTO model for updating a simulation's auto TTS generation configuration
+    DTO model for updating a simulation's auto TTS generation configuration, and the narrator's voice.
     """
 
     mode: TtsGenerationMode = Field(
@@ -145,6 +144,16 @@ class TtsGenerationConfigUpdate(BaseModel):
     )
     autoplay_in_browser: bool = Field(
         False, description="Whether the frontend should auto-play a turn's segments once generated",
+    )
+    narrator_voice: Optional[str] = Field(
+        None, description="Reference to the narrator's voice, used for narration segments and speech "
+                          "with no attributed speaker",
+    )
+    rvc_narrator_voice: Optional[str] = Field(
+        None, description="RVC voice model for the narrator, as 'folder/file.pth', or 'Disabled' to skip RVC",
+    )
+    rvc_narrator_pitch: Optional[int] = Field(
+        None, description="Pitch adjustment applied to the narrator RVC voice",
     )
 
 
@@ -365,6 +374,37 @@ async def delete_connection(connection_id: str, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Connection config {connection_id} not found",
         )
+
+
+@config_router.get("/config/connections/{connection_id}/alltalk-status", response_model=AllTalkStatus)
+async def get_alltalk_connection_status(connection_id: str, db: db_dep):
+    """
+    Proxy AllTalk V2's live currently-loaded engine/model, capabilities, and voices for the given
+    connection. This app never changes AllTalk's own engine/model configuration - editors use this to know
+    which inference-time fields are valid and which voices actually exist on the server, instead of
+    guessing from a hardcoded list.
+    """
+    connection = await db.config.get_connection(connection_id)
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Connection config {connection_id} not found",
+        )
+    if connection.type != ConnectionType.ALLTALK:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Connection {connection_id} is not an AllTalk connection",
+        )
+
+    try:
+        raw_status = await TtsAllTalkV2(base_url=connection.base_url).get_status()
+    except HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to reach AllTalk server: {exc}",
+        ) from exc
+
+    return AllTalkStatus(**raw_status)
 
 
 @config_router.get("/config/llm", response_model=list[ChatModelConfigUnion], response_model_exclude_none=True)
@@ -1762,5 +1802,8 @@ async def set_simulation_tts_generation_config(
         id=existing.id if existing else str(uuid4()),
         mode=config_update.mode,
         autoplay_in_browser=config_update.autoplay_in_browser,
+        narrator_voice=config_update.narrator_voice,
+        rvc_narrator_voice=config_update.rvc_narrator_voice,
+        rvc_narrator_pitch=config_update.rvc_narrator_pitch,
     )
     return await db.config.set_tts_generation_config(simulation_id, config)

@@ -14,6 +14,7 @@ import {
     deleteLlmConfig,
     deleteSttConfig,
     deleteTtsConfig,
+    fetchAllTalkStatus,
     fetchConnections,
     fetchEmbeddingConfigs,
     fetchImageConfigs,
@@ -37,10 +38,6 @@ import { ConnectionProviderIcon } from "@/components/ConnectionProviderIcon";
 const tabs = ["connections", "embeddings", "llms", "tts", "images", "stt"];
 const connectionProviders = ["openai", "ollama", "alltalk", "whispercpp", "comfyui"];
 const modelProviders = ["openai", "ollama"];
-const ttsEngines = ["xtts", "piper", "vits", "parler", "f5tts"];
-const ttsLanguageEngines = ["xtts", "vits", "f5tts"];
-const ttsTemperatureEngines = ["xtts", "parler"];
-const ttsRepetitionPenaltyEngines = ["xtts"];
 const imageProviders = ["comfyui"];
 const sttProviders = ["whispercpp"];
 const ollamaLlmFields = [
@@ -108,15 +105,20 @@ function makeFormState(kind, item = null) {
 
     if (kind === "tts") {
         return {
-            engine: item?.engine ?? "xtts",
+            name: item?.name ?? "",
+            // engine/model and the *_capable flags are read from the live AllTalk server, not
+            // picked by the user - seeded here from the existing config so the read-only display
+            // isn't blank while the live status is (re)loading, but the fetch is authoritative.
+            engine: item?.engine ?? "",
             connection_id: item?.connection?.id ?? "",
             model: item?.model ?? "",
-            narrator_voice: item?.narrator_voice ?? "",
+            languages_capable: false,
+            temperature_capable: false,
+            repetition_penalty_capable: false,
+            generation_speed_capable: false,
             narrator_enabled: item?.narrator_enabled ?? false,
             text_filtering: item?.text_filtering ?? "",
             text_not_inside: item?.text_not_inside ?? "",
-            rvc_narrator_voice: item?.rvc_narrator_voice ?? "",
-            rvc_narrator_pitch: item?.rvc_narrator_pitch == null ? "" : String(item.rvc_narrator_pitch),
             output_file_timestamp: item?.output_file_timestamp ?? false,
             autoplay: item?.autoplay ?? false,
             autoplay_volume: item?.autoplay_volume == null ? "" : String(item.autoplay_volume),
@@ -201,27 +203,31 @@ function buildPayload(kind, form, editing) {
     }
 
     if (kind === "tts") {
+        // engine and model are never chosen here - they mirror whatever AllTalk currently has
+        // loaded (fetched live from the connection), since this app never alters AllTalk's own
+        // engine/model configuration. No voice lives here either - narrator voice is configured
+        // per-simulation (TtsGenerationConfig) and each character configures its own voice.
         const payload = {
+            name: cleanText(form.name),
             model: cleanText(form.model),
-            narrator_voice: cleanText(form.narrator_voice),
             narrator_enabled: form.narrator_enabled,
             text_filtering: form.text_filtering || null,
             text_not_inside: form.text_not_inside || null,
-            rvc_narrator_voice: cleanText(form.rvc_narrator_voice),
-            rvc_narrator_pitch: numberOrNull(form.rvc_narrator_pitch, Number.parseInt),
             output_file_timestamp: form.output_file_timestamp,
             autoplay: form.autoplay,
             autoplay_volume: numberOrNull(form.autoplay_volume),
-            speed: numberOrNull(form.speed),
         };
 
-        if (ttsLanguageEngines.includes(form.engine)) {
+        if (form.generation_speed_capable) {
+            payload.speed = numberOrNull(form.speed);
+        }
+        if (form.languages_capable) {
             payload.language = cleanText(form.language);
         }
-        if (ttsTemperatureEngines.includes(form.engine)) {
+        if (form.temperature_capable) {
             payload.temperature = numberOrNull(form.temperature);
         }
-        if (ttsRepetitionPenaltyEngines.includes(form.engine)) {
+        if (form.repetition_penalty_capable) {
             payload.repetition_penalty = numberOrNull(form.repetition_penalty);
         }
 
@@ -293,7 +299,13 @@ function isConfigFormValid(kind, form) {
         return hasValue(form.provider) && hasValue(form.connection_id) && hasValue(form.name) && hasValue(form.model);
     }
 
-    if (kind === "tts" || kind === "images" || kind === "stt") {
+    if (kind === "tts") {
+        // form.engine is only ever set once the live AllTalk status has been fetched for the
+        // selected connection, so this also blocks submitting before that resolves.
+        return hasValue(form.connection_id) && hasValue(form.engine);
+    }
+
+    if (kind === "images" || kind === "stt") {
         return hasValue(form.connection_id);
     }
 
@@ -310,7 +322,7 @@ function titleFor(kind, item) {
     }
 
     if (kind === "tts") {
-        return item.model || item.narrator_voice || item.engine;
+        return item.name || item.model || item.engine;
     }
 
     if (kind === "images") {
@@ -404,9 +416,7 @@ function detailText(kind, item, t) {
             item.connection
                 ? t("configurations.details.connection", { name: item.connection.name })
                 : t("configurations.details.noConnection"),
-            item.narrator_voice
-                ? t("configurations.details.narratorVoice", { value: item.narrator_voice })
-                : null,
+            item.model,
             item.speed != null ? t("configurations.details.speed", { value: item.speed }) : null,
         ]
             .filter(Boolean)
@@ -460,6 +470,9 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
     const [form, setForm] = useState(() => makeFormState(kind, item));
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
+    const [allTalkStatus, setAllTalkStatus] = useState(null);
+    const [allTalkStatusLoading, setAllTalkStatusLoading] = useState(false);
+    const [allTalkStatusError, setAllTalkStatusError] = useState(null);
     const formValid = isConfigFormValid(kind, form);
 
     useEffect(() => {
@@ -473,19 +486,71 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [onClose]);
 
+    // AllTalk's own engine/model config is authoritative and never altered by this app, so the
+    // TTS editor mirrors it live from whichever connection is selected instead of letting the
+    // user pick an engine/model or type in voices freehand.
+    useEffect(() => {
+        if (kind !== "tts" || !form.connection_id) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        async function loadStatus() {
+            try {
+                setAllTalkStatusLoading(true);
+                setAllTalkStatusError(null);
+                const status = await fetchAllTalkStatus(form.connection_id);
+                if (cancelled) {
+                    return;
+                }
+
+                setAllTalkStatus(status);
+                setForm((current) => ({
+                    ...current,
+                    engine: status.engine,
+                    model: status.model ?? "",
+                    languages_capable: status.languages_capable,
+                    temperature_capable: status.temperature_capable,
+                    repetition_penalty_capable: status.repetition_penalty_capable,
+                    generation_speed_capable: status.generation_speed_capable,
+                }));
+            } catch (err) {
+                if (!cancelled) {
+                    setAllTalkStatus(null);
+                    setAllTalkStatusError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setAllTalkStatusLoading(false);
+                }
+            }
+        }
+
+        loadStatus();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [kind, form.connection_id]);
+
     function updateField(field, value) {
         setForm((current) => {
-            const next = {
-                ...current,
-                [field]: value,
-                ...(field === "engine" ? { connection_id: "" } : {}),
-            };
+            const next = { ...current, [field]: value };
 
             // The provider/type is no longer picked directly - it's implied by whichever
             // connection is selected, since a connection already carries that information.
             if (field === "connection_id" && kind !== "connections" && kind !== "tts") {
                 const selectedConnection = connections.find((connection) => connection.id === value);
                 next.provider = selectedConnection?.type ?? "";
+            }
+
+            // Switching connections invalidates whatever engine/model/voices were resolved for
+            // the previous one - clear them so stale data isn't submitted while the new
+            // connection's live status is still loading.
+            if (field === "connection_id" && kind === "tts") {
+                next.engine = "";
+                next.model = "";
             }
 
             return next;
@@ -568,6 +633,9 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
                             form={form}
                             connections={connections}
                             onChange={updateField}
+                            allTalkStatus={allTalkStatus}
+                            allTalkStatusLoading={allTalkStatusLoading}
+                            allTalkStatusError={allTalkStatusError}
                         />
 
                         {error ? <p className="form-error">{t("configurations.modal.error", { error })}</p> : null}
@@ -589,26 +657,32 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
     );
 }
 
-function ConfigurationFields({ kind, editing, form, connections, onChange }) {
+function ConfigurationFields({
+    kind,
+    editing,
+    form,
+    connections,
+    onChange,
+    allTalkStatus,
+    allTalkStatusLoading,
+    allTalkStatusError,
+}) {
     const { t } = useTranslation();
-    const showProviderSelect = kind === "connections" || kind === "tts";
-    const providerField = kind === "connections" ? "type" : "engine";
-    const providerOptions = kind === "connections" ? connectionProviders : ttsEngines;
-    const providerLabel = kind === "tts" ? t("configurations.fields.engine") : t("configurations.fields.provider");
+    const showProviderSelect = kind === "connections";
 
     return (
         <>
             {showProviderSelect ? (
                 <div className="form-field inline-field modal-form-field">
-                    <FieldLabel htmlFor="configuration-provider" label={providerLabel} required />
+                    <FieldLabel htmlFor="configuration-provider" label={t("configurations.fields.provider")} required />
                     <select
                         id="configuration-provider"
                         className="single-line-input"
-                        value={form[providerField]}
+                        value={form.type}
                         disabled={editing}
-                        onChange={(event) => onChange(providerField, event.target.value)}
+                        onChange={(event) => onChange("type", event.target.value)}
                     >
-                        {providerOptions.map((option) => (
+                        {connectionProviders.map((option) => (
                             <option key={option} value={option}>
                                 {t(`configurations.providers.${option}`)}
                             </option>
@@ -617,13 +691,13 @@ function ConfigurationFields({ kind, editing, form, connections, onChange }) {
                 </div>
             ) : null}
 
-            {kind !== "tts" && kind !== "images" && kind !== "stt" ? (
+            {kind !== "images" && kind !== "stt" ? (
                 <TextField
                     id="configuration-name"
                     label={t("configurations.fields.name")}
                     value={form.name}
                     onChange={(value) => onChange("name", value)}
-                    required={kind !== "embeddings"}
+                    required={kind !== "embeddings" && kind !== "tts"}
                 />
             ) : null}
 
@@ -644,13 +718,33 @@ function ConfigurationFields({ kind, editing, form, connections, onChange }) {
                     />
                 </>
             ) : (
-                <ModelFields kind={kind} editing={editing} form={form} connections={connections} onChange={onChange} t={t} />
+                <ModelFields
+                    kind={kind}
+                    editing={editing}
+                    form={form}
+                    connections={connections}
+                    onChange={onChange}
+                    t={t}
+                    allTalkStatus={allTalkStatus}
+                    allTalkStatusLoading={allTalkStatusLoading}
+                    allTalkStatusError={allTalkStatusError}
+                />
             )}
         </>
     );
 }
 
-function ModelFields({ kind, editing, form, connections, onChange, t }) {
+function ModelFields({
+    kind,
+    editing,
+    form,
+    connections,
+    onChange,
+    t,
+    allTalkStatus,
+    allTalkStatusLoading,
+    allTalkStatusError,
+}) {
     const showOllamaFields = form.provider === "ollama";
     const matchingConnections = kind === "tts"
         ? connections.filter((connection) => connection.type === "alltalk")
@@ -690,16 +784,26 @@ function ModelFields({ kind, editing, form, connections, onChange, t }) {
                 </select>
             </div>
 
-            <TextField
-                id="configuration-model"
-                label={t("configurations.fields.model")}
-                value={form.model}
-                onChange={(value) => onChange("model", value)}
-                required={kind !== "tts" && kind !== "images" && kind !== "stt"}
-            />
+            {kind !== "tts" ? (
+                <TextField
+                    id="configuration-model"
+                    label={t("configurations.fields.model")}
+                    value={form.model}
+                    onChange={(value) => onChange("model", value)}
+                    required={kind !== "images" && kind !== "stt"}
+                />
+            ) : null}
 
             {kind === "tts" ? (
-                <TtsModelFields form={form} onChange={onChange} t={t} />
+                <TtsModelFields
+                    form={form}
+                    onChange={onChange}
+                    t={t}
+                    status={allTalkStatus}
+                    statusLoading={allTalkStatusLoading}
+                    statusError={allTalkStatusError}
+                    connectionSelected={Boolean(form.connection_id)}
+                />
             ) : kind === "images" ? (
                 <ImageModelFields form={form} onChange={onChange} t={t} />
             ) : kind === "stt" ? (
@@ -777,21 +881,56 @@ function ModelFields({ kind, editing, form, connections, onChange, t }) {
     );
 }
 
-function TtsModelFields({ form, onChange, t }) {
+function TtsModelFields({ form, onChange, t, status, statusLoading, statusError, connectionSelected }) {
+    if (!connectionSelected) {
+        return <p className="connection-empty-text">{t("configurations.fields.ttsSelectConnectionFirst")}</p>;
+    }
+
+    if (statusLoading && !status) {
+        return <p className="status-text">{t("configurations.fields.ttsStatusLoading")}</p>;
+    }
+
+    if (statusError) {
+        return (
+            <p className="status-text error-text">
+                {t("configurations.fields.ttsStatusError", { error: statusError })}
+            </p>
+        );
+    }
+
+    if (!status) {
+        return null;
+    }
+
     return (
         <>
-            <TextField
-                id="configuration-narrator-voice"
-                label={t("configurations.fields.narratorVoice")}
-                value={form.narrator_voice}
-                onChange={(value) => onChange("narrator_voice", value)}
-            />
+            <div className="form-field inline-field modal-form-field">
+                <FieldLabel htmlFor="configuration-tts-engine" label={t("configurations.fields.engine")} />
+                <input
+                    id="configuration-tts-engine"
+                    className="single-line-input"
+                    value={t(`configurations.providers.${status.engine}`, { defaultValue: status.engine })}
+                    disabled
+                />
+            </div>
+            <div className="form-field inline-field modal-form-field">
+                <FieldLabel htmlFor="configuration-tts-model" label={t("configurations.fields.model")} />
+                <input
+                    id="configuration-tts-model"
+                    className="single-line-input"
+                    value={status.model ?? ""}
+                    disabled
+                />
+            </div>
+            <p className="connection-empty-text">{t("configurations.fields.ttsEngineModelHint")}</p>
+
             <CheckboxField
                 id="configuration-narrator-enabled"
                 label={t("configurations.fields.narratorEnabled")}
                 checked={form.narrator_enabled}
                 onChange={(value) => onChange("narrator_enabled", value)}
             />
+            <p className="connection-empty-text">{t("configurations.fields.ttsNarratorVoiceHint")}</p>
             <SelectField
                 id="configuration-text-filtering"
                 label={t("configurations.fields.textFiltering")}
@@ -814,20 +953,7 @@ function TtsModelFields({ form, onChange, t }) {
                 }))}
                 onChange={(value) => onChange("text_not_inside", value)}
             />
-            <TextField
-                id="configuration-rvc-narrator-voice"
-                label={t("configurations.fields.rvcNarratorVoice")}
-                value={form.rvc_narrator_voice}
-                onChange={(value) => onChange("rvc_narrator_voice", value)}
-            />
-            <TextField
-                id="configuration-rvc-narrator-pitch"
-                label={t("configurations.fields.rvcNarratorPitch")}
-                value={form.rvc_narrator_pitch}
-                onChange={(value) => onChange("rvc_narrator_pitch", value)}
-                type="number"
-            />
-            {ttsLanguageEngines.includes(form.engine) ? (
+            {status.languages_capable ? (
                 <TextField
                     id="configuration-language"
                     label={t("configurations.fields.language")}
@@ -835,15 +961,17 @@ function TtsModelFields({ form, onChange, t }) {
                     onChange={(value) => onChange("language", value)}
                 />
             ) : null}
-            <TextField
-                id="configuration-speed"
-                label={t("configurations.fields.speed")}
-                value={form.speed}
-                onChange={(value) => onChange("speed", value)}
-                type="number"
-                step="0.05"
-            />
-            {ttsTemperatureEngines.includes(form.engine) ? (
+            {status.generation_speed_capable ? (
+                <TextField
+                    id="configuration-speed"
+                    label={t("configurations.fields.speed")}
+                    value={form.speed}
+                    onChange={(value) => onChange("speed", value)}
+                    type="number"
+                    step="0.05"
+                />
+            ) : null}
+            {status.temperature_capable ? (
                 <TextField
                     id="configuration-temperature"
                     label={t("configurations.fields.temperature")}
@@ -853,7 +981,7 @@ function TtsModelFields({ form, onChange, t }) {
                     step="0.1"
                 />
             ) : null}
-            {ttsRepetitionPenaltyEngines.includes(form.engine) ? (
+            {status.repetition_penalty_capable ? (
                 <TextField
                     id="configuration-repetition-penalty"
                     label={t("configurations.fields.repetitionPenalty")}
@@ -1002,14 +1130,15 @@ function CheckboxField({ id, label, checked, onChange }) {
     );
 }
 
-function SelectField({ id, label, value, options, onChange, emptyLabel }) {
+function SelectField({ id, label, value, options, onChange, emptyLabel, disabled = false, required = false }) {
     return (
         <div className="form-field inline-field modal-form-field">
-            <FieldLabel htmlFor={id} label={label} />
+            <FieldLabel htmlFor={id} label={label} required={required} />
             <select
                 id={id}
                 className="single-line-input"
                 value={value}
+                disabled={disabled}
                 onChange={(event) => onChange(event.target.value)}
             >
                 <option value="">{emptyLabel}</option>
@@ -1023,7 +1152,7 @@ function SelectField({ id, label, value, options, onChange, emptyLabel }) {
     );
 }
 
-function TextField({ id, label, value, onChange, type = "text", required = false, step }) {
+function TextField({ id, label, value, onChange, type = "text", required = false, step, disabled = false }) {
     return (
         <div className="form-field inline-field modal-form-field">
             <FieldLabel htmlFor={id} label={label} required={required} />
@@ -1034,6 +1163,7 @@ function TextField({ id, label, value, onChange, type = "text", required = false
                 type={type}
                 required={required}
                 step={step}
+                disabled={disabled}
                 onChange={(event) => onChange(event.target.value)}
             />
         </div>

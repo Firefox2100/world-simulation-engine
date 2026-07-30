@@ -4,7 +4,7 @@ from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.enums import ComponentType, TtsGenerationMode
 from world_simulation_engine.misc.logging import log_event
 from world_simulation_engine.model import GeneratedVoiceMediaFile, MediaFile, PresentationBlockType, Turn, \
-    TurnPresentationBlock, TtsModelConfigUnion
+    TtsGenerationConfig, TurnPresentationBlock
 from world_simulation_engine.service import DatabaseService, StorageService
 from world_simulation_engine.service.tts_service.tts_service import TtsService
 
@@ -32,7 +32,7 @@ class TurnVoiceTrigger:
         self._db = database
         self._storage = storage
 
-    async def _resolve_backend(self, simulation_id: str) -> tuple[TtsService, TtsModelConfigUnion] | None:
+    async def _resolve_backend(self, simulation_id: str) -> TtsService | None:
         tts_config = await self._db.config.get_tts_by_source(
             source_id=simulation_id,
             component=self.COMPONENT_TYPE,
@@ -49,11 +49,14 @@ class TurnVoiceTrigger:
         # configured - otherwise it could reroute a call to the wrong voice.
         sanitized_config = tts_config.model_copy(update={"narrator_enabled": False})
 
-        return TtsService(model_config=sanitized_config, connection_config=connection_config), tts_config
+        return TtsService(model_config=sanitized_config, connection_config=connection_config)
+
+    async def _resolve_generation_config(self, simulation_id: str) -> TtsGenerationConfig:
+        return await self._db.config.get_tts_generation_config(simulation_id) or TtsGenerationConfig()
 
     async def _resolve_voice(self,
                              *,
-                             backend_config: TtsModelConfigUnion,
+                             generation_config: TtsGenerationConfig,
                              block: TurnPresentationBlock,
                              ) -> tuple[str | None, str | None, int | None, str | None]:
         """Returns (voice, rvc_voice, rvc_pitch, character_id)."""
@@ -68,16 +71,21 @@ class TurnVoiceTrigger:
                 )
             return None, None, None, block.speaker_id
 
-        return backend_config.narrator_voice, backend_config.rvc_narrator_voice, backend_config.rvc_narrator_pitch, None
+        return (
+            generation_config.narrator_voice,
+            generation_config.rvc_narrator_voice,
+            generation_config.rvc_narrator_pitch,
+            None,
+        )
 
     async def _generate_and_store(self,
                                   *,
                                   tts_service: TtsService,
-                                  backend_config: TtsModelConfigUnion,
+                                  generation_config: TtsGenerationConfig,
                                   block: TurnPresentationBlock,
                                   ) -> MediaFile:
         voice, rvc_voice, rvc_pitch, character_id = await self._resolve_voice(
-            backend_config=backend_config, block=block,
+            generation_config=generation_config, block=block,
         )
 
         async with _TTS_GENERATION_SEMAPHORE:
@@ -103,11 +111,13 @@ class TurnVoiceTrigger:
                                        *,
                                        simulation_id: str,
                                        tts_service: TtsService,
-                                       backend_config: TtsModelConfigUnion,
+                                       generation_config: TtsGenerationConfig,
                                        block: TurnPresentationBlock,
                                        ) -> None:
         try:
-            await self._generate_and_store(tts_service=tts_service, backend_config=backend_config, block=block)
+            await self._generate_and_store(
+                tts_service=tts_service, generation_config=generation_config, block=block,
+            )
         except Exception as exc:  # noqa: BLE001 - never let one segment's failure affect others
             log_event(
                 "turn_voice_segment_generation_failed",
@@ -136,14 +146,13 @@ class TurnVoiceTrigger:
         auto mode, voice every narration/speech segment of this turn. Never raises - failures are
         logged and swallowed so this never disrupts the turn pipeline."""
         try:
-            config = await self._db.config.get_tts_generation_config(simulation_id)
-            if not config or config.mode != TtsGenerationMode.AUTO:
+            generation_config = await self._db.config.get_tts_generation_config(simulation_id)
+            if not generation_config or generation_config.mode != TtsGenerationMode.AUTO:
                 return
 
-            backend = await self._resolve_backend(simulation_id)
-            if not backend:
+            tts_service = await self._resolve_backend(simulation_id)
+            if not tts_service:
                 return
-            tts_service, backend_config = backend
 
             blocks = await self._db.turn_presentation.list_blocks(turn_ids=[turn.id])
             pending = [
@@ -155,7 +164,8 @@ class TurnVoiceTrigger:
 
             await asyncio.gather(*(
                 self._generate_and_store_safe(
-                    simulation_id=simulation_id, tts_service=tts_service, backend_config=backend_config, block=block,
+                    simulation_id=simulation_id, tts_service=tts_service,
+                    generation_config=generation_config, block=block,
                 )
                 for block in pending
             ))
@@ -188,12 +198,14 @@ class TurnVoiceTrigger:
         if not simulation_id:
             raise ValueError(f"Turn {block.turn_id} does not belong to a simulation")
 
-        backend = await self._resolve_backend(simulation_id)
-        if not backend:
+        tts_service = await self._resolve_backend(simulation_id)
+        if not tts_service:
             raise ValueError(f"Simulation {simulation_id} does not have a TTS backend configured")
-        tts_service, backend_config = backend
+        generation_config = await self._resolve_generation_config(simulation_id)
 
-        media = await self._generate_and_store(tts_service=tts_service, backend_config=backend_config, block=block)
+        media = await self._generate_and_store(
+            tts_service=tts_service, generation_config=generation_config, block=block,
+        )
         await self._prune(simulation_id)
 
         return media

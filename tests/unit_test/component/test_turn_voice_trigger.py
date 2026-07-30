@@ -34,10 +34,12 @@ def make_block(*, block_type, text="hi", speaker_id=None, voice_media_id=None, b
 def make_trigger(**overrides) -> tuple[TurnVoiceTrigger, MagicMock]:
     db = MagicMock()
     db.config = MagicMock()
-    db.config.get_tts_generation_config = AsyncMock(return_value=TtsGenerationConfig(mode=TtsGenerationMode.AUTO))
+    db.config.get_tts_generation_config = AsyncMock(return_value=TtsGenerationConfig(
+        mode=TtsGenerationMode.AUTO, narrator_voice="male_01.wav",
+        rvc_narrator_voice="voices/male.pth", rvc_narrator_pitch=1,
+    ))
     db.config.get_tts_by_source = AsyncMock(return_value=AllTalkXttsModelConfig(
-        id="backend-1", language="en", narrator_voice="male_01.wav",
-        rvc_narrator_voice="voices/male.pth", rvc_narrator_pitch=1, narrator_enabled=True,
+        id="backend-1", language="en", narrator_enabled=True,
     ))
     db.config.get_connection_by_tts_source = AsyncMock(return_value=ConnectionConfig(
         id="conn-1", type=ConnectionType.ALLTALK, name="Local AllTalk", base_url="http://alltalk.test",
@@ -146,7 +148,7 @@ async def test_maybe_generate_for_turn_only_voices_narration_and_speech_blocks(f
     db.media.list_voice_media_to_prune.assert_awaited_once()
 
 
-async def test_narration_block_uses_backend_narrator_voice(fake_generate_file):
+async def test_narration_block_uses_generation_config_narrator_voice(fake_generate_file):
     trigger, db = make_trigger()
     block = make_block(block_type=PresentationBlockType.NARRATION, text="narration text")
     db.turn_presentation.list_blocks = AsyncMock(return_value=[block])
@@ -185,12 +187,11 @@ async def test_resolve_backend_forces_narrator_enabled_false_regardless_of_confi
     # backend config has narrator_enabled=True configured
     assert db.config.get_tts_by_source.return_value.narrator_enabled is True
 
-    result = await trigger._resolve_backend("sim-1")  # pylint: disable=protected-access
+    tts_service = await trigger._resolve_backend("sim-1")  # pylint: disable=protected-access
 
-    assert result is not None
-    tts_service, backend_config = result
+    assert tts_service is not None
     # the *original* fetched config is untouched...
-    assert backend_config.narrator_enabled is True
+    assert db.config.get_tts_by_source.return_value.narrator_enabled is True
     # ...but the driver actually built from it must never use AllTalk's own narrator-splitting,
     # since our own per-block split already guarantees purity.
     assert tts_service.driver._narrator_enabled is False  # pylint: disable=protected-access

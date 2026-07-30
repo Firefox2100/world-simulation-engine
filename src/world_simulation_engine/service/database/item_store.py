@@ -33,12 +33,22 @@ class ItemStore:
         )
 
     @staticmethod
-    def stack_from_node(stack_node, item_node=None) -> ItemStack:
+    def stack_from_node(stack_node,
+                        item_node=None,
+                        owner_id: str | None = None,
+                        holder_id: str | None = None,
+                        location_id: str | None = None,
+                        position: str | None = None,
+                        ) -> ItemStack:
         return ItemStack(
             id=stack_node["id"],
             quantity=stack_node["quantity"],
             quality=stack_node.get("quality"),
             item=ItemStore.item_from_node(item_node) if item_node is not None else None,
+            owner_id=owner_id,
+            holder_id=holder_id,
+            location_id=location_id,
+            position=position,
         )
 
     async def entity_exists(self, entity_id: str) -> bool:
@@ -333,7 +343,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["stack"], record["item"])
+        return await self.get_stack(record["stack"]["id"])
 
     async def list_stacks(self,
                           world_id: str | None = None,
@@ -380,7 +390,11 @@ class ItemStore:
                         MATCH ()-[:HOLDS]->(stack)
                     }
                 ))
-            RETURN DISTINCT stack, item
+            OPTIONAL MATCH (stack_owner)-[:OWNS]->(stack)
+            OPTIONAL MATCH (stack_holder)-[:HOLDS]->(stack)
+            OPTIONAL MATCH (stack)-[stack_present:PRESENT_IN]->(stack_location:Location)
+            RETURN DISTINCT stack, item, stack_owner.id AS owner_id, stack_holder.id AS holder_id,
+                stack_location.id AS location_id, stack_present.position AS position
             ORDER BY stack.id
             """,
             parameters_={
@@ -394,7 +408,14 @@ class ItemStore:
         )
 
         return [
-            self.stack_from_node(record["stack"], record["item"])
+            self.stack_from_node(
+                record["stack"],
+                record["item"],
+                owner_id=record["owner_id"],
+                holder_id=record["holder_id"],
+                location_id=record["location_id"],
+                position=record["position"],
+            )
             for record in result.records
         ]
 
@@ -402,7 +423,12 @@ class ItemStore:
         result = await self._driver.execute_query(
             """
             MATCH (stack:ItemStack {id: $id})-[:OF_TYPE]->(item:Item)
-            RETURN stack, item LIMIT 1
+            OPTIONAL MATCH (stack_owner)-[:OWNS]->(stack)
+            OPTIONAL MATCH (stack_holder)-[:HOLDS]->(stack)
+            OPTIONAL MATCH (stack)-[stack_present:PRESENT_IN]->(stack_location:Location)
+            RETURN stack, item, stack_owner.id AS owner_id, stack_holder.id AS holder_id,
+                stack_location.id AS location_id, stack_present.position AS position
+            LIMIT 1
             """,
             parameters_={"id": stack_id},
         )
@@ -411,7 +437,14 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["stack"], record["item"])
+        return self.stack_from_node(
+            record["stack"],
+            record["item"],
+            owner_id=record["owner_id"],
+            holder_id=record["holder_id"],
+            location_id=record["location_id"],
+            position=record["position"],
+        )
 
     async def copy_stacks(self,
                           source_id: str,
@@ -540,7 +573,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["stack"], record["item"])
+        return await self.get_stack(stack_id)
 
     async def delete_stack(self, stack_id: str) -> bool:
         result = await self._driver.execute_query(
@@ -583,7 +616,7 @@ class ItemStore:
         if not record:
             return None
 
-        return self.stack_from_node(record["s"], record["item"])
+        return await self.get_stack(stack_id)
 
     async def assign_stack(self,
                            stack_id: str,
@@ -613,7 +646,7 @@ class ItemStore:
             record = result.records[0] if result.records else None
             if not record:
                 return None
-            stack = self.stack_from_node(record["s"], record["item"])
+            stack = await self.get_stack(stack_id)
 
         if owner_id:
             result = await self._driver.execute_query(
@@ -633,7 +666,7 @@ class ItemStore:
             record = result.records[0] if result.records else None
             if not record:
                 return None
-            stack = self.stack_from_node(record["s"], record["item"])
+            stack = await self.get_stack(stack_id)
 
         return stack
 

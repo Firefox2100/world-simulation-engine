@@ -411,10 +411,16 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert len(copied_equipment_response.json()) == 1
     copied_equipment = copied_equipment_response.json()[0]
     assert copied_equipment["id"] != simulation_api.equipment.id
-    assert copied_equipment == {
-        **simulation_api.equipment.model_dump(mode="json"),
-        "id": copied_equipment["id"],
+    # Equipment is EQUIPS-ed by the character but then re-parented into the container
+    # (see put_equipment_in_container below), so only its owner survives copy as the
+    # character; the copied holder is the copied container, checked further down once
+    # copied_container is known.
+    assert {key: value for key, value in copied_equipment.items() if key not in {"owner_id", "holder_id"}} == {
+        key: value
+        for key, value in {**simulation_api.equipment.model_dump(mode="json"), "id": copied_equipment["id"]}.items()
+        if key not in {"owner_id", "holder_id"}
     }
+    assert copied_equipment["owner_id"] == copied_character["id"]
     assert client.get(
         "/equipment",
         params={"holder_id": copied_character["id"]},
@@ -432,6 +438,8 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         **simulation_api.stack.model_dump(mode="json"),
         "id": copied_held_stack["id"],
         "item": simulation_api.item.model_dump(mode="json"),
+        "holder_id": copied_character["id"],
+        "owner_id": copied_character["id"],
     }
     assert client.get(
         "/stacks",
@@ -444,6 +452,8 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert copied_container == {
         **simulation_api.container.model_dump(mode="json"),
         "id": copied_container["id"],
+        "location_id": copied_market["id"],
+        "position": "beside the stall",
     }
     held_stack_entries = client.get(f"/containers/{copied_container['id']}/stacks").json()
     assert len(held_stack_entries) == 1
@@ -455,7 +465,11 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "id": copied_contained_stack["id"],
         "item": simulation_api.item.model_dump(mode="json"),
     }
-    assert client.get(f"/containers/{copied_container['id']}/equipment").json() == [copied_equipment]
+    assert copied_equipment["holder_id"] == copied_container["id"]
+    held_equipment_entries = client.get(f"/containers/{copied_container['id']}/equipment").json()
+    assert held_equipment_entries == [
+        {**copied_equipment, "owner_id": None, "holder_id": None}
+    ]
     assert client.get(f"/containers/{copied_container['id']}/unlocking-items").json() == [
         simulation_api.item.model_dump(mode="json")
     ]

@@ -13,12 +13,21 @@ class ContainerStore:
         self._driver = driver
 
     @staticmethod
-    def container_from_node(container_node) -> Container:
+    def container_from_node(container_node,
+                            owner_id: str | None = None,
+                            holder_id: str | None = None,
+                            location_id: str | None = None,
+                            position: str | None = None,
+                            ) -> Container:
         return Container(
             id=container_node["id"],
             name=container_node["name"],
             description=container_node["description"],
             state=container_node["state"],
+            owner_id=owner_id,
+            holder_id=holder_id,
+            location_id=location_id,
+            position=position,
         )
 
     async def create_container(self,
@@ -65,7 +74,11 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["c"])
+        return self.container_from_node(
+            record["c"],
+            location_id=location_id if location_id else None,
+            position=position if location_id else None,
+        )
 
     async def list_containers(self,
                               world_id: str | None = None,
@@ -107,7 +120,11 @@ class ContainerStore:
                 AND ($holder_id IS NULL OR EXISTS {
                     MATCH (holder {id: $holder_id})-[:HOLDS]->(container)
                 })
-            RETURN DISTINCT container
+            OPTIONAL MATCH (container_owner)-[:OWNS]->(container)
+            OPTIONAL MATCH (container_holder)-[:HOLDS]->(container)
+            OPTIONAL MATCH (container)-[container_present:PRESENT_IN]->(container_location:Location)
+            RETURN DISTINCT container, container_owner.id AS owner_id, container_holder.id AS holder_id,
+                container_location.id AS location_id, container_present.position AS position
             ORDER BY container.name
             """,
             parameters_={
@@ -120,13 +137,27 @@ class ContainerStore:
         )
 
         return [
-            self.container_from_node(record["container"])
+            self.container_from_node(
+                record["container"],
+                owner_id=record["owner_id"],
+                holder_id=record["holder_id"],
+                location_id=record["location_id"],
+                position=record["position"],
+            )
             for record in result.records
         ]
 
     async def get_container(self, container_id: str) -> Container | None:
         result = await self._driver.execute_query(
-            "MATCH (c:Container {id: $id}) RETURN c LIMIT 1",
+            """
+            MATCH (c:Container {id: $id})
+            OPTIONAL MATCH (container_owner)-[:OWNS]->(c)
+            OPTIONAL MATCH (container_holder)-[:HOLDS]->(c)
+            OPTIONAL MATCH (c)-[container_present:PRESENT_IN]->(container_location:Location)
+            RETURN c, container_owner.id AS owner_id, container_holder.id AS holder_id,
+                container_location.id AS location_id, container_present.position AS position
+            LIMIT 1
+            """,
             parameters_={"id": container_id},
         )
 
@@ -134,7 +165,13 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["c"])
+        return self.container_from_node(
+            record["c"],
+            owner_id=record["owner_id"],
+            holder_id=record["holder_id"],
+            location_id=record["location_id"],
+            position=record["position"],
+        )
 
     async def update_container(self,
                                container_id: str,
@@ -162,7 +199,7 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["container"])
+        return await self.get_container(container_id)
 
     async def delete_container(self, container_id: str) -> bool:
         result = await self._driver.execute_query(
@@ -233,7 +270,7 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["container"])
+        return await self.get_container(container_id)
 
     async def assign_container(self,
                                container_id: str,
@@ -263,7 +300,7 @@ class ContainerStore:
             record = result.records[0] if result.records else None
             if not record:
                 return None
-            container = self.container_from_node(record["container"])
+            container = await self.get_container(container_id)
 
         if owner_id:
             result = await self._driver.execute_query(
@@ -283,7 +320,7 @@ class ContainerStore:
             record = result.records[0] if result.records else None
             if not record:
                 return None
-            container = self.container_from_node(record["container"])
+            container = await self.get_container(container_id)
 
         return container
 
@@ -353,7 +390,7 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["container"])
+        return await self.get_container(container_id)
 
     async def put_equipment_in_container(self,
                                          equipment_id: str,
@@ -379,7 +416,7 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["container"])
+        return await self.get_container(container_id)
 
     async def put_container_in_container(self,
                                         held_container_id: str,
@@ -406,7 +443,7 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["holder"])
+        return await self.get_container(holder_container_id)
 
     async def get_held_stacks(self,
                               container_id: str,
@@ -483,7 +520,7 @@ class ContainerStore:
         if not record:
             return None
 
-        return self.container_from_node(record["container"])
+        return await self.get_container(container_id)
 
     async def remove_unlocking_item(self,
                                     item_id: str,
@@ -529,7 +566,7 @@ class ContainerStore:
         )
 
         record = result.records[0] if result.records else None
-        return self.container_from_node(record["container"]) if record else None
+        return await self.get_container(container_id) if record else None
 
     async def replace_held_equipment(self,
                                      container_id: str,
@@ -560,7 +597,7 @@ class ContainerStore:
         )
 
         record = result.records[0] if result.records else None
-        return self.container_from_node(record["container"]) if record else None
+        return await self.get_container(container_id) if record else None
 
     async def remove_held_equipment(self,
                                     container_id: str,
@@ -642,7 +679,7 @@ class ContainerStore:
         )
 
         record = result.records[0] if result.records else None
-        return self.container_from_node(record["container"]) if record else None
+        return await self.get_container(container_id) if record else None
 
     async def remove_held_containers(self,
                                      container_id: str,
@@ -695,7 +732,7 @@ class ContainerStore:
         )
 
         record = result.records[0] if result.records else None
-        return self.container_from_node(record["container"]) if record else None
+        return await self.get_container(container_id) if record else None
 
     async def remove_unlocking_items(self,
                                      container_id: str,

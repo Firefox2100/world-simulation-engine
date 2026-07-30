@@ -27,6 +27,23 @@ class Equipment(BaseModel):
         None,
         description="Optional quality modifier of the equipment",
     )
+    owner_id: Optional[str] = Field(
+        None,
+        description="Entity that owns the equipment, if any. Populated when read back from storage.",
+    )
+    holder_id: Optional[str] = Field(
+        None,
+        description="Entity that holds or wears the equipment, if any. Populated when read back from storage.",
+    )
+    location_id: Optional[str] = Field(
+        None,
+        description="Location the equipment is present in, if not held by another entity. Populated when "
+                    "read back from storage.",
+    )
+    position: Optional[str] = Field(
+        None,
+        description="Position of the equipment in its location, if present in a location.",
+    )
 
 
 class InventoryEquipment(Equipment):

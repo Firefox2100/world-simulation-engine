@@ -135,19 +135,20 @@ def _tts_generation_config_from_node(config_node) -> TtsGenerationConfig:
         id=config_node["id"],
         mode=config_node["mode"],
         autoplay_in_browser=config_node.get("autoplay_in_browser", False),
+        narrator_voice=config_node.get("narrator_voice"),
+        rvc_narrator_voice=config_node.get("rvc_narrator_voice"),
+        rvc_narrator_pitch=config_node.get("rvc_narrator_pitch"),
     )
 
 
 def _alltalk_common_fields_from_node(config_node, connection_node=None) -> dict:
     return {
         "id": config_node["id"],
+        "name": config_node.get("name"),
         "model": config_node.get("model"),
         "text_filtering": config_node.get("text_filtering"),
         "text_not_inside": config_node.get("text_not_inside"),
         "narrator_enabled": config_node.get("narrator_enabled"),
-        "narrator_voice": config_node.get("narrator_voice"),
-        "rvc_narrator_voice": config_node.get("rvc_narrator_voice"),
-        "rvc_narrator_pitch": config_node.get("rvc_narrator_pitch"),
         "output_file_timestamp": config_node.get("output_file_timestamp"),
         "autoplay": config_node.get("autoplay"),
         "autoplay_volume": config_node.get("autoplay_volume"),
@@ -1185,7 +1186,9 @@ class ConfigStore:
             """
             MATCH (s:Simulation {id: $simulation_id})
             MERGE (s)-[:HAS_TTS_GENERATION_CONFIG]->(c:TtsGenerationConfig)
-            SET c.id = $id, c.mode = $mode, c.autoplay_in_browser = $autoplay_in_browser
+            SET c.id = $id, c.mode = $mode, c.autoplay_in_browser = $autoplay_in_browser,
+                c.narrator_voice = $narrator_voice, c.rvc_narrator_voice = $rvc_narrator_voice,
+                c.rvc_narrator_pitch = $rvc_narrator_pitch
             RETURN c
             """,
             parameters_={
@@ -1193,6 +1196,9 @@ class ConfigStore:
                 "id": config.id,
                 "mode": config.mode,
                 "autoplay_in_browser": config.autoplay_in_browser,
+                "narrator_voice": config.narrator_voice,
+                "rvc_narrator_voice": config.rvc_narrator_voice,
+                "rvc_narrator_pitch": config.rvc_narrator_pitch,
             },
         )
 
@@ -1205,26 +1211,22 @@ class ConfigStore:
     async def create_tts(self, tts_config: TtsModelConfigUnion):
         common_parameters = {
             "id": tts_config.id,
+            "name": tts_config.name,
             "model": tts_config.model,
             "text_filtering": tts_config.text_filtering,
             "text_not_inside": tts_config.text_not_inside,
             "narrator_enabled": tts_config.narrator_enabled,
-            "narrator_voice": tts_config.narrator_voice,
-            "rvc_narrator_voice": tts_config.rvc_narrator_voice,
-            "rvc_narrator_pitch": tts_config.rvc_narrator_pitch,
             "output_file_timestamp": tts_config.output_file_timestamp,
             "autoplay": tts_config.autoplay,
             "autoplay_volume": tts_config.autoplay_volume,
         }
         common_properties_cypher = """
                 id: $id,
+                name: $name,
                 model: $model,
                 text_filtering: $text_filtering,
                 text_not_inside: $text_not_inside,
                 narrator_enabled: $narrator_enabled,
-                narrator_voice: $narrator_voice,
-                rvc_narrator_voice: $rvc_narrator_voice,
-                rvc_narrator_pitch: $rvc_narrator_pitch,
                 output_file_timestamp: $output_file_timestamp,
                 autoplay: $autoplay,
                 autoplay_volume: $autoplay_volume

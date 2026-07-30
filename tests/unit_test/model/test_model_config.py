@@ -14,6 +14,7 @@ from world_simulation_engine.model import (
     OllamaEmbedModelConfig,
     OpenAiChatModelConfig,
     OpenAiEmbedModelConfig,
+    TtsGenerationConfig,
     TtsModelConfigUnion,
 )
 
@@ -151,9 +152,10 @@ def test_tts_model_config_union_uses_engine_discriminator():
     assert isinstance(f5tts_config, AllTalkF5ttsModelConfig)
 
 
-def test_tts_backend_configs_do_not_carry_per_character_voice_fields():
-    # character_voice and its RVC settings are per-character (CharacterTtsConfig), not part of the
-    # shared backend config, so many characters can use the same backend with different voices.
+def test_tts_backend_configs_do_not_carry_any_voice_fields():
+    # character_voice and its RVC settings are per-character (CharacterTtsConfig); narrator_voice and
+    # its RVC settings are per-simulation (TtsGenerationConfig). Neither belongs on the shared backend
+    # config, so many characters/simulations can use the same backend with different voices.
     for config_cls in (
         AllTalkXttsModelConfig,
         AllTalkPiperModelConfig,
@@ -164,9 +166,18 @@ def test_tts_backend_configs_do_not_carry_per_character_voice_fields():
         assert "character_voice" not in config_cls.model_fields
         assert "rvc_character_voice" not in config_cls.model_fields
         assert "rvc_character_pitch" not in config_cls.model_fields
-        # The narrator isn't a specific character, so narrator voice settings stay on the backend.
-        assert "narrator_voice" in config_cls.model_fields
-        assert "rvc_narrator_voice" in config_cls.model_fields
+        assert "narrator_voice" not in config_cls.model_fields
+        assert "rvc_narrator_voice" not in config_cls.model_fields
+        assert "rvc_narrator_pitch" not in config_cls.model_fields
+        assert "name" in config_cls.model_fields
+
+
+def test_tts_generation_config_holds_the_narrator_voice():
+    # The narrator isn't a specific character and has no CharacterTtsConfig, so its voice lives on
+    # the per-simulation TtsGenerationConfig instead of the shared backend config.
+    assert "narrator_voice" in TtsGenerationConfig.model_fields
+    assert "rvc_narrator_voice" in TtsGenerationConfig.model_fields
+    assert "rvc_narrator_pitch" in TtsGenerationConfig.model_fields
 
 
 def test_character_tts_config_holds_per_character_voice_and_resolved_backend():

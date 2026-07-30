@@ -40,6 +40,23 @@ class ItemStack(BaseModel):
         description="The conceptual item type this stack is of. Populated when the stack is read "
                     "back from storage; not required when constructing a stack for creation.",
     )
+    owner_id: Optional[str] = Field(
+        None,
+        description="Entity that owns the stack, if any. Populated when read back from storage.",
+    )
+    holder_id: Optional[str] = Field(
+        None,
+        description="Entity that holds the stack, if any. Populated when read back from storage.",
+    )
+    location_id: Optional[str] = Field(
+        None,
+        description="Location the stack is present in, if not held by another entity. Populated when "
+                    "read back from storage.",
+    )
+    position: Optional[str] = Field(
+        None,
+        description="Position of the stack in its location, if present in a location.",
+    )
 
 
 class InventoryStack(BaseModel):

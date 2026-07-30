@@ -42,8 +42,8 @@ from .media import GeneratedImageMediaFile, GeneratedVoiceMediaFile, MediaFile, 
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion, ConnectionConfig, \
     OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion, ComfyUiImageModelConfig, \
     ImageModelConfigUnion, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
-    AllTalkTtsModelConfigUnion, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, \
-    SttModelConfig, SttModelConfigUnion, WhisperCppSttModelConfig
+    AllTalkStatus, AllTalkTtsModelConfigUnion, AllTalkVitsModelConfig, AllTalkXttsModelConfig, \
+    TtsModelConfigUnion, SttModelConfig, SttModelConfigUnion, WhisperCppSttModelConfig
 from .prompt_message import PromptMessage
 from .simulation import Simulation
 from .turn import Turn

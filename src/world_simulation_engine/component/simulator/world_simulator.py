@@ -3,6 +3,7 @@ import functools
 import hashlib
 import json
 import operator
+import traceback
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Awaitable, Callable, AsyncIterator, TypeVar
@@ -724,7 +725,7 @@ class WorldSimulator:
                 status=SimulationAuditStatus.FAILED,
                 stage="failed",
                 summary="Generation run failed.",
-                details={"error_type": type(exc).__name__},
+                details=self._error_audit_details(exc),
             )
         finally:
             async with self._run_registry_lock:
@@ -871,7 +872,7 @@ class WorldSimulator:
                     status=SimulationAuditStatus.FAILED,
                     stage="failed",
                     summary="Off-screen character review failed and was ignored.",
-                    details={"error_type": type(exc).__name__},
+                    details=self._error_audit_details(exc),
                     simulation_time=generation.simulation_time,
                 )
             finally:
@@ -1918,7 +1919,7 @@ class WorldSimulator:
                 status=SimulationAuditStatus.FAILED,
                 stage="action_suggestion",
                 summary="Action suggestion generation failed and was skipped.",
-                details={"error_type": type(exc).__name__},
+                details=self._error_audit_details(exc),
             )
 
     async def commit_character_actions(self, state: WorldSimulatorState | CharacterActionProposalState):
@@ -2888,6 +2889,14 @@ class WorldSimulator:
             details=details or {},
             simulation_time=simulation_time,
         ))
+
+    @staticmethod
+    def _error_audit_details(exc: BaseException) -> dict:
+        return {
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        }
 
     @staticmethod
     def _schedule_audit(coroutine) -> None:

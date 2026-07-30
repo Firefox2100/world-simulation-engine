@@ -27,3 +27,20 @@ class Container(BaseModel):
         ...,
         description="The current state of the container",
     )
+    owner_id: Optional[str] = Field(
+        None,
+        description="Entity that owns the container, if any. Populated when read back from storage.",
+    )
+    holder_id: Optional[str] = Field(
+        None,
+        description="Entity that holds the container, if any. Populated when read back from storage.",
+    )
+    location_id: Optional[str] = Field(
+        None,
+        description="Location the container is present in, if not held by another entity. Populated when "
+                    "read back from storage.",
+    )
+    position: Optional[str] = Field(
+        None,
+        description="Position of the container in its location, if present in a location.",
+    )

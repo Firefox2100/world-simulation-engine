@@ -11,12 +11,21 @@ class EquipmentStore:
         self._driver = driver
 
     @staticmethod
-    def equipment_from_node(equipment_node) -> Equipment:
+    def equipment_from_node(equipment_node,
+                            owner_id: str | None = None,
+                            holder_id: str | None = None,
+                            location_id: str | None = None,
+                            position: str | None = None,
+                            ) -> Equipment:
         return Equipment(
             id=equipment_node["id"],
             name=equipment_node["name"],
             description=equipment_node["description"],
             quality=equipment_node.get("quality"),
+            owner_id=owner_id,
+            holder_id=holder_id,
+            location_id=location_id,
+            position=position,
         )
 
     @staticmethod
@@ -71,7 +80,11 @@ class EquipmentStore:
         if not record:
             return None
 
-        return self.equipment_from_node(record["e"])
+        return self.equipment_from_node(
+            record["e"],
+            location_id=location_id if location_id else None,
+            position=position if location_id else None,
+        )
 
     async def list_equipment(self,
                              world_id: str | None = None,
@@ -113,7 +126,11 @@ class EquipmentStore:
                 AND ($holder_id IS NULL OR EXISTS {
                     MATCH (holder {id: $holder_id})-[:HOLDS|EQUIPS]->(equipment)
                 })
-            RETURN DISTINCT equipment
+            OPTIONAL MATCH (equipment_owner)-[:OWNS]->(equipment)
+            OPTIONAL MATCH (equipment_holder)-[:HOLDS|EQUIPS]->(equipment)
+            OPTIONAL MATCH (equipment)-[equipment_present:PRESENT_IN]->(equipment_location:Location)
+            RETURN DISTINCT equipment, equipment_owner.id AS owner_id, equipment_holder.id AS holder_id,
+                equipment_location.id AS location_id, equipment_present.position AS position
             ORDER BY equipment.name
             """,
             parameters_={
@@ -126,13 +143,27 @@ class EquipmentStore:
         )
 
         return [
-            self.equipment_from_node(record["equipment"])
+            self.equipment_from_node(
+                record["equipment"],
+                owner_id=record["owner_id"],
+                holder_id=record["holder_id"],
+                location_id=record["location_id"],
+                position=record["position"],
+            )
             for record in result.records
         ]
 
     async def get_equipment(self, equipment_id: str) -> Equipment | None:
         result = await self._driver.execute_query(
-            "MATCH (e:Equipment {id: $id}) RETURN e LIMIT 1",
+            """
+            MATCH (e:Equipment {id: $id})
+            OPTIONAL MATCH (equipment_owner)-[:OWNS]->(e)
+            OPTIONAL MATCH (equipment_holder)-[:HOLDS|EQUIPS]->(e)
+            OPTIONAL MATCH (e)-[equipment_present:PRESENT_IN]->(equipment_location:Location)
+            RETURN e, equipment_owner.id AS owner_id, equipment_holder.id AS holder_id,
+                equipment_location.id AS location_id, equipment_present.position AS position
+            LIMIT 1
+            """,
             parameters_={"id": equipment_id}
         )
 
@@ -140,7 +171,13 @@ class EquipmentStore:
         if not record:
             return None
 
-        return self.equipment_from_node(record["e"])
+        return self.equipment_from_node(
+            record["e"],
+            owner_id=record["owner_id"],
+            holder_id=record["holder_id"],
+            location_id=record["location_id"],
+            position=record["position"],
+        )
 
     async def update_equipment(self,
                                equipment_id: str,
@@ -168,7 +205,7 @@ class EquipmentStore:
         if not record:
             return None
 
-        return self.equipment_from_node(record["equipment"])
+        return await self.get_equipment(equipment_id)
 
     async def delete_equipment(self, equipment_id: str) -> bool:
         result = await self._driver.execute_query(
@@ -248,7 +285,7 @@ class EquipmentStore:
         if not record:
             return None
 
-        return self.equipment_from_node(record["equipment"])
+        return await self.get_equipment(equipment_id)
 
     async def change_owner(self, equipment_id: str, new_owner_id: str) -> Equipment | None:
         result = await self._driver.execute_query(
@@ -270,7 +307,7 @@ class EquipmentStore:
         if not record:
             return None
 
-        return self.equipment_from_node(record["e"])
+        return await self.get_equipment(equipment_id)
 
     async def change_hold_state(self,
                                 equipment_id: str,
@@ -319,7 +356,7 @@ class EquipmentStore:
         if not record:
             return None
 
-        return self.equipment_from_node(record["e"])
+        return await self.get_equipment(equipment_id)
 
     async def remove_location(self, equipment_id: str) -> bool:
         result = await self._driver.execute_query(
