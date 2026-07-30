@@ -80,9 +80,9 @@ async def test_generate_compiles_the_nested_node_graph_not_the_template(monkeypa
     assert submitted_graph["8"]["inputs"]["seed"] == 42
     assert submitted_graph["8"]["inputs"]["steps"] == 20
     assert submitted_graph["8"]["inputs"]["cfg"] == 7
-    # Untouched nodes (e.g. the UNETLoader) must still carry their original fields intact.
-    assert submitted_graph["7"]["class_type"] == "UNETLoader"
-    assert submitted_graph["7"]["inputs"]["unet_name"] == "anima-base-v1.0.safetensors"
+    # Untouched nodes (e.g. the checkpoint loader) must still carry their original fields intact.
+    assert submitted_graph["7"]["class_type"] == "CheckpointLoaderSimple"
+    assert submitted_graph["7"]["inputs"]["ckpt_name"] == "anima-base-v1.0.safetensors"
 
     assert post.await_args.args[0] == "/prompt"
     assert get.await_args_list[0].args[0] == "/history/prompt-1"
