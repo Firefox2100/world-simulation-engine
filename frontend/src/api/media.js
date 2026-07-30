@@ -8,6 +8,7 @@ const coverPaths = {
     locations: (id) => `/locations/${id}/cover-image`,
     characters: (id) => `/characters/${id}/cover-image`,
     background: (id) => `/background-characters/${id}/cover-image`,
+    landmarks: (id) => `/landmarks/${id}/cover-image`,
     items: (id) => `/items/${id}/cover-image`,
     stacks: (id) => `/stacks/${id}/cover-image`,
     equipment: (id) => `/equipment/${id}/cover-image`,

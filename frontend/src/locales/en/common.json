@@ -34,14 +34,14 @@
   },
   "mediaPicker": {
     "title": "Select image",
-    "subtitle": "Choose from images linked to this world, or upload a new PNG.",
+    "subtitle": "Choose from previously generated or uploaded images, or upload a new PNG.",
     "close": "Close media selector",
     "upload": "Upload PNG",
     "uploading": "Uploading...",
     "loading": "Loading images...",
     "loadingMore": "Loading...",
     "loadMore": "Load more",
-    "empty": "No images are linked to this world yet.",
+    "empty": "No images are available yet.",
     "error": "Unable to load images: {{error}}",
     "cancel": "Cancel",
     "select": "Use selected image"
@@ -208,6 +208,9 @@
     "generatingCoverImage": "Generating...",
     "coverImageGenerated": "Cover image generated.",
     "coverImageError": "Unable to generate cover image: {{error}}",
+    "chooseCoverImage": "Choose cover image",
+    "removeCoverImage": "Remove cover image",
+    "coverImageActionError": "Unable to update cover image: {{error}}",
     "imageGeneration": {
       "mode": "Image generation mode",
       "fallbackTurns": "Fallback turns",

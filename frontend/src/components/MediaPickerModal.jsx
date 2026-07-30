@@ -6,7 +6,7 @@ import { MediaImage } from "@/components/MediaImage";
 
 const limit = 24;
 
-export function MediaPickerModal({ worldId, selectedMediaId = null, onSelect, onClose }) {
+export function MediaPickerModal({ worldId, simulationId, selectedMediaId = null, onSelect, onClose }) {
     const { t } = useTranslation();
     const fileInputRef = useRef(null);
     const [media, setMedia] = useState([]);
@@ -24,6 +24,7 @@ export function MediaPickerModal({ worldId, selectedMediaId = null, onSelect, on
             setError(null);
             const data = await fetchMedia({
                 worldId,
+                simulationId,
                 type: "image/png",
                 limit,
                 offset: nextOffset,
@@ -38,7 +39,7 @@ export function MediaPickerModal({ worldId, selectedMediaId = null, onSelect, on
             setLoading(false);
             setLoadingMore(false);
         }
-    }, [worldId]);
+    }, [simulationId, worldId]);
 
     useEffect(() => {
         function onKeyDown(event) {

@@ -34,14 +34,14 @@
   },
   "mediaPicker": {
     "title": "选择图片",
-    "subtitle": "从该世界关联的图片中选择，或上传新的 PNG。",
+    "subtitle": "从已生成或上传的图片中选择，或上传新的 PNG。",
     "close": "关闭媒体选择器",
     "upload": "上传 PNG",
     "uploading": "正在上传...",
     "loading": "正在加载图片...",
     "loadingMore": "正在加载...",
     "loadMore": "加载更多",
-    "empty": "该世界暂无关联图片。",
+    "empty": "暂无可用图片。",
     "error": "无法加载图片：{{error}}",
     "cancel": "取消",
     "select": "使用所选图片"
@@ -208,6 +208,9 @@
     "generatingCoverImage": "正在生成...",
     "coverImageGenerated": "封面图片已生成。",
     "coverImageError": "无法生成封面图片：{{error}}",
+    "chooseCoverImage": "选择封面图片",
+    "removeCoverImage": "移除封面图片",
+    "coverImageActionError": "无法更新封面图片：{{error}}",
     "imageGeneration": {
       "mode": "图像生成模式",
       "fallbackTurns": "兜底回合数",

@@ -66,9 +66,10 @@ import {
     sendSimulationInput,
     setCharacterTtsConfig,
 } from "@/api/simulations";
-import { getMediaUrl } from "@/api/media";
+import { deleteCoverImage, getMediaUrl, setCoverImage } from "@/api/media";
 import { ensureAudioUnlockListeners, playAudioUrlSequence } from "@/utils/audioPlayback";
 import { waitForBlocksVoiced } from "@/utils/turnVoicePolling";
+import { MediaPickerModal } from "@/components/MediaPickerModal";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
 import { VoiceRecorderButton } from "@/components/VoiceRecorderButton";
 import { useMediaQuery } from "@/shared/useMediaQuery";
@@ -516,9 +517,11 @@ function stageFromStateChunk(chunk) {
     return null;
 }
 
-function SimulationAvatar({ simulation, className = "chat-avatar" }) {
+function SimulationAvatar({ simulation, className = "chat-avatar", refreshKey = 0 }) {
     const { src, isLoaded } = useOptionalImage(
-        simulation?.id ? getSimulationCoverUrl(simulation.id) : null,
+        simulation?.id
+            ? `${getSimulationCoverUrl(simulation.id)}${refreshKey ? `?v=${refreshKey}` : ""}`
+            : null,
         placeholderImage,
     );
 
@@ -703,6 +706,26 @@ function GenerateCoverImageButton({ label, onGenerate }) {
             {state === "error" ? (
                 <span className="status-text error-text">
                     {t("simulationDetails.coverImageError", { error })}
+                </span>
+            ) : null}
+        </div>
+    );
+}
+
+function CoverImageActions({ error, onChoose, onRemove }) {
+    const { t } = useTranslation();
+
+    return (
+        <div className="cover-image-generate-control">
+            <button type="button" className="secondary-button" onClick={onChoose}>
+                {t("simulationDetails.chooseCoverImage")}
+            </button>
+            <button type="button" className="secondary-button" onClick={onRemove}>
+                {t("simulationDetails.removeCoverImage")}
+            </button>
+            {error ? (
+                <span className="status-text error-text">
+                    {t("simulationDetails.coverImageActionError", { error })}
                 </span>
             ) : null}
         </div>
@@ -1119,10 +1142,10 @@ function ActionSuggestions({ suggestions, open, onToggle, onSelect, disabled }) 
     );
 }
 
-function CharacterImage({ simulationId, character, className = "simulation-details-cover" }) {
+function CharacterImage({ simulationId, character, className = "simulation-details-cover", refreshKey = 0 }) {
     const { src, isLoaded } = useOptionalImage(
         simulationId && character?.id
-            ? getSimulationCharacterImageUrl({ simulationId, characterId: character.id })
+            ? `${getSimulationCharacterImageUrl({ simulationId, characterId: character.id })}${refreshKey ? `?v=${refreshKey}` : ""}`
             : null,
         characterPlaceholderImage,
     );
@@ -1137,10 +1160,10 @@ function CharacterImage({ simulationId, character, className = "simulation-detai
     );
 }
 
-function LocationImage({ simulationId, location, className = "simulation-details-cover" }) {
+function LocationImage({ simulationId, location, className = "simulation-details-cover", refreshKey = 0 }) {
     const { src, isLoaded } = useOptionalImage(
         simulationId && location?.id
-            ? getSimulationLocationImageUrl({ simulationId, locationId: location.id })
+            ? `${getSimulationLocationImageUrl({ simulationId, locationId: location.id })}${refreshKey ? `?v=${refreshKey}` : ""}`
             : null,
         locationPlaceholderImage,
     );
@@ -2414,6 +2437,9 @@ function SimulationDetailsModal({
     const canGenerateCharacterCover = Boolean(imageCapabilities.character_image_generator);
     const canGenerateLocationCover = Boolean(imageCapabilities.location_image_generator);
     const canGenerateItemCover = Boolean(imageCapabilities.item_image_generator);
+    const [coverPickerTarget, setCoverPickerTarget] = useState(null);
+    const [coverRefreshKey, setCoverRefreshKey] = useState(0);
+    const [coverActionError, setCoverActionError] = useState(null);
     const selectedCharacter =
         characters.find((character) => character.id === selectedCharacterId) ?? characters[0] ?? null;
     const selectedLocation = selectedCharacter ? characterLocation ?? null : null;
@@ -2443,6 +2469,43 @@ function SimulationDetailsModal({
     function selectLocation(locationId) {
         onSelectedLocationIdChange(locationId);
         onActiveSectionChange("locations");
+    }
+
+    async function handleSelectCover(media) {
+        if (!coverPickerTarget) {
+            return;
+        }
+
+        try {
+            setCoverActionError(null);
+            await setCoverImage(coverPickerTarget.kind, coverPickerTarget.id, media.id);
+            setCoverRefreshKey((current) => current + 1);
+            setCoverPickerTarget(null);
+        } catch (err) {
+            setCoverActionError(err.message);
+        }
+    }
+
+    async function handleRemoveCover(kind, id) {
+        try {
+            setCoverActionError(null);
+            await deleteCoverImage(kind, id);
+            setCoverRefreshKey((current) => current + 1);
+        } catch (err) {
+            setCoverActionError(err.message);
+        }
+    }
+
+    // Stacks display and inherit the cover image of the item they're an instance of, rather
+    // than getting their own - so the cover target for a selected stack is its item.
+    function coverTargetForEntitySection(section, entity) {
+        if (!entity) {
+            return null;
+        }
+        if (section === "stacks") {
+            return entity.item?.id ? { kind: "items", id: entity.item.id } : null;
+        }
+        return { kind: section, id: entity.id };
     }
 
     function navigateToEntity(section, entityId) {
@@ -2525,25 +2588,29 @@ function SimulationDetailsModal({
             return null;
         }
 
+        const suffix = coverRefreshKey ? `?v=${coverRefreshKey}` : "";
+
         if (activeSection === "landmarks") {
-            return getSimulationLandmarkImageUrl(selectedEntity.id);
+            return `${getSimulationLandmarkImageUrl(selectedEntity.id)}${suffix}`;
         }
         if (activeSection === "background") {
-            return getSimulationBackgroundCharacterImageUrl(selectedEntity.id);
+            return `${getSimulationBackgroundCharacterImageUrl(selectedEntity.id)}${suffix}`;
         }
         if (activeSection === "items") {
-            return getSimulationItemImageUrl(selectedEntity.id);
+            return `${getSimulationItemImageUrl(selectedEntity.id)}${suffix}`;
         }
         if (activeSection === "stacks") {
             // Stacks are physical instances of an Item and don't get their own generated
             // image - show the item's cover image instead.
-            return selectedEntity.item?.id ? getSimulationItemImageUrl(selectedEntity.item.id) : null;
+            return selectedEntity.item?.id
+                ? `${getSimulationItemImageUrl(selectedEntity.item.id)}${suffix}`
+                : null;
         }
         if (activeSection === "equipment") {
-            return getSimulationEquipmentImageUrl(selectedEntity.id);
+            return `${getSimulationEquipmentImageUrl(selectedEntity.id)}${suffix}`;
         }
         if (activeSection === "containers") {
-            return getSimulationContainerImageUrl(selectedEntity.id);
+            return `${getSimulationContainerImageUrl(selectedEntity.id)}${suffix}`;
         }
         return null;
     })();
@@ -2672,14 +2739,35 @@ function SimulationDetailsModal({
                                 entities={entities}
                                 onNavigate={navigateToEntity}
                                 coverImageAction={
-                                    activeSection === "items" && canGenerateItemCover && selectedEntity ? (
-                                        <GenerateCoverImageButton
-                                            label={t("simulationDetails.generateCoverImage")}
-                                            onGenerate={() => generateItemCoverImage({
-                                                sourceId: simulation.id,
-                                                itemId: selectedEntity.id,
-                                            })}
-                                        />
+                                    selectedEntity ? (
+                                        <>
+                                            {activeSection === "items" && canGenerateItemCover ? (
+                                                <GenerateCoverImageButton
+                                                    label={t("simulationDetails.generateCoverImage")}
+                                                    onGenerate={() => generateItemCoverImage({
+                                                        sourceId: simulation.id,
+                                                        itemId: selectedEntity.id,
+                                                    })}
+                                                />
+                                            ) : null}
+                                            <CoverImageActions
+                                                error={coverActionError}
+                                                onChoose={() =>
+                                                    setCoverPickerTarget(
+                                                        coverTargetForEntitySection(activeSection, selectedEntity),
+                                                    )
+                                                }
+                                                onRemove={() => {
+                                                    const target = coverTargetForEntitySection(
+                                                        activeSection,
+                                                        selectedEntity,
+                                                    );
+                                                    if (target) {
+                                                        handleRemoveCover(target.kind, target.id);
+                                                    }
+                                                }}
+                                            />
+                                        </>
                                     ) : null
                                 }
                             />
@@ -2690,6 +2778,7 @@ function SimulationDetailsModal({
                                         <LocationImage
                                             simulationId={simulation.id}
                                             location={selectedLocationDetail}
+                                            refreshKey={coverRefreshKey}
                                         />
                                         <div className="simulation-details-summary">
                                             <h3>
@@ -2711,6 +2800,18 @@ function SimulationDetailsModal({
                                                     })}
                                                 />
                                             ) : null}
+                                            <CoverImageActions
+                                                error={coverActionError}
+                                                onChoose={() =>
+                                                    setCoverPickerTarget({
+                                                        kind: "locations",
+                                                        id: selectedLocationDetail.id,
+                                                    })
+                                                }
+                                                onRemove={() =>
+                                                    handleRemoveCover("locations", selectedLocationDetail.id)
+                                                }
+                                            />
                                         </div>
                                     </div>
 
@@ -2747,6 +2848,7 @@ function SimulationDetailsModal({
                                         <CharacterImage
                                             simulationId={simulation.id}
                                             character={selectedCharacter}
+                                            refreshKey={coverRefreshKey}
                                         />
                                         <div className="simulation-details-summary">
                                             <h3>{selectedCharacter.name}</h3>
@@ -2763,6 +2865,16 @@ function SimulationDetailsModal({
                                                     })}
                                                 />
                                             ) : null}
+                                            <CoverImageActions
+                                                error={coverActionError}
+                                                onChoose={() =>
+                                                    setCoverPickerTarget({
+                                                        kind: "characters",
+                                                        id: selectedCharacter.id,
+                                                    })
+                                                }
+                                                onRemove={() => handleRemoveCover("characters", selectedCharacter.id)}
+                                            />
                                         </div>
                                     </div>
 
@@ -2827,12 +2939,20 @@ function SimulationDetailsModal({
                                     <SimulationAvatar
                                         simulation={simulation}
                                         className="simulation-details-cover"
+                                        refreshKey={coverRefreshKey}
                                     />
                                     <div className="simulation-details-summary">
                                         <h3>{simulation.name}</h3>
                                         <p>
                                             {simulation.description || t("simulationDetails.noDescription")}
                                         </p>
+                                        <CoverImageActions
+                                            error={coverActionError}
+                                            onChoose={() =>
+                                                setCoverPickerTarget({ kind: "simulations", id: simulation.id })
+                                            }
+                                            onRemove={() => handleRemoveCover("simulations", simulation.id)}
+                                        />
                                     </div>
                                 </div>
 
@@ -2848,6 +2968,14 @@ function SimulationDetailsModal({
                                 </dl>
                             </>
                         )}
+
+                        {coverPickerTarget ? (
+                            <MediaPickerModal
+                                simulationId={simulation.id}
+                                onSelect={handleSelectCover}
+                                onClose={() => setCoverPickerTarget(null)}
+                            />
+                        ) : null}
                     </div>
                 </section>
             </div>
