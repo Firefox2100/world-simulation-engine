@@ -3,17 +3,30 @@ import { useTranslation } from "react-i18next";
 
 import { fetchAuthors } from "@/api/authors";
 import {
+    fetchAllTalkStatus,
     fetchEmbeddingConfigs,
+    fetchImageConfigs,
     fetchLlmConfigs,
+    fetchTtsConfigs,
     fetchWorldEmbeddingConfigs,
+    fetchWorldImageConfigs,
     fetchWorldLlmConfigs,
+    fetchWorldTtsConfig,
+    imageChatComponents,
+    imageComponents,
     setWorldEmbeddingConfigs,
+    setWorldImageConfigs,
     setWorldLlmConfigs,
+    setWorldTtsConfig,
     simulatorComponents,
 } from "@/api/configurations";
 import { deleteCoverImage, getCoverImageUrl, setCoverImage } from "@/api/media";
+import { fetchCharacterTtsConfig, setCharacterTtsConfig } from "@/api/simulations";
 import { createWorld, updateWorld } from "@/api/worlds";
 import {
+    createEvent,
+    createLandmark,
+    createMemory,
     createWorldBackgroundCharacter,
     createWorldCharacter,
     createWorldContainer,
@@ -21,36 +34,88 @@ import {
     createWorldItem,
     createWorldItemStack,
     createWorldLocation,
+    createWorldTurn,
     deleteBackgroundCharacter,
     deleteCharacter,
     deleteContainer,
     deleteEquipment,
+    deleteEvent,
     deleteItem,
+    deleteLandmark,
     deleteLocation,
+    deleteMemory,
     fetchWorldAuthor,
     fetchWorldBackgroundCharacters,
     fetchWorldCharacters,
     fetchWorldContainers,
     fetchWorldEquipment,
+    fetchWorldEvents,
     fetchWorldItems,
+    fetchWorldLandmarks,
     fetchWorldLocations,
+    fetchWorldMemories,
+    fetchWorldTurns,
     updateBackgroundCharacter,
     updateCharacter,
     updateContainer,
     updateEquipment,
     updateItem,
+    updateLandmark,
     updateLocation,
     updateWorldAuthor,
 } from "@/api/worldEntities";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
 
-const sections = ["world", "configs", "prompts", "locations", "characters", "background", "items", "equipment", "containers", "stacks"];
-const entitySections = ["locations", "characters", "background", "items", "equipment", "containers", "stacks"];
+const sections = [
+    "world",
+    "configs",
+    "imageGeneration",
+    "ttsGeneration",
+    "prompts",
+    "locations",
+    "landmarks",
+    "characters",
+    "background",
+    "items",
+    "equipment",
+    "containers",
+    "stacks",
+    "turns",
+    "events",
+    "memories",
+];
+const entitySections = ["locations", "landmarks", "characters", "background", "items", "equipment", "containers", "stacks"];
+const narrativeSections = ["turns", "events", "memories"];
+
+const TURN_TYPES = ["user_input", "system_response", "system_continue"];
+const EVENT_INVOLVEMENTS = ["witness", "participate", "hear", "infer", "believe", "suspect"];
+const MEMORY_SUPPORT_TYPES = ["direct", "inferred", "reported", "contradicts"];
+const MEMORY_STANCES = ["remember", "infer", "believe", "doubt", "deny", "mistake"];
+const MEMORY_SALIENCE = ["low", "medium", "high", "critical"];
+
+const emptyTurnForm = { type: "system_response", content: "", start_time: "2000-01-01T00:00" };
+const emptyEventForm = { name: "", summary: "", turn_ids: [], involved_characters: [] };
+const emptyMemoryForm = {
+    summary: "",
+    keywords: "",
+    event_id: "",
+    support_type: "direct",
+    character_links: [],
+};
+const emptyInvolvedCharacter = { character_id: "", involvement: "witness" };
+const emptyCharacterLink = {
+    character_id: "",
+    confidence: "1",
+    salience: "medium",
+    behavioural_relevance: "",
+    stance: "remember",
+};
 
 const entityDependencies = {
+    landmarks: ["locations"],
     characters: ["locations"],
-    background: ["locations"],
+    background: ["locations", "landmarks"],
     equipment: ["locations", "characters", "containers"],
     containers: ["locations", "characters", "items", "equipment", "containers"],
     stacks: ["locations", "characters", "items", "containers"],
@@ -58,6 +123,7 @@ const entityDependencies = {
 
 const requiredFields = {
     locations: ["name", "description"],
+    landmarks: ["name", "description", "location_id"],
     characters: [
         "name",
         "age",
@@ -77,6 +143,7 @@ const requiredFields = {
 
 const emptyForms = {
     locations: { name: "", description: "", parent_location_id: "" },
+    landmarks: { name: "", description: "", location_id: "" },
     characters: {
         user_controlled: false,
         name: "",
@@ -178,19 +245,19 @@ function worldPayload(form) {
     };
 }
 
-function emptyComponentConfigMap() {
-    return Object.fromEntries(simulatorComponents.map((component) => [component, ""]));
+function emptyComponentConfigMap(components) {
+    return Object.fromEntries(components.map((component) => [component, ""]));
 }
 
-function componentConfigMapFromAssignments(assignments) {
+function componentConfigMapFromAssignments(components, assignments) {
     return assignments.reduce((result, assignment) => {
         result[assignment.component] = assignment.config?.id ?? "";
         return result;
-    }, emptyComponentConfigMap());
+    }, emptyComponentConfigMap(components));
 }
 
-function componentAssignmentsFromMap(configsByComponent) {
-    return simulatorComponents.map((component) => ({
+function componentAssignmentsFromMap(components, configsByComponent) {
+    return components.map((component) => ({
         component,
         config_id: configsByComponent[component] || null,
     }));
@@ -225,9 +292,15 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const [authors, setAuthors] = useState([]);
     const [llmConfigs, setLlmConfigs] = useState([]);
     const [embeddingConfigs, setEmbeddingConfigs] = useState([]);
-    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(() => emptyComponentConfigMap());
-    const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(() => emptyComponentConfigMap());
+    const [imageConfigs, setImageConfigs] = useState([]);
+    const [ttsConfigs, setTtsConfigs] = useState([]);
+    const [llmConfigsByComponent, setLlmConfigsByComponent] = useState(() => emptyComponentConfigMap(simulatorComponents));
+    const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(() => emptyComponentConfigMap(simulatorComponents));
+    const [imageLlmConfigsByComponent, setImageLlmConfigsByComponent] = useState(() => emptyComponentConfigMap(imageChatComponents));
+    const [imageConfigsByComponent, setImageConfigsByComponent] = useState(() => emptyComponentConfigMap(imageComponents));
+    const [ttsConfigId, setTtsConfigId] = useState("");
     const [locations, setLocations] = useState([]);
+    const [landmarks, setLandmarks] = useState([]);
     const [characters, setCharacters] = useState([]);
     const [backgroundCharacters, setBackgroundCharacters] = useState([]);
     const [items, setItems] = useState([]);
@@ -240,11 +313,19 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const [loadingSections, setLoadingSections] = useState({});
     const [loadedSections, setLoadedSections] = useState({});
     const [configConnectionsLoaded, setConfigConnectionsLoaded] = useState(false);
+    const [imageConnectionsLoaded, setImageConnectionsLoaded] = useState(false);
+    const [ttsConnectionLoaded, setTtsConnectionLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [configNotice, setConfigNotice] = useState(null);
     const [mediaPickerTarget, setMediaPickerTarget] = useState(null);
     const [coverRefreshKey, setCoverRefreshKey] = useState(0);
+    const [worldTurns, setWorldTurns] = useState([]);
+    const [worldEvents, setWorldEvents] = useState([]);
+    const [worldMemories, setWorldMemories] = useState([]);
+    const [turnForm, setTurnForm] = useState(() => ({ ...emptyTurnForm }));
+    const [eventForm, setEventForm] = useState(() => ({ ...emptyEventForm }));
+    const [memoryForm, setMemoryForm] = useState(() => ({ ...emptyMemoryForm }));
 
     const worldId = world?.id ?? initialWorld?.id ?? null;
     const worldFormValid = isWorldFormValid(worldForm);
@@ -253,13 +334,18 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const lookups = useMemo(
         () => ({
             locations,
+            landmarks,
             characters,
             items,
             equipment,
             containers,
         }),
-        [characters, containers, equipment, items, locations],
+        [characters, containers, equipment, items, landmarks, locations],
     );
+
+    const nextTurnSequence = worldTurns.length
+        ? Math.max(...worldTurns.map((turn) => turn.sequence)) + 1
+        : 1;
 
     useEffect(() => {
         function onKeyDown(event) {
@@ -290,6 +376,8 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const setSectionData = useCallback((kind, data) => {
         if (kind === "locations") {
             setLocations(data);
+        } else if (kind === "landmarks") {
+            setLandmarks(data);
         } else if (kind === "characters") {
             setCharacters(data);
         } else if (kind === "background") {
@@ -306,6 +394,10 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const fetchSectionData = useCallback(async (kind, id) => {
         if (kind === "locations") {
             return fetchWorldLocations(id);
+        }
+
+        if (kind === "landmarks") {
+            return fetchWorldLandmarks(id);
         }
 
         if (kind === "characters") {
@@ -395,6 +487,57 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
         return () => window.clearTimeout(loadTimer);
     }, [activeSection, loadEntitySection]);
 
+    const loadNarrativeSection = useCallback(
+        async (kind, id = worldId, { force = false } = {}) => {
+            if (!id || !narrativeSections.includes(kind)) {
+                return;
+            }
+
+            if (loadedSections[kind] && !force) {
+                return;
+            }
+
+            setLoadingSections((current) => ({ ...current, [kind]: true }));
+
+            try {
+                if (kind === "turns") {
+                    setWorldTurns(await fetchWorldTurns(id));
+                } else if (kind === "events") {
+                    setWorldEvents(await fetchWorldEvents(id));
+                } else {
+                    setWorldMemories(await fetchWorldMemories(id));
+                }
+                setLoadedSections((current) => ({ ...current, [kind]: true }));
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoadingSections((current) => ({ ...current, [kind]: false }));
+            }
+        },
+        [loadedSections, worldId],
+    );
+
+    useEffect(() => {
+        if (!narrativeSections.includes(activeSection)) {
+            return;
+        }
+
+        const loadTimer = window.setTimeout(() => {
+            loadNarrativeSection(activeSection);
+            if (activeSection === "events" || activeSection === "memories") {
+                loadEntitySection("characters", worldId, { includeDependencies: false });
+            }
+            if (activeSection === "events") {
+                loadNarrativeSection("turns");
+            }
+            if (activeSection === "memories") {
+                loadNarrativeSection("events");
+            }
+        }, 0);
+
+        return () => window.clearTimeout(loadTimer);
+    }, [activeSection, loadEntitySection, loadNarrativeSection, worldId]);
+
     useEffect(() => {
         if (activeSection !== "configs" || !worldId || configConnectionsLoaded) {
             return;
@@ -411,8 +554,10 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                 ]);
 
                 if (!cancelled) {
-                    setLlmConfigsByComponent(componentConfigMapFromAssignments(llmAssignments));
-                    setEmbeddingConfigsByComponent(componentConfigMapFromAssignments(embeddingAssignments));
+                    setLlmConfigsByComponent(componentConfigMapFromAssignments(simulatorComponents, llmAssignments));
+                    setEmbeddingConfigsByComponent(
+                        componentConfigMapFromAssignments(simulatorComponents, embeddingAssignments),
+                    );
                     setConfigConnectionsLoaded(true);
                 }
             } catch (err) {
@@ -433,6 +578,90 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
         };
     }, [activeSection, configConnectionsLoaded, worldId]);
 
+    useEffect(() => {
+        if (activeSection !== "imageGeneration" || !worldId || imageConnectionsLoaded) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadWorldImageConnections() {
+            setLoadingSections((current) => ({ ...current, imageGeneration: true }));
+            try {
+                const [llms, images, llmAssignments, imageAssignments] = await Promise.all([
+                    fetchLlmConfigs(),
+                    fetchImageConfigs(),
+                    fetchWorldLlmConfigs(worldId),
+                    fetchWorldImageConfigs(worldId),
+                ]);
+
+                if (!cancelled) {
+                    setLlmConfigs(llms);
+                    setImageConfigs(images);
+                    setImageLlmConfigsByComponent(
+                        componentConfigMapFromAssignments(imageChatComponents, llmAssignments),
+                    );
+                    setImageConfigsByComponent(
+                        componentConfigMapFromAssignments(imageComponents, imageAssignments),
+                    );
+                    setImageConnectionsLoaded(true);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoadingSections((current) => ({ ...current, imageGeneration: false }));
+                }
+            }
+        }
+
+        loadWorldImageConnections();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeSection, imageConnectionsLoaded, worldId]);
+
+    useEffect(() => {
+        if (activeSection !== "ttsGeneration" || !worldId || ttsConnectionLoaded) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadWorldTtsConnection() {
+            setLoadingSections((current) => ({ ...current, ttsGeneration: true }));
+            try {
+                const [ttsBackends, ttsConfig] = await Promise.all([
+                    fetchTtsConfigs(),
+                    fetchWorldTtsConfig(worldId).catch(() => null),
+                ]);
+
+                if (!cancelled) {
+                    setTtsConfigs(ttsBackends);
+                    setTtsConfigId(ttsConfig?.id ?? "");
+                    setTtsConnectionLoaded(true);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoadingSections((current) => ({ ...current, ttsGeneration: false }));
+                }
+            }
+        }
+
+        loadWorldTtsConnection();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeSection, ttsConnectionLoaded, worldId]);
+
     function updateWorldField(field, value) {
         setWorldForm((current) => ({ ...current, [field]: value }));
     }
@@ -449,6 +678,15 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
     function updateComponentConfig(kind, component, configId) {
         const setter = kind === "llm" ? setLlmConfigsByComponent : setEmbeddingConfigsByComponent;
+
+        setter((current) => ({
+            ...current,
+            [component]: configId,
+        }));
+    }
+
+    function updateImageComponentConfig(kind, component, configId) {
+        const setter = kind === "llm" ? setImageLlmConfigsByComponent : setImageConfigsByComponent;
 
         setter((current) => ({
             ...current,
@@ -509,11 +747,55 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
             const id = await ensureWorldSaved();
             await Promise.all(
                 [
-                    setWorldLlmConfigs(id, componentAssignmentsFromMap(llmConfigsByComponent)),
-                    setWorldEmbeddingConfigs(id, componentAssignmentsFromMap(embeddingConfigsByComponent)),
+                    setWorldLlmConfigs(id, componentAssignmentsFromMap(simulatorComponents, llmConfigsByComponent)),
+                    setWorldEmbeddingConfigs(
+                        id,
+                        componentAssignmentsFromMap(simulatorComponents, embeddingConfigsByComponent),
+                    ),
                 ],
             );
             setConfigConnectionsLoaded(true);
+            setConfigNotice(t("worldCreate.newEditor.configSaved"));
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    async function saveImageConfigurations() {
+        setError(null);
+        setConfigNotice(null);
+
+        try {
+            setSaving(true);
+            const id = await ensureWorldSaved();
+            await Promise.all(
+                [
+                    setWorldLlmConfigs(id, componentAssignmentsFromMap(imageChatComponents, imageLlmConfigsByComponent)),
+                    setWorldImageConfigs(id, componentAssignmentsFromMap(imageComponents, imageConfigsByComponent)),
+                ],
+            );
+            setImageConnectionsLoaded(true);
+            setConfigNotice(t("worldCreate.newEditor.configSaved"));
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    async function saveTtsConfiguration() {
+        setError(null);
+        setConfigNotice(null);
+
+        try {
+            setSaving(true);
+            const id = await ensureWorldSaved();
+            if (ttsConfigId) {
+                await setWorldTtsConfig(id, ttsConfigId);
+            }
+            setTtsConnectionLoaded(true);
             setConfigNotice(t("worldCreate.newEditor.configSaved"));
             setSaving(false);
         } catch (err) {
@@ -536,6 +818,10 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                 savedEntity = editingEntity
                     ? await updateLocation(editingEntity.id, form)
                     : await createWorldLocation(id, form);
+            } else if (kind === "landmarks") {
+                savedEntity = editingEntity
+                    ? await updateLandmark(editingEntity.id, form)
+                    : await createLandmark(form.location_id, form);
             } else if (kind === "characters") {
                 savedEntity = editingEntity
                     ? await updateCharacter(editingEntity.id, form)
@@ -585,6 +871,8 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
             setSaving(true);
             if (kind === "locations") {
                 await deleteLocation(entity.id);
+            } else if (kind === "landmarks") {
+                await deleteLandmark(entity.id);
             } else if (kind === "characters") {
                 await deleteCharacter(entity.id);
             } else if (kind === "background") {
@@ -597,6 +885,163 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                 await deleteContainer(entity.id);
             }
             await loadEntitySection(kind, worldId, { force: true, includeDependencies: false });
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    function updateTurnForm(field, value) {
+        setTurnForm((current) => ({ ...current, [field]: value }));
+    }
+
+    async function saveTurn() {
+        setError(null);
+
+        try {
+            setSaving(true);
+            const id = await ensureWorldSaved();
+            await createWorldTurn(id, { ...turnForm, sequence: nextTurnSequence });
+            await loadNarrativeSection("turns", id, { force: true });
+            setTurnForm({ ...emptyTurnForm });
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    function updateEventForm(field, value) {
+        setEventForm((current) => ({ ...current, [field]: value }));
+    }
+
+    function addInvolvedCharacter() {
+        setEventForm((current) => ({
+            ...current,
+            involved_characters: [...current.involved_characters, { ...emptyInvolvedCharacter }],
+        }));
+    }
+
+    function updateInvolvedCharacter(index, field, value) {
+        setEventForm((current) => ({
+            ...current,
+            involved_characters: current.involved_characters.map((row, rowIndex) =>
+                rowIndex === index ? { ...row, [field]: value } : row,
+            ),
+        }));
+    }
+
+    function removeInvolvedCharacter(index) {
+        setEventForm((current) => ({
+            ...current,
+            involved_characters: current.involved_characters.filter((_, rowIndex) => rowIndex !== index),
+        }));
+    }
+
+    async function saveEvent() {
+        setError(null);
+
+        try {
+            setSaving(true);
+            const id = await ensureWorldSaved();
+            await createEvent({
+                name: eventForm.name,
+                summary: eventForm.summary,
+                turn_ids: eventForm.turn_ids,
+                involved_characters: eventForm.involved_characters.filter((row) => row.character_id),
+            });
+            await loadNarrativeSection("events", id, { force: true });
+            setEventForm({ ...emptyEventForm });
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    async function removeEvent(event) {
+        if (!window.confirm(t("worldCreate.newEditor.confirmDelete", { name: event.name || event.id }))) {
+            return;
+        }
+
+        try {
+            setSaving(true);
+            await deleteEvent(event.id);
+            await loadNarrativeSection("events", worldId, { force: true });
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    function updateMemoryForm(field, value) {
+        setMemoryForm((current) => ({ ...current, [field]: value }));
+    }
+
+    function addCharacterLink() {
+        setMemoryForm((current) => ({
+            ...current,
+            character_links: [...current.character_links, { ...emptyCharacterLink }],
+        }));
+    }
+
+    function updateCharacterLink(index, field, value) {
+        setMemoryForm((current) => ({
+            ...current,
+            character_links: current.character_links.map((row, rowIndex) =>
+                rowIndex === index ? { ...row, [field]: value } : row,
+            ),
+        }));
+    }
+
+    function removeCharacterLink(index) {
+        setMemoryForm((current) => ({
+            ...current,
+            character_links: current.character_links.filter((_, rowIndex) => rowIndex !== index),
+        }));
+    }
+
+    async function saveMemory() {
+        setError(null);
+
+        try {
+            setSaving(true);
+            const id = await ensureWorldSaved();
+            await createMemory({
+                summary: memoryForm.summary,
+                keywords: memoryForm.keywords,
+                event_id: memoryForm.event_id,
+                support_type: memoryForm.support_type,
+                character_links: memoryForm.character_links
+                    .filter((row) => row.character_id)
+                    .map((row) => ({
+                        character_id: row.character_id,
+                        confidence: Number.parseFloat(row.confidence) || 0,
+                        salience: row.salience,
+                        behavioural_relevance: cleanText(row.behavioural_relevance),
+                        stance: row.stance,
+                    })),
+            });
+            await loadNarrativeSection("memories", id, { force: true });
+            setMemoryForm({ ...emptyMemoryForm });
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    async function removeMemory(memory) {
+        if (!window.confirm(t("worldCreate.newEditor.confirmDelete", { name: memory.summary || memory.id }))) {
+            return;
+        }
+
+        try {
+            setSaving(true);
+            await deleteMemory(memory.id);
+            await loadNarrativeSection("memories", worldId, { force: true });
             setSaving(false);
         } catch (err) {
             setError(err.message);
@@ -651,6 +1096,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
     const entityData = {
         locations,
+        landmarks,
         characters,
         background: backgroundCharacters,
         items,
@@ -761,6 +1207,55 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                             </section>
                         ) : null}
 
+                        {activeSection === "imageGeneration" ? (
+                            <section className="world-editor-form">
+                                <ComponentConfigMatrix
+                                    llmConfigs={llmConfigs}
+                                    embeddingConfigs={imageConfigs}
+                                    llmConfigsByComponent={imageLlmConfigsByComponent}
+                                    embeddingConfigsByComponent={imageConfigsByComponent}
+                                    embeddingLabel="imageConfig"
+                                    components={imageChatComponents}
+                                    embeddingComponents={imageComponents}
+                                    onChange={updateImageComponentConfig}
+                                />
+                                {configNotice ? (
+                                    <p className="simulation-details-empty-line">{configNotice}</p>
+                                ) : null}
+                                <div className="modal-actions inline-actions">
+                                    <button type="button" className="primary-button" disabled={saving || !worldFormValid} onClick={saveImageConfigurations}>
+                                        {saving ? t("worldCreate.saving") : t("worldCreate.newEditor.saveConfigurations")}
+                                    </button>
+                                    <button type="button" className="secondary-button" onClick={finish}>
+                                        {t("worldCreate.newEditor.done")}
+                                    </button>
+                                </div>
+                            </section>
+                        ) : null}
+
+                        {activeSection === "ttsGeneration" ? (
+                            <section className="world-editor-form">
+                                <SelectField
+                                    label={t("worldCreate.newEditor.fields.ttsConfig")}
+                                    value={ttsConfigId}
+                                    onChange={setTtsConfigId}
+                                    options={ttsConfigs}
+                                    emptyLabel={t("worldCreate.newEditor.emptySelect")}
+                                />
+                                {configNotice ? (
+                                    <p className="simulation-details-empty-line">{configNotice}</p>
+                                ) : null}
+                                <div className="modal-actions inline-actions">
+                                    <button type="button" className="primary-button" disabled={saving || !worldFormValid} onClick={saveTtsConfiguration}>
+                                        {saving ? t("worldCreate.saving") : t("worldCreate.newEditor.saveConfigurations")}
+                                    </button>
+                                    <button type="button" className="secondary-button" onClick={finish}>
+                                        {t("worldCreate.newEditor.done")}
+                                    </button>
+                                </div>
+                            </section>
+                        ) : null}
+
                         {activeSection === "prompts" ? (
                             <PromptAssignmentEditor
                                 sourceType="world"
@@ -769,7 +1264,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                             />
                         ) : null}
 
-                        {["locations", "characters", "background", "items", "equipment", "containers", "stacks"].includes(activeSection) ? (
+                        {["locations", "landmarks", "characters", "background", "items", "equipment", "containers", "stacks"].includes(activeSection) ? (
                             <EntitySection
                                 kind={activeSection}
                                 data={entityData[activeSection]}
@@ -790,6 +1285,56 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                                 }}
                                 onDelete={(entity) => deleteEntity(activeSection, entity)}
                                 coverRefreshKey={coverRefreshKey}
+                            />
+                        ) : null}
+
+                        {activeSection === "characters" && editing.characters ? (
+                            <WorldCharacterVoiceEditor worldId={worldId} characterId={editing.characters.id} />
+                        ) : null}
+
+                        {activeSection === "turns" ? (
+                            <TurnSection
+                                turns={worldTurns}
+                                form={turnForm}
+                                nextSequence={nextTurnSequence}
+                                saving={saving}
+                                worldReady={Boolean(worldId) || worldFormValid}
+                                onChange={updateTurnForm}
+                                onSave={saveTurn}
+                            />
+                        ) : null}
+
+                        {activeSection === "events" ? (
+                            <EventSection
+                                events={worldEvents}
+                                turns={worldTurns}
+                                characters={characters}
+                                form={eventForm}
+                                saving={saving}
+                                worldReady={Boolean(worldId) || worldFormValid}
+                                onChange={updateEventForm}
+                                onAddInvolvement={addInvolvedCharacter}
+                                onUpdateInvolvement={updateInvolvedCharacter}
+                                onRemoveInvolvement={removeInvolvedCharacter}
+                                onSave={saveEvent}
+                                onDelete={removeEvent}
+                            />
+                        ) : null}
+
+                        {activeSection === "memories" ? (
+                            <MemorySection
+                                memories={worldMemories}
+                                events={worldEvents}
+                                characters={characters}
+                                form={memoryForm}
+                                saving={saving}
+                                worldReady={Boolean(worldId) || worldFormValid}
+                                onChange={updateMemoryForm}
+                                onAddCharacterLink={addCharacterLink}
+                                onUpdateCharacterLink={updateCharacterLink}
+                                onRemoveCharacterLink={removeCharacterLink}
+                                onSave={saveMemory}
+                                onDelete={removeMemory}
                             />
                         ) : null}
                     </div>
@@ -868,6 +1413,392 @@ function EntitySection({ kind, data, form, editing, lookups, saving, worldReady,
     );
 }
 
+function enumOptions(t, prefix, values) {
+    return values.map((value) => ({ id: value, name: t(`${prefix}.${value}`) }));
+}
+
+function TurnSection({ turns, form, nextSequence, saving, worldReady, onChange, onSave }) {
+    const { t } = useTranslation();
+    const formValid = Boolean(form.type) && form.content.trim().length > 0 && Boolean(form.start_time);
+    const orderedTurns = [...turns].sort((a, b) => a.sequence - b.sequence);
+
+    return (
+        <section>
+            <div className="data-preset-list">
+                {orderedTurns.length === 0 ? (
+                    <p className="simulation-details-empty-line">{t("worldCreate.newEditor.empty.turns")}</p>
+                ) : (
+                    orderedTurns.map((turn) => (
+                        <div className="data-preset-item" key={turn.id}>
+                            <div className="prompt-message-header">
+                                <span className="data-preset-item-title">
+                                    {t("worldCreate.newEditor.turnTitle", { number: turn.sequence })}
+                                </span>
+                                <span className="world-editor-required-badge">
+                                    {t(`worldCreate.newEditor.turnTypes.${turn.type}`)}
+                                </span>
+                            </div>
+                            <p>{turn.content}</p>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            <div className="world-editor-form">
+                <h3>{t("worldCreate.newEditor.create.turns")}</h3>
+                <label className="form-field inline-field">
+                    <FieldLabel label={t("worldCreate.newEditor.fields.sequence")} required />
+                    <input className="single-line-input" value={nextSequence} disabled readOnly />
+                </label>
+                <SelectField
+                    label={t("worldCreate.newEditor.fields.turn_type")}
+                    value={form.type}
+                    onChange={(value) => onChange("type", value)}
+                    options={enumOptions(t, "worldCreate.newEditor.turnTypes", TURN_TYPES)}
+                    required
+                />
+                <TextArea
+                    label={t("worldCreate.newEditor.fields.content")}
+                    value={form.content}
+                    onChange={(value) => onChange("content", value)}
+                    required
+                />
+                <TextField
+                    label={t("worldCreate.newEditor.fields.start_time")}
+                    type="datetime-local"
+                    value={form.start_time}
+                    onChange={(value) => onChange("start_time", value)}
+                    required
+                />
+                <div className="modal-actions inline-actions">
+                    <button
+                        type="button"
+                        className="primary-button"
+                        disabled={saving || !worldReady || !formValid}
+                        onClick={onSave}
+                    >
+                        {t("worldCreate.newEditor.saveEntity")}
+                    </button>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function InvolvedCharactersEditor({ rows, characters, onAdd, onUpdate, onRemove }) {
+    const { t } = useTranslation();
+
+    return (
+        <div className="data-values-editor">
+            <div className="data-values-header">
+                <span>{t("worldCreate.newEditor.fields.involved_characters")}</span>
+                <button type="button" className="secondary-button" disabled={characters.length === 0} onClick={onAdd}>
+                    {t("worldCreate.add")}
+                </button>
+            </div>
+            {rows.map((row, index) => (
+                <div className="list-editor-row" key={index}>
+                    <label>{t("worldCreate.newEditor.fields.character")}</label>
+                    <select
+                        className="single-line-input"
+                        value={row.character_id}
+                        onChange={(event) => onUpdate(index, "character_id", event.target.value)}
+                    >
+                        <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                        {characters.map((character) => (
+                            <option key={character.id} value={character.id}>
+                                {character.name}
+                            </option>
+                        ))}
+                    </select>
+                    <label>{t("worldCreate.newEditor.fields.involvement")}</label>
+                    <select
+                        className="single-line-input"
+                        value={row.involvement}
+                        onChange={(event) => onUpdate(index, "involvement", event.target.value)}
+                    >
+                        {EVENT_INVOLVEMENTS.map((value) => (
+                            <option key={value} value={value}>
+                                {t(`worldCreate.newEditor.eventInvolvements.${value}`)}
+                            </option>
+                        ))}
+                    </select>
+                    <button type="button" className="secondary-button" onClick={() => onRemove(index)}>
+                        {t("worldCreate.remove")}
+                    </button>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function EventSection({
+    events,
+    turns,
+    characters,
+    form,
+    saving,
+    worldReady,
+    onChange,
+    onAddInvolvement,
+    onUpdateInvolvement,
+    onRemoveInvolvement,
+    onSave,
+    onDelete,
+}) {
+    const { t } = useTranslation();
+    const formValid = form.name.trim().length > 0 && form.summary.trim().length > 0 && form.turn_ids.length > 0;
+    const turnsById = new Map(turns.map((turn) => [turn.id, turn]));
+
+    return (
+        <section>
+            <div className="data-preset-list">
+                {events.length === 0 ? (
+                    <p className="simulation-details-empty-line">{t("worldCreate.newEditor.empty.events")}</p>
+                ) : (
+                    events.map((event) => (
+                        <div className="data-preset-item" key={event.id}>
+                            <div className="prompt-message-header">
+                                <span className="data-preset-item-title">{event.name}</span>
+                                <button
+                                    type="button"
+                                    className="secondary-button danger-button"
+                                    onClick={() => onDelete(event)}
+                                >
+                                    {t("worldCreate.newEditor.deleteEntity")}
+                                </button>
+                            </div>
+                            <p>{event.summary}</p>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            <div className="world-editor-form">
+                <h3>{t("worldCreate.newEditor.create.events")}</h3>
+                <TextField
+                    label={t("worldCreate.newEditor.fields.name")}
+                    value={form.name}
+                    onChange={(value) => onChange("name", value)}
+                    required
+                />
+                <TextArea
+                    label={t("worldCreate.newEditor.fields.summary")}
+                    value={form.summary}
+                    onChange={(value) => onChange("summary", value)}
+                    required
+                />
+                <MultiSelectField
+                    label={t("worldCreate.newEditor.fields.turn_ids")}
+                    value={form.turn_ids}
+                    onChange={(value) => onChange("turn_ids", value)}
+                    options={[...turnsById.values()]
+                        .sort((a, b) => a.sequence - b.sequence)
+                        .map((turn) => ({
+                            id: turn.id,
+                            name: t("worldCreate.newEditor.turnTitle", { number: turn.sequence }),
+                        }))}
+                    required
+                />
+                <InvolvedCharactersEditor
+                    rows={form.involved_characters}
+                    characters={characters}
+                    onAdd={onAddInvolvement}
+                    onUpdate={onUpdateInvolvement}
+                    onRemove={onRemoveInvolvement}
+                />
+                <div className="modal-actions inline-actions">
+                    <button
+                        type="button"
+                        className="primary-button"
+                        disabled={saving || !worldReady || !formValid}
+                        onClick={onSave}
+                    >
+                        {t("worldCreate.newEditor.saveEntity")}
+                    </button>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function CharacterLinksEditor({ rows, characters, onAdd, onUpdate, onRemove }) {
+    const { t } = useTranslation();
+
+    return (
+        <div className="data-values-editor">
+            <div className="data-values-header">
+                <span>{t("worldCreate.newEditor.fields.character_links")}</span>
+                <button type="button" className="secondary-button" disabled={characters.length === 0} onClick={onAdd}>
+                    {t("worldCreate.add")}
+                </button>
+            </div>
+            {rows.map((row, index) => (
+                <div className="initial-map-editor" key={index}>
+                    <div className="list-editor-row">
+                        <label>{t("worldCreate.newEditor.fields.character")}</label>
+                        <select
+                            className="single-line-input"
+                            value={row.character_id}
+                            onChange={(event) => onUpdate(index, "character_id", event.target.value)}
+                        >
+                            <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                            {characters.map((character) => (
+                                <option key={character.id} value={character.id}>
+                                    {character.name}
+                                </option>
+                            ))}
+                        </select>
+                        <button type="button" className="secondary-button" onClick={() => onRemove(index)}>
+                            {t("worldCreate.remove")}
+                        </button>
+                    </div>
+                    <div className="list-editor-row">
+                        <label>{t("worldCreate.newEditor.fields.confidence")}</label>
+                        <input
+                            className="single-line-input"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={row.confidence}
+                            onChange={(event) => onUpdate(index, "confidence", event.target.value)}
+                        />
+                        <label>{t("worldCreate.newEditor.fields.salience")}</label>
+                        <select
+                            className="single-line-input"
+                            value={row.salience}
+                            onChange={(event) => onUpdate(index, "salience", event.target.value)}
+                        >
+                            {MEMORY_SALIENCE.map((value) => (
+                                <option key={value} value={value}>
+                                    {t(`worldCreate.newEditor.memorySalience.${value}`)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="list-editor-row">
+                        <label>{t("worldCreate.newEditor.fields.stance")}</label>
+                        <select
+                            className="single-line-input"
+                            value={row.stance}
+                            onChange={(event) => onUpdate(index, "stance", event.target.value)}
+                        >
+                            {MEMORY_STANCES.map((value) => (
+                                <option key={value} value={value}>
+                                    {t(`worldCreate.newEditor.memoryStances.${value}`)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <label className="form-field inline-field">
+                        <span>{t("worldCreate.newEditor.fields.behavioural_relevance")}</span>
+                        <input
+                            className="single-line-input"
+                            value={row.behavioural_relevance}
+                            onChange={(event) => onUpdate(index, "behavioural_relevance", event.target.value)}
+                        />
+                    </label>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function MemorySection({
+    memories,
+    events,
+    characters,
+    form,
+    saving,
+    worldReady,
+    onChange,
+    onAddCharacterLink,
+    onUpdateCharacterLink,
+    onRemoveCharacterLink,
+    onSave,
+    onDelete,
+}) {
+    const { t } = useTranslation();
+    const formValid =
+        form.summary.trim().length > 0 &&
+        Boolean(form.event_id) &&
+        form.character_links.some((row) => row.character_id);
+
+    return (
+        <section>
+            <div className="data-preset-list">
+                {memories.length === 0 ? (
+                    <p className="simulation-details-empty-line">{t("worldCreate.newEditor.empty.memories")}</p>
+                ) : (
+                    memories.map((memory) => (
+                        <div className="data-preset-item" key={memory.id}>
+                            <div className="prompt-message-header">
+                                <span className="data-preset-item-title">{memory.summary}</span>
+                                <button
+                                    type="button"
+                                    className="secondary-button danger-button"
+                                    onClick={() => onDelete(memory)}
+                                >
+                                    {t("worldCreate.newEditor.deleteEntity")}
+                                </button>
+                            </div>
+                            <p>{memory.keywords.join(", ")}</p>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            <div className="world-editor-form">
+                <h3>{t("worldCreate.newEditor.create.memories")}</h3>
+                <TextArea
+                    label={t("worldCreate.newEditor.fields.summary")}
+                    value={form.summary}
+                    onChange={(value) => onChange("summary", value)}
+                    required
+                />
+                <TextField
+                    label={t("worldCreate.newEditor.fields.keywords")}
+                    value={form.keywords}
+                    onChange={(value) => onChange("keywords", value)}
+                />
+                <SelectField
+                    label={t("worldCreate.newEditor.fields.event_id")}
+                    value={form.event_id}
+                    onChange={(value) => onChange("event_id", value)}
+                    options={events.map((event) => ({ id: event.id, name: event.name }))}
+                    emptyLabel={t("worldCreate.newEditor.emptySelect")}
+                    required
+                />
+                <SelectField
+                    label={t("worldCreate.newEditor.fields.support_type")}
+                    value={form.support_type}
+                    onChange={(value) => onChange("support_type", value)}
+                    options={enumOptions(t, "worldCreate.newEditor.memorySupportTypes", MEMORY_SUPPORT_TYPES)}
+                    required
+                />
+                <CharacterLinksEditor
+                    rows={form.character_links}
+                    characters={characters}
+                    onAdd={onAddCharacterLink}
+                    onUpdate={onUpdateCharacterLink}
+                    onRemove={onRemoveCharacterLink}
+                />
+                <div className="modal-actions inline-actions">
+                    <button
+                        type="button"
+                        className="primary-button"
+                        disabled={saving || !worldReady || !formValid}
+                        onClick={onSave}
+                    >
+                        {t("worldCreate.newEditor.saveEntity")}
+                    </button>
+                </div>
+            </div>
+        </section>
+    );
+}
+
 function CoverImageField({ kind, sourceId, refreshKey, disabled, onChoose, onRemove }) {
     const { t } = useTranslation();
     const [failedImageUrl, setFailedImageUrl] = useState(null);
@@ -933,6 +1864,16 @@ function EntityFields({ kind, form, lookups, onChange }) {
         );
     }
 
+    if (kind === "landmarks") {
+        return (
+            <>
+                {field("name", { required: true })}
+                {area("description")}
+                <SelectField label={t("worldCreate.newEditor.fields.location_id")} value={form.location_id} onChange={(value) => onChange("location_id", value)} options={lookups.locations} emptyLabel={t("worldCreate.newEditor.emptySelect")} required />
+            </>
+        );
+    }
+
     if (kind === "characters") {
         return (
             <>
@@ -960,6 +1901,7 @@ function EntityFields({ kind, form, lookups, onChange }) {
                 {area("description")}
                 <SelectField label={t("worldCreate.newEditor.fields.location_id")} value={form.location_id} onChange={(value) => onChange("location_id", value)} options={lookups.locations} emptyLabel={t("worldCreate.newEditor.emptySelect")} />
                 {field("position")}
+                <SelectField label={t("worldCreate.newEditor.fields.landmark_id")} value={form.landmark_id} onChange={(value) => onChange("landmark_id", value)} options={lookups.landmarks} emptyLabel={t("worldCreate.newEditor.emptySelect")} />
             </>
         );
     }
@@ -1078,6 +2020,9 @@ function ComponentConfigMatrix({
     llmConfigsByComponent,
     embeddingConfigsByComponent,
     onChange,
+    components = simulatorComponents,
+    embeddingComponents = null,
+    embeddingLabel = "embeddingConfig",
 }) {
     const { t } = useTranslation();
 
@@ -1086,9 +2031,9 @@ function ComponentConfigMatrix({
             <div className="world-editor-config-matrix-header">
                 <span>{t("worldCreate.newEditor.fields.component")}</span>
                 <span>{t("worldCreate.newEditor.fields.llmConfig")}</span>
-                <span>{t("worldCreate.newEditor.fields.embeddingConfig")}</span>
+                <span>{t(`worldCreate.newEditor.fields.${embeddingLabel}`)}</span>
             </div>
-            {simulatorComponents.map((component) => (
+            {components.map((component) => (
                 <div className="world-editor-config-row" key={component}>
                     <div className="world-editor-component-name">
                         {t(`worldCreate.newEditor.components.${component}`, { defaultValue: component })}
@@ -1105,21 +2050,160 @@ function ComponentConfigMatrix({
                             </option>
                         ))}
                     </select>
-                    <select
-                        className="single-line-input"
-                        value={embeddingConfigsByComponent[component] ?? ""}
-                        onChange={(event) => onChange("embedding", component, event.target.value)}
-                    >
-                        <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
-                        {embeddingConfigs.map((config) => (
-                            <option key={config.id} value={config.id}>
-                                {labelFor(config, config.id)}
-                            </option>
-                        ))}
-                    </select>
+                    {embeddingComponents === null || embeddingComponents.includes(component) ? (
+                        <select
+                            className="single-line-input"
+                            value={embeddingConfigsByComponent[component] ?? ""}
+                            onChange={(event) => onChange("embedding", component, event.target.value)}
+                        >
+                            <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                            {embeddingConfigs.map((config) => (
+                                <option key={config.id} value={config.id}>
+                                    {labelFor(config, config.id)}
+                                </option>
+                            ))}
+                        </select>
+                    ) : (
+                        <span className="simulation-details-empty-line">
+                            {t("simulationDetails.imageGeneration.noImageModelNeeded")}
+                        </span>
+                    )}
                 </div>
             ))}
         </div>
+    );
+}
+
+function WorldCharacterVoiceEditor({ worldId, characterId }) {
+    const { t } = useTranslation();
+    const [voice, setVoice] = useState("");
+    const [backendConfigId, setBackendConfigId] = useState(null);
+    const [backendConnectionId, setBackendConnectionId] = useState(null);
+    const [voiceOptions, setVoiceOptions] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [notice, setNotice] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadConfig() {
+            try {
+                setLoading(true);
+                setError(null);
+
+                const [ttsConfig, backend] = await Promise.all([
+                    fetchCharacterTtsConfig(characterId).catch(() => null),
+                    fetchWorldTtsConfig(worldId).catch(() => null),
+                ]);
+
+                if (!cancelled) {
+                    setVoice(ttsConfig?.character_voice ?? "");
+                    setBackendConfigId(backend?.id ?? null);
+                    setBackendConnectionId(backend?.connection?.id ?? null);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadConfig();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [worldId, characterId]);
+
+    // A character can only speak with a voice AllTalk actually has loaded, fetched live from
+    // the world's configured TTS backend (see WorldTtsConfigEditor / the "Voice generation" tab).
+    useEffect(() => {
+        if (!backendConnectionId) {
+            return undefined;
+        }
+
+        let cancelled = false;
+
+        async function loadVoices() {
+            try {
+                const status = await fetchAllTalkStatus(backendConnectionId);
+                if (!cancelled) {
+                    setVoiceOptions(status.voices ?? []);
+                }
+            } catch {
+                if (!cancelled) {
+                    setVoiceOptions([]);
+                }
+            }
+        }
+
+        loadVoices();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [backendConnectionId]);
+
+    async function saveVoice() {
+        try {
+            setSaving(true);
+            setNotice(null);
+            setError(null);
+            const payload = { character_voice: voice || null };
+            if (backendConfigId) {
+                payload.backend_config_id = backendConfigId;
+            }
+            const saved = await setCharacterTtsConfig(characterId, payload);
+            setVoice(saved.character_voice ?? "");
+            setNotice(t("worldCreate.newEditor.configSaved"));
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return null;
+    }
+
+    return (
+        <section className="world-editor-form">
+            <h3>{t("worldCreate.newEditor.characterVoice")}</h3>
+            {error ? <p className="form-error">{error}</p> : null}
+            <div className="compact-form-field">
+                <label htmlFor="world-character-voice-input">{t("worldCreate.newEditor.fields.voice")}</label>
+                <select
+                    id="world-character-voice-input"
+                    className="single-line-input"
+                    value={voice}
+                    disabled={!backendConnectionId}
+                    onChange={(event) => setVoice(event.target.value)}
+                >
+                    <option value="">{t("worldCreate.newEditor.noVoice")}</option>
+                    {Array.from(new Set([...voiceOptions, ...(voice ? [voice] : [])])).map((option) => (
+                        <option key={option} value={option}>
+                            {option}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            {!backendConnectionId ? (
+                <p className="simulation-details-empty-line">{t("worldCreate.newEditor.noVoiceHint")}</p>
+            ) : null}
+            {notice ? <p className="simulation-details-empty-line">{notice}</p> : null}
+            <div className="modal-actions inline-actions">
+                <button type="button" className="primary-button" disabled={saving} onClick={saveVoice}>
+                    {saving ? t("worldCreate.saving") : t("worldCreate.newEditor.saveConfigurations")}
+                </button>
+            </div>
+        </section>
     );
 }
 

@@ -61,12 +61,10 @@ async def test_list_update_and_delete_item(clean_neo4j):
     assert await item_store.delete_item(item.id) is False
 
 
-async def test_list_items_includes_items_inherited_from_base_world(clean_neo4j):
-    # Items are conceptual types owned by the World; when a Simulation is spawned from a
-    # World, only its ItemStacks (physical instances) are copied over - the Items themselves
-    # stay put and are reached through BASED_ON. list_items must follow that link for both the
-    # simulation-only and world+simulation filters, or a simulation's item catalog would appear
-    # empty even though its copied stacks still reference those items.
+async def test_list_items_reflects_copies_not_the_source_world(clean_neo4j):
+    # Items are copied onto a Simulation (like Locations/Characters) when it's created from a
+    # World, so a Simulation's own CONTAINS is authoritative: it should show the copy it actually
+    # owns, not the source World's original Item, and shouldn't need to reach through BASED_ON.
     world = await create_world(clean_neo4j)
     item_store = ItemStore(clean_neo4j)
     simulation_store = SimulationStore(clean_neo4j)
@@ -83,17 +81,19 @@ async def test_list_items_includes_items_inherited_from_base_world(clean_neo4j):
     await simulation_store.create_simulation(simulation, world.id)
     await item_store.create_item(simulation_item, source_id=simulation.id)
 
-    expected = sorted([world_item, simulation_item], key=lambda item: item.name)
+    assert await item_store.list_items(simulation_id=simulation.id) == [simulation_item]
+    assert await item_store.list_items(world_id=world.id) == [world_item]
+
+    copied_items, item_pairs = await item_store.copy_items(world.id, simulation.id)
+
+    assert len(copied_items) == 1
+    copied_item = copied_items[0]
+    assert copied_item.id != world_item.id
+    assert copied_item.model_copy(update={"id": world_item.id}) == world_item
+    assert item_pairs == [{"source_id": world_item.id, "copy_id": copied_item.id}]
     assert (
         sorted(await item_store.list_items(simulation_id=simulation.id), key=lambda item: item.name)
-        == expected
-    )
-    assert (
-        sorted(
-            await item_store.list_items(world_id=world.id, simulation_id=simulation.id),
-            key=lambda item: item.name,
-        )
-        == expected
+        == sorted([copied_item, simulation_item], key=lambda item: item.name)
     )
     assert await item_store.list_items(world_id=world.id) == [world_item]
 
@@ -257,6 +257,8 @@ async def test_copy_stacks_preserves_location_holder_owner_and_item_type(clean_n
     copied_holder = await create_character(clean_neo4j, simulation.id, name="Copied Holder")
     copied_owner = await create_character(clean_neo4j, simulation.id, name="Copied Owner")
     _, location_pairs, _ = await location_store.copy_locations(world.id, simulation.id)
+    copied_items, item_pairs = await item_store.copy_items(world.id, simulation.id)
+    copied_item = copied_items[0]
     await item_store.create_stack(
         item.id,
         located_stack,
@@ -279,11 +281,12 @@ async def test_copy_stacks_preserves_location_holder_owner_and_item_type(clean_n
             {"source_id": holder.id, "copy_id": copied_holder.id},
             {"source_id": owner.id, "copy_id": copied_owner.id},
         ],
+        item_pairs=item_pairs,
     )
 
     assert len(copied_stacks) == 2
     source_stacks_with_item = [
-        source_stack.model_copy(update={"item": item})
+        source_stack.model_copy(update={"item": copied_item})
         for source_stack in sorted([held_stack, located_stack], key=lambda entry: entry.quantity)
     ]
     assert [
@@ -317,7 +320,7 @@ async def test_copy_stacks_preserves_location_holder_owner_and_item_type(clean_n
             "simulation_id": simulation.id,
             "held_copy_id": held_pair["copy_id"],
             "located_copy_id": located_pair["copy_id"],
-            "item_id": item.id,
+            "item_id": copied_item.id,
             "holder_id": copied_holder.id,
             "owner_id": copied_owner.id,
             "location_id": location_pairs[0]["copy_id"],

@@ -365,6 +365,8 @@ async def test_copy_containers_preserves_relationships(clean_neo4j):
     await container_store.put_equipment_in_container(equipment.id, parent.id)
     await container_store.put_container_in_container(child.id, parent.id)
     await container_store.add_unlocking_item(key.id, parent.id)
+    _, item_pairs = await item_store.copy_items(world.id, target_world.id)
+    copied_key_id = next(pair["copy_id"] for pair in item_pairs if pair["source_id"] == key.id)
 
     copied_containers, container_pairs = await container_store.copy_containers(
         world.id,
@@ -382,6 +384,7 @@ async def test_copy_containers_preserves_relationships(clean_neo4j):
                 "copy_id": copied_equipment.id,
             }
         ],
+        item_pairs=item_pairs,
     )
 
     assert {
@@ -412,7 +415,7 @@ async def test_copy_containers_preserves_relationships(clean_neo4j):
             "parent_id": copied_parent_id,
             "child_id": copied_child_id,
             "equipment_id": copied_equipment.id,
-            "item_id": key.id,
+            "item_id": copied_key_id,
             "location_id": location_pairs[0]["copy_id"],
         },
     )

@@ -5,7 +5,7 @@ import { getWorldCoverUrl } from "@/api/worlds";
 import placeholderImage from "@/assets/placeholder/world.svg";
 import { WorldActionButton } from "@/components/WorldActionButton";
 
-export function WorldListTile({ world, onEdit, onDelete, onCreateSimulation }) {
+export function WorldListTile({ world, onEdit, onDelete, onCreateSimulation, onExport }) {
     const { t } = useTranslation();
     const [imageSrc, setImageSrc] = useState(getWorldCoverUrl(world.id));
 
@@ -32,6 +32,11 @@ export function WorldListTile({ world, onEdit, onDelete, onCreateSimulation }) {
                     type="createSimulation"
                     label={t("worlds.actions.createSimulation")}
                     onClick={() => onCreateSimulation(world)}
+                />
+                <WorldActionButton
+                    type="export"
+                    label={t("worlds.actions.export")}
+                    onClick={() => onExport(world)}
                 />
                 <WorldActionButton
                     type="delete"

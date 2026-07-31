@@ -50,6 +50,36 @@ export async function deleteLocation(locationId) {
     await apiRequest(`/locations/${locationId}`, { method: "DELETE" });
 }
 
+export async function fetchWorldLandmarks(worldId) {
+    return query("/landmarks", { world_id: worldId });
+}
+
+export async function createLandmark(locationId, landmark) {
+    return jsonRequest(`/locations/${locationId}/landmarks`, "POST", {
+        name: landmark.name,
+        description: landmark.description,
+    });
+}
+
+export async function updateLandmark(landmarkId, landmark) {
+    const updated = await jsonRequest(`/landmarks/${landmarkId}`, "PATCH", {
+        name: landmark.name,
+        description: landmark.description,
+    });
+    if (landmark.location_id) {
+        return setLandmarkLocation(landmarkId, landmark.location_id);
+    }
+    return updated;
+}
+
+export async function setLandmarkLocation(landmarkId, locationId) {
+    return jsonRequest(`/landmarks/${landmarkId}/location`, "PUT", { location_id: locationId });
+}
+
+export async function deleteLandmark(landmarkId) {
+    await apiRequest(`/landmarks/${landmarkId}`, { method: "DELETE" });
+}
+
 export async function fetchWorldCharacters(worldId) {
     return query("/characters", { world_id: worldId });
 }
@@ -136,6 +166,77 @@ export async function deleteContainer(containerId) {
 
 export async function createWorldItemStack(worldId, itemId, stack) {
     return jsonRequest(`/worlds/${worldId}/items/${itemId}/stacks`, "POST", nullablePayload(stack));
+}
+
+export async function fetchWorldTurns(worldId, { limit = 200 } = {}) {
+    return query("/turns", { world_id: worldId, limit });
+}
+
+export async function createWorldTurn(worldId, turn) {
+    return jsonRequest(`/worlds/${worldId}/turns`, "POST", turnPayload(turn));
+}
+
+function turnPayload(turn) {
+    return {
+        sequence: toNumber(turn.sequence, 1),
+        type: turn.type,
+        content: turn.content,
+        start_time: new Date(turn.start_time).toISOString(),
+    };
+}
+
+export async function fetchEventsByTurn(turnId) {
+    return query("/events", { turn_id: turnId });
+}
+
+export async function fetchWorldEvents(worldId) {
+    const turns = await fetchWorldTurns(worldId);
+    const results = await Promise.all(turns.map((turn) => fetchEventsByTurn(turn.id)));
+    return dedupeById(results.flat());
+}
+
+export async function createEvent(event) {
+    return jsonRequest("/events", "POST", {
+        name: event.name,
+        summary: event.summary,
+        turn_ids: event.turn_ids,
+        involved_characters: event.involved_characters,
+    });
+}
+
+export async function deleteEvent(eventId) {
+    await apiRequest(`/events/${eventId}`, { method: "DELETE" });
+}
+
+export async function fetchMemoriesByEvent(eventId) {
+    return query("/memories", { event_id: eventId });
+}
+
+export async function fetchWorldMemories(worldId) {
+    const events = await fetchWorldEvents(worldId);
+    const results = await Promise.all(events.map((event) => fetchMemoriesByEvent(event.id)));
+    return dedupeById(results.flat());
+}
+
+export async function createMemory(memory) {
+    return jsonRequest("/memories", "POST", {
+        summary: memory.summary,
+        keywords: splitList(memory.keywords),
+        embedding: null,
+        event_id: memory.event_id,
+        support_type: memory.support_type,
+        character_links: memory.character_links,
+    });
+}
+
+export async function deleteMemory(memoryId) {
+    await apiRequest(`/memories/${memoryId}`, { method: "DELETE" });
+}
+
+function dedupeById(items) {
+    const merged = new Map();
+    items.forEach((item) => merged.set(item.id, item));
+    return Array.from(merged.values());
 }
 
 async function saveCharacterLocation(characterId, character) {

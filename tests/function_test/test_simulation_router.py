@@ -12,9 +12,11 @@ from world_simulation_engine.misc.enums import ContainerState, EventInvolvement,
     IntentType, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import Author, BackgroundCharacter, Character, Container, CurrentActivity, \
     Equipment, Event, GenerationJob, Intent, Item, ItemStack, Landmark, Location, Turn, World
-from world_simulation_engine.router import background_character_router, character_router, container_router, \
-    equipment_router, event_router, intent_router, item_router, location_router, simulation_router
+from world_simulation_engine.router import background_character_router, character_router, config_router, \
+    container_router, equipment_router, event_router, intent_router, item_router, location_router, media_router, \
+    simulation_router
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.storage_service import StorageService
 
 
 class FakeWorldSimulator:
@@ -94,7 +96,7 @@ class SimulationRouterTestClient:
 
 
 @pytest.fixture
-def simulation_api(neo4j_container):
+def simulation_api(neo4j_container, tmp_path):
     author = Author(
         id=str(uuid4()),
         name="Simulation API Author",
@@ -287,7 +289,10 @@ def simulation_api(neo4j_container):
         await database.intent.create_intent(intent, world_character.id)
         await database.intent.add_event_creation(event.id, intent.id)
         await database.intent.add_event_contribution(event.id, intent.id)
+        storage = StorageService(tmp_path / "storage")
+        await storage.initialise()
         app.state.database = database
+        app.state.storage = storage
         app.state.world_simulator = FakeWorldSimulator(database)
 
         try:
@@ -300,12 +305,14 @@ def simulation_api(neo4j_container):
     app.include_router(background_character_router)
     app.include_router(simulation_router)
     app.include_router(character_router)
+    app.include_router(config_router)
     app.include_router(container_router)
     app.include_router(equipment_router)
     app.include_router(event_router)
     app.include_router(intent_router)
     app.include_router(item_router)
     app.include_router(location_router)
+    app.include_router(media_router)
 
     with TestClient(app) as client:
         yield SimulationRouterTestClient(
@@ -366,6 +373,18 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "/containers",
         params={"simulation_id": created_simulation["id"]},
     )
+    copied_items_response = client.get(
+        "/items",
+        params={"simulation_id": created_simulation["id"]},
+    )
+    assert copied_items_response.status_code == 200
+    assert len(copied_items_response.json()) == 1
+    copied_item = copied_items_response.json()[0]
+    assert copied_item["id"] != simulation_api.item.id
+    assert copied_item == {
+        **simulation_api.item.model_dump(mode="json"),
+        "id": copied_item["id"],
+    }
     assert copied_characters_response.status_code == 200
     assert len(copied_characters_response.json()) == 1
     copied_character = copied_characters_response.json()[0]
@@ -437,7 +456,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert copied_held_stack == {
         **simulation_api.stack.model_dump(mode="json"),
         "id": copied_held_stack["id"],
-        "item": simulation_api.item.model_dump(mode="json"),
+        "item": copied_item,
         "holder_id": copied_character["id"],
         "owner_id": copied_character["id"],
     }
@@ -458,12 +477,12 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     held_stack_entries = client.get(f"/containers/{copied_container['id']}/stacks").json()
     assert len(held_stack_entries) == 1
     held_item, copied_contained_stack = held_stack_entries[0]
-    assert held_item == simulation_api.item.model_dump(mode="json")
+    assert held_item == copied_item
     assert copied_contained_stack["id"] != simulation_api.contained_stack.id
     assert copied_contained_stack == {
         **simulation_api.contained_stack.model_dump(mode="json"),
         "id": copied_contained_stack["id"],
-        "item": simulation_api.item.model_dump(mode="json"),
+        "item": copied_item,
     }
     assert copied_equipment["holder_id"] == copied_container["id"]
     held_equipment_entries = client.get(f"/containers/{copied_container['id']}/equipment").json()
@@ -471,7 +490,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         {**copied_equipment, "owner_id": None, "holder_id": None}
     ]
     assert client.get(f"/containers/{copied_container['id']}/unlocking-items").json() == [
-        simulation_api.item.model_dump(mode="json")
+        copied_item
     ]
     copied_events_response = client.get(
         "/events",
@@ -581,6 +600,99 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert delete_response.status_code == 204
     assert delete_response.content == b""
     assert client.get(f"/simulations/{created_simulation['id']}").status_code == 404
+
+
+def test_create_simulation_links_configs_and_copies_cover_images(simulation_api):
+    client = simulation_api.client
+
+    chat_config = client.post(
+        "/config/llm/ollama",
+        json={"name": "World Narrator Chat", "model": "llama3.1", "temperature": 0.5, "context_window": 4096},
+    ).json()
+    embed_config = client.post(
+        "/config/embeddings/ollama",
+        json={"model": "nomic-embed-text", "dimension": 768, "context_window": 2048},
+    ).json()
+    image_config = client.post(
+        "/config/images/comfyui",
+        json={"model": "sd_xl_base.safetensors", "image_width": 1024, "image_height": 1024, "steps": 20},
+    ).json()
+    tts_config = client.post(
+        "/config/tts/alltalk/xtts",
+        json={"language": "en", "temperature": 0.75, "repetition_penalty": 10},
+    ).json()
+
+    assert client.put(
+        f"/worlds/{simulation_api.world.id}/llm-connection",
+        json={"component": "narrator", "config_id": chat_config["id"]},
+    ).status_code == 200
+    assert client.put(
+        f"/worlds/{simulation_api.world.id}/embedding-connection",
+        json={"component": "narrator", "config_id": embed_config["id"]},
+    ).status_code == 200
+    assert client.put(
+        f"/worlds/{simulation_api.world.id}/image-connection",
+        json={"component": "scene_image_generator", "config_id": image_config["id"]},
+    ).status_code == 200
+    assert client.put(
+        f"/worlds/{simulation_api.world.id}/tts-connection",
+        json={"component": "narrator_tts", "config_id": tts_config["id"]},
+    ).status_code == 200
+
+    world_media = client.post(
+        f"/worlds/{simulation_api.world.id}/media",
+        files={"file": ("world-cover.png", b"fake-world-cover-bytes", "image/png")},
+    ).json()
+    assert client.post(
+        f"/worlds/{simulation_api.world.id}/cover-image",
+        json={"media_id": world_media["id"]},
+    ).status_code == 200
+    character_media = client.post(
+        f"/characters/{simulation_api.world_character.id}/media",
+        files={"file": ("character-cover.png", b"fake-character-cover-bytes", "image/png")},
+    ).json()
+    assert client.post(
+        f"/characters/{simulation_api.world_character.id}/cover-image",
+        json={"media_id": character_media["id"]},
+    ).status_code == 200
+    assert client.put(
+        f"/characters/{simulation_api.world_character.id}/tts-config",
+        json={"character_voice": "female_01.wav", "backend_config_id": tts_config["id"]},
+    ).status_code == 200
+
+    create_response = client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+
+    assert create_response.status_code == 200
+    assert client.get(
+        f"/simulations/{simulation['id']}/llm-connection",
+        params={"component": "narrator"},
+    ).json()["id"] == chat_config["id"]
+    assert client.get(
+        f"/simulations/{simulation['id']}/embedding-connection",
+        params={"component": "narrator"},
+    ).json()["id"] == embed_config["id"]
+    assert client.get(
+        f"/simulations/{simulation['id']}/image-connection",
+        params={"component": "scene_image_generator"},
+    ).json()["id"] == image_config["id"]
+    assert client.get(
+        f"/simulations/{simulation['id']}/tts-connection",
+        params={"component": "narrator_tts"},
+    ).json()["id"] == tts_config["id"]
+
+    assert client.get(f"/simulations/{simulation['id']}/cover-image").status_code == 200
+    copied_character = client.get(
+        "/characters",
+        params={"simulation_id": simulation["id"]},
+    ).json()[0]
+    assert client.get(f"/characters/{copied_character['id']}/cover-image").status_code == 200
+
+    copied_voice_config = client.get(f"/characters/{copied_character['id']}/tts-config").json()
+    assert copied_voice_config["character_voice"] == "female_01.wav"
+    # The backend TTS model config is shared config, not per-character data - the copy must
+    # point at the exact same backend config, not a duplicate.
+    assert copied_voice_config["backend"]["id"] == tts_config["id"]
 
 
 def test_simulation_endpoints_return_404_for_missing_resources(simulation_api):

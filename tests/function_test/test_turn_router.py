@@ -220,6 +220,34 @@ def test_create_world_turn_validates_sequence(turn_api):
     assert second_response.json()["sequence"] == 2
 
 
+def test_list_turns_can_filter_by_world_id(turn_api):
+    client = turn_api.client
+
+    world_turn_response = client.post(
+        f"/worlds/{turn_api.world.id}/turns",
+        json={
+            "sequence": 1,
+            "type": TurnType.SYSTEM_RESPONSE,
+            "content": "World turn",
+            "start_time": "2026-01-01T12:00:00Z",
+        },
+    )
+    assert world_turn_response.status_code == 200
+
+    response = client.get("/turns", params={"world_id": turn_api.world.id})
+
+    assert response.status_code == 200
+    assert response.json() == [world_turn_response.json()]
+
+    missing_world_id = str(uuid4())
+    missing_world_response = client.get("/turns", params={"world_id": missing_world_id})
+    assert missing_world_response.status_code == 404
+    assert missing_world_response.json()["detail"] == f"World {missing_world_id} not found"
+
+    neither_response = client.get("/turns")
+    assert neither_response.status_code == 400
+
+
 def test_turn_endpoints_return_404_for_missing_resources(turn_api):
     missing_simulation_id = str(uuid4())
     missing_turn_id = str(uuid4())

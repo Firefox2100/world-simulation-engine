@@ -320,6 +320,7 @@
     "title": "世界",
     "subtitle": "浏览可用的世界。",
     "create": "创建",
+    "import": "导入",
     "loading": "正在加载世界...",
     "loadingMore": "正在加载...",
     "loadMore": "加载更多",
@@ -330,7 +331,24 @@
     "actions": {
       "edit": "编辑",
       "delete": "删除",
-      "createSimulation": "创建模拟"
+      "createSimulation": "创建模拟",
+      "export": "导出世界"
+    }
+  },
+  "worldImport": {
+    "title": "导入世界",
+    "description": "选择从本系统导出的世界存档（.zip）。即使已存在同名世界，也会始终创建一个新的世界。",
+    "close": "关闭导入世界对话框",
+    "cancel": "取消",
+    "submit": "导入",
+    "importing": "正在导入...",
+    "fields": {
+      "author": "作者",
+      "file": "世界存档（.zip）"
+    },
+    "validation": {
+      "fileRequired": "请选择要导入的世界存档。",
+      "authorRequired": "请为导入的世界选择一个作者。"
     }
   },
   "connections": {
@@ -665,6 +683,9 @@
       "confirmDelete": "删除 {{name}}？",
       "configSaved": "配置已保存。",
       "configEndpointMissing": "当前 API 尚未暴露世界级模型配置绑定接口。这里的选择器仅用于查看可用配置。",
+      "characterVoice": "角色音色",
+      "noVoice": "未选择音色",
+      "noVoiceHint": "请先在“语音生成”页签为此世界配置 TTS 后端，才能设置角色音色。",
       "components": {
         "action_validator": "行动校验",
         "character_simulator": "角色模拟",
@@ -692,7 +713,13 @@
         "items": "物品",
         "equipment": "装备",
         "containers": "容器",
-        "stacks": "物品堆叠"
+        "stacks": "物品堆叠",
+        "turns": "回合",
+        "events": "事件",
+        "memories": "记忆",
+        "imageGeneration": "图像生成",
+        "ttsGeneration": "语音生成",
+        "landmarks": "地标"
       },
       "create": {
         "locations": "创建地点",
@@ -701,7 +728,11 @@
         "items": "创建物品",
         "equipment": "创建装备",
         "containers": "创建容器",
-        "stacks": "创建物品堆叠"
+        "stacks": "创建物品堆叠",
+        "turns": "创建回合",
+        "events": "创建事件",
+        "memories": "创建记忆",
+        "landmarks": "创建地标"
       },
       "empty": {
         "locations": "暂无地点。",
@@ -710,7 +741,45 @@
         "items": "暂无物品。",
         "equipment": "暂无装备。",
         "containers": "暂无容器。",
-        "stacks": "物品存在后可创建物品堆叠。"
+        "stacks": "物品存在后可创建物品堆叠。",
+        "turns": "暂无回合。",
+        "events": "暂无事件。",
+        "memories": "暂无记忆。",
+        "landmarks": "暂无地标。"
+      },
+      "turnTitle": "回合 {{number}}",
+      "turnTypes": {
+        "user_input": "用户输入",
+        "system_response": "系统回应",
+        "system_continue": "系统继续"
+      },
+      "eventInvolvements": {
+        "witness": "目击",
+        "participate": "参与",
+        "hear": "听闻",
+        "infer": "推断",
+        "believe": "相信",
+        "suspect": "怀疑"
+      },
+      "memorySupportTypes": {
+        "direct": "直接",
+        "inferred": "推断得出",
+        "reported": "转述得知",
+        "contradicts": "相互矛盾"
+      },
+      "memoryStances": {
+        "remember": "记得",
+        "infer": "推断",
+        "believe": "相信",
+        "doubt": "怀疑",
+        "deny": "否认",
+        "mistake": "记错"
+      },
+      "memorySalience": {
+        "low": "低",
+        "medium": "中",
+        "high": "高",
+        "critical": "关键"
       },
       "validation": {
         "itemRequired": "创建堆叠前请选择物品。",
@@ -753,7 +822,26 @@
         "held_container_ids": "持有容器 ID",
         "unlocking_item_ids": "解锁物品 ID",
         "item_id": "物品",
-        "quantity": "数量"
+        "quantity": "数量",
+        "sequence": "序号",
+        "turn_type": "回合类型",
+        "content": "内容",
+        "start_time": "开始时间",
+        "summary": "概要",
+        "turn_ids": "回合",
+        "involved_characters": "涉及角色",
+        "character": "角色",
+        "involvement": "参与方式",
+        "keywords": "关键词",
+        "event_id": "事件",
+        "support_type": "支持类型",
+        "character_links": "记得此记忆的角色",
+        "confidence": "置信度",
+        "salience": "显著性",
+        "stance": "态度",
+        "behavioural_relevance": "行为相关性",
+        "ttsConfig": "语音后端",
+        "voice": "TTS 音色"
       }
     },
     "fields": {

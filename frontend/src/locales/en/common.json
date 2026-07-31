@@ -320,6 +320,7 @@
     "title": "Worlds",
     "subtitle": "Browse available worlds.",
     "create": "Create",
+    "import": "Import",
     "loading": "Loading worlds...",
     "loadingMore": "Loading...",
     "loadMore": "Load more",
@@ -330,7 +331,24 @@
     "actions": {
       "edit": "Edit",
       "delete": "Delete",
-      "createSimulation": "Create simulation"
+      "createSimulation": "Create simulation",
+      "export": "Export world"
+    }
+  },
+  "worldImport": {
+    "title": "Import world",
+    "description": "Select a world archive (.zip) exported from this system. A new world is always created, even if one with the same name already exists.",
+    "close": "Close import world dialog",
+    "cancel": "Cancel",
+    "submit": "Import",
+    "importing": "Importing...",
+    "fields": {
+      "author": "Author",
+      "file": "World archive (.zip)"
+    },
+    "validation": {
+      "fileRequired": "Select a world archive to import.",
+      "authorRequired": "Select an author for the imported world."
     }
   },
   "connections": {
@@ -665,6 +683,9 @@
       "confirmDelete": "Delete {{name}}?",
       "configSaved": "Configurations saved.",
       "configEndpointMissing": "World-level model configuration binding is not exposed by the current API yet. These selectors show available configurations for reference.",
+      "characterVoice": "Character voice",
+      "noVoice": "No voice selected",
+      "noVoiceHint": "Configure a TTS backend for this world (Voice generation tab) to set a character voice.",
       "components": {
         "action_validator": "Action validator",
         "character_simulator": "Character simulator",
@@ -692,7 +713,13 @@
         "items": "Items",
         "equipment": "Equipment",
         "containers": "Containers",
-        "stacks": "Item stacks"
+        "stacks": "Item stacks",
+        "turns": "Turns",
+        "events": "Events",
+        "memories": "Memories",
+        "imageGeneration": "Image generation",
+        "ttsGeneration": "Voice generation",
+        "landmarks": "Landmarks"
       },
       "create": {
         "locations": "Create location",
@@ -701,7 +728,11 @@
         "items": "Create item",
         "equipment": "Create equipment",
         "containers": "Create container",
-        "stacks": "Create item stack"
+        "stacks": "Create item stack",
+        "turns": "Create turn",
+        "events": "Create event",
+        "memories": "Create memory",
+        "landmarks": "Create landmark"
       },
       "empty": {
         "locations": "No locations yet.",
@@ -710,7 +741,45 @@
         "items": "No items yet.",
         "equipment": "No equipment yet.",
         "containers": "No containers yet.",
-        "stacks": "Item stacks can be created after an item exists."
+        "stacks": "Item stacks can be created after an item exists.",
+        "turns": "No turns yet.",
+        "events": "No events yet.",
+        "memories": "No memories yet.",
+        "landmarks": "No landmarks yet."
+      },
+      "turnTitle": "Turn {{number}}",
+      "turnTypes": {
+        "user_input": "User input",
+        "system_response": "System response",
+        "system_continue": "System continue"
+      },
+      "eventInvolvements": {
+        "witness": "Witness",
+        "participate": "Participate",
+        "hear": "Hear",
+        "infer": "Infer",
+        "believe": "Believe",
+        "suspect": "Suspect"
+      },
+      "memorySupportTypes": {
+        "direct": "Direct",
+        "inferred": "Inferred",
+        "reported": "Reported",
+        "contradicts": "Contradicts"
+      },
+      "memoryStances": {
+        "remember": "Remember",
+        "infer": "Infer",
+        "believe": "Believe",
+        "doubt": "Doubt",
+        "deny": "Deny",
+        "mistake": "Mistake"
+      },
+      "memorySalience": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "critical": "Critical"
       },
       "validation": {
         "itemRequired": "Choose an item before creating a stack.",
@@ -753,7 +822,26 @@
         "held_container_ids": "Held container IDs",
         "unlocking_item_ids": "Unlocking item IDs",
         "item_id": "Item",
-        "quantity": "Quantity"
+        "quantity": "Quantity",
+        "sequence": "Sequence",
+        "turn_type": "Turn type",
+        "content": "Content",
+        "start_time": "Start time",
+        "summary": "Summary",
+        "turn_ids": "Turns",
+        "involved_characters": "Involved characters",
+        "character": "Character",
+        "involvement": "Involvement",
+        "keywords": "Keywords",
+        "event_id": "Event",
+        "support_type": "Support type",
+        "character_links": "Characters who remember this",
+        "confidence": "Confidence",
+        "salience": "Salience",
+        "stance": "Stance",
+        "behavioural_relevance": "Behavioural relevance",
+        "ttsConfig": "TTS backend",
+        "voice": "TTS voice"
       }
     },
     "fields": {

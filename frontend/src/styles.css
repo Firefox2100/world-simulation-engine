@@ -177,6 +177,12 @@ body {
     gap: 24px;
 }
 
+/* Wider than .simulation-grid: the world card has four action buttons (edit, create simulation,
+   export, delete) that need more room in a row than the two on a simulation card. */
+.world-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
 .simulation-card,
 .world-card {
     position: relative;
@@ -1285,6 +1291,7 @@ body {
 
 .cover-image-generate-control {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     margin-top: 10px;

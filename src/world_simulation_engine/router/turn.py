@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -131,9 +132,14 @@ async def _present_turns(
 
 @turn_router.get("/turns", response_model=list[Turn])
 async def list_turns(db: db_dep,
-                     simulation_id: str = Query(
-                         ...,
+                     simulation_id: Optional[str] = Query(
+                         None,
                          description="The simulation id of the simulation to get turns from",
+                     ),
+                     world_id: Optional[str] = Query(
+                         None,
+                         description="The world id of the world to get turns from, "
+                                     "e.g. initial-state turns authored before a simulation exists",
                      ),
                      limit: int = Query(
                          10,
@@ -146,15 +152,31 @@ async def list_turns(db: db_dep,
                          ge=0,
                      )
                      ):
-    simulation = await db.simulation.get_simulation(simulation_id)
-    if not simulation:
+    if not simulation_id and not world_id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Simulation {simulation_id} not found",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either simulation_id or world_id is required",
         )
 
+    if simulation_id:
+        simulation = await db.simulation.get_simulation(simulation_id)
+        if not simulation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Simulation {simulation_id} not found",
+            )
+        source_id = simulation_id
+    else:
+        world = await db.world.get_world(world_id)
+        if not world:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"World {world_id} not found",
+            )
+        source_id = world_id
+
     return await db.turn.list_turns(
-        source_id=simulation_id,
+        source_id=source_id,
         limit=limit,
         skip=skip,
     )

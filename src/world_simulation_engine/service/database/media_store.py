@@ -135,6 +135,19 @@ class MediaStore:
 
         return _media_from_node(record["m"])
 
+    async def get_media_by_hash(self, hash_value: str) -> list[MediaFile]:
+        """Content-addressed lookup used to deduplicate media on import: reuse an existing Media
+        node for identical bytes instead of creating a redundant one."""
+        result = await self._driver.execute_query(
+            "MATCH (m:Media {hash: $hash}) RETURN m",
+            parameters_={"hash": hash_value},
+        )
+
+        return [
+            _media_from_node(record["m"])
+            for record in result.records
+        ]
+
     async def list_media(self,
                          world_id: str | None = None,
                          simulation_id: str | None = None,
@@ -247,6 +260,23 @@ class MediaStore:
 
         record = result.records[0] if result.records else None
         return bool(record and record["source_count"])
+
+    async def copy_cover_images(self, entity_pairs: list[dict]) -> None:
+        """Point each copy's cover at the same Media node the source uses - covers are immutable,
+        content-addressed blobs, so there's no mutation-isolation reason to duplicate them."""
+        if not entity_pairs:
+            return
+
+        await self._driver.execute_query(
+            f"""
+            UNWIND $entity_pairs AS pair
+            MATCH (source:{self._COVER_SOURCE_LABELS} {{id: pair.source_id}})-[:HAS_COVER]->(media:Media)
+            MATCH (copy:{self._COVER_SOURCE_LABELS} {{id: pair.copy_id}})
+            MERGE (copy)-[:HAS_MEDIA]->(media)
+            MERGE (copy)-[:HAS_COVER]->(media)
+            """,
+            parameters_={"entity_pairs": entity_pairs},
+        )
 
     async def add_media(self,
                         source_id: str,

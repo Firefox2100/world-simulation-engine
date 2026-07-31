@@ -98,23 +98,17 @@ class ItemStore:
                          world_id: str | None = None,
                          simulation_id: str | None = None,
                          ) -> list[Item]:
-        if world_id is not None and simulation_id is not None:
+        # Items are copied onto a Simulation (like Locations/Characters) when it's created from a
+        # World, so - unlike the pre-copy design - a Simulation's own CONTAINS is always enough;
+        # no need to fall back through BASED_ON to the source World's catalog.
+        if simulation_id is not None:
             result = await self._driver.execute_query(
                 """
-                MATCH (w:World {id: $world_id})<-[:BASED_ON]-(s:Simulation {id: $simulation_id})
-                OPTIONAL MATCH (s)-[:CONTAINS]->(direct_item:Item)
-                OPTIONAL MATCH (w)-[:CONTAINS]->(world_item:Item)
-                WITH collect(DISTINCT direct_item) + collect(DISTINCT world_item) AS items
-                UNWIND items AS i
-                WITH DISTINCT i
-                WHERE i IS NOT NULL
+                MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->(i:Item)
                 RETURN i
                 ORDER BY i.name
                 """,
-                parameters_={
-                    "world_id": world_id,
-                    "simulation_id": simulation_id,
-                },
+                parameters_={"simulation_id": simulation_id},
             )
         elif world_id is not None:
             result = await self._driver.execute_query(
@@ -124,26 +118,6 @@ class ItemStore:
                 ORDER BY i.name
                 """,
                 parameters_={"world_id": world_id},
-            )
-        elif simulation_id is not None:
-            # Items are conceptual types owned by the World; a Simulation only ever gets its
-            # own direct Items when one is created mid-simulation. Items originating from the
-            # base World are never copied (unlike ItemStacks), so they must be reached through
-            # BASED_ON here - otherwise a simulation spawned from a world with an item catalog
-            # would report no items at all, even though its copied stacks still reference them.
-            result = await self._driver.execute_query(
-                """
-                MATCH (s:Simulation {id: $simulation_id})
-                OPTIONAL MATCH (s)-[:CONTAINS]->(direct_item:Item)
-                OPTIONAL MATCH (s)-[:BASED_ON]->(:World)-[:CONTAINS]->(world_item:Item)
-                WITH collect(DISTINCT direct_item) + collect(DISTINCT world_item) AS items
-                UNWIND items AS i
-                WITH DISTINCT i
-                WHERE i IS NOT NULL
-                RETURN i
-                ORDER BY i.name
-                """,
-                parameters_={"simulation_id": simulation_id},
             )
         else:
             result = await self._driver.execute_query(
@@ -446,18 +420,66 @@ class ItemStore:
             position=record["position"],
         )
 
+    async def copy_items(self,
+                        source_id: str,
+                        target_id: str,
+                        ) -> tuple[list[Item], list[dict]]:
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(source_item:Item)
+            MATCH (target:World|Simulation {id: $target_id})
+            CREATE (item:Item {
+                id: randomUUID(),
+                name: source_item.name,
+                description: source_item.description,
+                unique: source_item.unique
+            })
+            MERGE (target)-[:CONTAINS]->(item)
+            RETURN source_item.id AS source_id, item.id AS copy_id, item
+            ORDER BY item.name
+            """,
+            parameters_={
+                "source_id": source_id,
+                "target_id": target_id,
+            },
+        )
+        item_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+
+        return (
+            [
+                self.item_from_node(record["item"])
+                for record in result.records
+            ],
+            item_pairs,
+        )
+
     async def copy_stacks(self,
                           source_id: str,
                           target_id: str,
                           location_pairs: list[dict] | None = None,
                           entity_pairs: list[dict] | None = None,
+                          item_pairs: list[dict] | None = None,
                           ) -> tuple[list[ItemStack], list[dict]]:
         location_pairs = location_pairs or []
         entity_pairs = entity_pairs or []
+        item_pairs = item_pairs or []
         result = await self._driver.execute_query(
             """
-            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(source_stack:ItemStack)-[:OF_TYPE]->(item:Item)
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(source_stack:ItemStack)
+                -[:OF_TYPE]->(source_item:Item)
             MATCH (target:World|Simulation {id: $target_id})
+            WITH target, source_stack, source_item, [
+                item_pair IN $item_pairs
+                WHERE item_pair.source_id = source_item.id
+            ][0] AS item_pair
+            WHERE item_pair IS NOT NULL
+            MATCH (item:Item {id: item_pair.copy_id})
             CREATE (stack:ItemStack {
                 id: randomUUID(),
                 quantity: source_stack.quantity,
@@ -471,6 +493,7 @@ class ItemStore:
             parameters_={
                 "source_id": source_id,
                 "target_id": target_id,
+                "item_pairs": item_pairs,
             },
         )
         stack_pairs = [

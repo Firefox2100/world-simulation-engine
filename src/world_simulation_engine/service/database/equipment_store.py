@@ -153,6 +153,30 @@ class EquipmentStore:
             for record in result.records
         ]
 
+    async def get_hold_types(self, equipment_ids: list[str]) -> dict[str, dict]:
+        """Equipment's holder can either merely HOLD it or EQUIPS (wear) it, and only the latter
+        carries a worn position - list_equipment/get_equipment collapse both relationship types
+        into a single holder_id, so exporting the distinction needs this dedicated batched lookup."""
+        if not equipment_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $equipment_ids AS equipment_id
+            MATCH (holder)-[hold:HOLDS|EQUIPS]->(equipment:Equipment {id: equipment_id})
+            RETURN equipment_id, type(hold) = 'EQUIPS' AS equipped, hold.position AS equipped_position
+            """,
+            parameters_={"equipment_ids": equipment_ids},
+        )
+
+        return {
+            record["equipment_id"]: {
+                "equipped": record["equipped"],
+                "equipped_position": record["equipped_position"],
+            }
+            for record in result.records
+        }
+
     async def get_equipment(self, equipment_id: str) -> Equipment | None:
         result = await self._driver.execute_query(
             """

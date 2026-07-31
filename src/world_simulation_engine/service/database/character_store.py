@@ -144,6 +144,29 @@ class CharacterStore:
             for record in result.records
         ]
 
+    async def get_position_map(self, world_id: str) -> dict[str, dict]:
+        """Character doesn't carry location/landmark as fields (unlike Equipment/Container/ItemStack's
+        owner/holder), so exporting them needs this dedicated lookup."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(c:Character)
+            OPTIONAL MATCH (c)-[present:PRESENT_IN]->(location:Location)
+            OPTIONAL MATCH (c)-[:ANCHORED_TO]->(landmark:Landmark)
+            RETURN c.id AS character_id, location.id AS location_id, present.position AS position,
+                landmark.id AS landmark_id
+            """,
+            parameters_={"world_id": world_id},
+        )
+
+        return {
+            record["character_id"]: {
+                "location_id": record["location_id"],
+                "position": record["position"],
+                "landmark_id": record["landmark_id"],
+            }
+            for record in result.records
+        }
+
     async def get_character(self, character_id: str) -> Character | None:
         result = await self._driver.execute_query(
             "MATCH (c:Character {id: $character_id}) RETURN c LIMIT 1",
@@ -500,6 +523,28 @@ class CharacterStore:
             self.background_character_from_node(record["c"])
             for record in result.records
         ]
+
+    async def get_background_position_map(self, world_id: str) -> dict[str, dict]:
+        """Same rationale as get_position_map, for BackgroundCharacter."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(c:BackgroundCharacter)
+            OPTIONAL MATCH (c)-[present:PRESENT_IN]->(location:Location)
+            OPTIONAL MATCH (c)-[:ANCHORED_TO]->(landmark:Landmark)
+            RETURN c.id AS character_id, location.id AS location_id, present.position AS position,
+                landmark.id AS landmark_id
+            """,
+            parameters_={"world_id": world_id},
+        )
+
+        return {
+            record["character_id"]: {
+                "location_id": record["location_id"],
+                "position": record["position"],
+                "landmark_id": record["landmark_id"],
+            }
+            for record in result.records
+        }
 
     async def get_background_character(self, character_id: str) -> BackgroundCharacter | None:
         result = await self._driver.execute_query(

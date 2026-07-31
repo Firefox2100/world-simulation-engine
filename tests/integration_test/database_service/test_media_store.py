@@ -98,6 +98,76 @@ async def test_create_get_and_link_cover_images(clean_neo4j):
     assert await media_store.get_cover_image(str(uuid4())) is None
 
 
+async def test_copy_cover_images_points_copies_at_the_same_media(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    media_store = MediaStore(clean_neo4j)
+    character_store = CharacterStore(clean_neo4j)
+    simulation_store = SimulationStore(clean_neo4j)
+    simulation = await simulation_store.create_simulation(
+        Simulation(
+            id=str(uuid4()),
+            name="Simulation",
+            description="A simulation",
+            current_time=world.starting_time,
+        ),
+        world.id,
+    )
+    character = await character_store.create_character(
+        Character(
+            id=str(uuid4()),
+            user_controlled=False,
+            name="Alex",
+            age=30,
+            gender="non-binary",
+            appearance="Plain",
+            description="A test character",
+            public_state="Idle",
+            private_state="Idle",
+            current_activity=CurrentActivity(name="Idle"),
+        ),
+        world.id,
+    )
+    copied_character = await character_store.create_character(
+        Character(**{**character.model_dump(), "id": str(uuid4())}),
+        simulation.id,
+    )
+    cover = MediaFile(
+        id=str(uuid4()),
+        type=MediaType.PNG,
+        title="Character Cover",
+        hash="c" * 64,
+        filename="character-cover",
+    )
+
+    await media_store.create_media(cover)
+    await media_store.set_cover_image(world.id, cover.id)
+    await media_store.set_cover_image(character.id, cover.id)
+
+    # An entity with no cover (e.g. a character never given one) should be silently skipped,
+    # not raise - copy_cover_images always runs over every copied entity pair unconditionally.
+    uncovered_character = await character_store.create_character(
+        Character(**{**character.model_dump(), "id": str(uuid4()), "name": "Uncovered"}),
+        world.id,
+    )
+    copied_uncovered_character = await character_store.create_character(
+        Character(**{**uncovered_character.model_dump(), "id": str(uuid4())}),
+        simulation.id,
+    )
+
+    await media_store.copy_cover_images(
+        [
+            {"source_id": world.id, "copy_id": simulation.id},
+            {"source_id": character.id, "copy_id": copied_character.id},
+            {"source_id": uncovered_character.id, "copy_id": copied_uncovered_character.id},
+        ],
+    )
+
+    assert await media_store.get_cover_image(simulation.id) == cover
+    assert await media_store.get_cover_image(copied_character.id) == cover
+    assert await media_store.get_cover_image(copied_uncovered_character.id) is None
+    assert await media_store.copy_cover_images([]) is None
+
+
 async def test_add_and_remove_generic_media_relationships(clean_neo4j):
     world = await create_world(clean_neo4j)
     media_store = MediaStore(clean_neo4j)

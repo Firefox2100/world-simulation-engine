@@ -169,6 +169,54 @@ class IntentStore:
 
         return self.intent_from_node(record["intent"])
 
+    async def get_event_links(self, intent_ids: list[str]) -> dict[str, dict]:
+        """Intent doesn't carry its creating/contributing events as fields - those are the
+        CREATES/CONTRIBUTES_TO relationships - so exporting it needs this dedicated batched lookup."""
+        if not intent_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $intent_ids AS intent_id
+            MATCH (intent:Intent {id: intent_id})
+            OPTIONAL MATCH (created_by:Event)-[:CREATES]->(intent)
+            OPTIONAL MATCH (contributed_by:Event)-[:CONTRIBUTES_TO]->(intent)
+            RETURN intent_id, created_by.id AS created_by_event_id,
+                collect(DISTINCT contributed_by.id) AS contributed_by_event_ids
+            """,
+            parameters_={"intent_ids": intent_ids},
+        )
+
+        return {
+            record["intent_id"]: {
+                "created_by_event_id": record["created_by_event_id"],
+                "contributed_by_event_ids": [
+                    event_id for event_id in record["contributed_by_event_ids"] if event_id
+                ],
+            }
+            for record in result.records
+        }
+
+    async def get_holder_map(self, intent_ids: list[str]) -> dict[str, str]:
+        """Intent doesn't carry its holding character as a field - it's the HOLDS
+        relationship - so exporting it needs this dedicated batched lookup."""
+        if not intent_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $intent_ids AS intent_id
+            MATCH (character:Character)-[:HOLDS]->(intent:Intent {id: intent_id})
+            RETURN intent_id, character.id AS character_id
+            """,
+            parameters_={"intent_ids": intent_ids},
+        )
+
+        return {
+            record["intent_id"]: record["character_id"]
+            for record in result.records
+        }
+
     async def move_intent_to_character(self,
                                        intent_id: str,
                                        character_id: str,

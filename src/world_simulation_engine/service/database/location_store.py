@@ -155,6 +155,39 @@ class LocationStore:
             for record in result.records
         ]
 
+    async def get_parent_map(self, world_id: str) -> dict[str, str]:
+        """Location doesn't carry its parent as a field (unlike Equipment/Container/ItemStack's
+        owner/holder), so exporting the hierarchy needs this dedicated lookup."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(location:Location)
+            MATCH (parent:Location)-[:CONTAINS]->(location)
+            RETURN location.id AS location_id, parent.id AS parent_id
+            """,
+            parameters_={"world_id": world_id},
+        )
+
+        return {
+            record["location_id"]: record["parent_id"]
+            for record in result.records
+        }
+
+    async def get_landmark_location_map(self, world_id: str) -> dict[str, str]:
+        """Landmark doesn't carry its containing location as a field - it's the CONTAINS
+        relationship - so exporting it needs this dedicated lookup, mirroring get_parent_map."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World {id: $world_id})-[:CONTAINS]->(location:Location)-[:CONTAINS]->(landmark:Landmark)
+            RETURN landmark.id AS landmark_id, location.id AS location_id
+            """,
+            parameters_={"world_id": world_id},
+        )
+
+        return {
+            record["landmark_id"]: record["location_id"]
+            for record in result.records
+        }
+
     async def get_location(self, location_id: str) -> Location | None:
         result = await self._driver.execute_query(
             "MATCH (l:Location {id: $id}) RETURN l LIMIT 1",

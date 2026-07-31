@@ -194,6 +194,54 @@ class MemoryStore:
 
         return self.memory_from_node(record["memory"])
 
+    async def get_event_links(self, memory_ids: list[str]) -> dict[str, dict]:
+        """MemoryAtom doesn't carry its supporting event as a field - it's the SUPPORTS
+        relationship - so exporting it needs this dedicated batched lookup."""
+        if not memory_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $memory_ids AS memory_id
+            MATCH (event:Event)-[support:SUPPORTS]->(:MemoryAtom {id: memory_id})
+            RETURN memory_id, event.id AS event_id, support.type AS support_type
+            """,
+            parameters_={"memory_ids": memory_ids},
+        )
+
+        return {
+            record["memory_id"]: {
+                "event_id": record["event_id"],
+                "support_type": record["support_type"],
+            }
+            for record in result.records
+        }
+
+    async def get_character_links(self, memory_ids: list[str]) -> dict[str, list[dict]]:
+        """Same rationale as get_event_links, for the REMEMBERS relationship."""
+        if not memory_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $memory_ids AS memory_id
+            MATCH (character:Character)-[remembers:REMEMBERS]->(:MemoryAtom {id: memory_id})
+            RETURN memory_id, collect({
+                character_id: character.id,
+                confidence: remembers.confidence,
+                salience: remembers.salience,
+                behavioural_relevance: remembers.behavioural_relevance,
+                stance: remembers.stance
+            }) AS character_links
+            """,
+            parameters_={"memory_ids": memory_ids},
+        )
+
+        return {
+            record["memory_id"]: record["character_links"]
+            for record in result.records
+        }
+
     async def update_memory(self,
                             memory_id: str,
                             properties: dict,
@@ -388,6 +436,72 @@ class MemoryStore:
             },
         )
         return bool(result.records)
+
+    async def copy_memories(self,
+                            event_pairs: list[dict],
+                            character_pairs: list[dict] | None = None,
+                            ) -> tuple[list[MemoryAtom], list[dict]]:
+        character_pairs = character_pairs or []
+        if not event_pairs:
+            return [], []
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $event_pairs AS event_pair
+            MATCH (:Event {id: event_pair.source_id})-[source_support:SUPPORTS]->(source_memory:MemoryAtom)
+            WITH DISTINCT source_memory, source_support, event_pair
+            CREATE (memory:MemoryAtom {
+                id: randomUUID(),
+                summary: source_memory.summary,
+                keywords: source_memory.keywords,
+                embedding: source_memory.embedding
+            })
+            WITH source_memory, memory, source_support, event_pair
+            MATCH (copy_event:Event {id: event_pair.copy_id})
+            MERGE (copy_event)-[support:SUPPORTS]->(memory)
+            SET support.type = source_support.type
+            RETURN source_memory.id AS source_id, memory.id AS copy_id, memory
+            """,
+            parameters_={"event_pairs": event_pairs},
+        )
+        memory_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+        if memory_pairs and character_pairs:
+            await self._driver.execute_query(
+                """
+                UNWIND $memory_pairs AS memory_pair
+                MATCH (source_character:Character)-[source_remembers:REMEMBERS]->(:MemoryAtom {id: memory_pair.source_id})
+                WITH memory_pair, source_remembers, [
+                    character_pair IN $character_pairs
+                    WHERE character_pair.source_id = source_character.id
+                ][0] AS character_pair
+                WHERE character_pair IS NOT NULL
+                MATCH (copy_memory:MemoryAtom {id: memory_pair.copy_id})
+                MATCH (copy_character:Character {id: character_pair.copy_id})
+                MERGE (copy_character)-[remembers:REMEMBERS]->(copy_memory)
+                SET remembers.confidence = source_remembers.confidence,
+                    remembers.salience = source_remembers.salience,
+                    remembers.behavioural_relevance = source_remembers.behavioural_relevance,
+                    remembers.stance = source_remembers.stance
+                """,
+                parameters_={
+                    "memory_pairs": memory_pairs,
+                    "character_pairs": character_pairs,
+                },
+            )
+
+        return (
+            [
+                self.memory_from_node(record["memory"])
+                for record in result.records
+            ],
+            memory_pairs,
+        )
 
     async def get_recent_turn_memory_candidates(self,
                                                 character_id: str,

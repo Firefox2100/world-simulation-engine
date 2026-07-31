@@ -404,6 +404,14 @@ async def create_simulation(world_id: str, db: db_dep):
         if embed_config:
             await db.config.link_embed(created_simulation.id, embed_config.id, component)
 
+        image_config = await db.config.get_image_by_source(world_id, component)
+        if image_config:
+            await db.config.link_image(created_simulation.id, image_config.id, component)
+
+        tts_config = await db.config.get_tts_by_source(world_id, component)
+        if tts_config:
+            await db.config.link_tts(created_simulation.id, tts_config.id, component)
+
     await db.media.copy_prompt_media_relationships(
         world_id=world_id,
         simulation_id=created_simulation.id,
@@ -428,6 +436,7 @@ async def create_simulation(world_id: str, db: db_dep):
         landmark_pairs=landmark_pairs,
         return_pairs=True,
     )
+    await db.character_tts_config.copy_character_tts_configs(character_pairs)
     _, background_character_pairs = await db.character.copy_background_characters(
         world_id,
         created_simulation.id,
@@ -439,11 +448,16 @@ async def create_simulation(world_id: str, db: db_dep):
         entity_pairs=[*character_pairs, *background_character_pairs],
         copied_at=simulation.current_time,
     )
+    _, item_pairs = await db.item.copy_items(
+        world_id,
+        created_simulation.id,
+    )
     _, stack_pairs = await db.item.copy_stacks(
         world_id,
         created_simulation.id,
         location_pairs=location_pairs,
         entity_pairs=character_pairs + background_character_pairs,
+        item_pairs=item_pairs,
     )
     _, equipment_pairs = await db.equipment.copy_equipment(
         world_id,
@@ -458,9 +472,14 @@ async def create_simulation(world_id: str, db: db_dep):
         entity_pairs=character_pairs + background_character_pairs,
         stack_pairs=stack_pairs,
         equipment_pairs=equipment_pairs,
+        item_pairs=item_pairs,
     )
     _, event_pairs = await db.event.copy_events(
         turn_pairs=turn_pairs,
+        character_pairs=character_pairs,
+    )
+    await db.memory.copy_memories(
+        event_pairs=event_pairs,
         character_pairs=character_pairs,
     )
     await db.intent.copy_intents(
@@ -475,11 +494,25 @@ async def create_simulation(world_id: str, db: db_dep):
             + landmark_pairs
             + character_pairs
             + background_character_pairs
+            + item_pairs
             + stack_pairs
             + equipment_pairs
             + container_pairs
         ),
         copied_at=created_simulation.current_time,
+    )
+    await db.media.copy_cover_images(
+        [
+            {"source_id": world_id, "copy_id": created_simulation.id},
+            *location_pairs,
+            *landmark_pairs,
+            *character_pairs,
+            *background_character_pairs,
+            *item_pairs,
+            *stack_pairs,
+            *equipment_pairs,
+            *container_pairs,
+        ],
     )
 
     return created_simulation

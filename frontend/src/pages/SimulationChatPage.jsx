@@ -691,7 +691,7 @@ function GenerateCoverImageButton({ label, onGenerate }) {
     const { state, error, trigger } = useImageGenerationAction(onGenerate);
 
     return (
-        <div className="cover-image-generate-control">
+        <>
             <button
                 type="button"
                 className="secondary-button"
@@ -708,7 +708,7 @@ function GenerateCoverImageButton({ label, onGenerate }) {
                     {t("simulationDetails.coverImageError", { error })}
                 </span>
             ) : null}
-        </div>
+        </>
     );
 }
 
@@ -716,7 +716,7 @@ function CoverImageActions({ error, onChoose, onRemove }) {
     const { t } = useTranslation();
 
     return (
-        <div className="cover-image-generate-control">
+        <>
             <button type="button" className="secondary-button" onClick={onChoose}>
                 {t("simulationDetails.chooseCoverImage")}
             </button>
@@ -728,7 +728,7 @@ function CoverImageActions({ error, onChoose, onRemove }) {
                     {t("simulationDetails.coverImageActionError", { error })}
                 </span>
             ) : null}
-        </div>
+        </>
     );
 }
 
@@ -2740,7 +2740,7 @@ function SimulationDetailsModal({
                                 onNavigate={navigateToEntity}
                                 coverImageAction={
                                     selectedEntity ? (
-                                        <>
+                                        <div className="cover-image-generate-control">
                                             {activeSection === "items" && canGenerateItemCover ? (
                                                 <GenerateCoverImageButton
                                                     label={t("simulationDetails.generateCoverImage")}
@@ -2767,7 +2767,7 @@ function SimulationDetailsModal({
                                                     }
                                                 }}
                                             />
-                                        </>
+                                        </div>
                                     ) : null
                                 }
                             />
@@ -2791,27 +2791,29 @@ function SimulationDetailsModal({
                                                 {selectedLocationDetail.description ||
                                                     t("simulationDetails.noDescription")}
                                             </p>
-                                            {canGenerateLocationCover ? (
-                                                <GenerateCoverImageButton
-                                                    label={t("simulationDetails.generateCoverImage")}
-                                                    onGenerate={() => generateLocationCoverImage({
-                                                        sourceId: simulation.id,
-                                                        locationId: selectedLocationDetail.id,
-                                                    })}
+                                            <div className="cover-image-generate-control">
+                                                {canGenerateLocationCover ? (
+                                                    <GenerateCoverImageButton
+                                                        label={t("simulationDetails.generateCoverImage")}
+                                                        onGenerate={() => generateLocationCoverImage({
+                                                            sourceId: simulation.id,
+                                                            locationId: selectedLocationDetail.id,
+                                                        })}
+                                                    />
+                                                ) : null}
+                                                <CoverImageActions
+                                                    error={coverActionError}
+                                                    onChoose={() =>
+                                                        setCoverPickerTarget({
+                                                            kind: "locations",
+                                                            id: selectedLocationDetail.id,
+                                                        })
+                                                    }
+                                                    onRemove={() =>
+                                                        handleRemoveCover("locations", selectedLocationDetail.id)
+                                                    }
                                                 />
-                                            ) : null}
-                                            <CoverImageActions
-                                                error={coverActionError}
-                                                onChoose={() =>
-                                                    setCoverPickerTarget({
-                                                        kind: "locations",
-                                                        id: selectedLocationDetail.id,
-                                                    })
-                                                }
-                                                onRemove={() =>
-                                                    handleRemoveCover("locations", selectedLocationDetail.id)
-                                                }
-                                            />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -2856,25 +2858,29 @@ function SimulationDetailsModal({
                                                 {selectedCharacter.description ||
                                                     t("simulationDetails.noDescription")}
                                             </p>
-                                            {canGenerateCharacterCover ? (
-                                                <GenerateCoverImageButton
-                                                    label={t("simulationDetails.generateCoverImage")}
-                                                    onGenerate={() => generateCharacterCoverImage({
-                                                        sourceId: simulation.id,
-                                                        characterId: selectedCharacter.id,
-                                                    })}
+                                            <div className="cover-image-generate-control">
+                                                {canGenerateCharacterCover ? (
+                                                    <GenerateCoverImageButton
+                                                        label={t("simulationDetails.generateCoverImage")}
+                                                        onGenerate={() => generateCharacterCoverImage({
+                                                            sourceId: simulation.id,
+                                                            characterId: selectedCharacter.id,
+                                                        })}
+                                                    />
+                                                ) : null}
+                                                <CoverImageActions
+                                                    error={coverActionError}
+                                                    onChoose={() =>
+                                                        setCoverPickerTarget({
+                                                            kind: "characters",
+                                                            id: selectedCharacter.id,
+                                                        })
+                                                    }
+                                                    onRemove={() =>
+                                                        handleRemoveCover("characters", selectedCharacter.id)
+                                                    }
                                                 />
-                                            ) : null}
-                                            <CoverImageActions
-                                                error={coverActionError}
-                                                onChoose={() =>
-                                                    setCoverPickerTarget({
-                                                        kind: "characters",
-                                                        id: selectedCharacter.id,
-                                                    })
-                                                }
-                                                onRemove={() => handleRemoveCover("characters", selectedCharacter.id)}
-                                            />
+                                            </div>
                                         </div>
                                     </div>
 
@@ -2946,13 +2952,15 @@ function SimulationDetailsModal({
                                         <p>
                                             {simulation.description || t("simulationDetails.noDescription")}
                                         </p>
-                                        <CoverImageActions
-                                            error={coverActionError}
-                                            onChoose={() =>
-                                                setCoverPickerTarget({ kind: "simulations", id: simulation.id })
-                                            }
-                                            onRemove={() => handleRemoveCover("simulations", simulation.id)}
-                                        />
+                                        <div className="cover-image-generate-control">
+                                            <CoverImageActions
+                                                error={coverActionError}
+                                                onChoose={() =>
+                                                    setCoverPickerTarget({ kind: "simulations", id: simulation.id })
+                                                }
+                                                onRemove={() => handleRemoveCover("simulations", simulation.id)}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 

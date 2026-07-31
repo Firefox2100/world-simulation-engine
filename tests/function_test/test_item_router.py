@@ -165,19 +165,13 @@ def test_create_list_get_update_and_delete_item(item_api):
     }
     assert world_filter_response.status_code == 200
     assert world_filter_response.json() == [world_item]
-    # The simulation inherits the world's item catalog (only stacks are physically copied, the
-    # conceptual items stay on the World and are reached through BASED_ON), so both the item
-    # created directly on the world and the one created directly on the simulation must show up.
+    # Items are copied onto a Simulation like any other entity, so a bare Simulation (not
+    # spawned through create_simulation) only ever sees whatever was created directly on it -
+    # the World's own item catalog is a separate, unrelated set of nodes.
     assert simulation_filter_response.status_code == 200
-    assert {item["id"] for item in simulation_filter_response.json()} == {
-        world_item["id"],
-        simulation_item["id"],
-    }
+    assert simulation_filter_response.json() == [simulation_item]
     assert combined_filter_response.status_code == 200
-    assert {item["id"] for item in combined_filter_response.json()} == {
-        world_item["id"],
-        simulation_item["id"],
-    }
+    assert combined_filter_response.json() == [simulation_item]
 
     get_response = client.get(f"/items/{world_item['id']}")
 

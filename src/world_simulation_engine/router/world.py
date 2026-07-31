@@ -1,11 +1,19 @@
+import re
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import SupportedLanguage
 from world_simulation_engine.model import World
-from .utils import db_dep
+from world_simulation_engine.service import AuthorNotFoundError, WorldExportService, WorldImportError, \
+    WorldImportService
+from .utils import db_dep, storage_dep
+
+
+def _export_filename(world_name: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", world_name).strip("-")
+    return f"{slug or 'world'}.zip"
 
 
 world_router = APIRouter(
@@ -109,6 +117,29 @@ async def create_world(world_create: WorldCreate, db: db_dep):
     return created_world
 
 
+@world_router.post("/worlds/import", response_model=World)
+async def import_world(db: db_dep,
+                       storage: storage_dep,
+                       file: UploadFile = File(...),
+                       author_id: str = Form(...),
+                       ):
+    content = await file.read()
+    await file.close()
+
+    try:
+        return await WorldImportService(database=db, storage=storage).import_world(content, author_id)
+    except AuthorNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Author {exc} not found",
+        ) from exc
+    except WorldImportError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
 @world_router.get("/worlds/{world_id}", response_model=World)
 async def get_world(world_id: str, db: db_dep):
     world = await db.world.get_world(world_id)
@@ -119,6 +150,24 @@ async def get_world(world_id: str, db: db_dep):
         )
 
     return world
+
+
+@world_router.get("/worlds/{world_id}/export")
+async def export_world(world_id: str, db: db_dep, storage: storage_dep):
+    world = await db.world.get_world(world_id)
+    if not world:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"World {world_id} not found",
+        )
+
+    archive = await WorldExportService(database=db, storage=storage).export_world(world_id)
+
+    return Response(
+        content=archive,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{_export_filename(world.name)}"'},
+    )
 
 
 @world_router.patch("/worlds/{world_id}", response_model=World)

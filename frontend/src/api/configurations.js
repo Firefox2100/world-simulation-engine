@@ -348,6 +348,24 @@ export async function setSimulationTtsConfig(simulationId, configId) {
     });
 }
 
+export async function fetchWorldTtsConfig(worldId) {
+    const params = new URLSearchParams({ component: "narrator_tts" });
+    return apiRequest(`/worlds/${worldId}/tts-connection?${params.toString()}`);
+}
+
+export async function setWorldTtsConfig(worldId, configId) {
+    return apiRequest(`/worlds/${worldId}/tts-connection`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            component: "narrator_tts",
+            config_id: configId,
+        }),
+    });
+}
+
 export async function fetchImageConfigs() {
     return apiRequest("/config/images");
 }
@@ -402,6 +420,20 @@ export async function fetchSimulationImageConfigs(simulationId) {
 
 export async function setSimulationImageConfigs(simulationId, assignments) {
     return apiRequest(`/simulations/${simulationId}/image-connections`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ assignments }),
+    });
+}
+
+export async function fetchWorldImageConfigs(worldId) {
+    return apiRequest(`/worlds/${worldId}/image-connections`);
+}
+
+export async function setWorldImageConfigs(worldId, assignments) {
+    return apiRequest(`/worlds/${worldId}/image-connections`, {
         method: "PUT",
         headers: {
             "Content-Type": "application/json",

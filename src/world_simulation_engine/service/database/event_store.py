@@ -101,6 +101,48 @@ class EventStore:
 
         return self.event_from_node(record["event"])
 
+    async def get_turn_links(self, event_ids: list[str]) -> dict[str, list[str]]:
+        """Event doesn't carry its turn_ids as a field - it's the PART_OF relationship - so exporting
+        it needs this dedicated batched lookup."""
+        if not event_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $event_ids AS event_id
+            MATCH (turn:Turn)-[:PART_OF]->(:Event {id: event_id})
+            RETURN event_id, collect(turn.id) AS turn_ids
+            """,
+            parameters_={"event_ids": event_ids},
+        )
+
+        return {
+            record["event_id"]: record["turn_ids"]
+            for record in result.records
+        }
+
+    async def get_character_involvements(self, event_ids: list[str]) -> dict[str, list[dict]]:
+        """Same rationale as get_turn_links, for the INVOLVES relationship."""
+        if not event_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $event_ids AS event_id
+            MATCH (:Event {id: event_id})-[involves:INVOLVES]->(character:Character)
+            RETURN event_id, collect({
+                character_id: character.id,
+                involvement: involves.involvement
+            }) AS involved_characters
+            """,
+            parameters_={"event_ids": event_ids},
+        )
+
+        return {
+            record["event_id"]: record["involved_characters"]
+            for record in result.records
+        }
+
     async def add_turn_to_event(self,
                                 event_id: str,
                                 turn_id: str,

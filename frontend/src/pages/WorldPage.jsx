@@ -2,9 +2,10 @@ import { useEffect, useState, startTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { createSimulationFromWorld, deleteWorld, fetchWorld, fetchWorlds } from "@/api/worlds";
+import { createSimulationFromWorld, deleteWorld, exportWorld, fetchWorld, fetchWorlds } from "@/api/worlds";
 import { WorldCard } from "@/components/WorldCard";
 import { WorldCreateModal } from "@/components/WorldCreateModal";
+import { WorldImportModal } from "@/components/WorldImportModal";
 import { WorldListTile } from "@/components/WorldListTile";
 import { useMediaQuery } from "@/shared/useMediaQuery";
 
@@ -20,6 +21,7 @@ export function WorldPage() {
     const [hasMore, setHasMore] = useState(true);
     const [error, setError] = useState(null);
     const [createModalOpen, setCreateModalOpen] = useState(false);
+    const [importModalOpen, setImportModalOpen] = useState(false);
     const [editingWorld, setEditingWorld] = useState(null);
     const [actionError, setActionError] = useState(null);
 
@@ -58,6 +60,11 @@ export function WorldPage() {
         await loadWorlds(0, false);
     }
 
+    async function handleWorldImported() {
+        setImportModalOpen(false);
+        await loadWorlds(0, false);
+    }
+
     async function handleEditWorld(world) {
         try {
             setActionError(null);
@@ -92,6 +99,15 @@ export function WorldPage() {
         }
     }
 
+    async function handleExportWorld(world) {
+        try {
+            setActionError(null);
+            await exportWorld(world.id);
+        } catch (err) {
+            setActionError(err.message);
+        }
+    }
+
     return (
         <section>
             <div className="page-heading page-heading-with-action">
@@ -99,13 +115,22 @@ export function WorldPage() {
                     <h1>{t("worlds.title")}</h1>
                     <p>{t("worlds.subtitle")}</p>
                 </div>
-                <button
-                    type="button"
-                    className="primary-button"
-                    onClick={() => setCreateModalOpen(true)}
-                >
-                    {t("worlds.create")}
-                </button>
+                <div style={{ display: "flex", gap: "12px" }}>
+                    <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setImportModalOpen(true)}
+                    >
+                        {t("worlds.import")}
+                    </button>
+                    <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() => setCreateModalOpen(true)}
+                    >
+                        {t("worlds.create")}
+                    </button>
+                </div>
             </div>
 
             {actionError ? (
@@ -127,6 +152,7 @@ export function WorldPage() {
                             onEdit={handleEditWorld}
                             onDelete={handleDeleteWorld}
                             onCreateSimulation={handleCreateSimulation}
+                            onExport={handleExportWorld}
                         />
                     ))}
                 </div>
@@ -139,6 +165,7 @@ export function WorldPage() {
                             onEdit={handleEditWorld}
                             onDelete={handleDeleteWorld}
                             onCreateSimulation={handleCreateSimulation}
+                            onExport={handleExportWorld}
                         />
                     ))}
                 </div>
@@ -169,6 +196,13 @@ export function WorldPage() {
                     initialWorld={editingWorld}
                     onClose={() => setEditingWorld(null)}
                     onSaved={handleWorldSaved}
+                />
+            ) : null}
+
+            {importModalOpen ? (
+                <WorldImportModal
+                    onClose={() => setImportModalOpen(false)}
+                    onImported={handleWorldImported}
                 />
             ) : null}
         </section>

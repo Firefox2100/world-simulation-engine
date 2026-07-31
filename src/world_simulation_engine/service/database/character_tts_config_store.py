@@ -118,6 +118,58 @@ class CharacterTtsConfigStore:
         record = result.records[0] if result.records else None
         return bool(record and record["config_count"])
 
+    async def copy_character_tts_configs(
+            self,
+            character_pairs: list[dict],
+    ) -> tuple[list[CharacterTtsConfig], list[dict]]:
+        """Give each copied character its own CharacterTtsConfig (character_voice etc. are data,
+        so they get a fresh node like the character itself) but point USE_CONFIG at the SAME
+        shared backend model config the source uses - that's config, so it's linked, not copied."""
+        if not character_pairs:
+            return [], []
+
+        result = await self._driver.execute_query(
+            f"""
+            UNWIND $character_pairs AS pair
+            MATCH (:Character {{id: pair.source_id}})-[:HAS_CONFIG]->(source_config:CharacterTtsConfig)
+            MATCH (copy_character:Character {{id: pair.copy_id}})
+            CREATE (copy_config:CharacterTtsConfig {{
+                id: randomUUID(),
+                character_voice: source_config.character_voice,
+                rvc_character_voice: source_config.rvc_character_voice,
+                rvc_character_pitch: source_config.rvc_character_pitch
+            }})
+            MERGE (copy_character)-[:HAS_CONFIG]->(copy_config)
+            WITH pair, source_config, copy_config
+            OPTIONAL MATCH (source_config)-[:USE_CONFIG]->(backend:{TTS_CONFIG_LABELS})
+            OPTIONAL MATCH (backend)-[:USES]->(connection:ConnectionConfig)
+            FOREACH (_ IN CASE WHEN backend IS NOT NULL THEN [1] ELSE [] END |
+                MERGE (copy_config)-[:USE_CONFIG]->(backend)
+            )
+            RETURN source_config.id AS source_id, copy_config.id AS copy_id,
+                   copy_config, labels(backend) AS backend_labels, backend, connection
+            """,
+            parameters_={"character_pairs": character_pairs},
+        )
+
+        config_pairs = [
+            {
+                "source_id": record["source_id"],
+                "copy_id": record["copy_id"],
+            }
+            for record in result.records
+        ]
+
+        return (
+            [
+                _character_tts_config_from_node(
+                    record["copy_config"], record["backend_labels"], record["backend"], record["connection"],
+                )
+                for record in result.records
+            ],
+            config_pairs,
+        )
+
     async def delete_character_tts_config(self, character_id: str) -> bool:
         result = await self._driver.execute_query(
             """

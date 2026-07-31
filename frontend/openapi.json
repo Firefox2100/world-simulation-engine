@@ -16050,13 +16050,38 @@
           {
             "name": "simulation_id",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string",
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "description": "The simulation id of the simulation to get turns from",
               "title": "Simulation Id"
             },
             "description": "The simulation id of the simulation to get turns from"
+          },
+          {
+            "name": "world_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The world id of the world to get turns from, e.g. initial-state turns authored before a simulation exists",
+              "title": "World Id"
+            },
+            "description": "The world id of the world to get turns from, e.g. initial-state turns authored before a simulation exists"
           },
           {
             "name": "limit",
@@ -17324,6 +17349,47 @@
         }
       }
     },
+    "/worlds/import": {
+      "post": {
+        "tags": [
+          "World"
+        ],
+        "summary": "Import World",
+        "operationId": "import_world_worlds_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_world_worlds_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/World"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/worlds/{world_id}": {
       "get": {
         "tags": [
@@ -17435,6 +17501,46 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world_id}/export": {
+      "get": {
+        "tags": [
+          "World"
+        ],
+        "summary": "Export World",
+        "operationId": "export_world_worlds__world_id__export_get",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -18658,6 +18764,25 @@
           "type"
         ],
         "title": "Body_create_media_media_post"
+      },
+      "Body_import_world_worlds_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          },
+          "author_id": {
+            "type": "string",
+            "title": "Author Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "author_id"
+        ],
+        "title": "Body_import_world_worlds_import_post"
       },
       "Body_transcribe_speech_speech_recognition_transcribe_post": {
         "properties": {

@@ -783,11 +783,13 @@ class ContainerStore:
                               entity_pairs: list[dict] | None = None,
                               stack_pairs: list[dict] | None = None,
                               equipment_pairs: list[dict] | None = None,
+                              item_pairs: list[dict] | None = None,
                               ) -> tuple[list[Container], list[dict]]:
         location_pairs = location_pairs or []
         entity_pairs = entity_pairs or []
         stack_pairs = stack_pairs or []
         equipment_pairs = equipment_pairs or []
+        item_pairs = item_pairs or []
         result = await self._driver.execute_query(
             """
             MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(source_container:Container)
@@ -884,15 +886,25 @@ class ContainerStore:
                 """,
                 parameters_={"container_pairs": container_pairs},
             )
-            await self._driver.execute_query(
-                """
-                UNWIND $container_pairs AS container_pair
-                MATCH (item:Item)-[:UNLOCKS]->(:Container {id: container_pair.source_id})
-                MATCH (copy_container:Container {id: container_pair.copy_id})
-                MERGE (item)-[:UNLOCKS]->(copy_container)
-                """,
-                parameters_={"container_pairs": container_pairs},
-            )
+            if item_pairs:
+                await self._driver.execute_query(
+                    """
+                    UNWIND $container_pairs AS container_pair
+                    MATCH (source_item:Item)-[:UNLOCKS]->(:Container {id: container_pair.source_id})
+                    WITH container_pair, [
+                        item_pair IN $item_pairs
+                        WHERE item_pair.source_id = source_item.id
+                    ][0] AS item_pair
+                    WHERE item_pair IS NOT NULL
+                    MATCH (copy_item:Item {id: item_pair.copy_id})
+                    MATCH (copy_container:Container {id: container_pair.copy_id})
+                    MERGE (copy_item)-[:UNLOCKS]->(copy_container)
+                    """,
+                    parameters_={
+                        "container_pairs": container_pairs,
+                        "item_pairs": item_pairs,
+                    },
+                )
         if container_pairs and stack_pairs:
             await self._driver.execute_query(
                 """

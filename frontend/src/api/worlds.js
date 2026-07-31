@@ -53,6 +53,19 @@ export async function deleteWorld(worldId) {
     });
 }
 
+export async function importWorld(file, authorId) {
+    const formData = new FormData();
+    formData.set("file", file);
+    formData.set("author_id", authorId);
+
+    const response = await apiRequest("/worlds/import", {
+        method: "POST",
+        body: formData,
+    });
+
+    return normalizeWorld(response);
+}
+
 export async function createSimulationFromWorld(worldId) {
     return apiRequest(`/worlds/${worldId}/simulations`, {
         method: "POST",
@@ -82,6 +95,29 @@ export async function uploadWorldCoverImage(worldId, file) {
 
 export function getWorldCoverUrl(worldId) {
     return apiUrl(`/worlds/${worldId}/cover-image`);
+}
+
+export async function exportWorld(worldId) {
+    const response = await fetch(apiUrl(`/worlds/${worldId}/export`));
+
+    if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.detail ?? `Request failed: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    const filename = match ? match[1] : `${worldId}.zip`;
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 }
 
 function normalizeWorld(world) {

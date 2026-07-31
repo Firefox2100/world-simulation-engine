@@ -9,6 +9,57 @@ from world_simulation_engine.service.database.config_store import ConfigStore
 from tests.integration_test.database_service.helpers import create_character, create_world
 
 
+async def test_copy_character_tts_configs_shares_backend_not_copies_it(clean_neo4j):
+    world = await create_world(clean_neo4j)
+    target_world = await create_world(clean_neo4j)
+    character = await create_character(clean_neo4j, world.id, name="Alex")
+    voiced_character = await create_character(clean_neo4j, world.id, name="Voiced")
+    character_store = CharacterStore(clean_neo4j)
+    config_store = ConfigStore(clean_neo4j)
+    tts_config_store = CharacterTtsConfigStore(clean_neo4j)
+
+    backend = AllTalkXttsModelConfig(id=str(uuid4()), language="en", temperature=0.75)
+    await config_store.create_tts(backend)
+    await tts_config_store.set_character_tts_config(
+        voiced_character.id,
+        CharacterTtsConfig(character_voice="female_01.wav", rvc_character_pitch=2),
+    )
+    await tts_config_store.link_character_tts_backend(voiced_character.id, backend.id)
+
+    _, character_pairs = await character_store.copy_characters(
+        world.id, target_world.id, return_pairs=True,
+    )
+    copied_character_id = next(
+        pair["copy_id"] for pair in character_pairs if pair["source_id"] == voiced_character.id
+    )
+    unvoiced_copy_id = next(
+        pair["copy_id"] for pair in character_pairs if pair["source_id"] == character.id
+    )
+
+    copied_configs, config_pairs = await tts_config_store.copy_character_tts_configs(character_pairs)
+
+    assert len(copied_configs) == 1
+    copied_config = copied_configs[0]
+    assert copied_config.character_voice == "female_01.wav"
+    assert copied_config.rvc_character_pitch == 2
+    # The backend model config is shared config, not per-character data - it must be the exact
+    # same node, not a duplicate, so editing/deleting it affects both the world and the copy alike.
+    assert copied_config.backend == backend
+
+    fetched = await tts_config_store.get_character_tts_config(copied_character_id)
+    assert fetched == copied_config
+    assert config_pairs == [
+        {
+            "source_id": (await tts_config_store.get_character_tts_config(voiced_character.id)).id,
+            "copy_id": copied_config.id,
+        }
+    ]
+
+    # A character with no configured voice should be silently skipped, not raise.
+    assert await tts_config_store.get_character_tts_config(unvoiced_copy_id) is None
+    assert await tts_config_store.copy_character_tts_configs([]) == ([], [])
+
+
 async def test_character_tts_config_crud_and_backend_link(clean_neo4j):
     world = await create_world(clean_neo4j)
     character = await create_character(clean_neo4j, world.id)

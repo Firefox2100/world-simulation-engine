@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import BytesIO
 from uuid import uuid4
+from zipfile import ZipFile
 
 import pytest
 from fastapi import FastAPI
@@ -11,7 +13,7 @@ from neo4j import AsyncGraphDatabase
 from world_simulation_engine.misc.enums import SupportedLanguage
 from world_simulation_engine.model import Author, World
 from world_simulation_engine.router import world_router
-from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service import DatabaseService, StorageService
 
 
 @dataclass(frozen=True)
@@ -24,7 +26,7 @@ class WorldRouterTestClient:
 
 
 @pytest.fixture
-def world_api(neo4j_container):
+def world_api(neo4j_container, tmp_path):
     author = Author(
         id=str(uuid4()),
         name="World API Author",
@@ -68,7 +70,10 @@ def world_api(neo4j_container):
         await database.world.create_author(other_author)
         await database.world.create_world(seeded_world, author.id)
         await database.world.create_world(other_world, other_author.id)
+        storage = StorageService(tmp_path / "storage")
+        await storage.initialise()
         app.state.database = database
+        app.state.storage = storage
 
         try:
             yield
@@ -196,6 +201,27 @@ def test_create_list_get_update_and_delete_world(world_api):
     assert missing_response.json()["detail"] == f"World {created_world['id']} not found"
 
 
+def test_export_world_returns_a_zip_archive(world_api):
+    client = world_api.client
+
+    response = client.get(f"/worlds/{world_api.seeded_world.id}/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "attachment" in response.headers["content-disposition"]
+    assert "Seeded-World.zip" in response.headers["content-disposition"]
+
+    with ZipFile(BytesIO(response.content)) as archive:
+        names = set(archive.namelist())
+        assert "manifest.json" in names
+        assert "world.json" in names
+        assert "author.json" in names
+        assert "data/locations.jsonl" in names
+
+    missing_response = client.get(f"/worlds/{str(uuid4())}/export")
+    assert missing_response.status_code == 404
+
+
 def test_world_endpoints_return_404_for_missing_resources(world_api):
     client = world_api.client
     missing_world_id = str(uuid4())
@@ -222,6 +248,55 @@ def test_world_endpoints_return_404_for_missing_resources(world_api):
     assert update_response.json()["detail"] == f"World {missing_world_id} not found"
     assert delete_response.status_code == 404
     assert delete_response.json()["detail"] == f"World {missing_world_id} not found"
+
+
+def test_import_world_round_trips_an_exported_archive(world_api):
+    client = world_api.client
+
+    export_response = client.get(f"/worlds/{world_api.seeded_world.id}/export")
+    assert export_response.status_code == 200
+
+    import_response = client.post(
+        "/worlds/import",
+        files={"file": ("world.zip", export_response.content, "application/zip")},
+        data={"author_id": world_api.other_author.id},
+    )
+
+    assert import_response.status_code == 200
+    imported_world = import_response.json()
+    assert imported_world["id"] != world_api.seeded_world.id
+    assert imported_world["name"] == world_api.seeded_world.name
+
+    list_response = client.get("/worlds")
+    assert imported_world["id"] in {world["id"] for world in list_response.json()}
+
+
+def test_import_world_rejects_invalid_zip_file(world_api):
+    client = world_api.client
+
+    response = client.post(
+        "/worlds/import",
+        files={"file": ("not-a-world.zip", b"not a zip file", "application/zip")},
+        data={"author_id": world_api.author.id},
+    )
+
+    assert response.status_code == 400
+
+
+def test_import_world_returns_404_for_missing_author(world_api):
+    client = world_api.client
+
+    export_response = client.get(f"/worlds/{world_api.seeded_world.id}/export")
+    missing_author_id = str(uuid4())
+
+    response = client.post(
+        "/worlds/import",
+        files={"file": ("world.zip", export_response.content, "application/zip")},
+        data={"author_id": missing_author_id},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == f"Author {missing_author_id} not found"
 
 
 def test_world_list_rejects_invalid_pagination(world_api):
