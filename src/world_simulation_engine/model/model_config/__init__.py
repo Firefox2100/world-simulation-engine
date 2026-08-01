@@ -1,4 +1,7 @@
-from .chat_config import OllamaChatModelConfig, OpenAiChatModelConfig, ChatModelConfigUnion
+from .chat_config import OllamaChatModelConfig, OpenAiChatModelConfig, AnthropicChatModelConfig, \
+    OpenRouterChatModelConfig, Ai21ChatModelConfig, GoogleGenAiChatModelConfig, MistralAiChatModelConfig, \
+    CohereChatModelConfig, PerplexityChatModelConfig, GroqChatModelConfig, DeepSeekChatModelConfig, \
+    XAiChatModelConfig, CloudflareChatModelConfig, ChatModelConfigUnion
 from .connection_config import ConnectionConfig
 from .embed_config import OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion
 from .image_config import ComfyUiImageModelConfig, ImageModelConfigUnion

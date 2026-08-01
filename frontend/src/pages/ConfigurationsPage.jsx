@@ -36,8 +36,23 @@ import {
 import { ConnectionProviderIcon } from "@/components/ConnectionProviderIcon";
 
 const tabs = ["connections", "embeddings", "llms", "tts", "images", "stt"];
-const connectionProviders = ["openai", "ollama", "alltalk", "whispercpp", "comfyui"];
-const modelProviders = ["openai", "ollama"];
+const llmProviders = [
+    "openai",
+    "ollama",
+    "anthropic",
+    "openrouter",
+    "ai21",
+    "google_genai",
+    "mistralai",
+    "cohere",
+    "perplexity",
+    "groq",
+    "deepseek",
+    "xai",
+    "cloudflare",
+];
+const connectionProviders = [...llmProviders, "alltalk", "whispercpp", "comfyui"];
+const embeddingProviders = ["openai", "ollama"];
 const imageProviders = ["comfyui"];
 const sttProviders = ["whispercpp"];
 const ollamaLlmFields = [
@@ -48,9 +63,164 @@ const ollamaLlmFields = [
     "repeat_penalty_window",
     "repeat_penalty",
 ];
+const commonLlmFields = [
+    { name: "temperature", type: "number", step: "0.1" },
+    { name: "context_window", type: "int" },
+    { name: "seed", type: "int" },
+    { name: "reasoning", type: "flexible" },
+    { name: "stop_tokens", type: "csv" },
+];
+const llmProviderFields = {
+    ollama: [
+        { name: "mirostat", type: "int" },
+        { name: "mirostat_eta", type: "number" },
+        { name: "mirostat_tau", type: "number" },
+        { name: "num_predict", type: "int" },
+        { name: "repeat_penalty_window", type: "int" },
+        { name: "repeat_penalty", type: "number" },
+        { name: "validate_model_on_init", type: "boolean" },
+        { name: "num_gpu", type: "int" },
+        { name: "num_thread", type: "int" },
+        { name: "logprobs", type: "boolean" },
+        { name: "top_logprobs", type: "int" },
+        { name: "tfs_z", type: "number" },
+        { name: "top_k", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "format", type: "jsonOrText" },
+        { name: "keep_alive", type: "text" },
+        { name: "client_kwargs", type: "json" },
+        { name: "async_client_kwargs", type: "json" },
+        { name: "sync_client_kwargs", type: "json" },
+    ],
+    openai: [
+        { name: "model_kwargs", type: "json" },
+        { name: "organization", type: "text" },
+        { name: "openai_proxy", type: "text" },
+        { name: "request_timeout", type: "jsonOrNumber" },
+        { name: "stream_usage", type: "boolean" },
+        { name: "max_retries", type: "int" },
+        { name: "presence_penalty", type: "number" },
+        { name: "frequency_penalty", type: "number" },
+        { name: "logprobs", type: "boolean" },
+        { name: "top_logprobs", type: "int" },
+        { name: "logit_bias", type: "json" },
+        { name: "streaming", type: "boolean" },
+        { name: "n", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "max_completion_tokens", type: "int" },
+        { name: "reasoning_effort", type: "text" },
+        { name: "verbosity", type: "text" },
+        { name: "tiktoken_model_name", type: "text" },
+        { name: "default_headers", type: "json" },
+        { name: "default_query", type: "json" },
+        { name: "http_socket_options", type: "json" },
+        { name: "stream_chunk_timeout", type: "number" },
+        { name: "extra_body", type: "json" },
+        { name: "include_response_headers", type: "boolean" },
+        { name: "disabled_params", type: "json" },
+        { name: "context_management", type: "json" },
+        { name: "include", type: "csv" },
+        { name: "service_tier", type: "text" },
+        { name: "store", type: "boolean" },
+        { name: "truncation", type: "text" },
+        { name: "use_previous_response_id", type: "boolean" },
+        { name: "use_responses_api", type: "boolean" },
+    ],
+    anthropic: [
+        { name: "model_kwargs", type: "json" },
+        { name: "max_tokens", type: "int" },
+        { name: "timeout", type: "number" },
+        { name: "max_retries", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "top_k", type: "int" },
+        { name: "thinking", type: "json" },
+        { name: "output_config", type: "json" },
+        { name: "stream_usage", type: "boolean" },
+        { name: "streaming", type: "boolean" },
+        { name: "default_headers", type: "json" },
+        { name: "betas", type: "csv" },
+        { name: "service_tier", type: "text" },
+        { name: "mcp_servers", type: "json" },
+        { name: "container", type: "jsonOrText" },
+        { name: "inference_geo", type: "text" },
+    ],
+    ai21: [
+        { name: "model_kwargs", type: "json" },
+        { name: "streaming", type: "boolean" },
+        { name: "max_tokens", type: "int" },
+        { name: "min_tokens", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "num_results", type: "int" },
+        { name: "logit_bias", type: "json" },
+        { name: "presence_penalty", type: "json" },
+        { name: "count_penalty", type: "json" },
+        { name: "frequency_penalty", type: "json" },
+    ],
+    google_genai: [
+        { name: "model_kwargs", type: "json" },
+        { name: "max_output_tokens", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "top_k", type: "int" },
+        { name: "n", type: "int" },
+        { name: "max_retries", type: "int" },
+        { name: "timeout", type: "number" },
+        { name: "safety_settings", type: "json" },
+        { name: "response_mime_type", type: "text" },
+        { name: "response_schema", type: "json" },
+        { name: "cached_content", type: "text" },
+        { name: "thinking_budget", type: "int" },
+        { name: "include_thoughts", type: "boolean" },
+        { name: "transport", type: "text" },
+        { name: "client_options", type: "json" },
+    ],
+    mistralai: [
+        { name: "model_kwargs", type: "json" },
+        { name: "max_tokens", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "random_seed", type: "int" },
+        { name: "safe_mode", type: "boolean" },
+        { name: "streaming", type: "boolean" },
+        { name: "endpoint", type: "text" },
+        { name: "timeout", type: "int" },
+        { name: "max_retries", type: "int" },
+        { name: "max_concurrent_requests", type: "int" },
+    ],
+    cohere: [
+        { name: "model_kwargs", type: "json" },
+        { name: "preamble", type: "text" },
+        { name: "streaming", type: "boolean" },
+        { name: "user_agent", type: "text" },
+        { name: "timeout_seconds", type: "number" },
+    ],
+    groq: [
+        { name: "max_tokens", type: "int" },
+        { name: "reasoning_format", type: "select", options: ["parsed", "raw", "hidden"] },
+        { name: "response_format", type: "json" },
+        { name: "parallel_tool_calls", type: "boolean" },
+    ],
+    xai: [
+        { name: "search_parameters", type: "json" },
+    ],
+    cloudflare: [
+        { name: "model_kwargs", type: "json" },
+        { name: "account_id", type: "text" },
+        { name: "endpoint_format", type: "select", options: ["workers_ai", "openai_compatible"] },
+        { name: "ai_gateway", type: "text" },
+        { name: "max_tokens", type: "int" },
+        { name: "top_p", type: "number" },
+        { name: "top_k", type: "int" },
+        { name: "streaming", type: "boolean" },
+    ],
+};
+for (const provider of ["openrouter", "perplexity", "deepseek"]) {
+    llmProviderFields[provider] = llmProviderFields.openai;
+}
+const llmExtraFields = Array.from(
+    new Set(Object.values(llmProviderFields).flat().map((field) => field.name)),
+);
 
 function cleanText(value) {
-    const trimmed = value.trim();
+    const trimmed = String(value ?? "").trim();
     return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -62,6 +232,114 @@ function numberOrNull(value, parser = Number.parseFloat) {
 
     const parsed = parser(cleaned, 10);
     return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatFormValue(value) {
+    if (value === null || value === undefined) {
+        return "";
+    }
+
+    if (typeof value === "object") {
+        return JSON.stringify(value, null, 2);
+    }
+
+    return String(value);
+}
+
+function parseJsonOrNull(value) {
+    const cleaned = cleanText(value);
+    if (!cleaned) {
+        return null;
+    }
+
+    return JSON.parse(cleaned);
+}
+
+function parseJsonOrText(value) {
+    const cleaned = cleanText(value);
+    if (!cleaned) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(cleaned);
+    } catch {
+        return cleaned;
+    }
+}
+
+function parseFlexibleValue(value) {
+    const cleaned = cleanText(value);
+    if (!cleaned) {
+        return null;
+    }
+
+    if (cleaned === "true") {
+        return true;
+    }
+    if (cleaned === "false") {
+        return false;
+    }
+
+    try {
+        return JSON.parse(cleaned);
+    } catch {
+        return cleaned;
+    }
+}
+
+function parseCsvOrNull(value) {
+    return cleanText(value)?.split(",").map((token) => token.trim()).filter(Boolean) ?? null;
+}
+
+function omitNullishEntries(payload) {
+    return Object.fromEntries(
+        Object.entries(payload).filter(([, value]) => value !== null && value !== undefined),
+    );
+}
+
+function parseLlmFieldValue(field, form) {
+    const value = form[field.name];
+    if (field.type === "int") {
+        return numberOrNull(value, Number.parseInt);
+    }
+    if (field.type === "number") {
+        return numberOrNull(value);
+    }
+    if (field.type === "boolean") {
+        return value === "" ? null : Boolean(value);
+    }
+    if (field.type === "json") {
+        return parseJsonOrNull(value);
+    }
+    if (field.type === "jsonOrText") {
+        return parseJsonOrText(value);
+    }
+    if (field.type === "jsonOrNumber") {
+        const parsedJson = parseJsonOrText(value);
+        if (typeof parsedJson === "string") {
+            return numberOrNull(parsedJson);
+        }
+        return parsedJson;
+    }
+    if (field.type === "flexible") {
+        return parseFlexibleValue(value);
+    }
+    if (field.type === "csv") {
+        return parseCsvOrNull(value);
+    }
+
+    return cleanText(value);
+}
+
+function humanizeFieldName(field) {
+    return field
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function fieldLabel(t, field) {
+    return t(`configurations.fields.${field}`, { defaultValue: humanizeFieldName(field) });
 }
 
 function inferLlmProvider(config) {
@@ -158,7 +436,7 @@ function makeFormState(kind, item = null) {
         };
     }
 
-    return {
+    const llmState = {
         provider: item ? inferLlmProvider(item) : "",
         connection_id: item?.connection?.id ?? "",
         name: item?.name ?? "",
@@ -176,6 +454,16 @@ function makeFormState(kind, item = null) {
             item?.repeat_penalty_window == null ? "" : String(item.repeat_penalty_window),
         repeat_penalty: item?.repeat_penalty == null ? "" : String(item.repeat_penalty),
     };
+
+    for (const field of llmExtraFields) {
+        if (!(field in llmState)) {
+            llmState[field] = typeof item?.[field] === "boolean"
+                ? item[field]
+                : formatFormValue(item?.[field]);
+        }
+    }
+
+    return llmState;
 }
 
 function buildPayload(kind, form, editing) {
@@ -262,24 +550,18 @@ function buildPayload(kind, form, editing) {
     const payload = {
         name: form.name.trim(),
         model: form.model.trim(),
-        temperature: numberOrNull(form.temperature),
-        context_window: numberOrNull(form.context_window, Number.parseInt),
-        seed: numberOrNull(form.seed, Number.parseInt),
-        reasoning: cleanText(form.reasoning),
-        stop_tokens:
-            cleanText(form.stop_tokens)?.split(",").map((token) => token.trim()).filter(Boolean) ?? null,
+        temperature: parseLlmFieldValue(commonLlmFields[0], form),
+        context_window: parseLlmFieldValue(commonLlmFields[1], form),
+        seed: parseLlmFieldValue(commonLlmFields[2], form),
+        reasoning: parseLlmFieldValue(commonLlmFields[3], form),
+        stop_tokens: parseLlmFieldValue(commonLlmFields[4], form),
     };
 
-    if (form.provider === "ollama" || editing) {
-        payload.mirostat = numberOrNull(form.mirostat, Number.parseInt);
-        payload.mirostat_eta = numberOrNull(form.mirostat_eta);
-        payload.mirostat_tau = numberOrNull(form.mirostat_tau);
-        payload.num_predict = numberOrNull(form.num_predict, Number.parseInt);
-        payload.repeat_penalty_window = numberOrNull(form.repeat_penalty_window, Number.parseInt);
-        payload.repeat_penalty = numberOrNull(form.repeat_penalty);
+    for (const field of llmProviderFields[form.provider] ?? []) {
+        payload[field.name] = parseLlmFieldValue(field, form);
     }
 
-    return payload;
+    return omitNullishEntries(payload);
 }
 
 function hasValue(value) {
@@ -758,7 +1040,11 @@ function ModelFields({
                 // connections through - picking one derives the provider automatically.
                 : editing
                     ? connections.filter((connection) => connection.type === form.provider)
-                    : connections.filter((connection) => modelProviders.includes(connection.type));
+                    : connections.filter((connection) => (
+                        kind === "embeddings"
+                            ? embeddingProviders.includes(connection.type)
+                            : llmProviders.includes(connection.type)
+                    ));
 
     return (
         <>
@@ -828,56 +1114,90 @@ function ModelFields({
                     ) : null}
                 </>
             ) : (
-                <>
-                    <TextField
-                        id="configuration-temperature"
-                        label={t("configurations.fields.temperature")}
-                        value={form.temperature}
-                        onChange={(value) => onChange("temperature", value)}
-                        type="number"
-                        step="0.1"
-                    />
-                    <TextField
-                        id="configuration-context-window"
-                        label={t("configurations.fields.contextWindow")}
-                        value={form.context_window}
-                        onChange={(value) => onChange("context_window", value)}
-                        type="number"
-                    />
-                    <TextField
-                        id="configuration-seed"
-                        label={t("configurations.fields.seed")}
-                        value={form.seed}
-                        onChange={(value) => onChange("seed", value)}
-                        type="number"
-                    />
-                    <TextField
-                        id="configuration-reasoning"
-                        label={t("configurations.fields.reasoning")}
-                        value={form.reasoning}
-                        onChange={(value) => onChange("reasoning", value)}
-                    />
-                    <TextField
-                        id="configuration-stop-tokens"
-                        label={t("configurations.fields.stopTokens")}
-                        value={form.stop_tokens}
-                        onChange={(value) => onChange("stop_tokens", value)}
-                    />
-                    {showOllamaFields
-                        ? ollamaLlmFields.map((field) => (
-                              <TextField
-                                  key={field}
-                                  id={`configuration-${field}`}
-                                  label={t(`configurations.fields.${field}`)}
-                                  value={form[field]}
-                                  onChange={(value) => onChange(field, value)}
-                                  type={field.includes("eta") || field.includes("tau") || field === "repeat_penalty" ? "number" : "text"}
-                              />
-                          ))
-                        : null}
-                </>
+                <LlmModelFields form={form} onChange={onChange} t={t} />
             )}
         </>
+    );
+}
+
+function LlmModelFields({ form, onChange, t }) {
+    return (
+        <>
+            {commonLlmFields.map((field) => (
+                <LlmConfigField
+                    key={field.name}
+                    field={field}
+                    form={form}
+                    onChange={onChange}
+                    t={t}
+                />
+            ))}
+            {(llmProviderFields[form.provider] ?? []).map((field) => (
+                <LlmConfigField
+                    key={field.name}
+                    field={field}
+                    form={form}
+                    onChange={onChange}
+                    t={t}
+                />
+            ))}
+        </>
+    );
+}
+
+function LlmConfigField({ field, form, onChange, t }) {
+    const label = field.name === "stop_tokens"
+        ? t("configurations.fields.stopTokens")
+        : fieldLabel(t, field.name);
+    const id = `configuration-${field.name}`;
+
+    if (field.type === "boolean") {
+        return (
+            <CheckboxField
+                id={id}
+                label={label}
+                checked={Boolean(form[field.name])}
+                onChange={(value) => onChange(field.name, value)}
+            />
+        );
+    }
+
+    if (field.type === "select") {
+        return (
+            <SelectField
+                id={id}
+                label={label}
+                value={form[field.name]}
+                emptyLabel={t("configurations.fields.notSet")}
+                options={field.options.map((option) => ({
+                    value: option,
+                    label: t(`configurations.fieldOptions.${field.name}.${option}`, { defaultValue: option }),
+                }))}
+                onChange={(value) => onChange(field.name, value)}
+            />
+        );
+    }
+
+    if (field.type === "json" || field.type === "jsonOrText") {
+        return (
+            <TextAreaField
+                id={id}
+                label={label}
+                value={form[field.name]}
+                onChange={(value) => onChange(field.name, value)}
+            />
+        );
+    }
+
+    return (
+        <TextField
+            id={id}
+            label={label}
+            value={form[field.name]}
+            onChange={(value) => onChange(field.name, value)}
+            type={field.type === "number" || field.type === "int" ? "number" : "text"}
+            step={field.step ?? (field.type === "number" ? "0.1" : undefined)}
+        />
     );
 }
 
@@ -1163,6 +1483,22 @@ function TextField({ id, label, value, onChange, type = "text", required = false
                 type={type}
                 required={required}
                 step={step}
+                disabled={disabled}
+                onChange={(event) => onChange(event.target.value)}
+            />
+        </div>
+    );
+}
+
+function TextAreaField({ id, label, value, onChange, required = false, disabled = false }) {
+    return (
+        <div className="form-field inline-field modal-form-field">
+            <FieldLabel htmlFor={id} label={label} required={required} />
+            <textarea
+                id={id}
+                className="multi-line-input short-textarea"
+                value={value}
+                required={required}
                 disabled={disabled}
                 onChange={(event) => onChange(event.target.value)}
             />

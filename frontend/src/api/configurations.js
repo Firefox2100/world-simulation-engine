@@ -62,12 +62,15 @@ export async function fetchLlmConfigs() {
 }
 
 export async function createLlmConfig(provider, config) {
-    return apiRequest(`/config/llm/${provider}`, {
+    return apiRequest("/config/llm", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+            provider,
+            ...config,
+        }),
     });
 }
 

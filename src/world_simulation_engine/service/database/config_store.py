@@ -1,8 +1,11 @@
+import json
+
 from neo4j import AsyncDriver
+from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.enums import ComponentType
-from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion, OllamaChatModelConfig, \
-    OpenAiChatModelConfig, EmbedModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
+from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion, EmbedModelConfigUnion, \
+    OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
     ComfyUiImageModelConfig, ImageModelConfigUnion, ImageGenerationConfig, AllTalkF5ttsModelConfig, \
     AllTalkParlerModelConfig, AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, \
     TtsModelConfigUnion, TtsGenerationConfig, SttModelConfigUnion, WhisperCppSttModelConfig
@@ -14,6 +17,65 @@ TTS_CONFIG_LABELS = (
 )
 
 STT_CONFIG_LABELS = "WhisperCppSttModelConfig"
+
+CHAT_CONFIG_LABELS = (
+    "OllamaChatModelConfig|OpenAiChatModelConfig|AnthropicChatModelConfig|OpenRouterChatModelConfig|"
+    "Ai21ChatModelConfig|GoogleGenAiChatModelConfig|MistralAiChatModelConfig|CohereChatModelConfig|"
+    "PerplexityChatModelConfig|GroqChatModelConfig|DeepSeekChatModelConfig|XAiChatModelConfig|"
+    "CloudflareChatModelConfig"
+)
+
+CHAT_CONFIG_PROVIDERS = {
+    "OllamaChatModelConfig": "ollama",
+    "OpenAiChatModelConfig": "openai",
+    "AnthropicChatModelConfig": "anthropic",
+    "OpenRouterChatModelConfig": "openrouter",
+    "Ai21ChatModelConfig": "ai21",
+    "GoogleGenAiChatModelConfig": "google_genai",
+    "MistralAiChatModelConfig": "mistralai",
+    "CohereChatModelConfig": "cohere",
+    "PerplexityChatModelConfig": "perplexity",
+    "GroqChatModelConfig": "groq",
+    "DeepSeekChatModelConfig": "deepseek",
+    "XAiChatModelConfig": "xai",
+    "CloudflareChatModelConfig": "cloudflare",
+}
+
+CHAT_CONFIG_ADAPTER = TypeAdapter(ChatModelConfigUnion)
+
+
+def _node_properties(config_node) -> dict:
+    return {
+        key: config_node.get(key)
+        for key in config_node.keys()
+    }
+
+
+def _encode_model_property(value):
+    if isinstance(value, dict | tuple):
+        return json.dumps(value)
+    if isinstance(value, list) and any(isinstance(item, dict | list | tuple) for item in value):
+        return json.dumps(value)
+    return value
+
+
+def _decode_model_property(value):
+    if not isinstance(value, str) or not value:
+        return value
+    if value[0] not in "[{":
+        return value
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        return value
+
+
+def _chat_provider_from_labels(labels: list[str]) -> str:
+    for label in labels:
+        provider = CHAT_CONFIG_PROVIDERS.get(label)
+        if provider is not None:
+            return provider
+    raise ValueError(f"Unknown config labels {labels}")
 
 
 def _connection_from_node(connection_node) -> ConnectionConfig:
@@ -30,46 +92,14 @@ def _connection_from_optional_node(connection_node) -> ConnectionConfig | None:
     return _connection_from_node(connection_node) if connection_node else None
 
 
-def _ollama_chat_from_node(config_node, connection_node=None) -> OllamaChatModelConfig:
-    return OllamaChatModelConfig(
-        id=config_node["id"],
-        name=config_node["name"],
-        model=config_node["model"],
-        temperature=config_node["temperature"],
-        context_window=config_node["context_window"],
-        seed=config_node.get("seed"),
-        reasoning=config_node.get("reasoning"),
-        stop_tokens=config_node.get("stop_tokens"),
-        mirostat=config_node.get("mirostat"),
-        mirostat_eta=config_node.get("mirostat_eta"),
-        mirostat_tau=config_node.get("mirostat_tau"),
-        num_predict=config_node.get("num_predict"),
-        repeat_penalty_window=config_node.get("repeat_penalty_window"),
-        repeat_penalty=config_node.get("repeat_penalty"),
-        connection=_connection_from_optional_node(connection_node),
-    )
-
-
-def _openai_chat_from_node(config_node, connection_node=None) -> OpenAiChatModelConfig:
-    return OpenAiChatModelConfig(
-        id=config_node["id"],
-        name=config_node["name"],
-        model=config_node["model"],
-        temperature=config_node["temperature"],
-        context_window=config_node["context_window"],
-        seed=config_node.get("seed"),
-        reasoning=config_node.get("reasoning"),
-        stop_tokens=config_node.get("stop_tokens"),
-        connection=_connection_from_optional_node(connection_node),
-    )
-
-
 def _chat_from_node(config_node, labels: list[str], connection_node=None) -> ChatModelConfigUnion:
-    if "OllamaChatModelConfig" in labels:
-        return _ollama_chat_from_node(config_node, connection_node)
-    if "OpenAiChatModelConfig" in labels:
-        return _openai_chat_from_node(config_node, connection_node)
-    raise ValueError(f"Unknown config labels {labels}")
+    properties = {
+        key: _decode_model_property(value)
+        for key, value in _node_properties(config_node).items()
+    }
+    properties["provider"] = _chat_provider_from_labels(labels)
+    properties["connection"] = _connection_from_optional_node(connection_node)
+    return CHAT_CONFIG_ADAPTER.validate_python(properties)
 
 
 def _ollama_embed_from_node(config_node, connection_node=None) -> OllamaEmbedModelConfig:
@@ -286,8 +316,8 @@ class ConfigStore:
 
     async def get_connection_by_source(self, source_id: str) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig {id: $source_id})
+            f"""
+            MATCH (s:{CHAT_CONFIG_LABELS} {{id: $source_id}})
                 -[:USES]->
                 (c:ConnectionConfig)
             RETURN c LIMIT 1
@@ -375,7 +405,7 @@ class ConfigStore:
                               ) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
             f"""
-            MATCH (s:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            MATCH (s:{CHAT_CONFIG_LABELS}|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
                 |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS}|{STT_CONFIG_LABELS} {{
                 id: $source_id
             }})
@@ -400,7 +430,7 @@ class ConfigStore:
     async def unlink_connection(self, source_id: str) -> bool:
         result = await self._driver.execute_query(
             f"""
-            MATCH (source:OllamaChatModelConfig|OpenAiChatModelConfig|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            MATCH (source:{CHAT_CONFIG_LABELS}|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
                 |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS}|{STT_CONFIG_LABELS} {{
                 id: $source_id
             }})
@@ -457,77 +487,34 @@ class ConfigStore:
         return bool(record and record["deleted"])
 
     async def create_chat(self, chat_config: ChatModelConfigUnion):
-        if isinstance(chat_config, OllamaChatModelConfig):
-            result = await self._driver.execute_query(
-                """
-                CREATE (c:OllamaChatModelConfig {
-                    id: $id,
-                    name: $name,
-                    model: $model,
-                    temperature: $temperature,
-                    context_window: $context_window,
-                    seed: $seed,
-                    reasoning: $reasoning,
-                    stop_tokens: $stop_tokens,
-                    mirostat: $mirostat,
-                    mirostat_eta: $mirostat_eta,
-                    mirostat_tau: $mirostat_tau,
-                    num_predict: $num_predict,
-                    repeat_penalty_window: $repeat_penalty_window,
-                    repeat_penalty: $repeat_penalty
-                }) RETURN c
-                """,
-                parameters_={
-                    "id": chat_config.id,
-                    "name": chat_config.name,
-                    "model": chat_config.model,
-                    "temperature": chat_config.temperature,
-                    "context_window": chat_config.context_window,
-                    "seed": chat_config.seed,
-                    "reasoning": chat_config.reasoning,
-                    "stop_tokens": chat_config.stop_tokens,
-                    "mirostat": chat_config.mirostat,
-                    "mirostat_eta": chat_config.mirostat_eta,
-                    "mirostat_tau": chat_config.mirostat_tau,
-                    "num_predict": chat_config.num_predict,
-                    "repeat_penalty_window": chat_config.repeat_penalty_window,
-                    "repeat_penalty": chat_config.repeat_penalty,
-                }
-            )
-            return _ollama_chat_from_node(result.records[0]["c"])
-        elif isinstance(chat_config, OpenAiChatModelConfig):
-            result = await self._driver.execute_query(
-                """
-                CREATE (c:OpenAiChatModelConfig {
-                    id: $id,
-                    name: $name,
-                    model: $model,
-                    temperature: $temperature,
-                    context_window: $context_window,
-                    seed: $seed,
-                    reasoning: $reasoning,
-                    stop_tokens: $stop_tokens
-                }) RETURN c
-                """,
-                parameters_={
-                    "id": chat_config.id,
-                    "name": chat_config.name,
-                    "model": chat_config.model,
-                    "temperature": chat_config.temperature,
-                    "context_window": chat_config.context_window,
-                    "seed": chat_config.seed,
-                    "reasoning": chat_config.reasoning,
-                    "stop_tokens": chat_config.stop_tokens,
-                }
-            )
-            return _openai_chat_from_node(result.records[0]["c"])
-        else:
+        label = type(chat_config).__name__
+        if label not in CHAT_CONFIG_PROVIDERS:
             raise TypeError(f"Expected ChatModelConfigUnion, got {type(chat_config)}")
+
+        properties = {
+            key: _encode_model_property(value)
+            for key, value in chat_config.model_dump(
+                exclude={"provider", "connection"},
+                mode="python",
+            ).items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            f"""
+            CREATE (c:{label})
+            SET c = $properties
+            RETURN labels(c) AS config_labels, c AS config
+            """,
+            parameters_={"properties": properties},
+        )
+
+        return _chat_from_node(result.records[0]["config"], result.records[0]["config_labels"])
 
     async def list_chats(self) -> list[ChatModelConfigUnion]:
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig)
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS})
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             ORDER BY c.name
@@ -541,8 +528,8 @@ class ConfigStore:
 
     async def get_chat(self, config_id: str) -> ChatModelConfigUnion | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS} {{id: $config_id}})
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             """,
@@ -560,10 +547,10 @@ class ConfigStore:
                                  component: ComponentType,
                                  ) -> ChatModelConfigUnion | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:World|Simulation {id: $source_id})
-                -[:USES {component: $component}]->
-                (c:OllamaChatModelConfig|OpenAiChatModelConfig)
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+                -[:USES {{component: $component}}]->
+                (c:{CHAT_CONFIG_LABELS})
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             """,
@@ -583,10 +570,10 @@ class ConfigStore:
                                    source_id: str,
                                    ) -> dict[ComponentType, ChatModelConfigUnion]:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:World|Simulation {id: $source_id})
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
                 -[uses:USES]->
-                (c:OllamaChatModelConfig|OpenAiChatModelConfig)
+                (c:{CHAT_CONFIG_LABELS})
             WHERE uses.component IS NOT NULL
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN uses.component AS component, labels(c) AS config_labels, c AS config, connection
@@ -610,14 +597,14 @@ class ConfigStore:
                         component: ComponentType,
                         ) -> ChatModelConfigUnion | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:World|Simulation {id: $source_id})
-            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
-            OPTIONAL MATCH (s)-[previous:USES {component: $component}]->(
-                :OllamaChatModelConfig|OpenAiChatModelConfig
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+            MATCH (c:{CHAT_CONFIG_LABELS} {{id: $config_id}})
+            OPTIONAL MATCH (s)-[previous:USES {{component: $component}}]->(
+                :{CHAT_CONFIG_LABELS}
             )
             DELETE previous
-            MERGE (s) -[:USES {component: $component}]-> (c)
+            MERGE (s) -[:USES {{component: $component}}]-> (c)
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             """,
@@ -639,10 +626,10 @@ class ConfigStore:
                           component: ComponentType,
                           ) -> bool:
         result = await self._driver.execute_query(
-            """
-            MATCH (source:World|Simulation {id: $source_id})
-            OPTIONAL MATCH (source)-[uses:USES {component: $component}]->(
-                :OllamaChatModelConfig|OpenAiChatModelConfig
+            f"""
+            MATCH (source:World|Simulation {{id: $source_id}})
+            OPTIONAL MATCH (source)-[uses:USES {{component: $component}}]->(
+                :{CHAT_CONFIG_LABELS}
             )
             DELETE uses
             RETURN count(source) AS source_count
@@ -661,14 +648,14 @@ class ConfigStore:
                           properties: dict,
                           ) -> ChatModelConfigUnion | None:
         properties = {
-            key: value
+            key: _encode_model_property(value)
             for key, value in properties.items()
             if value is not None
         }
 
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS} {{id: $config_id}})
             SET c += $properties
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
@@ -687,8 +674,8 @@ class ConfigStore:
 
     async def delete_chat(self, config_id: str) -> bool:
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaChatModelConfig|OpenAiChatModelConfig {id: $config_id})
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS} {{id: $config_id}})
             WITH collect(c) AS configs
             FOREACH (config IN configs | DETACH DELETE config)
             RETURN size(configs) AS deleted

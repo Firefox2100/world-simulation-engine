@@ -79,7 +79,7 @@ Open the web interface, then go to **Configurations** or **Connections** from th
 
 Runtime settings are intentionally reusable:
 
-- **Connection**: the network endpoint and optional API key for a provider, such as Ollama, OpenAI-compatible chat, ComfyUI, AllTalk, or whisper.cpp.
+- **Connection**: the network endpoint and optional API key for a provider, such as Ollama, OpenAI, Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, Cloudflare, ComfyUI, AllTalk, or whisper.cpp.
 - **Model config**: a reusable model profile for one service type, such as an LLM model with sampling settings or a ComfyUI image config with image dimensions.
 - **World assignment**: default model, image, embedding, TTS, and prompt assignments for a world.
 - **Simulation assignment**: overrides for a specific simulation. Use this when one run needs different models, image behavior, or prompts from the world default.
@@ -92,7 +92,7 @@ Connections contain the shared provider access details:
 
 | Field | Description |
 | --- | --- |
-| `type` | Provider type: `ollama`, `openai`, `comfyui`, `alltalk`, or `whispercpp`. |
+| `type` | Provider type: `ollama`, `openai`, `anthropic`, `openrouter`, `ai21`, `google_genai`, `mistralai`, `cohere`, `perplexity`, `groq`, `deepseek`, `xai`, `cloudflare`, `comfyui`, `alltalk`, or `whispercpp`. |
 | `name` | Display name shown in dropdowns. Use names that describe the endpoint, not just the provider. |
 | `base_url` | Provider base URL. Local providers usually need this; official or SDK-default providers may leave it empty. |
 | `api_key` | Optional API key. Leave it empty for local/self-hosted providers that do not require one. |
@@ -101,9 +101,21 @@ Connections contain the shared provider access details:
 
 Recommended examples:
 
-| Provider | Typical local base URL |
+| Provider | Typical base URL or note |
 | --- | --- |
 | Ollama | `http://localhost:11434` |
+| OpenAI | Leave empty for the official OpenAI endpoint, or set an OpenAI-compatible base URL. |
+| Anthropic | Leave empty for the official Anthropic endpoint. |
+| OpenRouter | Leave empty for the integration default, or set a custom OpenRouter-compatible endpoint. |
+| AI21 | Leave empty for the official AI21 endpoint. |
+| Google GenAI | Leave empty for the official Google GenAI endpoint. |
+| Mistral AI | Leave empty for the official Mistral endpoint, or use the config-level endpoint override. |
+| Cohere | Leave empty for the official Cohere endpoint. |
+| Perplexity | Leave empty for the official Perplexity endpoint. |
+| Groq | Leave empty for the official Groq endpoint. |
+| DeepSeek | Leave empty for the official DeepSeek endpoint. |
+| xAI | Leave empty for the official xAI endpoint. |
+| Cloudflare | Usually leave empty; set account and gateway details on the chat config. |
 | ComfyUI | `http://localhost:8188` |
 | AllTalk | AllTalk V2 server URL visible from the backend |
 | whisper.cpp | whisper.cpp `examples/server` URL visible from the backend |
@@ -112,7 +124,9 @@ When running the backend in Docker, `localhost` means "inside the application co
 
 ## LLM model configs
 
-Use the **LLMs** tab to create chat model configs. Each config points to an Ollama or OpenAI-compatible connection and stores the model identifier plus generation parameters.
+Use the **LLMs** tab to create chat model configs. Each config points to a provider-specific chat connection and stores the model identifier plus generation parameters.
+
+Supported chat providers are Ollama, OpenAI, Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and Cloudflare. The UI shows provider-specific fields after you choose the provider, and only connections with the matching provider type are available for that config.
 
 <!-- Screenshot placeholder: LLM config editor with provider connection, model, temperature, context window, reasoning, and stop token fields. -->
 
@@ -126,13 +140,33 @@ Common fields:
 | `context_window` | Context size used when composing prompts. |
 | `seed` | Optional seed for providers that support deterministic sampling. |
 | `reasoning` | Optional reasoning control. It may be `true`, `false`, or a level such as `low`, `medium`, or `high`, depending on provider support. |
-| `stop_tokens` | Optional newline-separated stop tokens. |
+| `stop_tokens` | Optional comma-separated stop tokens. |
 
-Ollama configs also expose provider-specific controls such as `mirostat`, `mirostat_eta`, `mirostat_tau`, `num_predict`, `repeat_penalty_window`, and `repeat_penalty`.
+Complex provider parameters, such as `model_kwargs`, custom headers, response schemas, penalty configs, and safety settings, are entered as JSON in the frontend. Leave optional fields empty to use the provider default.
+
+Provider-specific fields:
+
+| Provider | Additional configuration |
+| --- | --- |
+| Ollama | Mirostat controls, prediction length, repeat penalty controls, model validation on init, GPU/thread options, logprobs, `top_k`, `top_p`, output `format`, `keep_alive`, and sync/async client kwargs. |
+| OpenAI | `model_kwargs`, organization, proxy, request timeout, retries, penalties, logprobs, streaming, `top_p`, completion token limit, reasoning effort, verbosity, tiktoken model name, default headers/query, socket options, stream timeout, extra body, response headers, disabled params, Responses API context/include/service-tier/store/truncation options, and Responses API conversation flags. |
+| Anthropic | `model_kwargs`, max tokens, timeout, retries, `top_p`, `top_k`, thinking config, output config, usage streaming, streaming, default headers, beta flags, service tier, MCP servers, container, and inference geography. |
+| OpenRouter | OpenAI-compatible controls, plus any OpenRouter-specific request body values through `model_kwargs` or `extra_body`. |
+| AI21 | `model_kwargs`, streaming, max/min tokens, `top_p`, number of results, logit bias, and presence/count/frequency penalty configs. |
+| Google GenAI | `model_kwargs`, max output tokens, `top_p`, `top_k`, candidate count, retries, timeout, safety settings, response MIME type, response schema, cached content, thinking budget, thought inclusion, transport, and client options. |
+| Mistral AI | `model_kwargs`, max tokens, `top_p`, random seed, safe mode, streaming, endpoint override, timeout, retries, and concurrent request limit. |
+| Cohere | `model_kwargs`, preamble, streaming, user agent, and request timeout. |
+| Perplexity | OpenAI-compatible controls, with unsupported parameters ignored or rejected by the provider depending on the model/API. |
+| Groq | OpenAI-compatible controls plus max tokens, reasoning format, response format, and parallel tool-call control. |
+| DeepSeek | OpenAI-compatible controls, with provider-specific values available through `model_kwargs` or `extra_body`. |
+| xAI | OpenAI-compatible controls plus live search parameters. |
+| Cloudflare | `model_kwargs`, account ID, endpoint format, AI Gateway slug, max tokens, `top_p`, `top_k`, and streaming. |
 
 ## Embedding configs
 
 Use the **Embeddings** tab to create embedding profiles. Embeddings are used for retrieval and memory lookup.
+
+Embedding configs currently support OpenAI and Ollama connections only. The wider provider expansion applies to chat/LLM model configs.
 
 <!-- Screenshot placeholder: Embedding config editor with provider connection, model, dimension, and context window. -->
 

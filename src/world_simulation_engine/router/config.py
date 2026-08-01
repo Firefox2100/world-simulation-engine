@@ -1,9 +1,9 @@
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, status
 from httpx import HTTPError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ImageGenerationMode, \
     TtsGenerationMode, TtsTextFilteringMode, TtsTextNotInsideMode
@@ -38,12 +38,17 @@ class ChatConfigUpdate(BaseModel):
     DTO model for updating chat model configs
     """
 
+    model_config = ConfigDict(extra="allow")
+
     name: Optional[str] = Field(None, description="The name of the chat config")
     model: Optional[str] = Field(None, description="The model to use for the chat")
     temperature: Optional[float] = Field(None, description="The temperature to use for the chat")
     context_window: Optional[int] = Field(None, description="The context window to use for the chat")
     seed: Optional[int] = Field(None, description="The seed to use for the chat")
-    reasoning: Optional[str | bool] = Field(None, description="Whether to enable reasoning for the chat")
+    reasoning: Optional[str | bool | dict[str, Any]] = Field(
+        None,
+        description="Whether to enable reasoning for the chat",
+    )
     stop_tokens: Optional[list[str]] = Field(None, description="The stop tokens to use for the chat")
     mirostat: Optional[int] = Field(None, description="Enable Mirostat sampling")
     mirostat_eta: Optional[float] = Field(None, description="Mirostat learning rate")
@@ -410,6 +415,11 @@ async def get_alltalk_connection_status(connection_id: str, db: db_dep):
 @config_router.get("/config/llm", response_model=list[ChatModelConfigUnion], response_model_exclude_none=True)
 async def list_chat_configs(db: db_dep):
     return await db.config.list_chats()
+
+
+@config_router.post("/config/llm", response_model=ChatModelConfigUnion, response_model_exclude_none=True)
+async def create_chat_config(chat_config: ChatModelConfigUnion, db: db_dep):
+    return await db.config.create_chat(chat_config)
 
 
 @config_router.post("/config/llm/ollama", response_model=OllamaChatModelConfig, response_model_exclude_none=True)

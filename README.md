@@ -48,7 +48,9 @@ the codebase, prompts, and data model are all still evolving.
 
 - **Backend** (`src/world_simulation_engine`): FastAPI app, Neo4j-backed `DatabaseService` (one store class per
   entity type, no ORM), a LangGraph-orchestrated simulation pipeline (`WorldSimulator` and its component stages), and
-  provider-agnostic LLM/embedding services (Ollama or OpenAI-compatible, selected per connection config).
+  provider-agnostic LLM/embedding services selected per connection config. Chat models support Ollama, OpenAI,
+  Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and Cloudflare;
+  embeddings currently support Ollama and OpenAI.
 - **Frontend** (`frontend/`): React + Vite admin/chat UI for managing worlds, connections, prompts, and simulations.
 - See `CLAUDE.md` for a deeper tour of the module layout and cross-cutting concepts.
 
@@ -87,9 +89,10 @@ The backend is configured entirely through `WSE_`-prefixed environment variables
 | `WSE_NEO4J_USERNAME` / `WSE_NEO4J_PASSWORD` | `neo4j` / *(required)* | Neo4j credentials. |
 | `WSE_DATA_FOLDER` | `data/storage` | Content-addressed storage location for media (images, custom prompts/workflows). |
 
-LLM/embedding provider credentials (Ollama, OpenAI-compatible) and per-component model assignments are configured
-per-simulation at runtime through the API/frontend (`ConnectionConfig`, chat/embed configs), not through environment
-variables — see the `config` router and the `all-llm` optional dependency group in `pyproject.toml`.
+LLM/embedding provider credentials and per-component model assignments are configured per-simulation at runtime
+through the API/frontend (`ConnectionConfig`, chat/embed configs), not through environment variables. Install only
+the provider extras you need, or use the `all-llm` optional dependency group in `pyproject.toml` for every supported
+chat integration.
 
 ## Roadmap
 
@@ -112,8 +115,9 @@ variables — see the `config` router and the `all-llm` optional dependency grou
 - LLM output repair pipeline (structured-output repair, validation rework loop) aimed at tolerating small local
   models.
 - Turn presentation decoupled from the underlying generated/committed state, rendered per viewer.
-- Configurable LLM/embedding connections per simulation and per pipeline component, supporting both Ollama and
-  OpenAI-compatible backends.
+- Configurable LLM/embedding connections per simulation and per pipeline component, with chat backends for Ollama,
+  OpenAI, Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and
+  Cloudflare.
 - Media management with content-addressed storage, including cover images and per-simulation prompt/workflow
   overrides.
 - GraphStateSnapshot-backed regeneration/continuation of a simulation run.

@@ -41,12 +41,35 @@ python --version
 # Ensure your Python version is 3.11 or later
 python -m venv .venv
 source .venv/bin/activate
-# You may want to install driver for all LLM providers, or only the ones you need
+# Install drivers for all LLM providers, or only the ones you need
 pip install -e .[all-llm]
 cp .env.example .env
 # Modify the .env file to set your preferred configuration before starting the backend
 uvicorn world_simulation_engine.app:app --host 127.0.0.1 --port 9797
 ```
+
+The `all-llm` extra installs every supported chat provider integration. For a smaller environment, install only the
+provider extras you plan to use:
+
+| Extra | Installs |
+| --- | --- |
+| `ollama` | `langchain-ollama` |
+| `openai` | `langchain-openai` |
+| `anthropic` | `langchain-anthropic` |
+| `openrouter` | `langchain-openrouter` |
+| `ai21` | `langchain-ai21` |
+| `google-genai` | `langchain-google-genai` |
+| `mistralai` | `langchain-mistralai` |
+| `cohere` | `langchain-cohere` |
+| `perplexity` | `langchain-perplexity` |
+| `groq` | `langchain-groq` |
+| `deepseek` | `langchain-deepseek` |
+| `xai` | `langchain-xai` |
+| `cloudflare` | `langchain-cloudflare` |
+
+For example, a local-only setup can use `pip install -e .[ollama]`, while a mixed local/cloud setup might use
+`pip install -e .[ollama,openai,anthropic]`. Provider endpoints and API keys are configured later in the web
+interface, not in the install command.
 
 ### Building the frontend
 
