@@ -4,7 +4,7 @@ Connections contain the shared provider access details used by LLM, embedding, i
 
 | Field | Description |
 | --- | --- |
-| `type` | Provider type: `ollama`, `openai`, `anthropic`, `openrouter`, `ai21`, `google_genai`, `mistralai`, `cohere`, `perplexity`, `groq`, `deepseek`, `xai`, `cloudflare`, `comfyui`, `alltalk`, or `whispercpp`. |
+| `type` | Provider type: `ollama`, `openai`, `anthropic`, `openrouter`, `google_genai`, `mistralai`, `cohere`, `perplexity`, `groq`, `deepseek`, `xai`, `cloudflare`, `comfyui`, `alltalk`, or `whispercpp`. |
 | `name` | Display name shown in dropdowns. Use names that describe the endpoint, not just the provider. |
 | `base_url` | Provider base URL. Local providers usually need this; official or SDK-default providers may leave it empty. |
 | `api_key` | Optional API key. Leave it empty for local/self-hosted providers that do not require one. |
@@ -19,7 +19,6 @@ Connections contain the shared provider access details used by LLM, embedding, i
 | OpenAI | Leave empty for the official OpenAI endpoint, or set an OpenAI-compatible base URL. |
 | Anthropic | Leave empty for the official Anthropic endpoint. |
 | OpenRouter | Leave empty for the integration default, or set a custom OpenRouter-compatible endpoint. |
-| AI21 | Leave empty for the official AI21 endpoint. |
 | Google GenAI | Leave empty for the official Google GenAI endpoint. |
 | Mistral AI | Leave empty for the official Mistral endpoint, or use the config-level endpoint override. |
 | Cohere | Leave empty for the official Cohere endpoint. |

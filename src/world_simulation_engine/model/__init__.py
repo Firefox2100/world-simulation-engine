@@ -40,10 +40,10 @@ from .intent import Intent
 from .tts_generation_config import TtsGenerationConfig
 from .media import GeneratedImageMediaFile, GeneratedVoiceMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, AnthropicChatModelConfig, \
-    OpenRouterChatModelConfig, Ai21ChatModelConfig, GoogleGenAiChatModelConfig, MistralAiChatModelConfig, \
+    OpenRouterChatModelConfig, GoogleGenAiChatModelConfig, MistralAiChatModelConfig, \
     CohereChatModelConfig, PerplexityChatModelConfig, GroqChatModelConfig, DeepSeekChatModelConfig, \
     XAiChatModelConfig, CloudflareChatModelConfig, ChatModelConfigUnion, ConnectionConfig, OllamaEmbedModelConfig, \
-    OpenAiEmbedModelConfig, Ai21EmbedModelConfig, GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, \
+    OpenAiEmbedModelConfig, GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, \
     CohereEmbedModelConfig, PerplexityEmbedModelConfig, CloudflareEmbedModelConfig, EmbedModelConfigUnion, \
     ComfyUiImageModelConfig, ImageModelConfigUnion, \
     AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, AllTalkStatus, \

@@ -57,7 +57,6 @@ provider extras you plan to use:
 | `openai` | `langchain-openai` |
 | `anthropic` | `langchain-anthropic` |
 | `openrouter` | `langchain-openrouter` |
-| `ai21` | `langchain-ai21` |
 | `google-genai` | `langchain-google-genai` |
 | `mistralai` | `langchain-mistralai` |
 | `cohere` | `langchain-cohere` |

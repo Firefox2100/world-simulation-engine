@@ -54,7 +54,6 @@ class ConnectionType(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
-    AI21 = "ai21"
     GOOGLE_GENAI = "google_genai"
     MISTRALAI = "mistralai"
     COHERE = "cohere"

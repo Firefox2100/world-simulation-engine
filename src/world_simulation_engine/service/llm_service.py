@@ -7,8 +7,8 @@ from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel
 
 from world_simulation_engine.misc.enums import ConnectionType, MessageRole, SystemMessagePolicy
-from world_simulation_engine.model import Ai21ChatModelConfig, AnthropicChatModelConfig, ChatModelConfigUnion, \
-    CloudflareChatModelConfig, CohereChatModelConfig, ConnectionConfig, DeepSeekChatModelConfig, \
+from world_simulation_engine.model import AnthropicChatModelConfig, ChatModelConfigUnion, CloudflareChatModelConfig, \
+    CohereChatModelConfig, ConnectionConfig, DeepSeekChatModelConfig, \
     GoogleGenAiChatModelConfig, GroqChatModelConfig, MistralAiChatModelConfig, OllamaChatModelConfig, \
     OpenAiChatModelConfig, OpenRouterChatModelConfig, PerplexityChatModelConfig, PromptMessage, \
     XAiChatModelConfig
@@ -211,27 +211,6 @@ class LlmService:
 
         return ChatOpenRouter(**self._openai_compatible_kwargs(config))
 
-    def _create_ai21_model(self):
-        config = self._expect_config(Ai21ChatModelConfig)
-        from langchain_ai21 import ChatAI21
-
-        return ChatAI21(**self._without_none(
-            model=config.model,
-            temperature=config.temperature,
-            stop=config.stop_tokens,
-            model_kwargs=config.model_kwargs,
-            streaming=config.streaming,
-            max_tokens=config.max_tokens,
-            min_tokens=config.min_tokens,
-            top_p=config.top_p,
-            num_results=config.num_results,
-            logit_bias=config.logit_bias,
-            presence_penalty=config.presence_penalty,
-            count_penalty=config.count_penalty,
-            frequency_penalty=config.frequency_penalty,
-            **self._api_kwargs(),
-        ))
-
     def _create_google_genai_model(self):
         config = self._expect_config(GoogleGenAiChatModelConfig)
         from langchain_google_genai import ChatGoogleGenerativeAI
@@ -361,8 +340,6 @@ class LlmService:
             return self._create_anthropic_model()
         if self._connection_config.type == ConnectionType.OPENROUTER:
             return self._create_openrouter_model()
-        if self._connection_config.type == ConnectionType.AI21:
-            return self._create_ai21_model()
         if self._connection_config.type == ConnectionType.GOOGLE_GENAI:
             return self._create_google_genai_model()
         if self._connection_config.type == ConnectionType.MISTRALAI:

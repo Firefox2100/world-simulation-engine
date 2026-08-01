@@ -2,7 +2,7 @@
 
 Use the **Embeddings** tab to create embedding profiles. Embeddings are used for retrieval and memory lookup.
 
-The embedding driver now supports Ollama, OpenAI, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, and Cloudflare Workers AI. Providers whose LangChain integration does not expose an embedding class, such as Anthropic, OpenRouter, Groq, DeepSeek, and xAI, are intentionally not shown in the embedding picker.
+The embedding driver now supports Ollama, OpenAI, Google GenAI, Mistral AI, Cohere, Perplexity, and Cloudflare Workers AI. Providers whose LangChain integration does not expose an embedding class, such as Anthropic, OpenRouter, Groq, DeepSeek, and xAI, are intentionally not shown in the embedding picker.
 
 <!-- Screenshot placeholder: Embedding config editor with provider connection, model, dimension, and provider-specific fields. -->
 
@@ -22,7 +22,6 @@ Use one embedding model consistently for a world once data has been embedded. Sw
 | --- | --- |
 | Ollama | Context window, model validation on init, client kwargs, Mirostat controls, GPU/thread options, `keep_alive`, repeat controls, temperature, stop tokens, `tfs_z`, `top_k`, and `top_p`. |
 | OpenAI | Deployment/API version fields, proxy, embedding context length, organization, special-token handling, chunk size, retries, request timeout, headers, tiktoken options, progress display, `model_kwargs`, empty-text handling, default headers/query, retry wait bounds, and context-length checks. |
-| AI21 | Batch size and retry count. |
 | Google GenAI | Task type, Vertex AI mode, project, location, additional headers, client args, API version, request options, and output dimensionality through `dimension`. |
 | Mistral AI | Endpoint override, retries, timeout, rate-limit wait time, and maximum concurrent requests. |
 | Cohere | Truncation mode, embedding types, retries, request timeout, and user agent. |

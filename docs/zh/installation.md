@@ -56,7 +56,6 @@ uvicorn world_simulation_engine.app:app --host 127.0.0.1 --port 9797
 | `openai` | `langchain-openai` |
 | `anthropic` | `langchain-anthropic` |
 | `openrouter` | `langchain-openrouter` |
-| `ai21` | `langchain-ai21` |
 | `google-genai` | `langchain-google-genai` |
 | `mistralai` | `langchain-mistralai` |
 | `cohere` | `langchain-cohere` |

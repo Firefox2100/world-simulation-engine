@@ -19,7 +19,7 @@ STT_CONFIG_LABELS = "WhisperCppSttModelConfig"
 
 CHAT_CONFIG_LABELS = (
     "OllamaChatModelConfig|OpenAiChatModelConfig|AnthropicChatModelConfig|OpenRouterChatModelConfig|"
-    "Ai21ChatModelConfig|GoogleGenAiChatModelConfig|MistralAiChatModelConfig|CohereChatModelConfig|"
+    "GoogleGenAiChatModelConfig|MistralAiChatModelConfig|CohereChatModelConfig|"
     "PerplexityChatModelConfig|GroqChatModelConfig|DeepSeekChatModelConfig|XAiChatModelConfig|"
     "CloudflareChatModelConfig"
 )
@@ -29,7 +29,6 @@ CHAT_CONFIG_PROVIDERS = {
     "OpenAiChatModelConfig": "openai",
     "AnthropicChatModelConfig": "anthropic",
     "OpenRouterChatModelConfig": "openrouter",
-    "Ai21ChatModelConfig": "ai21",
     "GoogleGenAiChatModelConfig": "google_genai",
     "MistralAiChatModelConfig": "mistralai",
     "CohereChatModelConfig": "cohere",
@@ -43,14 +42,13 @@ CHAT_CONFIG_PROVIDERS = {
 CHAT_CONFIG_ADAPTER = TypeAdapter(ChatModelConfigUnion)
 
 EMBED_CONFIG_LABELS = (
-    "OllamaEmbedModelConfig|OpenAiEmbedModelConfig|Ai21EmbedModelConfig|GoogleGenAiEmbedModelConfig|"
+    "OllamaEmbedModelConfig|OpenAiEmbedModelConfig|GoogleGenAiEmbedModelConfig|"
     "MistralAiEmbedModelConfig|CohereEmbedModelConfig|PerplexityEmbedModelConfig|CloudflareEmbedModelConfig"
 )
 
 EMBED_CONFIG_PROVIDERS = {
     "OllamaEmbedModelConfig": "ollama",
     "OpenAiEmbedModelConfig": "openai",
-    "Ai21EmbedModelConfig": "ai21",
     "GoogleGenAiEmbedModelConfig": "google_genai",
     "MistralAiEmbedModelConfig": "mistralai",
     "CohereEmbedModelConfig": "cohere",

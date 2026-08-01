@@ -4,7 +4,7 @@
 
 | 字段 | 说明 |
 | --- | --- |
-| `type` | 提供商类型：`ollama`、`openai`、`anthropic`、`openrouter`、`ai21`、`google_genai`、`mistralai`、`cohere`、`perplexity`、`groq`、`deepseek`、`xai`、`cloudflare`、`comfyui`、`alltalk` 或 `whispercpp`。 |
+| `type` | 提供商类型：`ollama`、`openai`、`anthropic`、`openrouter`、`google_genai`、`mistralai`、`cohere`、`perplexity`、`groq`、`deepseek`、`xai`、`cloudflare`、`comfyui`、`alltalk` 或 `whispercpp`。 |
 | `name` | 下拉菜单中显示的名称。名称应描述端点，而不仅仅是提供商。 |
 | `base_url` | 提供商 base URL。本地提供商通常需要填写；官方或 SDK 默认提供商可以留空。 |
 | `api_key` | 可选 API key。本地或自托管且不需要认证的提供商可以留空。 |
@@ -19,7 +19,6 @@
 | OpenAI | 官方 OpenAI 端点可留空，也可以设置 OpenAI-compatible base URL。 |
 | Anthropic | 官方 Anthropic 端点可留空。 |
 | OpenRouter | 集成默认端点可留空，也可以设置自定义 OpenRouter-compatible 端点。 |
-| AI21 | 官方 AI21 端点可留空。 |
 | Google GenAI | 官方 Google GenAI 端点可留空。 |
 | Mistral AI | 官方 Mistral 端点可留空，也可以使用配置级 endpoint 覆盖。 |
 | Cohere | 官方 Cohere 端点可留空。 |

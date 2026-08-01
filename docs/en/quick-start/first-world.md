@@ -8,7 +8,7 @@ Open **Configurations** and create the minimum runtime configs:
 
 1. **Connection**: create a connection for your LLM provider. For local Ollama, use `http://localhost:11434` as the base URL.
 2. **LLM config**: choose that connection, enter a model id, and keep the first run simple with default generation settings.
-3. **Embedding config**: choose an embedding-capable provider. Current embedding providers are Ollama, OpenAI, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, and Cloudflare Workers AI.
+3. **Embedding config**: choose an embedding-capable provider. Current embedding providers are Ollama, OpenAI, Google GenAI, Mistral AI, Cohere, Perplexity, and Cloudflare Workers AI.
 
 You can add image, TTS, or STT configs later. They are optional for the first simulation.
 

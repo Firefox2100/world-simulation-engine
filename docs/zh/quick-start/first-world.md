@@ -8,7 +8,7 @@
 
 1. **Connection**：为 LLM 提供商创建连接。对于本地 Ollama，base URL 使用 `http://localhost:11434`。
 2. **LLM config**：选择该连接，输入模型 id，第一次运行先保留默认生成设置。
-3. **Embedding config**：选择支持 embedding 的提供商。当前 embedding 提供商包括 Ollama、OpenAI、AI21、Google GenAI、Mistral AI、Cohere、Perplexity 和 Cloudflare Workers AI。
+3. **Embedding config**：选择支持 embedding 的提供商。当前 embedding 提供商包括 Ollama、OpenAI、Google GenAI、Mistral AI、Cohere、Perplexity 和 Cloudflare Workers AI。
 
 图像、TTS 或 STT 配置可以之后再加。第一次模拟不需要它们。
 

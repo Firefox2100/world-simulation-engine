@@ -2,6 +2,8 @@
 
 Language: English | [中文](README.zh.md)
 
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=Firefox2100_world-simulation-engine&metric=bugs)](https://sonarcloud.io/summary/new_code?id=Firefox2100_world-simulation-engine) [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=Firefox2100_world-simulation-engine&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=Firefox2100_world-simulation-engine) [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=Firefox2100_world-simulation-engine&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=Firefox2100_world-simulation-engine)
+
 World Simulation Engine is an experimental, LLM-driven world simulator: a persistent world of characters, locations,
 items, and events that advances turn by turn, with every character (whether on-screen or not) acted out by an LLM
 agent grounded in structured, queryable world state rather than a single free-flowing chat transcript. It exposes a
@@ -51,7 +53,7 @@ the codebase, prompts, and data model are all still evolving.
 - **Backend** (`src/world_simulation_engine`): FastAPI app, Neo4j-backed `DatabaseService` (one store class per
   entity type, no ORM), a LangGraph-orchestrated simulation pipeline (`WorldSimulator` and its component stages), and
   provider-agnostic LLM/embedding services selected per connection config. Chat models support Ollama, OpenAI,
-  Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and Cloudflare;
+  Anthropic, OpenRouter, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and Cloudflare;
   embeddings currently support Ollama and OpenAI.
 - **Frontend** (`frontend/`): React + Vite admin/chat UI for managing worlds, connections, prompts, and simulations.
 
@@ -117,7 +119,7 @@ chat integration.
   models.
 - Turn presentation decoupled from the underlying generated/committed state, rendered per viewer.
 - Configurable LLM/embedding connections per simulation and per pipeline component, with chat backends for Ollama,
-  OpenAI, Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and
+  OpenAI, Anthropic, OpenRouter, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and
   Cloudflare.
 - Media management with content-addressed storage, including cover images and per-simulation prompt/workflow
   overrides.

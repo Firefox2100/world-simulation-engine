@@ -2,7 +2,7 @@
 
 使用 **Embeddings** 标签页创建 embedding 配置。Embeddings 用于检索和记忆查找。
 
-Embedding 驱动现在支持 Ollama、OpenAI、AI21、Google GenAI、Mistral AI、Cohere、Perplexity 和 Cloudflare Workers AI。对于当前 LangChain 集成没有暴露 embedding 类的提供商，例如 Anthropic、OpenRouter、Groq、DeepSeek 和 xAI，界面不会把它们显示在 embedding 选择器中。
+Embedding 驱动现在支持 Ollama、OpenAI、Google GenAI、Mistral AI、Cohere、Perplexity 和 Cloudflare Workers AI。对于当前 LangChain 集成没有暴露 embedding 类的提供商，例如 Anthropic、OpenRouter、Groq、DeepSeek 和 xAI，界面不会把它们显示在 embedding 选择器中。
 
 <!-- Screenshot placeholder: Embedding config editor with provider connection, model, dimension, and provider-specific fields. -->
 
@@ -22,7 +22,6 @@ Embedding 驱动现在支持 Ollama、OpenAI、AI21、Google GenAI、Mistral AI�
 | --- | --- |
 | Ollama | 上下文窗口、初始化时模型校验、client kwargs、Mirostat 控制、GPU/线程选项、`keep_alive`、重复控制、temperature、stop tokens、`tfs_z`、`top_k` 和 `top_p`。 |
 | OpenAI | Deployment/API version 字段、proxy、embedding context length、organization、特殊 token 处理、chunk size、retries、request timeout、headers、tiktoken 选项、进度显示、`model_kwargs`、空文本处理、default headers/query、retry 等待范围，以及 context-length 检查。 |
-| AI21 | Batch size 和 retry count。 |
 | Google GenAI | Task type、Vertex AI 模式、project、location、additional headers、client args、API version、request options，并通过 `dimension` 控制输出维度。 |
 | Mistral AI | Endpoint 覆盖、retries、timeout、rate-limit wait time 和最大并发请求数。 |
 | Cohere | Truncation mode、embedding types、retries、request timeout 和 user agent。 |

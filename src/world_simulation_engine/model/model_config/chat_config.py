@@ -367,57 +367,6 @@ class OpenRouterChatModelConfig(OpenAiChatModelConfig):
     )
 
 
-class Ai21ChatModelConfig(ChatModelConfig):
-    """
-    The specialised configuration for using a chat model with AI21.
-    """
-
-    provider: Literal[ConnectionType.AI21] = Field(
-        ConnectionType.AI21,
-        description="Provider for this chat model config",
-    )
-    model_kwargs: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Additional model parameters to pass to AI21.",
-    )
-    streaming: bool = Field(
-        False,
-        description="Whether to stream model responses.",
-    )
-    max_tokens: Optional[int] = Field(
-        None,
-        description="Maximum number of tokens to generate.",
-    )
-    min_tokens: Optional[int] = Field(
-        None,
-        description="Minimum number of tokens to generate.",
-    )
-    top_p: Optional[float] = Field(
-        None,
-        description="Nucleus sampling probability mass.",
-    )
-    num_results: Optional[int] = Field(
-        None,
-        description="How many completions to generate for each prompt.",
-    )
-    logit_bias: Optional[dict[str, float]] = Field(
-        None,
-        description="Adjust the probability of specific tokens being generated.",
-    )
-    presence_penalty: Optional[dict[str, Any]] = Field(
-        None,
-        description="AI21 presence penalty configuration.",
-    )
-    count_penalty: Optional[dict[str, Any]] = Field(
-        None,
-        description="AI21 count penalty configuration.",
-    )
-    frequency_penalty: Optional[dict[str, Any]] = Field(
-        None,
-        description="AI21 frequency penalty configuration.",
-    )
-
-
 class GoogleGenAiChatModelConfig(ChatModelConfig):
     """
     The specialised configuration for using a chat model with Google GenAI.
@@ -684,7 +633,6 @@ ChatModelConfigUnion = Annotated[
         OpenAiChatModelConfig,
         AnthropicChatModelConfig,
         OpenRouterChatModelConfig,
-        Ai21ChatModelConfig,
         GoogleGenAiChatModelConfig,
         MistralAiChatModelConfig,
         CohereChatModelConfig,

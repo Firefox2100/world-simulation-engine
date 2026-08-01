@@ -438,7 +438,6 @@
       "ollama": "Ollama",
       "anthropic": "Anthropic",
       "openrouter": "OpenRouter",
-      "ai21": "AI21",
       "google_genai": "Google GenAI",
       "mistralai": "Mistral AI",
       "cohere": "Cohere",

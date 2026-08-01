@@ -2,6 +2,8 @@
 
 语言：[English](README.md) | 中文
 
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=Firefox2100_world-simulation-engine&metric=bugs)](https://sonarcloud.io/summary/new_code?id=Firefox2100_world-simulation-engine) [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=Firefox2100_world-simulation-engine&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=Firefox2100_world-simulation-engine) [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=Firefox2100_world-simulation-engine&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=Firefox2100_world-simulation-engine)
+
 World Simulation Engine 是一个实验性的、由 LLM 驱动的世界模拟器：它维护一个由角色、地点、物品和事件组成的持久世界，并按回合推进。每个角色，无论是否在当前场景中，都会由一个基于结构化、可查询世界状态的 LLM agent 来扮演，而不是依赖一整段不断增长的自由聊天记录。项目提供完全由 Neo4j 支撑的 FastAPI 后端，并包含一个 React 管理/交互前端，用于构建世界、接入 LLM 连接，以及与模拟进行聊天。
 
 这是一个研究/爱好项目，不是生产级产品。它的存在是为了探索下面这些设计问题；代码库、prompt 和数据模型都仍在演进中。
@@ -16,7 +18,7 @@ World Simulation Engine 是一个实验性的、由 LLM 驱动的世界模拟器
 
 ## 架构速览
 
-- **后端**（`src/world_simulation_engine`）：FastAPI 应用、由 Neo4j 支撑的 `DatabaseService`（每个实体类型一个 store class，不使用 ORM）、由 LangGraph 编排的模拟流水线（`WorldSimulator` 及其组件阶段），以及按 connection config 选择的 provider-agnostic LLM/embedding 服务。Chat models 支持 Ollama、OpenAI、Anthropic、OpenRouter、AI21、Google GenAI、Mistral AI、Cohere、Perplexity、Groq、DeepSeek、xAI 和 Cloudflare；embeddings 当前支持 Ollama 和 OpenAI。
+- **后端**（`src/world_simulation_engine`）：FastAPI 应用、由 Neo4j 支撑的 `DatabaseService`（每个实体类型一个 store class，不使用 ORM）、由 LangGraph 编排的模拟流水线（`WorldSimulator` 及其组件阶段），以及按 connection config 选择的 provider-agnostic LLM/embedding 服务。Chat models 支持 Ollama、OpenAI、Anthropic、OpenRouter、Google GenAI、Mistral AI、Cohere、Perplexity、Groq、DeepSeek、xAI 和 Cloudflare；embeddings 当前支持 Ollama 和 OpenAI。
 - **前端**（`frontend/`）：React + Vite 管理/聊天 UI，用于管理 worlds、connections、prompts 和 simulations。
 
 ## 部署
@@ -67,7 +69,7 @@ LLM/embedding provider 凭据以及 per-component 模型分配，会在运行时
 - Subjective entity claims：按角色、带 stance 的私有信念，用于描述其他实体。
 - 面向小型本地模型容错的 LLM output repair pipeline（structured-output repair、validation rework loop）。
 - Turn presentation 与底层生成/提交状态解耦，并按 viewer 渲染。
-- 每个 simulation 和每个 pipeline component 都可配置 LLM/embedding connections，chat backends 支持 Ollama、OpenAI、Anthropic、OpenRouter、AI21、Google GenAI、Mistral AI、Cohere、Perplexity、Groq、DeepSeek、xAI 和 Cloudflare。
+- 每个 simulation 和每个 pipeline component 都可配置 LLM/embedding connections，chat backends 支持 Ollama、OpenAI、Anthropic、OpenRouter、Google GenAI、Mistral AI、Cohere、Perplexity、Groq、DeepSeek、xAI 和 Cloudflare。
 - 内容寻址媒体管理，包括 cover images 和 per-simulation prompt/workflow overrides。
 - 基于 `GraphStateSnapshot` 的 simulation run 重新生成/继续生成。
 - 结构化 audit log 和 Langfuse tracing integration，用于调试生成运行，并支持 authored content 的 author attribution。

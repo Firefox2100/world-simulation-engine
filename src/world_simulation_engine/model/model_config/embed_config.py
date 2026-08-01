@@ -215,25 +215,6 @@ class OpenAiEmbedModelConfig(EmbedModelConfig):
     )
 
 
-class Ai21EmbedModelConfig(EmbedModelConfig):
-    """
-    The specialised configuration for using an embedding model with AI21.
-    """
-
-    provider: Literal[ConnectionType.AI21] = Field(
-        ConnectionType.AI21,
-        description="Provider for this embedding model config",
-    )
-    batch_size: Optional[int] = Field(
-        None,
-        description="Number of texts to send in each AI21 embedding request.",
-    )
-    num_retries: Optional[int] = Field(
-        None,
-        description="Maximum number of retries to make when embedding.",
-    )
-
-
 class GoogleGenAiEmbedModelConfig(EmbedModelConfig):
     """
     The specialised configuration for using an embedding model with Google GenAI.
@@ -392,7 +373,6 @@ EmbedModelConfigUnion = Annotated[
     Union[
         OllamaEmbedModelConfig,
         OpenAiEmbedModelConfig,
-        Ai21EmbedModelConfig,
         GoogleGenAiEmbedModelConfig,
         MistralAiEmbedModelConfig,
         CohereEmbedModelConfig,

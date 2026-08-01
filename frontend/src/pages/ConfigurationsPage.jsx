@@ -41,7 +41,6 @@ const llmProviders = [
     "ollama",
     "anthropic",
     "openrouter",
-    "ai21",
     "google_genai",
     "mistralai",
     "cohere",
@@ -55,7 +54,6 @@ const connectionProviders = [...llmProviders, "alltalk", "whispercpp", "comfyui"
 const embeddingProviders = [
     "openai",
     "ollama",
-    "ai21",
     "google_genai",
     "mistralai",
     "cohere",
@@ -152,18 +150,6 @@ const llmProviderFields = {
         { name: "mcp_servers", type: "json" },
         { name: "container", type: "jsonOrText" },
         { name: "inference_geo", type: "text" },
-    ],
-    ai21: [
-        { name: "model_kwargs", type: "json" },
-        { name: "streaming", type: "boolean" },
-        { name: "max_tokens", type: "int" },
-        { name: "min_tokens", type: "int" },
-        { name: "top_p", type: "number" },
-        { name: "num_results", type: "int" },
-        { name: "logit_bias", type: "json" },
-        { name: "presence_penalty", type: "json" },
-        { name: "count_penalty", type: "json" },
-        { name: "frequency_penalty", type: "json" },
     ],
     google_genai: [
         { name: "model_kwargs", type: "json" },
@@ -271,10 +257,6 @@ const embeddingProviderFields = {
         { name: "retry_min_seconds", type: "int" },
         { name: "retry_max_seconds", type: "int" },
         { name: "check_embedding_ctx_length", type: "boolean" },
-    ],
-    ai21: [
-        { name: "batch_size", type: "int" },
-        { name: "num_retries", type: "int" },
     ],
     google_genai: [
         {

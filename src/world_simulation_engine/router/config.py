@@ -10,8 +10,8 @@ from world_simulation_engine.misc.enums import ComponentType, ConnectionType, Im
     TtsGenerationMode, TtsTextFilteringMode, TtsTextNotInsideMode
 from world_simulation_engine.model import AllTalkStatus, ConnectionConfig, OllamaChatModelConfig, \
     OpenAiChatModelConfig, ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
-    Ai21EmbedModelConfig, GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, CohereEmbedModelConfig, \
-    PerplexityEmbedModelConfig, CloudflareEmbedModelConfig, EmbedModelConfigUnion, ImageGenerationConfig, \
+    GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, CohereEmbedModelConfig, PerplexityEmbedModelConfig, \
+    CloudflareEmbedModelConfig, EmbedModelConfigUnion, ImageGenerationConfig, \
     AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, \
     AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, \
     TtsGenerationConfig, SttModelConfigUnion, WhisperCppSttModelConfig, ComfyUiImageModelConfig, \
@@ -536,11 +536,6 @@ async def create_ollama_embed_config(embed_config: OllamaEmbedModelConfig, db: d
 
 @config_router.post("/config/embeddings/openai", response_model=OpenAiEmbedModelConfig, response_model_exclude_none=True)
 async def create_openai_embed_config(embed_config: OpenAiEmbedModelConfig, db: db_dep):
-    return await db.config.create_embed(embed_config)
-
-
-@config_router.post("/config/embeddings/ai21", response_model=Ai21EmbedModelConfig, response_model_exclude_none=True)
-async def create_ai21_embed_config(embed_config: Ai21EmbedModelConfig, db: db_dep):
     return await db.config.create_embed(embed_config)
 
 

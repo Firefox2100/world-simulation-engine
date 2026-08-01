@@ -2,8 +2,8 @@ from typing import Any, TypeVar, TYPE_CHECKING
 from pydantic import BaseModel
 
 from world_simulation_engine.misc.enums import ConnectionType
-from world_simulation_engine.model import Ai21EmbedModelConfig, CloudflareEmbedModelConfig, \
-    CohereEmbedModelConfig, ConnectionConfig, EmbedModelConfigUnion, GoogleGenAiEmbedModelConfig, \
+from world_simulation_engine.model import CloudflareEmbedModelConfig, CohereEmbedModelConfig, ConnectionConfig, \
+    EmbedModelConfigUnion, GoogleGenAiEmbedModelConfig, \
     MistralAiEmbedModelConfig, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, PerplexityEmbedModelConfig
 
 
@@ -106,18 +106,6 @@ class EmbedService:
             **self._api_kwargs(),
         ))
 
-    def _create_ai21_model(self) -> "Embeddings":
-        config = self._expect_config(Ai21EmbedModelConfig)
-        from langchain_ai21 import AI21Embeddings
-
-        return AI21Embeddings(**self._without_none(
-            model=config.model,
-            dimensions=config.dimension,
-            batch_size=config.batch_size,
-            num_retries=config.num_retries,
-            **self._api_kwargs(),
-        ))
-
     def _create_google_genai_model(self) -> "Embeddings":
         config = self._expect_config(GoogleGenAiEmbedModelConfig)
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
@@ -196,8 +184,6 @@ class EmbedService:
             return self._create_ollama_model()
         if self._connection_config.type == ConnectionType.OPENAI:
             return self._create_openai_model()
-        if self._connection_config.type == ConnectionType.AI21:
-            return self._create_ai21_model()
         if self._connection_config.type == ConnectionType.GOOGLE_GENAI:
             return self._create_google_genai_model()
         if self._connection_config.type == ConnectionType.MISTRALAI:
