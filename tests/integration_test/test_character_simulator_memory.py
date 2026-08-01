@@ -23,7 +23,7 @@ from world_simulation_engine.service.database.entity_relationship_store import E
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 class FakeEmbedService:

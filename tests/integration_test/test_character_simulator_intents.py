@@ -10,7 +10,7 @@ from world_simulation_engine.model import Intent, Simulation
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.database.intent_store import IntentStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 class FakeEmbedService:

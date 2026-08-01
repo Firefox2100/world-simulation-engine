@@ -4,7 +4,7 @@ from uuid import uuid4
 from world_simulation_engine.misc.enums import TurnType
 from world_simulation_engine.model import Turn
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 async def test_create_turn_attaches_to_source(clean_neo4j):

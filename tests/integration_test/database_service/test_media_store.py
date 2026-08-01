@@ -17,7 +17,7 @@ from world_simulation_engine.service.database.media_store import MediaStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
 from world_simulation_engine.service.storage_service import StorageService
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 async def test_create_get_and_link_cover_images(clean_neo4j):

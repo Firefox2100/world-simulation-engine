@@ -6,7 +6,7 @@ from world_simulation_engine.model import AllTalkPiperModelConfig, AllTalkXttsMo
 from world_simulation_engine.service.database.character_tts_config_store import CharacterTtsConfigStore
 from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.config_store import ConfigStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def test_copy_character_tts_configs_shares_backend_not_copies_it(clean_neo4j):

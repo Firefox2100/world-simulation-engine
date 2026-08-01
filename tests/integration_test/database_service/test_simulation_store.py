@@ -4,7 +4,7 @@ from uuid import uuid4
 from world_simulation_engine.model import Simulation
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.world_store import WorldStore
-from tests.integration_test.database_service.helpers import create_world, make_author, make_world
+from integration_test.database_service.helpers import create_world, make_author, make_world
 
 
 async def test_missing_simulation_returns_none(clean_neo4j):

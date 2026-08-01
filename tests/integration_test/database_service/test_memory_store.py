@@ -7,7 +7,7 @@ from world_simulation_engine.service.database.event_store import EventStore
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):

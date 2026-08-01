@@ -41,7 +41,7 @@ jobs:
         id: tests
         continue-on-error: true
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}/tests
         run: |
           pytest \
             tests/function_test \

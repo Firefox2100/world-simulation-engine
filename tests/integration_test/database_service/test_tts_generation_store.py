@@ -11,7 +11,7 @@ from world_simulation_engine.service.database.media_store import MediaStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_presentation_store import TurnPresentationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def _make_simulation(clean_neo4j, world):

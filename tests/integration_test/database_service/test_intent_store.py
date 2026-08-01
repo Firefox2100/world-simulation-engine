@@ -7,7 +7,7 @@ from world_simulation_engine.service.database.event_store import EventStore
 from world_simulation_engine.service.database.intent_store import IntentStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 def make_intent(name: str,

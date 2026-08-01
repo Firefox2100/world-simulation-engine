@@ -16,7 +16,7 @@ from world_simulation_engine.misc.enums import MediaType
 from world_simulation_engine.service import AuthorNotFoundError, DatabaseService, StorageService, \
     WorldExportService, WorldImportError, WorldImportService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 async def _build_rich_world(db: DatabaseService, storage: StorageService, driver):

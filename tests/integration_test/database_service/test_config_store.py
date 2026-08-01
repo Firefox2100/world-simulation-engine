@@ -7,7 +7,7 @@ from world_simulation_engine.model import AllTalkPiperModelConfig, AllTalkXttsMo
     OpenAiEmbedModelConfig, Simulation
 from world_simulation_engine.service.database.config_store import ConfigStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 async def test_connection_config_crud(clean_neo4j):

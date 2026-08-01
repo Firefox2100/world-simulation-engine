@@ -12,7 +12,7 @@ from world_simulation_engine.service.database.memory_store import CharacterMemor
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.subjective_entity_claim_store import SubjectiveEntityClaimStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def test_claim_crud_is_observer_scoped_versioned_and_audited(clean_neo4j):

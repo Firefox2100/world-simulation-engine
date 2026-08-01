@@ -7,7 +7,7 @@ from world_simulation_engine.service.database.container_store import ContainerSt
 from world_simulation_engine.service.database.equipment_store import EquipmentStore
 from world_simulation_engine.service.database.item_store import ItemStore
 from world_simulation_engine.service.database.location_store import LocationStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def test_missing_container_returns_none(clean_neo4j):

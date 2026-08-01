@@ -12,7 +12,7 @@ from world_simulation_engine.model import (
 from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 async def test_missing_character_returns_none(clean_neo4j):

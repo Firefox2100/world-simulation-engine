@@ -11,7 +11,7 @@ from world_simulation_engine.model import (
 )
 from world_simulation_engine.service.database.turn_presentation_store import TurnPresentationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)

@@ -8,7 +8,7 @@ from world_simulation_engine.model import StateCommitProposal, Turn
 from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.state_commit_store import StateCommitStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def _make_turn(clean_neo4j, world_id: str) -> Turn:

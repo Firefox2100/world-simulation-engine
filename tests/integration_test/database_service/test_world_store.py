@@ -4,7 +4,7 @@ from uuid import uuid4
 from world_simulation_engine.misc.enums import SupportedLanguage
 from world_simulation_engine.model import Author, World
 from world_simulation_engine.service.database.world_store import WorldStore
-from tests.integration_test.database_service.helpers import make_author, make_world
+from integration_test.database_service.helpers import make_author, make_world
 
 
 async def test_missing_author_and_world_return_none(clean_neo4j):

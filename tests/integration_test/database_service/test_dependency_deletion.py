@@ -10,7 +10,7 @@ from world_simulation_engine.service.database.intent_store import IntentStore
 from world_simulation_engine.service.database.location_store import LocationStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.world_store import WorldStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 def make_intent() -> Intent:

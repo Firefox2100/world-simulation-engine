@@ -24,7 +24,7 @@ from world_simulation_engine.service.database.location_store import LocationStor
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from tests.integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_character, create_world
 
 
 async def test_relationship_crud_scoped_recall_and_memory_evidence(clean_neo4j):

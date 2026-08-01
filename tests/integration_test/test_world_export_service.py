@@ -13,7 +13,7 @@ from world_simulation_engine.model import AllTalkXttsModelConfig, BackgroundChar
     OllamaChatModelConfig, OllamaEmbedModelConfig, PromptMediaFile, RelationshipEntityRef, RelationshipScope, Turn
 from world_simulation_engine.service import DatabaseService, StorageService, WorldExportService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
-from tests.integration_test.database_service.helpers import create_world
+from integration_test.database_service.helpers import create_world
 
 
 async def test_export_world_produces_complete_and_credential_free_archive(clean_neo4j, tmp_path):
