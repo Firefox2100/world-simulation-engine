@@ -1,5 +1,7 @@
 # World Simulation Engine
 
+Language: English | [中文](README.zh.md)
+
 World Simulation Engine is an experimental, LLM-driven world simulator: a persistent world of characters, locations,
 items, and events that advances turn by turn, with every character (whether on-screen or not) acted out by an LLM
 agent grounded in structured, queryable world state rather than a single free-flowing chat transcript. It exposes a

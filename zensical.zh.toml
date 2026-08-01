@@ -14,11 +14,31 @@ site_dir = "site/zh"
 
 nav = [
   { "概览" = "index.md" },
-  { "安装" = "installation.md" },
   { "快速开始" = [
     { "Windows 本地源码部署" = "quick-start/windows-source.md" },
     { "创建第一个世界与模拟" = "quick-start/first-world.md" },
     { "通过 Cloudflare 暴露 Linux 服务器" = "quick-start/cloudflare-linux.md" },
+  ] },
+  { "功能" = [
+    { "概览" = "features/index.md" },
+    { "基于时间的模拟" = "features/time-based-simulation.md" },
+    { "结构化图数据" = "features/structured-graph-data.md" },
+    { "多智能体流程" = "features/multi-agent-flow.md" },
+    { "视角与记忆" = "features/perspective-and-memory.md" },
+    { "图像生成" = "features/image-generation.md" },
+    { "TTS 与 STT" = "features/tts-and-stt.md" },
+    { "Turn 呈现" = "features/turn-presentation.md" },
+  ] },
+  { "安装" = "installation.md" },
+  { "配置" = [
+    { "概览" = "configuration.md" },
+    { "环境变量" = "configuration/environment.md" },
+    { "连接" = "configuration/connections.md" },
+    { "LLM 模型配置" = "configuration/llm.md" },
+    { "Embedding 配置" = "configuration/embedding.md" },
+    { "图像生成配置" = "configuration/image.md" },
+    { "TTS 配置" = "configuration/tts.md" },
+    { "STT 配置" = "configuration/stt.md" },
   ] },
   { "架构" = [
     { "概览" = "architecture/index.md" },
@@ -38,26 +58,6 @@ nav = [
     { "记忆与主观断言" = "data-model/memories-and-claims.md" },
     { "关系与情绪" = "data-model/relationships-and-emotions.md" },
     { "媒体与配置" = "data-model/media-and-configuration.md" },
-  ] },
-  { "配置" = [
-    { "概览" = "configuration.md" },
-    { "环境变量" = "configuration/environment.md" },
-    { "连接" = "configuration/connections.md" },
-    { "LLM 模型配置" = "configuration/llm.md" },
-    { "Embedding 配置" = "configuration/embedding.md" },
-    { "图像生成配置" = "configuration/image.md" },
-    { "TTS 配置" = "configuration/tts.md" },
-    { "STT 配置" = "configuration/stt.md" },
-  ] },
-  { "功能" = [
-    { "概览" = "features/index.md" },
-    { "基于时间的模拟" = "features/time-based-simulation.md" },
-    { "结构化图数据" = "features/structured-graph-data.md" },
-    { "多智能体流程" = "features/multi-agent-flow.md" },
-    { "视角与记忆" = "features/perspective-and-memory.md" },
-    { "图像生成" = "features/image-generation.md" },
-    { "TTS 与 STT" = "features/tts-and-stt.md" },
-    { "Turn 呈现" = "features/turn-presentation.md" },
   ] },
 ]
 
@@ -222,7 +222,7 @@ features = [
     # When sections are enabled, top-level sections are rendered as groups in
     # the sidebar for viewports above 1220px, but remain as-is on mobile.
     # https://zensical.org/docs/setup/navigation/#navigation-sections
-    "navigation.sections",
+    #"navigation.sections",
 
     # When tabs are enabled, top-level sections are rendered in a menu layer
     # below the header for viewports above 1220px, but remain as-is on mobile.
@@ -237,7 +237,7 @@ features = [
     # A back-to-top button can be shown when the user, after scrolling down,
     # starts to scroll up again.
     # https://zensical.org/docs/setup/navigation/#back-to-top-button
-    #"navigation.top",
+    "navigation.top",
 
     # When anchor tracking is enabled, the URL in the address bar is
     # automatically updated with the active anchor as highlighted in the table

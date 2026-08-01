@@ -1,0 +1,89 @@
+name: Code Analysis with SonarQube
+
+permissions:
+  checks: write
+  pull-requests: write
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  analysis:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[test,all-llm]
+
+      - name: Run tests with coverage
+        id: tests
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          pytest \
+            tests/function_test \
+            tests/integration_test \
+            tests/unit_test \
+            --junitxml=test-results.xml \
+            --cov=world_simulation_engine \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html:htmlcov
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: test-results.xml
+          if-no-files-found: warn
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: warn
+
+      - name: Extract Version
+        run: |
+          VERSION=$(awk -F"'" '/^__version__/ {print $2}' ./src/world_simulation_engine/__init__.py)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectVersion=${{ env.VERSION }}
+
+      - name: Publish test results
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: test-results.xml
+
+      - name: Fail workflow when tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1

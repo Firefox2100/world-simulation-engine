@@ -14,11 +14,31 @@ site_dir = "site"
 
 nav = [
   { "Home" = "index.md" },
-  { "Installation" = "installation.md" },
   { "Quick Start" = [
     { "Fast local deploy on Windows" = "quick-start/windows-source.md" },
     { "Create first world and simulation" = "quick-start/first-world.md" },
     { "Expose a Linux server with Cloudflare" = "quick-start/cloudflare-linux.md" },
+  ] },
+  { "Features" = [
+    { "Overview" = "features/index.md" },
+    { "Time-based simulation" = "features/time-based-simulation.md" },
+    { "Structured graph data" = "features/structured-graph-data.md" },
+    { "Multi-agent flow" = "features/multi-agent-flow.md" },
+    { "Perspective and memory" = "features/perspective-and-memory.md" },
+    { "Image generation" = "features/image-generation.md" },
+    { "TTS and STT" = "features/tts-and-stt.md" },
+    { "Turn presentation" = "features/turn-presentation.md" },
+  ] },
+  { "Installation" = "installation.md" },
+  { "Configuration" = [
+    { "Overview" = "configuration.md" },
+    { "Environment variables" = "configuration/environment.md" },
+    { "Connections" = "configuration/connections.md" },
+    { "LLM model configs" = "configuration/llm.md" },
+    { "Embedding configs" = "configuration/embedding.md" },
+    { "Image generation configs" = "configuration/image.md" },
+    { "TTS configs" = "configuration/tts.md" },
+    { "STT configs" = "configuration/stt.md" },
   ] },
   { "Architecture" = [
     { "Overview" = "architecture/index.md" },
@@ -38,26 +58,6 @@ nav = [
     { "Memories and claims" = "data-model/memories-and-claims.md" },
     { "Relationships and emotions" = "data-model/relationships-and-emotions.md" },
     { "Media and configuration" = "data-model/media-and-configuration.md" },
-  ] },
-  { "Configuration" = [
-    { "Overview" = "configuration.md" },
-    { "Environment variables" = "configuration/environment.md" },
-    { "Connections" = "configuration/connections.md" },
-    { "LLM model configs" = "configuration/llm.md" },
-    { "Embedding configs" = "configuration/embedding.md" },
-    { "Image generation configs" = "configuration/image.md" },
-    { "TTS configs" = "configuration/tts.md" },
-    { "STT configs" = "configuration/stt.md" },
-  ] },
-  { "Features" = [
-    { "Overview" = "features/index.md" },
-    { "Time-based simulation" = "features/time-based-simulation.md" },
-    { "Structured graph data" = "features/structured-graph-data.md" },
-    { "Multi-agent flow" = "features/multi-agent-flow.md" },
-    { "Perspective and memory" = "features/perspective-and-memory.md" },
-    { "Image generation" = "features/image-generation.md" },
-    { "TTS and STT" = "features/tts-and-stt.md" },
-    { "Turn presentation" = "features/turn-presentation.md" },
   ] },
 ]
 
