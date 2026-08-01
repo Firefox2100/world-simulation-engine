@@ -27,3 +27,6 @@ flowchart LR
 - [结构化图数据](structured-graph-data.md)
 - [多智能体流程](multi-agent-flow.md)
 - [视角与记忆](perspective-and-memory.md)
+- [图像生成](image-generation.md)
+- [TTS 与 STT](tts-and-stt.md)
+- [Turn 呈现](turn-presentation.md)

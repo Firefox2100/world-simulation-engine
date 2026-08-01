@@ -14,15 +14,18 @@ site_dir = "site"
 
 nav = [
   { "Home" = "index.md" },
+  { "Installation" = "installation.md" },
+  { "Configuration" = "configuration.md" },
   { "Features" = [
     { "Overview" = "features/index.md" },
     { "Time-based simulation" = "features/time-based-simulation.md" },
     { "Structured graph data" = "features/structured-graph-data.md" },
     { "Multi-agent flow" = "features/multi-agent-flow.md" },
     { "Perspective and memory" = "features/perspective-and-memory.md" },
+    { "Image generation" = "features/image-generation.md" },
+    { "TTS and STT" = "features/tts-and-stt.md" },
+    { "Turn presentation" = "features/turn-presentation.md" },
   ] },
-  { "Installation" = "installation.md" },
-  { "Configuration" = "configuration.md" },
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize
@@ -186,7 +189,7 @@ features = [
     # When sections are enabled, top-level sections are rendered as groups in
     # the sidebar for viewports above 1220px, but remain as-is on mobile.
     # https://zensical.org/docs/setup/navigation/#navigation-sections
-    "navigation.sections",
+    #"navigation.sections",
 
     # When tabs are enabled, top-level sections are rendered in a menu layer
     # below the header for viewports above 1220px, but remain as-is on mobile.
@@ -217,7 +220,7 @@ features = [
     # When anchor following for the table of contents is enabled, the sidebar
     # is automatically scrolled so that the active anchor is always visible.
     # https://zensical.org/docs/setup/navigation/#anchor-following
-    # "toc.follow",
+    "toc.follow",
 
     # When navigation integration for the table of contents is enabled, it is
     # always rendered as part of the navigation sidebar on the left.

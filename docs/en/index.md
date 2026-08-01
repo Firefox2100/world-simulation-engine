@@ -34,3 +34,6 @@ Feature deep dives:
 - [Structured graph data](features/structured-graph-data.md)
 - [Multi-agent flow](features/multi-agent-flow.md)
 - [Perspective, memory, and recall](features/perspective-and-memory.md)
+- [Image generation](features/image-generation.md)
+- [TTS and STT](features/tts-and-stt.md)
+- [Turn presentation](features/turn-presentation.md)

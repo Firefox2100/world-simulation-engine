@@ -27,3 +27,6 @@ Read these sections for the details:
 - [Structured graph data](structured-graph-data.md)
 - [Multi-agent flow](multi-agent-flow.md)
 - [Perspective and memory](perspective-and-memory.md)
+- [Image generation](image-generation.md)
+- [TTS and STT](tts-and-stt.md)
+- [Turn presentation](turn-presentation.md)

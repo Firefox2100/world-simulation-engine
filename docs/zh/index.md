@@ -34,3 +34,6 @@ icon: lucide/rocket
 - [结构化图数据](features/structured-graph-data.md)
 - [多智能体流程](features/multi-agent-flow.md)
 - [视角、记忆与召回](features/perspective-and-memory.md)
+- [图像生成](features/image-generation.md)
+- [TTS 与 STT](features/tts-and-stt.md)
+- [Turn 呈现](features/turn-presentation.md)
