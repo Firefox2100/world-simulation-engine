@@ -28,6 +28,12 @@ This software uses complicated multi-agent architecture and structured states ba
 
 Please refer to the corresponding sections in the documentation for more details on each feature, and how to use them.
 
+## Quick Start
+
+- [Fast local deploy on Windows](quick-start/windows-source.md)
+- [Create your first world and start the simulation](quick-start/first-world.md)
+- [Expose a Linux server with Cloudflare](quick-start/cloudflare-linux.md)
+
 Feature deep dives:
 
 - [Time-based simulation](features/time-based-simulation.md)

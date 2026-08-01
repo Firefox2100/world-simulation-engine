@@ -43,7 +43,9 @@ from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, Anthropi
     OpenRouterChatModelConfig, Ai21ChatModelConfig, GoogleGenAiChatModelConfig, MistralAiChatModelConfig, \
     CohereChatModelConfig, PerplexityChatModelConfig, GroqChatModelConfig, DeepSeekChatModelConfig, \
     XAiChatModelConfig, CloudflareChatModelConfig, ChatModelConfigUnion, ConnectionConfig, OllamaEmbedModelConfig, \
-    OpenAiEmbedModelConfig, EmbedModelConfigUnion, ComfyUiImageModelConfig, ImageModelConfigUnion, \
+    OpenAiEmbedModelConfig, Ai21EmbedModelConfig, GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, \
+    CohereEmbedModelConfig, PerplexityEmbedModelConfig, CloudflareEmbedModelConfig, EmbedModelConfigUnion, \
+    ComfyUiImageModelConfig, ImageModelConfigUnion, \
     AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, AllTalkStatus, \
     AllTalkTtsModelConfigUnion, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, \
     SttModelConfig, SttModelConfigUnion, WhisperCppSttModelConfig

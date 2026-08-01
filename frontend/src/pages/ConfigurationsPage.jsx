@@ -52,7 +52,16 @@ const llmProviders = [
     "cloudflare",
 ];
 const connectionProviders = [...llmProviders, "alltalk", "whispercpp", "comfyui"];
-const embeddingProviders = ["openai", "ollama"];
+const embeddingProviders = [
+    "openai",
+    "ollama",
+    "ai21",
+    "google_genai",
+    "mistralai",
+    "cohere",
+    "perplexity",
+    "cloudflare",
+];
 const imageProviders = ["comfyui"];
 const sttProviders = ["whispercpp"];
 const ollamaLlmFields = [
@@ -218,6 +227,108 @@ for (const provider of ["openrouter", "perplexity", "deepseek"]) {
 const llmExtraFields = Array.from(
     new Set(Object.values(llmProviderFields).flat().map((field) => field.name)),
 );
+const embeddingProviderFields = {
+    ollama: [
+        { name: "context_window", type: "int" },
+        { name: "validate_model_on_init", type: "boolean" },
+        { name: "client_kwargs", type: "json" },
+        { name: "async_client_kwargs", type: "json" },
+        { name: "sync_client_kwargs", type: "json" },
+        { name: "mirostat", type: "int" },
+        { name: "mirostat_eta", type: "number" },
+        { name: "mirostat_tau", type: "number" },
+        { name: "num_gpu", type: "int" },
+        { name: "keep_alive", type: "int" },
+        { name: "num_thread", type: "int" },
+        { name: "repeat_last_n", type: "int" },
+        { name: "repeat_penalty", type: "number" },
+        { name: "temperature", type: "number" },
+        { name: "stop", type: "csv" },
+        { name: "tfs_z", type: "number" },
+        { name: "top_k", type: "int" },
+        { name: "top_p", type: "number" },
+    ],
+    openai: [
+        { name: "deployment", type: "text" },
+        { name: "api_version", type: "text" },
+        { name: "openai_api_type", type: "text" },
+        { name: "openai_proxy", type: "text" },
+        { name: "embedding_ctx_length", type: "int" },
+        { name: "organization", type: "text" },
+        { name: "allowed_special", type: "flexible" },
+        { name: "disallowed_special", type: "csv" },
+        { name: "chunk_size", type: "int" },
+        { name: "max_retries", type: "int" },
+        { name: "request_timeout", type: "jsonOrNumber" },
+        { name: "headers", type: "json" },
+        { name: "tiktoken_enabled", type: "boolean" },
+        { name: "tiktoken_model_name", type: "text" },
+        { name: "show_progress_bar", type: "boolean" },
+        { name: "model_kwargs", type: "json" },
+        { name: "skip_empty", type: "boolean" },
+        { name: "default_headers", type: "json" },
+        { name: "default_query", type: "json" },
+        { name: "retry_min_seconds", type: "int" },
+        { name: "retry_max_seconds", type: "int" },
+        { name: "check_embedding_ctx_length", type: "boolean" },
+    ],
+    ai21: [
+        { name: "batch_size", type: "int" },
+        { name: "num_retries", type: "int" },
+    ],
+    google_genai: [
+        {
+            name: "task_type",
+            type: "select",
+            options: [
+                "TASK_TYPE_UNSPECIFIED",
+                "RETRIEVAL_QUERY",
+                "RETRIEVAL_DOCUMENT",
+                "SEMANTIC_SIMILARITY",
+                "CLASSIFICATION",
+                "CLUSTERING",
+                "QUESTION_ANSWERING",
+                "FACT_VERIFICATION",
+                "CODE_RETRIEVAL_QUERY",
+            ],
+        },
+        { name: "vertexai", type: "boolean" },
+        { name: "project", type: "text" },
+        { name: "location", type: "text" },
+        { name: "additional_headers", type: "json" },
+        { name: "client_args", type: "json" },
+        { name: "api_version", type: "text" },
+        { name: "request_options", type: "json" },
+    ],
+    mistralai: [
+        { name: "endpoint", type: "text" },
+        { name: "max_retries", type: "int" },
+        { name: "timeout", type: "int" },
+        { name: "wait_time", type: "int" },
+        { name: "max_concurrent_requests", type: "int" },
+    ],
+    cohere: [
+        { name: "truncate", type: "select", options: ["NONE", "START", "END"] },
+        { name: "embedding_types", type: "csv" },
+        { name: "max_retries", type: "int" },
+        { name: "request_timeout", type: "number" },
+        { name: "user_agent", type: "text" },
+    ],
+    perplexity: [
+        { name: "request_timeout", type: "jsonOrNumber" },
+        { name: "max_retries", type: "int" },
+    ],
+    cloudflare: [
+        { name: "account_id", type: "text" },
+        { name: "batch_size", type: "int" },
+        { name: "strip_new_lines", type: "boolean" },
+        { name: "api_base_url", type: "text" },
+        { name: "headers", type: "json" },
+    ],
+};
+const embeddingExtraFields = Array.from(
+    new Set(Object.values(embeddingProviderFields).flat().map((field) => field.name)),
+);
 
 function cleanText(value) {
     const trimmed = String(value ?? "").trim();
@@ -371,14 +482,21 @@ function makeFormState(kind, item = null) {
     }
 
     if (kind === "embeddings") {
-        return {
+        const embeddingState = {
             provider: item ? inferEmbeddingProvider(item) : "",
             connection_id: item?.connection?.id ?? "",
             name: item?.name ?? "",
             model: item?.model ?? "",
             dimension: item?.dimension == null ? "" : String(item.dimension),
-            context_window: item?.context_window == null ? "" : String(item.context_window),
         };
+
+        for (const field of embeddingExtraFields) {
+            embeddingState[field] = typeof item?.[field] === "boolean"
+                ? item[field]
+                : formatFormValue(item?.[field]);
+        }
+
+        return embeddingState;
     }
 
     if (kind === "tts") {
@@ -466,7 +584,7 @@ function makeFormState(kind, item = null) {
     return llmState;
 }
 
-function buildPayload(kind, form, editing) {
+function buildPayload(kind, form) {
     if (kind === "connections") {
         return {
             type: form.type,
@@ -483,11 +601,11 @@ function buildPayload(kind, form, editing) {
             dimension: numberOrNull(form.dimension, Number.parseInt),
         };
 
-        if (form.provider === "ollama" || editing) {
-            payload.context_window = numberOrNull(form.context_window, Number.parseInt);
+        for (const field of embeddingProviderFields[form.provider] ?? []) {
+            payload[field.name] = parseLlmFieldValue(field, form);
         }
 
-        return payload;
+        return omitNullishEntries(payload);
     }
 
     if (kind === "tts") {
@@ -845,7 +963,7 @@ function ConfigurationModal({ kind, item, connections, onClose, onSaved }) {
 
         try {
             setSaving(true);
-            const payload = buildPayload(kind, form, editing);
+            const payload = buildPayload(kind, form);
 
             let savedConfig = null;
 
@@ -1027,7 +1145,6 @@ function ModelFields({
     allTalkStatusLoading,
     allTalkStatusError,
 }) {
-    const showOllamaFields = form.provider === "ollama";
     const matchingConnections = kind === "tts"
         ? connections.filter((connection) => connection.type === "alltalk")
         : kind === "images"
@@ -1095,27 +1212,33 @@ function ModelFields({
             ) : kind === "stt" ? (
                 <SttModelFields form={form} onChange={onChange} t={t} />
             ) : kind === "embeddings" ? (
-                <>
-                    <TextField
-                        id="configuration-dimension"
-                        label={t("configurations.fields.dimension")}
-                        value={form.dimension}
-                        onChange={(value) => onChange("dimension", value)}
-                        type="number"
-                    />
-                    {showOllamaFields ? (
-                        <TextField
-                            id="configuration-context-window"
-                            label={t("configurations.fields.contextWindow")}
-                            value={form.context_window}
-                            onChange={(value) => onChange("context_window", value)}
-                            type="number"
-                        />
-                    ) : null}
-                </>
+                <EmbeddingModelFields form={form} onChange={onChange} t={t} />
             ) : (
                 <LlmModelFields form={form} onChange={onChange} t={t} />
             )}
+        </>
+    );
+}
+
+function EmbeddingModelFields({ form, onChange, t }) {
+    return (
+        <>
+            <TextField
+                id="configuration-dimension"
+                label={t("configurations.fields.dimension")}
+                value={form.dimension}
+                onChange={(value) => onChange("dimension", value)}
+                type="number"
+            />
+            {(embeddingProviderFields[form.provider] ?? []).map((field) => (
+                <LlmConfigField
+                    key={field.name}
+                    field={field}
+                    form={form}
+                    onChange={onChange}
+                    t={t}
+                />
+            ))}
         </>
     );
 }

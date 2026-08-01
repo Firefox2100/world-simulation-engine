@@ -5,7 +5,6 @@ from pydantic import TypeAdapter
 
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ConnectionConfig, ChatModelConfigUnion, EmbedModelConfigUnion, \
-    OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
     ComfyUiImageModelConfig, ImageModelConfigUnion, ImageGenerationConfig, AllTalkF5ttsModelConfig, \
     AllTalkParlerModelConfig, AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, \
     TtsModelConfigUnion, TtsGenerationConfig, SttModelConfigUnion, WhisperCppSttModelConfig
@@ -43,6 +42,24 @@ CHAT_CONFIG_PROVIDERS = {
 
 CHAT_CONFIG_ADAPTER = TypeAdapter(ChatModelConfigUnion)
 
+EMBED_CONFIG_LABELS = (
+    "OllamaEmbedModelConfig|OpenAiEmbedModelConfig|Ai21EmbedModelConfig|GoogleGenAiEmbedModelConfig|"
+    "MistralAiEmbedModelConfig|CohereEmbedModelConfig|PerplexityEmbedModelConfig|CloudflareEmbedModelConfig"
+)
+
+EMBED_CONFIG_PROVIDERS = {
+    "OllamaEmbedModelConfig": "ollama",
+    "OpenAiEmbedModelConfig": "openai",
+    "Ai21EmbedModelConfig": "ai21",
+    "GoogleGenAiEmbedModelConfig": "google_genai",
+    "MistralAiEmbedModelConfig": "mistralai",
+    "CohereEmbedModelConfig": "cohere",
+    "PerplexityEmbedModelConfig": "perplexity",
+    "CloudflareEmbedModelConfig": "cloudflare",
+}
+
+EMBED_CONFIG_ADAPTER = TypeAdapter(EmbedModelConfigUnion)
+
 
 def _node_properties(config_node) -> dict:
     return {
@@ -78,6 +95,14 @@ def _chat_provider_from_labels(labels: list[str]) -> str:
     raise ValueError(f"Unknown config labels {labels}")
 
 
+def _embed_provider_from_labels(labels: list[str]) -> str:
+    for label in labels:
+        provider = EMBED_CONFIG_PROVIDERS.get(label)
+        if provider is not None:
+            return provider
+    raise ValueError(f"Unknown config labels {labels}")
+
+
 def _connection_from_node(connection_node) -> ConnectionConfig:
     return ConnectionConfig(
         id=connection_node["id"],
@@ -102,33 +127,14 @@ def _chat_from_node(config_node, labels: list[str], connection_node=None) -> Cha
     return CHAT_CONFIG_ADAPTER.validate_python(properties)
 
 
-def _ollama_embed_from_node(config_node, connection_node=None) -> OllamaEmbedModelConfig:
-    return OllamaEmbedModelConfig(
-        id=config_node["id"],
-        name=config_node.get("name"),
-        model=config_node["model"],
-        dimension=config_node.get("dimension"),
-        context_window=config_node.get("context_window"),
-        connection=_connection_from_optional_node(connection_node),
-    )
-
-
-def _openai_embed_from_node(config_node, connection_node=None) -> OpenAiEmbedModelConfig:
-    return OpenAiEmbedModelConfig(
-        id=config_node["id"],
-        name=config_node.get("name"),
-        model=config_node["model"],
-        dimension=config_node.get("dimension"),
-        connection=_connection_from_optional_node(connection_node),
-    )
-
-
 def _embed_from_node(config_node, labels: list[str], connection_node=None) -> EmbedModelConfigUnion:
-    if "OllamaEmbedModelConfig" in labels:
-        return _ollama_embed_from_node(config_node, connection_node)
-    if "OpenAiEmbedModelConfig" in labels:
-        return _openai_embed_from_node(config_node, connection_node)
-    raise ValueError(f"Unknown config labels {labels}")
+    properties = {
+        key: _decode_model_property(value)
+        for key, value in _node_properties(config_node).items()
+    }
+    properties["provider"] = _embed_provider_from_labels(labels)
+    properties["connection"] = _connection_from_optional_node(connection_node)
+    return EMBED_CONFIG_ADAPTER.validate_python(properties)
 
 
 def _comfyui_image_from_node(config_node, connection_node=None) -> ComfyUiImageModelConfig:
@@ -333,8 +339,8 @@ class ConfigStore:
 
     async def get_connection_by_embed_source(self, source_id: str) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $source_id})
+            f"""
+            MATCH (s:{EMBED_CONFIG_LABELS} {{id: $source_id}})
                 -[:USES]->
                 (c:ConnectionConfig)
             RETURN c LIMIT 1
@@ -405,7 +411,7 @@ class ConfigStore:
                               ) -> ConnectionConfig | None:
         result = await self._driver.execute_query(
             f"""
-            MATCH (s:{CHAT_CONFIG_LABELS}|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            MATCH (s:{CHAT_CONFIG_LABELS}|{EMBED_CONFIG_LABELS}
                 |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS}|{STT_CONFIG_LABELS} {{
                 id: $source_id
             }})
@@ -430,7 +436,7 @@ class ConfigStore:
     async def unlink_connection(self, source_id: str) -> bool:
         result = await self._driver.execute_query(
             f"""
-            MATCH (source:{CHAT_CONFIG_LABELS}|OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            MATCH (source:{CHAT_CONFIG_LABELS}|{EMBED_CONFIG_LABELS}
                 |ComfyUiImageModelConfig|{TTS_CONFIG_LABELS}|{STT_CONFIG_LABELS} {{
                 id: $source_id
             }})
@@ -687,51 +693,34 @@ class ConfigStore:
         return bool(record and record["deleted"])
 
     async def create_embed(self, embed_config: EmbedModelConfigUnion):
-        if isinstance(embed_config, OllamaEmbedModelConfig):
-            result = await self._driver.execute_query(
-                """
-                CREATE (c:OllamaEmbedModelConfig {
-                    id: $id,
-                    name: $name,
-                    model: $model,
-                    dimension: $dimension,
-                    context_window: $context_window
-                }) RETURN c
-                """,
-                parameters_={
-                    "id": embed_config.id,
-                    "name": embed_config.name,
-                    "model": embed_config.model,
-                    "dimension": embed_config.dimension,
-                    "context_window": embed_config.context_window,
-                }
-            )
-            return _ollama_embed_from_node(result.records[0]["c"])
-        elif isinstance(embed_config, OpenAiEmbedModelConfig):
-            result = await self._driver.execute_query(
-                """
-                CREATE (c:OpenAiEmbedModelConfig {
-                    id: $id,
-                    name: $name,
-                    model: $model,
-                    dimension: $dimension
-                }) RETURN c
-                """,
-                parameters_={
-                    "id": embed_config.id,
-                    "name": embed_config.name,
-                    "model": embed_config.model,
-                    "dimension": embed_config.dimension,
-                }
-            )
-            return _openai_embed_from_node(result.records[0]["c"])
-        else:
+        label = type(embed_config).__name__
+        if label not in EMBED_CONFIG_PROVIDERS:
             raise TypeError(f"Expected EmbedModelConfigUnion, got {type(embed_config)}")
+
+        properties = {
+            key: _encode_model_property(value)
+            for key, value in embed_config.model_dump(
+                exclude={"provider", "connection"},
+                mode="python",
+            ).items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            f"""
+            CREATE (c:{label})
+            SET c = $properties
+            RETURN labels(c) AS config_labels, c AS config
+            """,
+            parameters_={"properties": properties},
+        )
+
+        return _embed_from_node(result.records[0]["config"], result.records[0]["config_labels"])
 
     async def list_embeds(self) -> list[EmbedModelConfigUnion]:
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig)
+            f"""
+            MATCH (c:{EMBED_CONFIG_LABELS})
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             ORDER BY c.model
@@ -745,8 +734,8 @@ class ConfigStore:
 
     async def get_embed(self, config_id: str) -> EmbedModelConfigUnion | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            f"""
+            MATCH (c:{EMBED_CONFIG_LABELS} {{id: $config_id}})
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             """,
@@ -764,10 +753,10 @@ class ConfigStore:
                                   component: ComponentType,
                                   ) -> EmbedModelConfigUnion | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:World|Simulation {id: $source_id})
-                -[:USES {component: $component}]->
-                (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig)
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+                -[:USES {{component: $component}}]->
+                (c:{EMBED_CONFIG_LABELS})
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             """,
@@ -787,10 +776,10 @@ class ConfigStore:
                                     source_id: str,
                                     ) -> dict[ComponentType, EmbedModelConfigUnion]:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:World|Simulation {id: $source_id})
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
                 -[uses:USES]->
-                (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig)
+                (c:{EMBED_CONFIG_LABELS})
             WHERE uses.component IS NOT NULL
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN uses.component AS component, labels(c) AS config_labels, c AS config, connection
@@ -814,14 +803,14 @@ class ConfigStore:
                          component: ComponentType,
                          ) -> EmbedModelConfigUnion | None:
         result = await self._driver.execute_query(
-            """
-            MATCH (s:World|Simulation {id: $source_id})
-            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
-            OPTIONAL MATCH (s)-[previous:USES {component: $component}]->(
-                :OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            f"""
+            MATCH (s:World|Simulation {{id: $source_id}})
+            MATCH (c:{EMBED_CONFIG_LABELS} {{id: $config_id}})
+            OPTIONAL MATCH (s)-[previous:USES {{component: $component}}]->(
+                :{EMBED_CONFIG_LABELS}
             )
             DELETE previous
-            MERGE (s) -[:USES {component: $component}]-> (c)
+            MERGE (s) -[:USES {{component: $component}}]-> (c)
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
             """,
@@ -843,10 +832,10 @@ class ConfigStore:
                            component: ComponentType,
                            ) -> bool:
         result = await self._driver.execute_query(
-            """
-            MATCH (source:World|Simulation {id: $source_id})
-            OPTIONAL MATCH (source)-[uses:USES {component: $component}]->(
-                :OllamaEmbedModelConfig|OpenAiEmbedModelConfig
+            f"""
+            MATCH (source:World|Simulation {{id: $source_id}})
+            OPTIONAL MATCH (source)-[uses:USES {{component: $component}}]->(
+                :{EMBED_CONFIG_LABELS}
             )
             DELETE uses
             RETURN count(source) AS source_count
@@ -870,9 +859,14 @@ class ConfigStore:
             if value is not None
         }
 
+        properties = {
+            key: _encode_model_property(value)
+            for key, value in properties.items()
+        }
+
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            f"""
+            MATCH (c:{EMBED_CONFIG_LABELS} {{id: $config_id}})
             SET c += $properties
             OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
             RETURN labels(c) AS config_labels, c AS config, connection
@@ -891,8 +885,8 @@ class ConfigStore:
 
     async def delete_embed(self, config_id: str) -> bool:
         result = await self._driver.execute_query(
-            """
-            MATCH (c:OllamaEmbedModelConfig|OpenAiEmbedModelConfig {id: $config_id})
+            f"""
+            MATCH (c:{EMBED_CONFIG_LABELS} {{id: $config_id}})
             WITH collect(c) AS configs
             FOREACH (config IN configs | DETACH DELETE config)
             RETURN size(configs) AS deleted

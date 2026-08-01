@@ -3,7 +3,9 @@ from .chat_config import OllamaChatModelConfig, OpenAiChatModelConfig, Anthropic
     CohereChatModelConfig, PerplexityChatModelConfig, GroqChatModelConfig, DeepSeekChatModelConfig, \
     XAiChatModelConfig, CloudflareChatModelConfig, ChatModelConfigUnion
 from .connection_config import ConnectionConfig
-from .embed_config import OllamaEmbedModelConfig, OpenAiEmbedModelConfig, EmbedModelConfigUnion
+from .embed_config import OllamaEmbedModelConfig, OpenAiEmbedModelConfig, Ai21EmbedModelConfig, \
+    GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, CohereEmbedModelConfig, \
+    PerplexityEmbedModelConfig, CloudflareEmbedModelConfig, EmbedModelConfigUnion
 from .image_config import ComfyUiImageModelConfig, ImageModelConfigUnion
 from .tts_config import AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, AllTalkPiperModelConfig, \
     AllTalkStatus, AllTalkTtsModelConfigUnion, AllTalkVitsModelConfig, AllTalkXttsModelConfig, \

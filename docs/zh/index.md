@@ -28,6 +28,12 @@ icon: lucide/rocket
 
 请参考文档中的相应章节，了解每项功能的更多细节以及使用方式。
 
+## 快速开始
+
+- [Windows 本地源码部署](quick-start/windows-source.md)
+- [创建第一个世界并启动模拟](quick-start/first-world.md)
+- [通过 Cloudflare 暴露 Linux 服务器](quick-start/cloudflare-linux.md)
+
 功能深入说明：
 
 - [基于时间的模拟](features/time-based-simulation.md)

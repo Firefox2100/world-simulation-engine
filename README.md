@@ -52,7 +52,6 @@ the codebase, prompts, and data model are all still evolving.
   Anthropic, OpenRouter, AI21, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and Cloudflare;
   embeddings currently support Ollama and OpenAI.
 - **Frontend** (`frontend/`): React + Vite admin/chat UI for managing worlds, connections, prompts, and simulations.
-- See `CLAUDE.md` for a deeper tour of the module layout and cross-cutting concepts.
 
 ## Deployment
 

@@ -1,5 +1,6 @@
 from typing import Any, Optional
 from uuid import uuid4
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query, status
 from httpx import HTTPError
@@ -9,7 +10,9 @@ from world_simulation_engine.misc.enums import ComponentType, ConnectionType, Im
     TtsGenerationMode, TtsTextFilteringMode, TtsTextNotInsideMode
 from world_simulation_engine.model import AllTalkStatus, ConnectionConfig, OllamaChatModelConfig, \
     OpenAiChatModelConfig, ChatModelConfigUnion, OllamaEmbedModelConfig, OpenAiEmbedModelConfig, \
-    EmbedModelConfigUnion, ImageGenerationConfig, AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, \
+    Ai21EmbedModelConfig, GoogleGenAiEmbedModelConfig, MistralAiEmbedModelConfig, CohereEmbedModelConfig, \
+    PerplexityEmbedModelConfig, CloudflareEmbedModelConfig, EmbedModelConfigUnion, ImageGenerationConfig, \
+    AllTalkF5ttsModelConfig, AllTalkParlerModelConfig, \
     AllTalkPiperModelConfig, AllTalkVitsModelConfig, AllTalkXttsModelConfig, TtsModelConfigUnion, \
     TtsGenerationConfig, SttModelConfigUnion, WhisperCppSttModelConfig, ComfyUiImageModelConfig, \
     ImageModelConfigUnion
@@ -62,6 +65,8 @@ class EmbedConfigUpdate(BaseModel):
     """
     DTO model for updating embedding model configs
     """
+
+    model_config = ConfigDict(extra="allow")
 
     name: Optional[str] = Field(None, description="The name of the embedding config")
     model: Optional[str] = Field(None, description="The model to use for embedding")
@@ -531,6 +536,52 @@ async def create_ollama_embed_config(embed_config: OllamaEmbedModelConfig, db: d
 
 @config_router.post("/config/embeddings/openai", response_model=OpenAiEmbedModelConfig, response_model_exclude_none=True)
 async def create_openai_embed_config(embed_config: OpenAiEmbedModelConfig, db: db_dep):
+    return await db.config.create_embed(embed_config)
+
+
+@config_router.post("/config/embeddings/ai21", response_model=Ai21EmbedModelConfig, response_model_exclude_none=True)
+async def create_ai21_embed_config(embed_config: Ai21EmbedModelConfig, db: db_dep):
+    return await db.config.create_embed(embed_config)
+
+
+@config_router.post(
+    "/config/embeddings/google_genai",
+    response_model=GoogleGenAiEmbedModelConfig,
+    response_model_exclude_none=True,
+)
+async def create_google_genai_embed_config(embed_config: GoogleGenAiEmbedModelConfig, db: db_dep):
+    return await db.config.create_embed(embed_config)
+
+
+@config_router.post(
+    "/config/embeddings/mistralai",
+    response_model=MistralAiEmbedModelConfig,
+    response_model_exclude_none=True,
+)
+async def create_mistralai_embed_config(embed_config: MistralAiEmbedModelConfig, db: db_dep):
+    return await db.config.create_embed(embed_config)
+
+
+@config_router.post("/config/embeddings/cohere", response_model=CohereEmbedModelConfig, response_model_exclude_none=True)
+async def create_cohere_embed_config(embed_config: CohereEmbedModelConfig, db: db_dep):
+    return await db.config.create_embed(embed_config)
+
+
+@config_router.post(
+    "/config/embeddings/perplexity",
+    response_model=PerplexityEmbedModelConfig,
+    response_model_exclude_none=True,
+)
+async def create_perplexity_embed_config(embed_config: PerplexityEmbedModelConfig, db: db_dep):
+    return await db.config.create_embed(embed_config)
+
+
+@config_router.post(
+    "/config/embeddings/cloudflare",
+    response_model=CloudflareEmbedModelConfig,
+    response_model_exclude_none=True,
+)
+async def create_cloudflare_embed_config(embed_config: CloudflareEmbedModelConfig, db: db_dep):
     return await db.config.create_embed(embed_config)
 
 
