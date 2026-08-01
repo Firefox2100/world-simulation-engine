@@ -14,6 +14,13 @@ site_dir = "site"
 
 nav = [
   { "Home" = "index.md" },
+  { "Features" = [
+    { "Overview" = "features/index.md" },
+    { "Time-based simulation" = "features/time-based-simulation.md" },
+    { "Structured graph data" = "features/structured-graph-data.md" },
+    { "Multi-agent flow" = "features/multi-agent-flow.md" },
+    { "Perspective and memory" = "features/perspective-and-memory.md" },
+  ] },
   { "Installation" = "installation.md" },
   { "Configuration" = "configuration.md" },
 ]

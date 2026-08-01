@@ -27,3 +27,10 @@ This software uses complicated multi-agent architecture and structured states ba
 - **Local first design**: Unlike some popular systems which is designed to leverage the advanced capabilities of cloud flagship models, this software is designed to work with reasonably good local models, for maximum privacy and security.
 
 Please refer to the corresponding sections in the documentation for more details on each feature, and how to use them.
+
+Feature deep dives:
+
+- [Time-based simulation](features/time-based-simulation.md)
+- [Structured graph data](features/structured-graph-data.md)
+- [Multi-agent flow](features/multi-agent-flow.md)
+- [Perspective, memory, and recall](features/perspective-and-memory.md)

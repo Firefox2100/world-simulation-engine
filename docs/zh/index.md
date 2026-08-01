@@ -27,3 +27,10 @@ icon: lucide/rocket
 - **本地优先设计**：与一些主要依赖云端旗舰模型能力的系统不同，本软件被设计为尽量适配效果尚可的本地模型，以获得更高的隐私性和安全性。
 
 请参考文档中的相应章节，了解每项功能的更多细节以及使用方式。
+
+功能深入说明：
+
+- [基于时间的模拟](features/time-based-simulation.md)
+- [结构化图数据](features/structured-graph-data.md)
+- [多智能体流程](features/multi-agent-flow.md)
+- [视角、记忆与召回](features/perspective-and-memory.md)
