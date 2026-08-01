@@ -35,7 +35,6 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV WSE_LOGGING_LEVEL="INFO"
-ENV WSE_DATABASE_PATH="/app/data/database.db"
 ENV WSE_DATA_FOLDER="/app/data/storage"
 
 RUN apt-get update && \
@@ -47,7 +46,7 @@ WORKDIR /app
 
 COPY ./src/world_simulation_engine /app/src/world_simulation_engine
 COPY ./pyproject.toml /app/pyproject.toml
-COPY ./example.env /app/.env
+COPY ./.env.example /app/.env
 COPY ./LICENSE /app/LICENSE
 COPY ./README.md /app/README.md
 

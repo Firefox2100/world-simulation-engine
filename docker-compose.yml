@@ -18,3 +18,5 @@ services:
       - "9798:80"
     volumes:
       - ./data:/app/data
+    env_file:
+      - .env
