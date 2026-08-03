@@ -260,6 +260,7 @@ function characterPayload(character) {
         description: character.description,
         public_state: character.public_state,
         private_state: character.private_state,
+        speech_style: character.speech_style || "",
         current_activity: {
             name: character.activity_name || "Idle",
             interruptible: Boolean(character.activity_interruptible),

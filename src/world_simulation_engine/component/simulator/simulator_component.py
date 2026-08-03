@@ -2,6 +2,7 @@ import inspect
 
 from world_simulation_engine.misc.consts import PROMPTS
 from world_simulation_engine.misc.enums import SupportedLanguage, ComponentType, MessageRole
+from world_simulation_engine.misc.placeholder import PlaceholderContext, render_placeholders
 from world_simulation_engine.model import EmotionVector, PromptMessage, Simulation, SubjectiveEntityClaim
 from world_simulation_engine.service import DatabaseService, EmbedService, LlmService
 from ..prompt_loader import PromptLoader
@@ -195,3 +196,27 @@ Use each claim only for its observer. A belief is not objective fact and must no
 {{% endfor %}}
 Treat these as this actor's fallible beliefs, never as objective facts or another actor's knowledge."""
         return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]
+
+    @staticmethod
+    def _placeholder_context(**named_entities) -> PlaceholderContext:
+        """Build a placeholder roster from already-fetched entities, grouped by keyword.
+
+        Each keyword must be one of `PlaceholderContext`'s groups (character, location, item, ...)
+        and its value an iterable of objects with `.id`/`.name`, e.g.
+        `_placeholder_context(character=[actor, *perceived_characters], location=[location])`.
+        """
+        context = PlaceholderContext()
+        for group, entities in named_entities.items():
+            for entity in entities:
+                context.add(group, id=entity.id, name=entity.name)
+        return context
+
+    @staticmethod
+    def _render_placeholders(text: str, context: PlaceholderContext) -> str:
+        """Resolve `{{ character['id'].name }}`-style references against `context`.
+
+        Lazy by design: stored text keeps its raw placeholder syntax forever, so renaming an
+        entity after import - or at any point - is reflected the next time this is called, rather
+        than requiring every reference to be rewritten.
+        """
+        return render_placeholders(text, context)

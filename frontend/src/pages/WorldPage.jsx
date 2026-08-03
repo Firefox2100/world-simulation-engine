@@ -119,6 +119,13 @@ export function WorldPage() {
                     <button
                         type="button"
                         className="secondary-button"
+                        onClick={() => navigate("/worlds/import/sillytavern")}
+                    >
+                        {t("worlds.importSillyTavern")}
+                    </button>
+                    <button
+                        type="button"
+                        className="secondary-button"
                         onClick={() => setImportModalOpen(true)}
                     >
                         {t("worlds.import")}

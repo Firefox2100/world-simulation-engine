@@ -24,6 +24,7 @@ from .simulation_audit_store import SimulationAuditStore
 from .state_commit_store import StateCommitStore
 from .turn_store import TurnStore
 from .turn_presentation_store import TurnPresentationStore
+from .variable_store import VariableStore
 from .world_store import WorldStore
 
 if TYPE_CHECKING:
@@ -63,6 +64,7 @@ class DatabaseService:
         self._state_commit = StateCommitStore(self._driver)
         self._turn = TurnStore(self._driver)
         self._turn_presentation = TurnPresentationStore(self._driver)
+        self._variable = VariableStore(self._driver)
         self._world = WorldStore(self._driver)
 
     async def close(self):
@@ -155,6 +157,10 @@ class DatabaseService:
     @property
     def turn_presentation(self) -> TurnPresentationStore:
         return self._turn_presentation
+
+    @property
+    def variable(self) -> VariableStore:
+        return self._variable
 
     @property
     def world(self) -> WorldStore:

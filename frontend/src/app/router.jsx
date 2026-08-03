@@ -3,6 +3,12 @@ import { AppLayout } from "@/layouts/AppLayout";
 
 export const router = createBrowserRouter([
     {
+        path: "worlds/import/sillytavern",
+        lazy: async () => ({
+            Component: (await import("@/pages/SillyTavernImportPage.jsx")).SillyTavernImportPage,
+        }),
+    },
+    {
         path: "/",
         element: <AppLayout />,
         children: [

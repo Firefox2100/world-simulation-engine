@@ -9,9 +9,10 @@ import pytest
 from world_simulation_engine.misc.enums import ComponentType, ConnectionType, ContainerState, EventInvolvement, \
     IntentHorizon, IntentStatus, IntentType, MemoryStance, MemorySupportType, Salience, SupportedLanguage, TurnType
 from world_simulation_engine.model import AllTalkXttsModelConfig, Author, BackgroundCharacter, Character, \
-    CharacterTtsConfig, Container, ConnectionConfig, CurrentActivity, EntityRelationship, Equipment, Event, \
-    GenericRelationshipDetails, Intent, Item, ItemStack, Landmark, Location, MediaFile, MemoryAtom, \
-    OllamaChatModelConfig, OllamaEmbedModelConfig, PromptMediaFile, RelationshipEntityRef, RelationshipScope, Turn
+    CharacterTtsConfig, Container, ConnectionConfig, CurrentActivity, EntityRelationship, EntityVariableSet, \
+    Equipment, Event, GenericRelationshipDetails, Intent, Item, ItemStack, Landmark, Location, MediaFile, \
+    MemoryAtom, OllamaChatModelConfig, OllamaEmbedModelConfig, PromptMediaFile, RelationshipEntityRef, \
+    RelationshipScope, Turn, VariableDefinition
 from world_simulation_engine.misc.enums import MediaType
 from world_simulation_engine.service import AuthorNotFoundError, DatabaseService, StorageService, \
     WorldExportService, WorldImportError, WorldImportService
@@ -112,6 +113,20 @@ async def _build_rich_world(db: DatabaseService, storage: StorageService, driver
         last_changed_at=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
     )
     await db.entity_relationship.create_relationship(relationship)
+
+    variable_set = EntityVariableSet(
+        source_id=world.id,
+        owner_type="character",
+        owner_id=alex.id,
+        variables=[
+            VariableDefinition(
+                name="health", value_type="integer", value=80, default_value=100,
+                description="Hit points.", minimum=0, maximum=100,
+            ),
+        ],
+        last_updated_at=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    await db.variable.create_variable_set(variable_set)
 
     connection = ConnectionConfig(
         id=str(uuid4()), type=ConnectionType.OLLAMA, name="Local Ollama",
@@ -278,6 +293,13 @@ async def test_import_world_recreates_full_content(clean_neo4j, tmp_path):
     assert relationship_copy.target.id == blair_copy.id
     assert relationship_copy.evidence_memory_ids == [memories[0].id]
 
+    variable_set_copy = await db.variable.get_variable_set(alex_copy.id)
+    assert variable_set_copy is not None
+    assert variable_set_copy.source_id == imported_world.id
+    assert variable_set_copy.variables[0].name == "health"
+    assert variable_set_copy.variables[0].value == 80
+    assert await db.variable.get_variable_set(blair_copy.id) is None
+
     chat_assignments = await db.config.list_chats_by_source(imported_world.id)
     assert chat_assignments[ComponentType.NARRATOR].model == "llama3.1"
     # Same reuse rationale as the tts backend above: the source chat config already exists in this
@@ -296,6 +318,37 @@ async def test_import_world_recreates_full_content(clean_neo4j, tmp_path):
         imported_world.id, SupportedLanguage.ENGLISH, "narrate_resolved_turn_prompt", ComponentType.NARRATOR,
     )
     assert prompt_media is not None
+
+
+async def test_import_succeeds_for_archives_predating_entity_variable_sets(clean_neo4j, tmp_path):
+    """Older archives simply don't have data/entity_variable_sets.jsonl - import must not treat a
+    missing optional section as a corrupt archive, since most worlds have no tracked variables
+    anyway."""
+    db = DatabaseService(clean_neo4j)
+    storage = StorageService(tmp_path / "storage")
+    await storage.initialise()
+
+    built = await _build_rich_world(db, storage, clean_neo4j)
+    archive_bytes = await WorldExportService(database=db, storage=storage).export_world(built["world"].id)
+
+    with ZipFile(BytesIO(archive_bytes)) as original:
+        legacy_buffer = BytesIO()
+        with ZipFile(legacy_buffer, mode="w", compression=ZIP_DEFLATED) as legacy:
+            for name in original.namelist():
+                if name == "data/entity_variable_sets.jsonl":
+                    continue
+                legacy.writestr(name, original.read(name))
+
+    author = Author(id=str(uuid4()), name="Legacy Archive Author")
+    await db.world.create_author(author)
+
+    imported_world = await WorldImportService(database=db, storage=storage).import_world(
+        legacy_buffer.getvalue(), author.id,
+    )
+
+    characters = await db.character.list_characters(world_id=imported_world.id)
+    alex_copy = next(character for character in characters if character.name == "Alex")
+    assert await db.variable.get_variable_set(alex_copy.id) is None
 
 
 async def test_import_deduplicates_configs_and_media_on_repeat_import(clean_neo4j, tmp_path):
@@ -380,3 +433,122 @@ async def test_import_raises_for_missing_author(clean_neo4j, tmp_path):
 
     with pytest.raises(AuthorNotFoundError):
         await service.import_world(archive_bytes, str(uuid4()))
+
+
+async def test_import_assembled_sections_persists_a_full_world_without_a_zip_archive(clean_neo4j, tmp_path):
+    """The SillyTavern import pipeline's `WorldAssembler` produces exactly this `world`/`sections`
+    shape (§7 of SILLYTAVERN_IMPORT_PLAN.md) - this exercises the shared persistence path it uses,
+    with no zip archive involved at all."""
+    db = DatabaseService(clean_neo4j)
+    storage = StorageService(tmp_path / "storage")
+    await storage.initialise()
+
+    author = Author(id=str(uuid4()), name="ST Import Author")
+    await db.world.create_author(author)
+
+    now = datetime.now(UTC).isoformat()
+    world_row = {
+        "name": "Imported World", "description": "A cursed village.",
+        "starting_time": now, "language": "en",
+    }
+    sections = {
+        "locations": [
+            {"id": "loc-1", "name": "City", "description": "A city.", "parent_location_id": None},
+            {"id": "loc-2", "name": "House", "description": "A house.", "parent_location_id": "loc-1"},
+        ],
+        "landmarks": [],
+        "characters": [{
+            "id": "char-1", "user_controlled": False, "name": "Kiki", "age": 21, "gender": "female",
+            "appearance": "Plain", "description": "A streamer.", "public_state": "Present",
+            "private_state": "Thinking",
+            "current_activity": {
+                "name": "idle", "started_at": None, "expected_end": None,
+                "interruptible": True, "constraints": [],
+            },
+            "speech_style": "playful",
+        }],
+        "background_characters": [{"id": "stub-1", "name": "User", "description": "The user's persona."}],
+        "items": [], "item_stacks": [], "equipment": [], "containers": [],
+        "turns": [{
+            "id": "turn-1", "sequence": 0, "type": "system_response", "content": "Hi!", "start_time": now,
+        }],
+        "events": [{
+            "id": "evt-1", "name": "The War", "summary": "They fought.", "turn_ids": ["turn-1"],
+            "involved_characters": [{"character_id": "char-1", "involvement": "participate"}],
+        }],
+        "memories": [{
+            "id": "mem-1", "summary": "We fought.", "keywords": ["war"], "embedding": None,
+            "event_id": "evt-1", "support_type": "direct",
+            "character_links": [{
+                "character_id": "char-1", "confidence": 1.0, "salience": "medium",
+                "stance": "remember", "behavioural_relevance": None,
+            }],
+        }],
+        "intents": [{
+            "id": "int-1", "type": "quest", "name": "Solve it", "description": "Find the truth.",
+            "keywords": [], "embedding": None, "priority": 0.9, "urgency": 0.5, "status": "active",
+            "desired_state": None, "success_conditions": [], "failure_conditions": [],
+            "maintenance_conditions": [], "deadline": None, "horizon": "long", "constraints": [],
+            "current_plan": [], "next_action_biases": [], "blockers": [], "open_threads": [],
+            "character_id": "char-1", "created_by_event_id": None, "contributed_by_event_ids": [],
+        }],
+        "entity_relationships": [{
+            "label": "rivals", "public_description": "Old rivals.", "private_description": None,
+            "visibility": "objective", "perspective_character_id": None, "confidence": 1.0,
+            "details": {"kind": "generic", "attributes": {}}, "evidence_memory_ids": [],
+            "source": {"type": "character", "id": "char-1", "name": None},
+            "target": {"type": "background_character", "id": "stub-1", "name": None},
+            "created_at": now, "last_changed_at": now, "version": 1, "active": True,
+        }],
+        "entity_variable_sets": [{
+            "owner_type": "character", "owner_id": "char-1",
+            "variables": [{
+                "name": "hp", "value_type": "integer", "value": 100, "default_value": 100,
+                "description": "Health.", "minimum": 0, "maximum": 100, "allowed_values": [],
+            }],
+            "last_updated_at": now,
+        }],
+        "chat_configs": [], "embed_configs": [], "image_configs": [], "tts_configs": [],
+        "prompts": [], "workflows": [], "media": [],
+    }
+
+    world = await WorldImportService(database=db, storage=storage).import_assembled_sections(
+        world_row, sections, author.id,
+    )
+
+    assert world.name == "Imported World"
+    assert world.description == "A cursed village."
+
+    locations = await db.location.list_locations(world_id=world.id)
+    assert {location.name for location in locations} == {"City", "House"}
+    parent_map = await db.location.get_parent_map(world.id)
+    house = next(location for location in locations if location.name == "House")
+    city = next(location for location in locations if location.name == "City")
+    assert parent_map[house.id] == city.id
+
+    characters = await db.character.list_characters(world_id=world.id)
+    assert [character.name for character in characters] == ["Kiki"]
+    kiki = characters[0]
+
+    background_characters = await db.character.list_background_characters(world_id=world.id)
+    assert [character.name for character in background_characters] == ["User"]
+    user_stub = background_characters[0]
+
+    events = await db.event.list_events(character_id=kiki.id)
+    assert [event.name for event in events] == ["The War"]
+
+    memories = await db.memory.list_memories(character_id=kiki.id)
+    assert [memory.summary for memory in memories] == ["We fought."]
+
+    intents = await db.intent.list_intents(character_id=kiki.id)
+    assert [intent.name for intent in intents] == ["Solve it"]
+
+    relationships = await db.entity_relationship.list_relationships(scope_id=world.id, active_only=False)
+    assert len(relationships) == 1
+    assert relationships[0].source.id == kiki.id
+    assert relationships[0].target.id == user_stub.id
+
+    variable_set = await db.variable.get_variable_set(kiki.id)
+    assert variable_set is not None
+    assert variable_set.variables[0].name == "hp"
+    assert variable_set.variables[0].value == 100

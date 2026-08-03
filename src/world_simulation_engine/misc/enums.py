@@ -47,6 +47,13 @@ class ComponentType(StrEnum):
     SCENE_IMAGE_GENERATOR = "scene_image_generator"
     TURN_IMAGE_TRIGGER = "turn_image_trigger"
     NARRATOR_TTS = "narrator_tts"
+    ST_LOREBOOK_CLASSIFIER = "st_lorebook_classifier"
+    ST_CHARACTER_EXTRACTOR = "st_character_extractor"
+    ST_LOCATION_EXTRACTOR = "st_location_extractor"
+    ST_WORLD_LORE_EXTRACTOR = "st_world_lore_extractor"
+    ST_NARRATIVE_EXTRACTOR = "st_narrative_extractor"
+    ST_INTENT_EXTRACTOR = "st_intent_extractor"
+    ST_VARIABLE_SCHEMA_EXTRACTOR = "st_variable_schema_extractor"
 
 
 class ConnectionType(StrEnum):
@@ -270,3 +277,18 @@ class Visibility(StrEnum):
     AUDIBLE = "audible"
     INFERRED = "inferred"
     INVISIBLE = "invisible"
+
+
+class LorebookItemBucket(StrEnum):
+    """What one piece of SillyTavern card content (a top-level field or lorebook entry) is about,
+    for routing to the right stage-2 extractor of the import pipeline."""
+    CHARACTER_BIO = "character_bio"
+    CHARACTER_VOICE = "character_voice"
+    RELATIONSHIP = "relationship"
+    HISTORY_EVENT = "history_event"
+    WORLD_LORE = "world_lore"
+    LOCATION = "location"
+    PACING_INSTRUCTION = "pacing_instruction"
+    HIDDEN_TRUTH = "hidden_truth"
+    VARIABLE_META = "variable_meta"
+    IRRELEVANT = "irrelevant"

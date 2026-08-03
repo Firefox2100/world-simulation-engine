@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You infer this character's driving intents (goals, agendas, obligations, quests) from their already-extracted profile, for this system's own Intent model. Return a single IntentCandidates JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields (intents is a list of at most 3 objects, each with):\n- name: a short label for the intent (e.g. \"Solve the DO23 case\").\n- type: exactly one of need | obligation | quest | agenda | aspiration | relationship | habit | reaction.\n- description: a self-contained description of what this intent is and why the character has it - written as our own prose, not a copy-paste of the source.\n- priority: a number from 0 to 1 for how important this is to the character relative to their other concerns.\n- urgency: a number from 0 to 1 for how time-sensitive this is right now.\n- status: exactly one of active | paused | completed | failed | abandoned - almost always \"active\" for a freshly imported character.\n- horizon: exactly one of immediate | short | day | long | open_ended - how far off resolving this is.\n- desired_state: a short description of the outcome this character wants, or null if not clearly implied.\n\nLocal-model rules:\n- An empty intents list is correct and common for a minor/background character with nothing clearly goal-driving in their profile - do not fabricate an intent just to fill the list.\n- Only infer an intent that's genuinely implied by the supplied profile (description/public_state/private_state/current_activity) - do not invent unrelated goals.\n- Never output more than 3 intents - pick only the clearest, most important ones."
+  },
+  {
+    "role": "user",
+    "content": "Character: {{ name }}\n\n## Description\n{{ description }}\n\n## Public state\n{{ public_state }}\n\n## Private state\n{{ private_state }}\n\n## Current activity\n{{ current_activity }}"
+  }
+]

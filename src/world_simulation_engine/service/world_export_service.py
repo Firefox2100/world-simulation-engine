@@ -97,6 +97,7 @@ class WorldExportService:
             active_only=False,
             limit=_ALL_RELATIONSHIPS_LIMIT,
         )
+        entity_variable_sets = await db.variable.list_variable_sets_by_source(world_id)
 
         chat_assignments = await db.config.list_chats_by_source(world_id)
         embed_assignments = await db.config.list_embeds_by_source(world_id)
@@ -218,6 +219,9 @@ class WorldExportService:
             ]))
             archive.writestr("data/entity_relationships.jsonl", _jsonl([
                 _dump(relationship) for relationship in relationships
+            ]))
+            archive.writestr("data/entity_variable_sets.jsonl", _jsonl([
+                _dump(variable_set) for variable_set in entity_variable_sets
             ]))
 
             archive.writestr("configs/chat.jsonl", _jsonl([

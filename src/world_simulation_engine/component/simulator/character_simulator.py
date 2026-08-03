@@ -337,6 +337,19 @@ class CharacterSimulator(SimulatorComponent):
             character_id=character.id,
             thread_id=thread_id,
         )
+        placeholder_context = self._placeholder_context(
+            character=[character, *(entry.character for entry in perspective.perceived_characters)],
+            background_character=[entry.character for entry in perspective.perceived_background_characters],
+            location=[location],
+            item=[entry.item for entry in perspective.perceived_items],
+            equipment=[entry.equipment for entry in perspective.perceived_equipment],
+            container=[entry.container for entry in perspective.perceived_containers],
+            landmark=[entry.landmark for entry in perspective.perceived_landmarks],
+        )
+        character = character.model_copy(update={
+            field: self._render_placeholders(getattr(character, field), placeholder_context)
+            for field in ("description", "public_state", "private_state", "speech_style")
+        })
         emotion = await self._effective_emotion(
             simulation=simulation,
             character_id=character.id,

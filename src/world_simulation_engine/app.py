@@ -12,8 +12,8 @@ from world_simulation_engine.component.simulator.world_simulator import WorldSim
 from world_simulation_engine.router import author_router, background_character_router, character_router, \
     config_router, container_router, equipment_router, event_router, image_generation_router, intent_router, \
     item_router, landmark_router, \
-    location_router, media_router, memory_router, prompt_router, simulation_router, speech_recognition_router, \
-    turn_router, workflow_router, world_router
+    location_router, media_router, memory_router, prompt_router, sillytavern_import_router, simulation_router, \
+    speech_recognition_router, turn_router, variable_router, workflow_router, world_router
 
 
 @asynccontextmanager
@@ -75,9 +75,11 @@ def create_app() -> FastAPI:
     app.include_router(media_router)
     app.include_router(memory_router)
     app.include_router(prompt_router)
+    app.include_router(sillytavern_import_router)
     app.include_router(simulation_router)
     app.include_router(speech_recognition_router)
     app.include_router(turn_router)
+    app.include_router(variable_router)
     app.include_router(workflow_router)
     app.include_router(world_router)
 

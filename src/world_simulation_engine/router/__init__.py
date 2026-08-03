@@ -13,8 +13,10 @@ from .location import location_router
 from .media import media_router
 from .memory import memory_router
 from .prompt import prompt_router
+from .sillytavern_import import sillytavern_import_router
 from .simulation import simulation_router
 from .speech_recognition import speech_recognition_router
 from .turn import turn_router
+from .variable import variable_router
 from .workflow import workflow_router
 from .world import world_router

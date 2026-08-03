@@ -647,6 +647,74 @@ class ConfigStore:
         record = result.records[0] if result.records else None
         return bool(record and record["source_count"])
 
+    async def get_global_chat(self, component: ComponentType) -> ChatModelConfigUnion | None:
+        """A chat config used for one component without belonging to any World or Simulation -
+        e.g. the SillyTavern import pipeline, which necessarily runs before any World exists.
+
+        Mirrors `get_global_stt`'s approach (no source/scope node - just look for a config marked
+        for this purpose directly) rather than inventing a fake World-like scope node, generalized
+        with a `global_components` marker property since - unlike STT, which only ever has one
+        config in the whole system - a global chat config still needs to say *which* component(s)
+        it is the default for. A list, not a single value, because the same config is commonly the
+        global default for several components at once (e.g. every stage of one import pipeline).
+        """
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS})
+            WHERE $component IN coalesce(c.global_components, [])
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection LIMIT 1
+            """,
+            parameters_={"component": component},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _chat_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def link_global_chat(self, config_id: str, component: ComponentType) -> ChatModelConfigUnion | None:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS} {{id: $config_id}})
+            OPTIONAL MATCH (previous:{CHAT_CONFIG_LABELS})
+            WHERE previous.id <> $config_id AND $component IN coalesce(previous.global_components, [])
+            WITH c, collect(previous) AS previous_holders
+            FOREACH (p IN previous_holders |
+                SET p.global_components = [x IN p.global_components WHERE x <> $component]
+            )
+            SET c.global_components =
+                CASE WHEN $component IN coalesce(c.global_components, [])
+                    THEN c.global_components
+                    ELSE coalesce(c.global_components, []) + $component
+                END
+            OPTIONAL MATCH (c)-[:USES]->(connection:ConnectionConfig)
+            RETURN labels(c) AS config_labels, c AS config, connection
+            """,
+            parameters_={"config_id": config_id, "component": component},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return _chat_from_node(record["config"], record["config_labels"], record["connection"])
+
+    async def unlink_global_chat(self, component: ComponentType) -> bool:
+        result = await self._driver.execute_query(
+            f"""
+            MATCH (c:{CHAT_CONFIG_LABELS})
+            WHERE $component IN coalesce(c.global_components, [])
+            SET c.global_components = [x IN c.global_components WHERE x <> $component]
+            RETURN count(c) AS count
+            """,
+            parameters_={"component": component},
+        )
+
+        record = result.records[0] if result.records else None
+        return bool(record and record["count"])
+
     async def update_chat(self,
                           config_id: str,
                           properties: dict,

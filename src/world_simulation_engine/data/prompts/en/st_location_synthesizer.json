@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "This character card has no dedicated location content - you must decide whether its scenario/opening message implies any concrete place worth modeling as a location, and if so, synthesize a minimal set of locations for it. Return a single SynthesizedLocations JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields:\n- locations: a list of at most 2 locations, each with:\n  - name: a short, concrete name for the place (e.g. \"Kiki's Bedroom\", not \"a room\").\n  - description: a self-contained description of the location - what it looks like, its atmosphere - written as our own prose, inferred from the scenario/opening but not copied verbatim.\n\nLocal-model rules:\n- An empty locations list is the correct answer when the scenario and opening message give no real, concrete location cue - do not fabricate a generic setting just to fill the field.\n- Never output more than 2 locations - pick only the ones actually implied, most important first.\n- Prefer a single well-grounded location over two weakly-inferred ones."
+  },
+  {
+    "role": "user",
+    "content": "Card name: {{ card_name }}\n\n## Scenario\n{{ scenario if scenario else \"(none)\" }}\n\n## Opening message\n{{ first_message if first_message else \"(none)\" }}"
+  }
+]

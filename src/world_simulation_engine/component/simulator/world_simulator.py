@@ -43,6 +43,7 @@ from .relationship_updater import RelationshipUpdater
 from .scene_coordinator import SceneCoordinator
 from .state_committer import StateCommitter
 from .subjective_model_updater import SubjectiveModelUpdater
+from .variable_updater import VariableUpdater
 
 
 class CharacterActionProposalRecord(BaseModel):
@@ -201,6 +202,7 @@ class WorldSimulator:
     _MAX_VALIDATION_REWORK_ATTEMPTS = 3
     _MAX_SCHEDULED_CHARACTERS = 8
     _MAX_RELATIONSHIP_UPDATE_PERSPECTIVES = 8
+    _MAX_VARIABLE_UPDATE_CANDIDATES = 8
     _RUN_DONE = object()
 
     def __init__(self,
@@ -265,6 +267,10 @@ class WorldSimulator:
             prompt_loader=prompt_loader,
         )
         self._subjective_model_updater = SubjectiveModelUpdater(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._variable_updater = VariableUpdater(
             database=database,
             prompt_loader=prompt_loader,
         )
@@ -2190,11 +2196,20 @@ class WorldSimulator:
             memory_ids: list[str],
             candidate_ids: set[str],
     ) -> None:
-        """Emotion, subjective-belief, and relationship inference for one perspective.
+        """Emotion, subjective-belief, relationship, and variable inference for one perspective.
 
         Each is independent isolated derived state (they touch disjoint node types), so they run
         concurrently; a failure in one must not suppress the others or invalidate the committed turn.
+
+        Variable updates also run for a bounded set of candidate entities (not just the
+        perspective character), since tracked variables can belong to items/equipment/other
+        characters this character's actions touched - but each call is a fast no-op for the (most
+        common) case of an entity with no EntityVariableSet at all, so this stays cheap.
         """
+        variable_update_owner_ids = [
+            character_id,
+            *sorted(candidate_ids - {character_id})[:self._MAX_VARIABLE_UPDATE_CANDIDATES],
+        ]
         await asyncio.gather(
             self._emotion_updater.update_from_memories(
                 simulation_id=simulation_id,
@@ -2215,6 +2230,15 @@ class WorldSimulator:
                 turn_id=turn_id,
                 memory_ids=memory_ids,
                 candidate_entity_ids=sorted(candidate_ids),
+            ),
+            *(
+                self._variable_updater.update_from_memories(
+                    simulation_id=simulation_id,
+                    owner_id=owner_id,
+                    turn_id=turn_id,
+                    memory_ids=memory_ids,
+                )
+                for owner_id in variable_update_owner_ids
             ),
             return_exceptions=True,
         )

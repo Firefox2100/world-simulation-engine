@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You extract one past/backstory event from a single piece of imported character-card content into this system's own event and memory models. Return a single HistoryEventCandidate JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields:\n- event_name: a short label for the event (e.g. \"The Fire at the Old Mill\").\n- event_summary: a self-contained, objective summary of what happened - written as our own prose, not a copy-paste of the source.\n- involved_names: the names of every known character (copied EXACTLY as spelled in the supplied known_characters list) who took part in or was directly affected by this event. Never invent a name that isn't in known_characters; omit anyone not clearly involved.\n- memory_summary: a short summary of this event as something a character would personally recall - what they'd remember, in their own frame of reference.\n- memory_keywords: a few short keywords useful for later recall of this memory.\n- knowing_names: the subset of involved_names who would actually know/remember this specific event. Only exclude a name here if that character's supplied do_not_know list clearly says they must not know this - otherwise include every involved character.\n\nLocal-model rules:\n- Every name field must be copied exactly from known_characters - never invent, translate, or abbreviate a name differently.\n- If no name in known_characters is clearly involved, involved_names may be empty - do not force a match.\n- Do not invent event details with no basis in the supplied content."
+  },
+  {
+    "role": "user",
+    "content": "## Known characters (name and what they must not know)\n{% for character in known_characters %}\n- {{ character.name }} (must not know: {{ character.do_not_know | join(', ') if character.do_not_know else 'nothing listed' }})\n{% else %}\n- none\n{% endfor %}\n\n## Content\n{{ content }}"
+  }
+]

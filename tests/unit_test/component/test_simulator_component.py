@@ -100,3 +100,29 @@ def test_relationship_context_message_renders_compact_directional_facts():
     assert len(messages) == 1
     assert "Alex (character_1) --trusts--> Blair (character_2)" in messages[0].content
     assert "trust" in messages[0].content
+
+
+def test_placeholder_context_groups_entities_by_keyword():
+    character = SimpleNamespace(id="character_1", name="Arthur Moore")
+    location = SimpleNamespace(id="location_1", name="Iron Stag Inn")
+
+    context = InputInterpreter._placeholder_context(
+        character=[character],
+        location=[location],
+    )
+
+    assert context.character["character_1"].name == "Arthur Moore"
+    assert context.location["location_1"].name == "Iron Stag Inn"
+    assert context.item == {}
+
+
+def test_render_placeholders_resolves_against_built_context():
+    character = SimpleNamespace(id="character_1", name="Arthur Moore")
+    context = InputInterpreter._placeholder_context(character=[character])
+
+    rendered = InputInterpreter._render_placeholders(
+        "{{ character['character_1'].name }} nods.",
+        context,
+    )
+
+    assert rendered == "Arthur Moore nods."

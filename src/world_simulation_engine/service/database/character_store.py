@@ -23,6 +23,7 @@ class CharacterStore:
             public_state=character_node["public_state"],
             private_state=character_node["private_state"],
             current_activity=CurrentActivity.model_validate_json(character_node["current_activity"]),
+            speech_style=character_node.get("speech_style") or "",
         )
 
     @staticmethod
@@ -58,7 +59,8 @@ class CharacterStore:
                 description: $description,
                 public_state: $public_state,
                 private_state: $private_state,
-                current_activity: $current_activity
+                current_activity: $current_activity,
+                speech_style: $speech_style
             })
             MERGE (s) -[:CONTAINS]-> (c)
             FOREACH (_ IN CASE
@@ -89,6 +91,7 @@ class CharacterStore:
                 "public_state": character.public_state,
                 "private_state": character.private_state,
                 "current_activity": character.current_activity.model_dump_json(),
+                "speech_style": character.speech_style,
                 "source_id": source_id,
                 "location_id": location_id,
                 "position": position,

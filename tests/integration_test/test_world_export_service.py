@@ -8,9 +8,10 @@ from world_simulation_engine.misc.enums import ComponentType, ConnectionType, Co
     IntentHorizon, IntentStatus, IntentType, MediaType, MemoryStance, MemorySupportType, Salience, \
     SupportedLanguage, TurnType
 from world_simulation_engine.model import AllTalkXttsModelConfig, BackgroundCharacter, Character, \
-    CharacterTtsConfig, Container, ConnectionConfig, CurrentActivity, EntityRelationship, Equipment, Event, \
-    GenericRelationshipDetails, Intent, Item, ItemStack, Landmark, Location, MediaFile, MemoryAtom, \
-    OllamaChatModelConfig, OllamaEmbedModelConfig, PromptMediaFile, RelationshipEntityRef, RelationshipScope, Turn
+    CharacterTtsConfig, Container, ConnectionConfig, CurrentActivity, EntityRelationship, EntityVariableSet, \
+    Equipment, Event, GenericRelationshipDetails, Intent, Item, ItemStack, Landmark, Location, MediaFile, \
+    MemoryAtom, OllamaChatModelConfig, OllamaEmbedModelConfig, PromptMediaFile, RelationshipEntityRef, \
+    RelationshipScope, Turn, VariableDefinition
 from world_simulation_engine.service import DatabaseService, StorageService, WorldExportService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 from integration_test.database_service.helpers import create_world
@@ -111,6 +112,20 @@ async def test_export_world_produces_complete_and_credential_free_archive(clean_
         last_changed_at=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
     )
     await db.entity_relationship.create_relationship(relationship)
+
+    variable_set = EntityVariableSet(
+        source_id=world.id,
+        owner_type="character",
+        owner_id=alex.id,
+        variables=[
+            VariableDefinition(
+                name="health", value_type="integer", value=80, default_value=100,
+                description="Hit points.", minimum=0, maximum=100,
+            ),
+        ],
+        last_updated_at=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    await db.variable.create_variable_set(variable_set)
 
     connection = ConnectionConfig(
         id=str(uuid4()), type=ConnectionType.OLLAMA, name="Local Ollama",
@@ -239,6 +254,12 @@ async def test_export_world_produces_complete_and_credential_free_archive(clean_
 
         relationships = read_jsonl("data/entity_relationships.jsonl")
         assert any(row["label"] == "knows" for row in relationships)
+
+        variable_sets = read_jsonl("data/entity_variable_sets.jsonl")
+        assert len(variable_sets) == 1
+        assert variable_sets[0]["owner_id"] == alex.id
+        assert variable_sets[0]["variables"][0]["name"] == "health"
+        assert variable_sets[0]["variables"][0]["value"] == 80
 
         chat_rows = read_jsonl("configs/chat.jsonl")
         assert len(chat_rows) == 1

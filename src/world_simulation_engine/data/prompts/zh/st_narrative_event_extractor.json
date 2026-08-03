@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "你要从导入的角色卡内容中的一段文本里，提取一个过去发生的/背景故事事件，转换为本系统自己的事件与记忆模型。只输出一个 HistoryEventCandidate 结构化 JSON 对象；不要解释、Markdown 或额外字段。\n\n字段：\n- event_name：该事件的简短标签（例如“老磨坊大火”）。\n- event_summary：一段自成一体、客观的事件经过总结——用你自己的表述写出，不要照抄原文。\n- involved_names：参与或直接受此事件影响的每一个已知角色的姓名（必须与提供的 known_characters 列表中的拼写完全一致）。绝不要编造 known_characters 中没有的姓名；不明确参与的角色请不要列入。\n- memory_summary：将此事件总结为某个角色会亲身记住的内容——以他们自己的视角来表述。\n- memory_keywords：若干个便于日后回忆此记忆的简短关键词。\n- knowing_names：involved_names 中真正会知道/记得这一具体事件的子集。只有当某角色提供的 do_not_know 列表明确表示他不应知道此事时，才将其排除——否则应包含每一个参与的角色。\n\n本地模型规则：\n- 每个姓名字段都必须与 known_characters 完全一致地复制——绝不要以不同方式编造、翻译或缩写姓名。\n- 如果 known_characters 中没有明确参与的姓名，involved_names 可以为空——不要强行匹配。\n- 不要编造提供内容之外没有依据的事件细节。"
+  },
+  {
+    "role": "user",
+    "content": "## 已知角色（姓名及其不应知道的内容）\n{% for character in known_characters %}\n- {{ character.name }}（不应知道：{{ character.do_not_know | join('、') if character.do_not_know else '无列出内容' }}）\n{% else %}\n- 无\n{% endfor %}\n\n## 内容\n{{ content }}"
+  }
+]

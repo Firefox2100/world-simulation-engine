@@ -83,6 +83,11 @@ class Character(BaseModel):
         ...,
         description="Current activity of the character",
     )
+    speech_style: str = Field(
+        "",
+        description="How this character speaks: voice, register, verbal tics, sentence rhythm. "
+                    "Constrains generated utterance wording, not narration written about the character.",
+    )
 
 
 class BackgroundCharacter(BaseModel):

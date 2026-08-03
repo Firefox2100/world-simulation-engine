@@ -54,4 +54,6 @@ from .simulation import Simulation
 from .turn import Turn
 from .turn_presentation import PresentedTurn, PresentationBlockType, PresentationCompletion, \
     TurnPresentationBlock, TurnPresentationRendering
+from .variable import EntityVariableSet, ProposedVariableChange, VariableChangeAudit, VariableDefinition, \
+    VariableUpdateProposal, VariableValueType
 from .world import Author, World

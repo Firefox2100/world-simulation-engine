@@ -2624,6 +2624,372 @@ body {
     color: #991b1b;
 }
 
+/* SillyTavern import page - a dedicated, nav-bar-free page (not nested under AppLayout). */
+
+.st-import-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #f3f4f6;
+}
+
+.st-import-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 24px;
+    background: white;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.st-import-header h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    flex: 1;
+    text-align: center;
+}
+
+.st-import-header-spacer {
+    width: 132px;
+}
+
+.st-import-layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
+}
+
+.st-import-left,
+.st-import-right {
+    padding: 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.st-import-left {
+    border-right: 1px solid #e5e7eb;
+}
+
+.st-import-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 100%;
+}
+
+.st-import-placeholder > * {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.st-import-review-gate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    min-width: 260px;
+}
+
+.st-import-review-gate .form-field {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+}
+
+.st-import-review {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.st-import-extracted {
+    display: flex;
+    flex-direction: column;
+}
+
+.st-import-commit-button {
+    margin-top: 24px;
+    align-self: flex-start;
+}
+
+.st-import-report {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.st-import-report-list {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #374151;
+}
+
+.st-import-report-flagged {
+    color: #b45309;
+}
+
+.st-import-add-button {
+    margin-top: 4px;
+}
+
+.st-import-entry-header-static {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px;
+}
+
+.st-import-remove-button {
+    color: #b91c1c;
+    font-size: 1.1rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.st-import-field-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.st-import-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.st-import-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: white;
+    font-size: 0.9rem;
+}
+
+.st-import-chip input {
+    width: 14px;
+    height: 14px;
+}
+
+.st-import-variable-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.st-import-variable-name {
+    min-width: 120px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.st-import-variable-row .single-line-input {
+    flex: 1;
+}
+
+.st-import-dropzone {
+    padding: 48px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 2px dashed #d1d5db;
+    border-radius: 12px;
+    background: white;
+    cursor: pointer;
+    text-align: center;
+}
+
+.st-import-dropzone:hover,
+.st-import-dropzone-active {
+    border-color: #111827;
+    background: #f9fafb;
+}
+
+.st-import-dropzone-disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.st-import-dropzone-prompt {
+    margin: 0;
+    font-weight: 700;
+    color: #111827;
+}
+
+.st-import-dropzone-hint {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.st-import-dropzone-input {
+    display: none;
+}
+
+.st-import-card-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.st-import-card-summary {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.st-import-cover {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+}
+
+.st-import-file-name {
+    margin: 0 0 6px;
+    color: #374151;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.st-import-card-editor .form-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+}
+
+.st-import-card-editor .form-field .multi-line-input {
+    height: 88px;
+}
+
+.st-import-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.st-import-section h2 {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+}
+
+.st-import-section-hint {
+    margin: 0 0 14px;
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.st-import-greeting-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.st-import-greeting {
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: white;
+}
+
+.st-import-greeting-selected {
+    border-color: #111827;
+}
+
+.st-import-greeting-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.st-import-greeting-header input {
+    width: 16px;
+    height: 16px;
+}
+
+.st-import-entry-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.st-import-entry {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: white;
+    overflow: hidden;
+}
+
+.st-import-entry-disabled {
+    opacity: 0.55;
+}
+
+.st-import-entry-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    cursor: pointer;
+}
+
+.st-import-entry-header input {
+    width: 18px;
+    height: 18px;
+}
+
+.st-import-entry-title {
+    font-weight: 700;
+}
+
+.st-import-entry-body {
+    padding: 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.st-import-entry-body .form-field {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    margin-bottom: 0;
+}
+
+.st-import-entry-body .multi-line-input {
+    height: 88px;
+}
+
+@media (max-width: 900px) {
+    .st-import-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .st-import-left {
+        border-right: 0;
+        border-bottom: 1px solid #e5e7eb;
+    }
+}
+
 @media (max-width: 767px) {
     .app-header {
         padding: 0 16px;

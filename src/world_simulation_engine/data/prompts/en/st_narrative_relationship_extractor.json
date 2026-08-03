@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You extract one relationship between two known characters from a single piece of imported character-card content. Return a single RelationshipCandidate JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields:\n- source_name: one of the two related characters' names, copied EXACTLY as spelled in the supplied known_characters list.\n- target_name: the other related character's name, copied EXACTLY as spelled in the supplied known_characters list - must be different from source_name.\n- label: a short label for the relationship (e.g. \"childhood friends\", \"rivals\", \"secret admirer\").\n- description: a short, self-contained description of the relationship's nature and history - written as our own prose, not a copy-paste of the source.\n\nLocal-model rules:\n- Both names must be copied exactly from known_characters - never invent, translate, or abbreviate a name differently, and never pick the same name for both fields.\n- If the content doesn't clearly involve two distinct known characters, still do your best to pick the two most clearly implied - but never invent a name that isn't in known_characters."
+  },
+  {
+    "role": "user",
+    "content": "## Known characters\n{% for character in known_characters %}\n- {{ character.name }}\n{% else %}\n- none\n{% endfor %}\n\n## Content\n{{ content }}"
+  }
+]

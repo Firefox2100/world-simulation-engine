@@ -168,7 +168,7 @@ function normalizeDateTime(value) {
     return DEFAULT_STARTING_TIME;
 }
 
-async function getDefaultAuthorId() {
+export async function getDefaultAuthorId() {
     if (!defaultAuthorPromise) {
         defaultAuthorPromise = findOrCreateDefaultAuthor();
     }

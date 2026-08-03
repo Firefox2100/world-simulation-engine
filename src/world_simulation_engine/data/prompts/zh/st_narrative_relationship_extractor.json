@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "你要从导入的角色卡内容中的一段文本里，提取两个已知角色之间的一段关系。只输出一个 RelationshipCandidate 结构化 JSON 对象；不要解释、Markdown 或额外字段。\n\n字段：\n- source_name：这段关系中一方角色的姓名，必须与提供的 known_characters 列表中的拼写完全一致。\n- target_name：另一方角色的姓名，必须与提供的 known_characters 列表中的拼写完全一致——必须与 source_name 不同。\n- label：这段关系的简短标签（例如“青梅竹马”“对手”“暗恋者”）。\n- description：一段简短、自成一体的描述，说明这段关系的性质与来龙去脉——用你自己的表述写出，不要照抄原文。\n\n本地模型规则：\n- 两个姓名都必须与 known_characters 完全一致地复制——绝不要以不同方式编造、翻译或缩写姓名，也绝不要两个字段填入相同的姓名。\n- 如果内容并未明确涉及两个不同的已知角色，也请尽力选出内容最明确暗示的两个——但绝不要编造 known_characters 中没有的姓名。"
+  },
+  {
+    "role": "user",
+    "content": "## 已知角色\n{% for character in known_characters %}\n- {{ character.name }}\n{% else %}\n- 无\n{% endfor %}\n\n## 内容\n{{ content }}"
+  }
+]

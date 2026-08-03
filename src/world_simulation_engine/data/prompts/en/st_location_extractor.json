@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You extract one location from a single piece of imported character-card content into this system's own location model. Return a single LocationCandidate JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields:\n- name: the location's name, exactly as it appears in the source content (a place name, not a category label).\n- description: a self-contained description of the location - what it looks like, its atmosphere, what happens there - written as our own prose, not a copy-paste of the source.\n- parent_name: the exact-spelling name of another, larger location this one is contained inside (e.g. a city containing a specific building), copied verbatim from the source content, only if the content itself clearly implies that nesting. Use null if this is a top-level location, or if nesting isn't clearly implied - never guess a container that isn't actually stated.\n\nLocal-model rules:\n- name and description must both be concrete and non-empty.\n- Do not invent details with no basis in the supplied content, but do write the description as flowing prose rather than a bare restatement.\n- parent_name is usually null - only set it when the content itself names a clearly larger containing place."
+  },
+  {
+    "role": "user",
+    "content": "Card name: {{ card_name }}\nSource label: {{ label }}\n\n## Content\n{{ content }}"
+  }
+]

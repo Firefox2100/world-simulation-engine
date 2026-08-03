@@ -57,6 +57,10 @@ class CharacterCreate(BaseModel):
         ...,
         description="Current activity of the character",
     )
+    speech_style: str = Field(
+        "",
+        description="How this character speaks: voice, register, verbal tics, sentence rhythm.",
+    )
     location_id: Optional[str] = Field(
         None,
         description="Optional location where the character is present",
@@ -111,6 +115,10 @@ class CharacterUpdate(BaseModel):
     current_activity: Optional[CurrentActivity] = Field(
         None,
         description="Current activity of the character",
+    )
+    speech_style: Optional[str] = Field(
+        None,
+        description="How this character speaks: voice, register, verbal tics, sentence rhythm.",
     )
     location_id: Optional[str] = Field(
         None,

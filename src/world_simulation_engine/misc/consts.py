@@ -19,6 +19,16 @@ class Prompts(TypedDict, total=False):
     emotion_updater: list[dict]
     relationship_updater: list[dict]
     subjective_model_updater: list[dict]
+    variable_updater: list[dict]
+    st_lorebook_classifier: list[dict]
+    st_character_extractor: list[dict]
+    st_location_extractor: list[dict]
+    st_location_synthesizer: list[dict]
+    st_world_lore_extractor: list[dict]
+    st_narrative_event_extractor: list[dict]
+    st_narrative_relationship_extractor: list[dict]
+    st_intent_extractor: list[dict]
+    st_variable_schema_extractor: list[dict]
     narrator: list[dict]
     ooc_handler: list[dict]
     scene_coordinator: list[dict]
@@ -52,6 +62,16 @@ PROMPT_NAMES = [
     "emotion_updater",
     "relationship_updater",
     "subjective_model_updater",
+    "variable_updater",
+    "st_lorebook_classifier",
+    "st_character_extractor",
+    "st_location_extractor",
+    "st_location_synthesizer",
+    "st_world_lore_extractor",
+    "st_narrative_event_extractor",
+    "st_narrative_relationship_extractor",
+    "st_intent_extractor",
+    "st_variable_schema_extractor",
     "narrator",
     "ooc_handler",
     "scene_coordinator",

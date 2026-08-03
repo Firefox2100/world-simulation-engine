@@ -51,5 +51,13 @@ class Settings(BaseSettings):
                     "before older ones are automatically pruned"
     )
 
+    sillytavern_import_max_concurrency: int = Field(
+        4,
+        description="Maximum number of concurrent LLM calls within one stage of the SillyTavern "
+                    "card import pipeline (e.g. classifying many lorebook entries at once). "
+                    "Passed as LangGraph's own `max_concurrency` run config, so it throttles "
+                    "Send-dispatched fan-out directly rather than via a separate semaphore."
+    )
+
 
 CONFIG = Settings(_env_file=os.getenv('WSE_ENV_FILE', '.env'))      # type: ignore

@@ -24,9 +24,9 @@ from pydantic import TypeAdapter, ValidationError
 
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import BackgroundCharacter, Character, CharacterTtsConfig, ChatModelConfigUnion, \
-    Container, EmbedModelConfigUnion, EntityRelationship, Equipment, Event, ImageModelConfigUnion, Intent, Item, \
-    ItemStack, Landmark, Location, MediaFile, MemoryAtom, PromptMediaFile, Turn, TtsModelConfigUnion, \
-    WorkflowMediaFile, World
+    Container, EmbedModelConfigUnion, EntityRelationship, EntityVariableSet, Equipment, Event, \
+    ImageModelConfigUnion, Intent, Item, ItemStack, Landmark, Location, MediaFile, MemoryAtom, PromptMediaFile, \
+    Turn, TtsModelConfigUnion, WorkflowMediaFile, World
 from world_simulation_engine.service.database import DatabaseService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 from world_simulation_engine.service.storage_service import StorageService
@@ -107,6 +107,10 @@ class WorldImportService:
             "memories": self._read_jsonl(archive, "data/memories.jsonl"),
             "intents": self._read_jsonl(archive, "data/intents.jsonl"),
             "entity_relationships": self._read_jsonl(archive, "data/entity_relationships.jsonl"),
+            # Optional: added after entity variable sets existed. Older archives simply don't have
+            # this file, and a world/simulation with no tracked variables is a normal, common case
+            # even for archives that do.
+            "entity_variable_sets": self._read_optional_jsonl(archive, "data/entity_variable_sets.jsonl"),
             "chat_configs": self._read_jsonl(archive, "configs/chat.jsonl"),
             "embed_configs": self._read_jsonl(archive, "configs/embed.jsonl"),
             "image_configs": self._read_jsonl(archive, "configs/image.jsonl"),
@@ -132,11 +136,40 @@ class WorldImportService:
 
         return created_world
 
+    async def import_assembled_sections(self,
+                                        world_row: dict,
+                                        sections: dict[str, list],
+                                        author_id: str,
+                                        ) -> World:
+        """Entry point for a caller that already has a `world`/`sections` bundle in memory - shaped
+        exactly like `import_world` builds from an archive - rather than a real uploaded zip file
+        (e.g. the SillyTavern import pipeline's `WorldAssembler` output). Skips the archive
+        round-trip `import_world` needs for a real upload: there is no zip to open, and `sections`
+        never carries media for this caller, so `archive=None` is safe (`_import_media` never
+        touches it when `sections["media"]` is empty)."""
+        try:
+            world = World.model_validate({**world_row, "id": str(uuid4())})
+        except ValidationError as exc:
+            raise WorldImportError(f"Invalid world data: {exc}") from exc
+
+        created_world = await self._db.world.create_world(world, author_id)
+        if not created_world:
+            raise AuthorNotFoundError(author_id)
+
+        try:
+            await self._import_world_contents(created_world, world_row, sections, archive=None)
+        except (ValidationError, KeyError, TypeError, IndexError) as exc:
+            raise WorldImportError(
+                f"The assembled world contains invalid or unexpected data: {exc}"
+            ) from exc
+
+        return created_world
+
     async def _import_world_contents(self,
                                      world: World,
                                      world_row: dict,
                                      sections: dict[str, list],
-                                     archive: ZipFile,
+                                     archive: ZipFile | None,
                                      ) -> None:
         media_id_map = await self._import_media(archive, sections["media"])
 
@@ -155,6 +188,7 @@ class WorldImportService:
         memory_id_map = await self._import_memories(sections["memories"], event_id_map, id_map)
         await self._import_intents(sections["intents"], id_map, event_id_map)
         await self._import_relationships(world.id, sections["entity_relationships"], id_map, memory_id_map)
+        await self._import_entity_variable_sets(world.id, sections["entity_variable_sets"], id_map)
 
         await self._import_chat_assignments(world.id, sections["chat_configs"])
         await self._import_embed_assignments(world.id, sections["embed_configs"])
@@ -222,9 +256,16 @@ class WorldImportService:
 
         return rows
 
+    @classmethod
+    def _read_optional_jsonl(cls, archive: ZipFile, name: str) -> list[dict]:
+        """Like `_read_jsonl`, but a missing file means "no rows" rather than a corrupt archive."""
+        if name not in archive.namelist():
+            return []
+        return cls._read_jsonl(archive, name)
+
     # -- media ------------------------------------------------------------------------------
 
-    async def _import_media(self, archive: ZipFile, rows: list[dict]) -> dict[str, str]:
+    async def _import_media(self, archive: ZipFile | None, rows: list[dict]) -> dict[str, str]:
         media_id_map: dict[str, str] = {}
 
         for row in rows:
@@ -560,6 +601,26 @@ class WorldImportService:
                 "version": 1,
             })
             await self._db.entity_relationship.create_relationship(relationship)
+
+    async def _import_entity_variable_sets(self,
+                                           world_id: str,
+                                           rows: list[dict],
+                                           id_map: dict[str, str],
+                                           ) -> None:
+        """Optional: most entities have no tracked variables, so an empty/absent section is normal."""
+        for row in rows:
+            owner_id = id_map.get(row["owner_id"])
+            if not owner_id:
+                continue
+
+            variable_set = EntityVariableSet.model_validate({
+                **row,
+                "id": str(uuid4()),
+                "source_id": world_id,
+                "owner_id": owner_id,
+                "version": 1,
+            })
+            await self._db.variable.create_variable_set(variable_set)
 
     # -- configuration --------------------------------------------------------------------------
 

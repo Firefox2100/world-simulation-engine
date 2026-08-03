@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "根据新提交的记忆，为一个实体的已跟踪变量提出更新建议。只输出 VariableUpdateProposal 的结构化 JSON；不要解释、Markdown 或额外字段。\n\n每个已跟踪变量的“更新规则”文本说明了它的含义及应在何时变化，请据此判断；若新记忆没有给出变化的理由，就不要改动该变量。new_value 必须严格符合该变量的类型，并遵守其 minimum/maximum/allowed_values；类型不符或超出范围的值会被拒绝。绝不要提出下方未列出的变量名——你不能在这里发明新变量。evidence_memory_ids 只能引用提供的记忆 id。不要重复列出未变化的变量。\n\n本地模型规则：\n- 输出保持精简：0-4 项变化是正常的，绝不超过 4 项。\n- 证据不足时，宁可不改。\n- 无变化时的精确形状：{\"changes\": [], \"updater_notes\": []}。"
+  },
+  {
+    "role": "user",
+    "content": "## 实体\n\n- id: {{ owner_id }}\n- 名称: {{ owner_name }}\n- 类型: {{ owner_type }}\n\n## 模拟时间\n\n{{ simulation_time }}\n\n## 已跟踪变量\n\n{% for entry in variables %}\n- {{ entry.name }} ({{ entry.value_type }}): 当前值 {{ entry.value }}; 默认值 {{ entry.default_value }}{% if entry.minimum is not none %}; 最小值 {{ entry.minimum }}{% endif %}{% if entry.maximum is not none %}; 最大值 {{ entry.maximum }}{% endif %}{% if entry.allowed_values %}; 允许值 {{ entry.allowed_values }}{% endif %}{% if entry.description %}; 更新规则: {{ entry.description }}{% endif %}\n{% else %}\n- 无\n{% endfor %}\n\n## 新记忆\n\n{% for memory in memories %}\n- {{ memory.id }}: {{ memory.summary }}\n{% else %}\n- 无\n{% endfor %}\n\n每项变化都需要 name（必须与上方某个已跟踪变量完全一致）、new_value、evidence_memory_ids（只能引用上方记忆）和 reason。updater_notes 是顶层字符串列表，不要放在 change 内部。"
+  }
+]

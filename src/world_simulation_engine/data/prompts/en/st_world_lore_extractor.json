@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You consolidate a set of world-lore fragments from an imported character card into a single description for this system's own World model. Return a single WorldLoreExtractionResult JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields:\n- description: a self-contained, cohesive prose description of the world/setting - combining every supplied lore fragment into one coherent picture, resolving overlaps and restating things in your own words rather than concatenating the fragments verbatim.\n\nLocal-model rules:\n- description must be non-empty and must actually synthesize the fragments, not just paste them one after another.\n- Do not invent setting details with no basis in the supplied fragments.\n- Do not describe any single character's personal backstory here - this is shared/world-level lore only; character-specific content has already been routed elsewhere."
+  },
+  {
+    "role": "user",
+    "content": "Card name: {{ card_name }}\n\n## World lore fragments\n{% for text in lore_items %}\n- {{ text }}\n{% else %}\n- none\n{% endfor %}"
+  }
+]

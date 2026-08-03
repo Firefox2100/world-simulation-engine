@@ -452,3 +452,55 @@ async def test_simulation_and_world_link_to_tts_config_by_component(clean_neo4j)
     assert await store.get_tts_by_source(world.id, ComponentType.NARRATOR_TTS) == tts_config
     assert await store.unlink_tts(world.id, ComponentType.NARRATOR_TTS) is True
     assert await store.get_tts_by_source(world.id, ComponentType.NARRATOR_TTS) is None
+
+
+async def test_global_chat_mirrors_get_global_stt_with_no_source_node(clean_neo4j):
+    """A pipeline that needs a chat model before any World exists (e.g. SillyTavern import) uses
+    get_global_chat/link_global_chat - no fake World-like scope node, mirroring how get_global_stt
+    already looks up STT's single shared backend directly, just generalized with a
+    global_components marker (a list, not a single value - see the multi-component test below)
+    since (unlike STT) more than one component can each have their own global default."""
+    store = ConfigStore(clean_neo4j)
+    chat_config = OllamaChatModelConfig(id=str(uuid4()), name="Import Chat", model="qwen3.6:35b")
+    other_config = OllamaChatModelConfig(id=str(uuid4()), name="Other Chat", model="llama3")
+    await store.create_chat(chat_config)
+    await store.create_chat(other_config)
+
+    assert await store.get_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) is None
+
+    assert await store.link_global_chat(chat_config.id, ComponentType.ST_LOREBOOK_CLASSIFIER) == chat_config
+    assert await store.get_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) == chat_config
+    # A completely unrelated world-scoped link must not interfere with (or be confused for) the
+    # global one - proves get_global_chat truly never looks at World|Simulation at all.
+    assert await store.get_chat_by_source(str(uuid4()), ComponentType.ST_LOREBOOK_CLASSIFIER) is None
+
+    # Relinking to a different config for the same component replaces the previous holder rather
+    # than leaving two configs both marked global for it.
+    assert await store.link_global_chat(other_config.id, ComponentType.ST_LOREBOOK_CLASSIFIER) == other_config
+    assert await store.get_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) == other_config
+    stale = await store.get_chat(chat_config.id)
+    assert stale is not None  # the previous holder still exists, just no longer marked global
+
+    assert await store.unlink_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) is True
+    assert await store.get_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) is None
+    assert await store.unlink_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) is False
+
+
+async def test_global_chat_same_config_serves_multiple_components_independently(clean_neo4j):
+    """Regression test: the same chat config is commonly the global default for several
+    components at once (e.g. one model for an entire multi-stage import pipeline) - linking a
+    second component to an already-global config must not clobber the first component's link."""
+    store = ConfigStore(clean_neo4j)
+    chat_config = OllamaChatModelConfig(id=str(uuid4()), name="Import Chat", model="qwen3.6:35b")
+    await store.create_chat(chat_config)
+
+    await store.link_global_chat(chat_config.id, ComponentType.ST_LOREBOOK_CLASSIFIER)
+    await store.link_global_chat(chat_config.id, ComponentType.ST_CHARACTER_EXTRACTOR)
+
+    assert await store.get_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) == chat_config
+    assert await store.get_global_chat(ComponentType.ST_CHARACTER_EXTRACTOR) == chat_config
+
+    # Unlinking one component's global default must not affect the other.
+    assert await store.unlink_global_chat(ComponentType.ST_CHARACTER_EXTRACTOR) is True
+    assert await store.get_global_chat(ComponentType.ST_CHARACTER_EXTRACTOR) is None
+    assert await store.get_global_chat(ComponentType.ST_LOREBOOK_CLASSIFIER) == chat_config

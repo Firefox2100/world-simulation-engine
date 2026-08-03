@@ -153,6 +153,7 @@ const emptyForms = {
         description: "",
         public_state: "",
         private_state: "",
+        speech_style: "",
         activity_name: "Idle",
         activity_interruptible: true,
         activity_constraints: "",
@@ -1885,6 +1886,7 @@ function EntityFields({ kind, form, lookups, onChange }) {
                 {area("description")}
                 {area("public_state")}
                 {area("private_state")}
+                {area("speech_style")}
                 {field("activity_name", { required: true })}
                 <CheckboxField label={t("worldCreate.newEditor.fields.activity_interruptible")} checked={form.activity_interruptible} onChange={(value) => onChange("activity_interruptible", value)} />
                 {field("activity_constraints")}
