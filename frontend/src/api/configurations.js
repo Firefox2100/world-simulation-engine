@@ -23,6 +23,20 @@ export const imageComponents = [
 // that decides whether a turn should be auto-illustrated - it only ever needs a chat model.
 export const imageChatComponents = [...imageComponents, "turn_image_trigger"];
 
+// The SillyTavern import pipeline's extraction stages - configured globally (not per-world/
+// simulation), see GET /worlds/import/sillytavern/status.
+export const stImportComponents = [
+    "st_lorebook_classifier",
+    "st_character_extractor",
+    "st_location_extractor",
+    "st_world_lore_extractor",
+    "st_narrative_extractor",
+    "st_intent_extractor",
+    "st_variable_schema_extractor",
+    "st_item_extractor",
+    "st_equipment_extractor",
+];
+
 export async function fetchConnections() {
     return apiRequest("/config/connections");
 }
@@ -178,6 +192,22 @@ export async function deleteWorldLlmConfig(worldId, component) {
     const params = new URLSearchParams({ component });
     await apiRequest(`/worlds/${worldId}/llm-connection?${params.toString()}`, {
         method: "DELETE",
+    });
+}
+
+export async function fetchGlobalLlmConfigs(components) {
+    const params = new URLSearchParams();
+    components.forEach((component) => params.append("components", component));
+    return apiRequest(`/config/llm/global-connections?${params.toString()}`);
+}
+
+export async function setGlobalLlmConfigs(assignments) {
+    return apiRequest("/config/llm/global-connections", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ assignments }),
     });
 }
 

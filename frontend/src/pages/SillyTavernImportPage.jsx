@@ -198,9 +198,16 @@ export function SillyTavernImportPage() {
                 <section className="st-import-left">
                     {!hasCard ? (
                         <div className="st-import-placeholder">
-                            <SillyTavernDropzone onFileSelected={handleFileSelected} disabled={loading} />
-                            {loading ? <p className="status-text">{t("sillyTavernImport.parsing")}</p> : null}
-                            {error ? <p className="form-error">{t("sillyTavernImport.parseError", { error })}</p> : null}
+                            {loading ? (
+                                <p className="status-text">{t("sillyTavernImport.parsing")}</p>
+                            ) : (
+                                <div className="st-import-dropzone-wrapper">
+                                    <SillyTavernDropzone onFileSelected={handleFileSelected} disabled={false} />
+                                    {error ? (
+                                        <p className="form-error">{t("sillyTavernImport.parseError", { error })}</p>
+                                    ) : null}
+                                </div>
+                            )}
                         </div>
                     ) : null}
 

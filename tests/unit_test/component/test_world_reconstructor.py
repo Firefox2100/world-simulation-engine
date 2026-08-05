@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from world_simulation_engine.component.sillytavern_converter import world_reconstructor as wr_module
 from world_simulation_engine.component.sillytavern_converter import AssembledWorld, CharacterExtraction, \
-    ConversionReport, IntentExtraction, LocationExtraction, NarrativeExtraction, PreprocessedCard, \
-    VariableSchemaExtraction, WorldLoreExtraction
+    ConversionReport, EquipmentExtraction, IntentExtraction, ItemExtraction, LocationExtraction, \
+    NarrativeExtraction, PreprocessedCard, VariableSchemaExtraction, WorldLoreExtraction
 from world_simulation_engine.component.sillytavern_converter.lorebook_classifier import LorebookClassification
 from world_simulation_engine.component.sillytavern_converter.world_reconstructor import WorldReconstructor
 from world_simulation_engine.misc.enums import SupportedLanguage
@@ -24,6 +24,8 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
     narrative = NarrativeExtraction()
     intents = IntentExtraction()
     variables = VariableSchemaExtraction()
+    items = ItemExtraction()
+    equipment = EquipmentExtraction()
     assembled = AssembledWorld(world={"name": "Card"}, sections={}, report=ConversionReport())
 
     with patch.object(wr_module, "CardPreprocessor") as card_preprocessor_cls, \
@@ -34,6 +36,8 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             patch.object(wr_module, "NarrativeExtractor") as narrative_extractor_cls, \
             patch.object(wr_module, "IntentExtractor") as intent_extractor_cls, \
             patch.object(wr_module, "VariableSchemaExtractor") as variable_extractor_cls, \
+            patch.object(wr_module, "ItemExtractor") as item_extractor_cls, \
+            patch.object(wr_module, "EquipmentExtractor") as equipment_extractor_cls, \
             patch.object(wr_module, "WorldAssembler") as assembler_cls:
 
         card_preprocessor_cls.preprocess.return_value = preprocessed
@@ -44,6 +48,8 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
         narrative_extractor_cls.return_value.extract = AsyncMock(return_value=narrative)
         intent_extractor_cls.return_value.extract = AsyncMock(return_value=intents)
         variable_extractor_cls.return_value.extract = AsyncMock(return_value=variables)
+        item_extractor_cls.return_value.extract = AsyncMock(return_value=items)
+        equipment_extractor_cls.return_value.extract = AsyncMock(return_value=equipment)
         assembler_cls.return_value.assemble.return_value = assembled
 
         reconstructor = WorldReconstructor(database=Mock())
@@ -72,6 +78,12 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
         variable_extractor_cls.return_value.extract.assert_awaited_once_with(
             preprocessed, classification, language=SupportedLanguage.ENGLISH,
         )
+        item_extractor_cls.return_value.extract.assert_awaited_once_with(
+            preprocessed, classification, language=SupportedLanguage.ENGLISH,
+        )
+        equipment_extractor_cls.return_value.extract.assert_awaited_once_with(
+            preprocessed, classification, language=SupportedLanguage.ENGLISH,
+        )
         assembler_cls.return_value.assemble.assert_called_once_with(
             preprocessed,
             language=SupportedLanguage.ENGLISH,
@@ -81,6 +93,8 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             narrative=narrative,
             intents=intents,
             variables=variables,
+            items=items,
+            equipment=equipment,
         )
 
 

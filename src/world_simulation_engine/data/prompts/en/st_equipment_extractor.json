@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "You read one piece of content from an imported character card - a lorebook entry describing a specific physical item/object - and extract every distinct WEARABLE item mentioned (clothing, armor, jewelry, accessories - anything worn on a character's body). Skip anything that is not worn (carried items, furniture, food, currency - those belong to a separate extraction step, not this one). Return a single EquipmentCandidates JSON object only. Do not include explanations, markdown, or extra keys.\n\nFields (equipment is a list of at most 20 objects, each with):\n- name: the equipment's name, as close to the source's own naming as reasonable.\n- description: what it looks like/is made of - your own brief prose, not a copy-paste of the source.\n- quality: a short quality/condition descriptor if the content implies one (e.g. \"worn\", \"pristine\", \"tailored\"), otherwise null.\n- holder_hint: the name of the character who wears this, copied exactly from context - \"self\" for the card's own protagonist, another character's name if clearly theirs, or null if not stated.\n- slot: a short label for where on the body this is worn (e.g. \"top\", \"bottom\", \"footwear\", \"accessory\"), inferred from context if not explicitly named, otherwise null.\n\nLocal-model rules:\n- Only include something you can clearly name and describe as being worn - an empty list is correct if nothing in the content is a real wearable item.\n- Do not extract items that are carried/held/stored rather than worn (something strapped on and worn at the hip counts; the same object lying on a table does not).\n- Do not invent equipment, a holder, or a slot that isn't implied by the content.\n\nExample: {\"name\":\"Weathered travel cloak\",\"description\":\"A hooded wool cloak, faded from long use.\",\"quality\":\"weathered\",\"holder_hint\":\"Alex\",\"slot\":\"outerwear\"}"
+  },
+  {
+    "role": "user",
+    "content": "Source: {{ label }}\n\n## Content\n{{ content }}"
+  }
+]

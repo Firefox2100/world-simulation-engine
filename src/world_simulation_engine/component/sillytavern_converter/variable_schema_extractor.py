@@ -13,6 +13,22 @@ report (stage 3), never auto-committed as authoritative. Cross-source deduplicat
 variable named in both the script and its human-readable restatement) is deferred to stage 3
 (`WorldAssembler`), which has visibility across every source at once; this stage just tags each
 candidate with its own `source_item_ids` for that later reconciliation.
+
+A schema/rules source describes tracked *fields* in the abstract (e.g. "affection, mood, outfit -
+one set per character") and by itself rarely names a real character per variable, so its
+`owner_hint` frequently can't be resolved by `WorldAssembler` and the variable gets dropped (real
+bug found on an MVU-style card: every variable's `owner_hint` came back as a copy of the schema's
+own "owning character" column-header label instead of a real name, because that's all the schema
+text itself said - schema entries don't carry per-instance identity). The actual *initial values*, correctly scoped to
+real character names, conventionally live in the card's **opening message** instead (an
+`<UpdateVariable><initvar>...</initvar></UpdateVariable>`-wrapped, YAML-like block keyed by
+character name), since lorebook/world-book entries aren't dynamically edited during play. `extract`
+therefore also fans out a second kind of call - `_extract_first_message_source`, gated by a cheap
+marker check so cards without any such block never spend an LLM call on it - over
+`PreprocessedCard.first_message`, using a dedicated prompt that's told explicitly to key
+`owner_hint` off the block's real top-level names. Ordered after the schema sources in `extract`, so
+if a schema source's `owner_hint` *does* happen to resolve to the same (owner, name) pair, its
+richer `description`/bounds win over the plainer first-message-derived candidate.
 """
 
 import functools
@@ -26,6 +42,7 @@ from world_simulation_engine.model.variable import VariableValueType
 from .card_preprocessor import PreprocessedCard
 from .classifiable_items import content_by_item_id
 from .fan_out import build_fan_out_graph, run_fan_out
+from .initial_value_block import has_initial_value_block
 from .lorebook_classifier import LorebookClassification
 from .pipeline_component import SillyTavernPipelineComponent
 
@@ -109,6 +126,27 @@ class VariableSchemaExtractor(SillyTavernPipelineComponent):
             run_name="variable_schema_extractor.extract_source",
         )
 
+    async def _extract_first_message_source(
+            self, *, content: str, language: SupportedLanguage,
+    ) -> VariableSchemaCandidates:
+        prompt = await self._prepare_global_prompt(
+            language=language, prompt_name="st_variable_initial_value_extractor",
+        )
+        llm = await self._prepare_global_llm_service()
+        return await llm.invoke_structured_with_repair(
+            output_model=VariableSchemaCandidates,
+            messages=prompt,
+            data={"content": content},
+            repair_instruction=(
+                "Return a single VariableSchemaCandidates JSON object only, with at most "
+                f"{_MAX_VARIABLES_PER_SOURCE} entries. Only include a variable if the opening "
+                "message actually has a grouped-by-character block of concrete initial values; an "
+                "empty list is correct otherwise. owner_hint must be the real top-level key text "
+                "from that block, never a field label."
+            ),
+            run_name="variable_schema_extractor.extract_first_message",
+        )
+
     @staticmethod
     def _collect_sources(
             card: PreprocessedCard, classification: LorebookClassification,
@@ -133,23 +171,36 @@ class VariableSchemaExtractor(SillyTavernPipelineComponent):
             language: SupportedLanguage,
     ) -> VariableSchemaExtraction:
         sources = self._collect_sources(card, classification)
-        if not sources:
+        has_initial_values = has_initial_value_block(card.first_message)
+        if not sources and not has_initial_values:
             return VariableSchemaExtraction()
+
+        calls = [
+            functools.partial(
+                self._extract_source, label=label, content=content, language=language,
+            )
+            for _, label, content in sources
+        ]
+        source_ids = [item_id for item_id, _, _ in sources]
+        if has_initial_values:
+            calls.append(
+                functools.partial(
+                    self._extract_first_message_source,
+                    content=card.first_message,
+                    language=language,
+                ),
+            )
+            source_ids.append("first_message")
 
         results = await run_fan_out(
             self._fan_out_graph,
-            [
-                functools.partial(
-                    self._extract_source, label=label, content=content, language=language,
-                )
-                for _, label, content in sources
-            ],
+            calls,
             max_concurrency=CONFIG.sillytavern_import_max_concurrency,
             run_name="variable_schema_extractor.extract",
         )
         variables = [
             ExtractedVariable(source_item_ids=[item_id], **candidate.model_dump())
-            for (item_id, _, _), batch in zip(sources, results)
+            for item_id, batch in zip(source_ids, results)
             for candidate in batch.variables
         ]
         return VariableSchemaExtraction(variables=variables)

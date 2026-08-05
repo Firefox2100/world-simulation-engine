@@ -29,6 +29,8 @@ _REQUIRED_COMPONENTS = (
     ComponentType.ST_NARRATIVE_EXTRACTOR,
     ComponentType.ST_INTENT_EXTRACTOR,
     ComponentType.ST_VARIABLE_SCHEMA_EXTRACTOR,
+    ComponentType.ST_ITEM_EXTRACTOR,
+    ComponentType.ST_EQUIPMENT_EXTRACTOR,
 )
 
 

@@ -1,19 +1,28 @@
 """Stage 3 of the SillyTavern import pipeline: deterministic, no LLM calls.
 
 Takes every stage-2 output (`CharacterExtraction`, `LocationExtraction`, `WorldLoreExtraction`,
-`NarrativeExtraction`, `IntentExtraction`, `VariableSchemaExtraction`) and resolves them into one
-`WorldImportService`-shaped bundle (§7): a `world` row plus a `sections` dict of the exact same
-`dict[str, list[dict]]` shape `WorldImportService._import_world_contents` already consumes. Every
-stage-2 entity already carries a provisional id (§6.2), so this stage needs no new id-minting
-scheme of its own - it only needs to decide what to do with references that never resolved to one
-(drop, per every stage-2 extractor's own established "never fabricate" rule) and handle the handful
-of cross-references stage 2 couldn't resolve on its own (variable `owner_hint`, the `{{char}}`/
-`{{user}}` macro placeholders that survive verbatim in `first_message` - see `_rewrite_placeholders`
-below for why only `first_message` actually needs this in practice).
+`NarrativeExtraction`, `IntentExtraction`, `VariableSchemaExtraction`, `ItemExtraction`,
+`EquipmentExtraction`) and resolves them into one `WorldImportService`-shaped bundle (§7): a `world`
+row plus a `sections` dict of the exact same `dict[str, list[dict]]` shape
+`WorldImportService._import_world_contents` already consumes. Every stage-2 entity already carries a
+provisional id (§6.2), so this stage needs no new id-minting scheme of its own - it only needs to
+decide what to do with references that never resolved to one (drop, per every stage-2 extractor's
+own established "never fabricate" rule) and handle the handful of cross-references stage 2 couldn't
+resolve on its own (variable `owner_hint`, item/equipment `holder_hint`/`location_hint`, the
+`{{char}}`/`{{user}}` macro placeholders that survive verbatim in `first_message` - see
+`_rewrite_placeholders` below for why only `first_message` actually needs this in practice).
 
-Not covered by any stage-2 extractor, so always empty here: landmarks, items, item stacks,
-equipment, containers, configs, prompts, workflows, media. `WorldImportService` already tolerates
-empty sections (`for row in rows` over `[]` is a no-op), so this needs no special-casing.
+`items`/`item_stacks` are built by `_item_and_stack_rows` (mirrors `_variable_set_rows`'s
+hint-resolution shape) - an item whose `holder_hint`/`location_hint` never resolves to a real
+character/location is dropped entirely (report note, low_confidence), since
+`WorldImportService._import_item_stacks` treats an unplaced stack (no holder *and* no location) as
+a fatal `WorldImportError`, not something it skips - unlike a dropped variable, which is silently
+tolerable downstream. `equipment` is built by `_equipment_rows` - `Equipment` has no such "must be
+placed somewhere" constraint at persistence time (unlike `ItemStack`), so a candidate whose
+`holder_hint` never resolves is still imported, just unassigned and flagged low-confidence, not
+dropped. Still not covered by any stage-2 extractor, so always empty here: landmarks, containers,
+configs, prompts, workflows, media. `WorldImportService` already tolerates empty sections
+(`for row in rows` over `[]` is a no-op), so this needs no special-casing.
 
 `assemble()` also takes the pipeline's `language` directly (not derived from anything stage-2
 produced) - `World.language` is required and nothing upstream carries it, since every stage-2
@@ -31,7 +40,9 @@ from world_simulation_engine.model.variable import VariableDefinition
 
 from .card_preprocessor import PreprocessedCard
 from .character_extractor import CharacterExtraction
+from .equipment_extractor import EquipmentExtraction
 from .intent_extractor import IntentExtraction
+from .item_extractor import ItemExtraction
 from .location_extractor import LocationExtraction
 from .name_resolution import resolve_name
 from .narrative_extractor import NarrativeExtraction
@@ -124,6 +135,8 @@ class WorldAssembler:
             narrative: NarrativeExtraction,
             intents: IntentExtraction,
             variables: VariableSchemaExtraction,
+            items: ItemExtraction,
+            equipment: EquipmentExtraction,
     ) -> AssembledWorld:
         report = ConversionReport()
 
@@ -174,6 +187,12 @@ class WorldAssembler:
         variable_rows = self._variable_set_rows(
             variables, id_by_character_name, location_id_by_name, user_id=user_id, report=report,
         )
+        item_rows, item_stack_rows = self._item_and_stack_rows(
+            items, id_by_character_name, location_id_by_name, user_id=user_id, report=report,
+        )
+        equipment_rows = self._equipment_rows(
+            equipment, id_by_character_name, user_id=user_id, report=report,
+        )
 
         world_description = None
         if world_lore.description:
@@ -193,9 +212,9 @@ class WorldAssembler:
             "landmarks": [],
             "characters": character_rows,
             "background_characters": [user_stub_row] if user_stub_row else [],
-            "items": [],
-            "item_stacks": [],
-            "equipment": [],
+            "items": item_rows,
+            "item_stacks": item_stack_rows,
+            "equipment": equipment_rows,
             "containers": [],
             "turns": [turn_row],
             "events": event_rows,
@@ -488,3 +507,110 @@ class WorldAssembler:
             }
             for (owner_type, owner_id), by_name in grouped.items()
         ]
+
+    @staticmethod
+    def _resolve_item_holder(
+            hint: str | None, id_by_character_name: dict[str, str], *, user_id: str | None,
+    ) -> str | None:
+        if not hint:
+            return None
+        if hint.strip().lower() == "self":
+            return user_id
+        return resolve_name(hint, id_by_character_name)
+
+    def _item_and_stack_rows(
+            self,
+            items: ItemExtraction,
+            id_by_character_name: dict[str, str],
+            location_id_by_name: dict[str, str],
+            *,
+            user_id: str | None,
+            report: ConversionReport,
+    ) -> tuple[list[dict], list[dict]]:
+        item_rows: list[dict] = []
+        stack_rows: list[dict] = []
+        seen_names: set[str] = set()
+
+        for candidate in items.items:
+            if candidate.name in seen_names:
+                continue  # cross-source duplicate (same item named in more than one lorebook
+                # entry) - first occurrence wins, same convention as _variable_set_rows.
+
+            holder_id = self._resolve_item_holder(
+                candidate.holder_hint, id_by_character_name, user_id=user_id,
+            )
+            location_id = None
+            if not holder_id and candidate.location_hint:
+                location_id = resolve_name(candidate.location_hint, location_id_by_name)
+
+            if not holder_id and not location_id:
+                # ItemStack requires a holder *or* a location to import at all (§5/§7) - unlike a
+                # dropped variable, an unplaced stack would be a fatal WorldImportError downstream,
+                # not something WorldImportService tolerates, so this must never be emitted.
+                report.note(
+                    f"Dropped item {candidate.name!r}: could not resolve holder hint "
+                    f"{candidate.holder_hint!r} or location hint {candidate.location_hint!r} to "
+                    "an extracted character or location.",
+                    low_confidence=True,
+                )
+                continue
+
+            seen_names.add(candidate.name)
+            item_id = str(uuid4())
+            item_rows.append({
+                "id": item_id,
+                "name": candidate.name,
+                "description": candidate.description,
+                "unique": candidate.unique,
+            })
+            stack_rows.append({
+                "id": str(uuid4()),
+                "item_id": item_id,
+                "quantity": candidate.quantity,
+                "quality": candidate.quality,
+                "holder_id": holder_id,
+                "location_id": location_id,
+            })
+
+        return item_rows, stack_rows
+
+    def _equipment_rows(
+            self,
+            equipment: EquipmentExtraction,
+            id_by_character_name: dict[str, str],
+            *,
+            user_id: str | None,
+            report: ConversionReport,
+    ) -> list[dict]:
+        rows: list[dict] = []
+        seen_names: set[str] = set()
+
+        for candidate in equipment.equipment:
+            if candidate.name in seen_names:
+                continue  # cross-source duplicate (e.g. named in both a lorebook entry and the
+                # opening message) - first occurrence wins, same convention as items/variables.
+
+            holder_id = self._resolve_item_holder(
+                candidate.holder_hint, id_by_character_name, user_id=user_id,
+            )
+            if candidate.holder_hint and not holder_id:
+                # Unlike an item stack, Equipment has no "must be placed somewhere" constraint at
+                # persistence time - importing it unassigned is safe, just worth flagging.
+                report.note(
+                    f"Equipment {candidate.name!r}: could not resolve holder hint "
+                    f"{candidate.holder_hint!r} to an extracted character - imported unassigned.",
+                    low_confidence=True,
+                )
+
+            seen_names.add(candidate.name)
+            rows.append({
+                "id": str(uuid4()),
+                "name": candidate.name,
+                "description": candidate.description,
+                "quality": candidate.quality,
+                "holder_id": holder_id,
+                "equipped": True,
+                "equipped_position": candidate.slot,
+            })
+
+        return rows

@@ -1892,6 +1892,35 @@ body {
     gap: 10px;
 }
 
+.st-import-config {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.st-import-config-hint {
+    margin: 0 0 16px;
+    color: #6b7280;
+}
+
+.st-import-config-matrix.world-editor-config-matrix .world-editor-config-matrix-header,
+.st-import-config-matrix.world-editor-config-matrix .world-editor-config-row {
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.5fr);
+}
+
+.st-import-config-actions {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.st-import-config-saved {
+    color: #15803d;
+    font-weight: 600;
+}
+
 .configuration-row {
     min-width: 0;
     min-height: 64px;
@@ -2627,7 +2656,7 @@ body {
 /* SillyTavern import page - a dedicated, nav-bar-free page (not nested under AppLayout). */
 
 .st-import-page {
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     background: #f3f4f6;
@@ -2657,6 +2686,7 @@ body {
     flex: 1;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     min-height: 0;
 }
 
@@ -2666,6 +2696,7 @@ body {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 .st-import-left {
@@ -2688,6 +2719,11 @@ body {
     align-items: center;
     justify-content: center;
     text-align: center;
+}
+
+.st-import-dropzone-wrapper .st-import-dropzone {
+    flex: 1;
+    width: 100%;
 }
 
 .st-import-review-gate {

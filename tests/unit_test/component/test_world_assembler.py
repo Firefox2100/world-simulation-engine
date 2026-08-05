@@ -1,12 +1,13 @@
 from uuid import uuid4
 
 from world_simulation_engine.component.sillytavern_converter import CharacterExtraction, \
-    CharacterExtractionResult, ExtractedCharacter, ExtractedEvent, ExtractedIntent, ExtractedLocation, \
-    ExtractedMemory, ExtractedRelationship, ExtractedVariable, IntentExtraction, LocationExtraction, \
+    CharacterExtractionResult, EquipmentExtraction, ExtractedCharacter, ExtractedEquipment, \
+    ExtractedEvent, ExtractedIntent, ExtractedItem, ExtractedLocation, ExtractedMemory, \
+    ExtractedRelationship, ExtractedVariable, IntentExtraction, ItemExtraction, LocationExtraction, \
     NarrativeExtraction, PreprocessedCard, VariableSchemaExtraction, WorldAssembler, WorldLoreExtraction
 from world_simulation_engine.misc.enums import IntentHorizon, IntentStatus, IntentType, SupportedLanguage
 from world_simulation_engine.model import BackgroundCharacter, Character, EntityRelationship, \
-    EntityVariableSet, Event, Intent, Location, MemoryAtom, Turn, World
+    EntityVariableSet, Equipment, Event, Intent, Item, ItemStack, Location, MemoryAtom, Turn, World
 from world_simulation_engine.model.variable import VariableValueType
 
 
@@ -39,7 +40,7 @@ def test_assemble_resolves_self_via_card_name_and_rewrites_placeholders():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     character_row = assembled.sections["characters"][0]
@@ -64,7 +65,7 @@ def test_assemble_notes_unresolved_self_when_card_name_matches_no_character():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert any("Could not identify a single primary character" in entry.message for entry in assembled.report.entries)
@@ -80,7 +81,7 @@ def test_assemble_uses_user_controlled_character_instead_of_a_stub():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.sections["background_characters"] == []
@@ -92,7 +93,7 @@ def test_assemble_builds_turn_from_first_message_with_fallback_when_empty():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     turn_row = assembled.sections["turns"][0]
@@ -111,7 +112,7 @@ def test_assemble_locations_carry_parent_id_through():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=locations, world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     by_id = {row["id"]: row for row in assembled.sections["locations"]}
@@ -136,7 +137,7 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=narrative, intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=narrative, intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     turn_id = assembled.sections["turns"][0]["id"]
@@ -170,7 +171,7 @@ def test_assemble_intent_row_carries_character_id_and_defaults():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=intents, variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=intents, variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     intent_row = assembled.sections["intents"][0]
@@ -201,7 +202,7 @@ def test_assemble_variables_group_by_resolved_owner_and_dedupe_across_sources():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=locations, world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables,
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     variable_sets = {row["owner_id"]: row for row in assembled.sections["entity_variable_sets"]}
@@ -233,7 +234,7 @@ def test_assemble_self_hinted_variable_maps_to_user_controlled_character():
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
         world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
-        variables=variables,
+        variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     variable_sets = assembled.sections["entity_variable_sets"]
@@ -259,7 +260,7 @@ def test_assemble_self_hinted_variable_maps_to_synthesized_user_stub_when_no_per
     assembled = assembler.assemble(
         card, language=SupportedLanguage.CHINESE, characters=characters, locations=LocationExtraction(),
         world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
-        variables=variables,
+        variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     stub_id = assembled.sections["background_characters"][0]["id"]
@@ -280,7 +281,7 @@ def test_assemble_drops_variable_with_unresolvable_owner_hint():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables,
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.sections["entity_variable_sets"] == []
@@ -300,11 +301,214 @@ def test_assemble_drops_variable_with_inconsistent_value_type():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables,
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.sections["entity_variable_sets"] == []
     assert any("hp" in entry.message and entry.low_confidence for entry in assembled.report.entries)
+
+
+def test_assemble_items_resolve_holder_and_location_hints():
+    card = make_card(name="Kiki Mora")
+    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    locations = LocationExtraction(locations=[ExtractedLocation(id="loc-1", name="Bedroom", description="A room.")])
+    items = ItemExtraction(items=[
+        ExtractedItem(
+            name="Locket", description="A silver locket.", unique=True, quantity=1,
+            holder_hint="Kiki Mora", source_item_ids=["entry:1"],
+        ),
+        ExtractedItem(
+            name="Old chair", description="A wooden chair.", unique=False, quantity=1,
+            location_hint="Bedroom", source_item_ids=["entry:2"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=locations,
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=items, equipment=EquipmentExtraction(),
+    )
+
+    item_rows = {row["name"]: row for row in assembled.sections["items"]}
+    stack_rows = {row["item_id"]: row for row in assembled.sections["item_stacks"]}
+    assert set(item_rows) == {"Locket", "Old chair"}
+
+    locket_stack = stack_rows[item_rows["Locket"]["id"]]
+    assert locket_stack["holder_id"] == "id-kiki"
+    assert locket_stack["location_id"] is None
+
+    chair_stack = stack_rows[item_rows["Old chair"]["id"]]
+    assert chair_stack["holder_id"] is None
+    assert chair_stack["location_id"] == "loc-1"
+
+
+def test_assemble_self_hinted_item_maps_to_user_controlled_character():
+    card = make_card(name="Kiki Mora")
+    characters = CharacterExtraction(characters=[
+        make_character("Kiki Mora", "id-kiki"),
+        make_character("The Guest", "id-guest", user_controlled=True),
+    ])
+    items = ItemExtraction(items=[
+        ExtractedItem(
+            name="Wallet", description="A worn leather wallet.", unique=False, quantity=1,
+            holder_hint="self", source_item_ids=["entry:1"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=items, equipment=EquipmentExtraction(),
+    )
+
+    stack_row = assembled.sections["item_stacks"][0]
+    assert stack_row["holder_id"] == "id-guest"
+
+
+def test_assemble_drops_item_with_unresolvable_holder_and_location_hints():
+    card = make_card()
+    items = ItemExtraction(items=[
+        ExtractedItem(
+            name="Mystery box", description="Nobody knows whose it is.", unique=False, quantity=1,
+            holder_hint="Nobody Here", location_hint="Nowhere Real", source_item_ids=["entry:1"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(),
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(),
+        intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=items, equipment=EquipmentExtraction(),
+    )
+
+    assert assembled.sections["items"] == []
+    assert assembled.sections["item_stacks"] == []
+    assert any("Mystery box" in entry.message and entry.low_confidence for entry in assembled.report.entries)
+
+
+def test_assemble_drops_second_item_of_the_same_name():
+    card = make_card(name="Kiki Mora")
+    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    items = ItemExtraction(items=[
+        ExtractedItem(
+            name="Locket", description="First mention.", unique=True, quantity=1,
+            holder_hint="Kiki Mora", source_item_ids=["entry:1"],
+        ),
+        ExtractedItem(
+            name="Locket", description="Duplicate mention from another entry.", unique=True,
+            quantity=1, holder_hint="Kiki Mora", source_item_ids=["entry:2"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=items, equipment=EquipmentExtraction(),
+    )
+
+    assert len(assembled.sections["items"]) == 1
+    assert assembled.sections["items"][0]["description"] == "First mention."  # first occurrence wins
+
+
+def test_assemble_equipment_resolves_holder_hint():
+    card = make_card(name="Kiki Mora")
+    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    equipment = EquipmentExtraction(equipment=[
+        ExtractedEquipment(
+            name="Travel cloak", description="A wool cloak.", quality="worn", holder_hint="Kiki Mora",
+            slot="outerwear", source_item_ids=["entry:1"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=equipment,
+    )
+
+    equipment_row = assembled.sections["equipment"][0]
+    assert equipment_row["name"] == "Travel cloak"
+    assert equipment_row["holder_id"] == "id-kiki"
+    assert equipment_row["equipped"] is True
+    assert equipment_row["equipped_position"] == "outerwear"
+
+
+def test_assemble_self_hinted_equipment_maps_to_user_controlled_character():
+    card = make_card(name="Kiki Mora")
+    characters = CharacterExtraction(characters=[
+        make_character("Kiki Mora", "id-kiki"),
+        make_character("The Guest", "id-guest", user_controlled=True),
+    ])
+    equipment = EquipmentExtraction(equipment=[
+        ExtractedEquipment(
+            name="Reading glasses", description="Thin wire frames.", holder_hint="self",
+            source_item_ids=["entry:1"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=equipment,
+    )
+
+    assert assembled.sections["equipment"][0]["holder_id"] == "id-guest"
+
+
+def test_assemble_imports_equipment_unassigned_when_holder_hint_is_unresolvable():
+    card = make_card()
+    equipment = EquipmentExtraction(equipment=[
+        ExtractedEquipment(
+            name="Mystery ring", description="Nobody claims it.", holder_hint="Nobody Here",
+            source_item_ids=["entry:1"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(),
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(),
+        intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(),
+        equipment=equipment,
+    )
+
+    # Unlike an item stack, equipment has no "must be placed somewhere" constraint - it's still
+    # imported, just unassigned, with a low-confidence note rather than being dropped.
+    assert len(assembled.sections["equipment"]) == 1
+    assert assembled.sections["equipment"][0]["holder_id"] is None
+    assert any(
+        "Mystery ring" in entry.message and entry.low_confidence for entry in assembled.report.entries
+    )
+
+
+def test_assemble_drops_second_equipment_of_the_same_name():
+    card = make_card(name="Kiki Mora")
+    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    equipment = EquipmentExtraction(equipment=[
+        ExtractedEquipment(
+            name="Locket necklace", description="First mention.", holder_hint="Kiki Mora",
+            source_item_ids=["entry:1"],
+        ),
+        ExtractedEquipment(
+            name="Locket necklace", description="Duplicate mention from another entry.",
+            holder_hint="Kiki Mora", source_item_ids=["entry:2"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=equipment,
+    )
+
+    assert len(assembled.sections["equipment"]) == 1
+    assert assembled.sections["equipment"][0]["description"] == "First mention."
 
 
 def test_assemble_world_row_uses_card_name_and_world_lore_description():
@@ -314,7 +518,7 @@ def test_assemble_world_row_uses_card_name_and_world_lore_description():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=world_lore,
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.world["name"] == "Kiki Mora"
@@ -327,7 +531,7 @@ def test_assemble_world_row_has_no_description_when_no_world_lore():
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
-        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.world["description"] is None
@@ -373,11 +577,23 @@ def test_assembled_rows_validate_against_the_real_domain_models():
             description="Health.", minimum=0, maximum=100, source_item_ids=["script:0"],
         ),
     ])
+    items = ItemExtraction(items=[
+        ExtractedItem(
+            name="Locket", description="A silver locket.", unique=True, quantity=1,
+            holder_hint="Kiki Mora", source_item_ids=["entry:1"],
+        ),
+    ])
+    equipment = EquipmentExtraction(equipment=[
+        ExtractedEquipment(
+            name="Travel cloak", description="A wool cloak.", quality="worn", holder_hint="Kiki Mora",
+            slot="outerwear", source_item_ids=["entry:2"],
+        ),
+    ])
     assembler = WorldAssembler()
 
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=characters, locations=locations, world_lore=WorldLoreExtraction(description="Lore."),
-        narrative=narrative, intents=intents, variables=variables,
+        narrative=narrative, intents=intents, variables=variables, items=items, equipment=equipment,
     )
 
     World.model_validate({**assembled.world, "id": str(uuid4())})
@@ -412,6 +628,12 @@ def test_assembled_rows_validate_against_the_real_domain_models():
         EntityVariableSet.model_validate({
             **row, "id": str(uuid4()), "source_id": "world-1", "owner_id": row["owner_id"], "version": 1,
         })
+    for row in assembled.sections["items"]:
+        Item.model_validate(row).model_copy(update={"id": str(uuid4())})
+    for row in assembled.sections["item_stacks"]:
+        ItemStack.model_validate(row).model_copy(update={"id": str(uuid4())})
+    for row in assembled.sections["equipment"]:
+        Equipment.model_validate(row).model_copy(update={"id": str(uuid4())})
 
 
 def test_assemble_infers_starting_time_from_explicit_world_date_and_time_variables():
@@ -431,7 +653,7 @@ def test_assemble_infers_starting_time_from_explicit_world_date_and_time_variabl
     assembled = assembler.assemble(
         card, language=SupportedLanguage.CHINESE, characters=CharacterExtraction(),
         locations=LocationExtraction(), world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(),
-        intents=IntentExtraction(), variables=variables,
+        intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.world["starting_time"] == "2024-03-15T08:30:00+00:00"
@@ -451,7 +673,7 @@ def test_assemble_infers_starting_time_from_date_only_variable_defaulting_to_mid
     assembled = assembler.assemble(
         card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(),
         locations=LocationExtraction(), world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(),
-        intents=IntentExtraction(), variables=variables,
+        intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert assembled.world["starting_time"] == "2024-01-01T00:00:00+00:00"
@@ -477,7 +699,7 @@ def test_assemble_ignores_non_world_or_unparseable_date_variables_and_flags_the_
     assembled = assembler.assemble(
         card, language=SupportedLanguage.CHINESE, characters=CharacterExtraction(),
         locations=LocationExtraction(), world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(),
-        intents=IntentExtraction(), variables=variables,
+        intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
     assert any(

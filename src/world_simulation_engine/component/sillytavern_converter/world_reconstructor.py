@@ -32,7 +32,9 @@ from world_simulation_engine.model.silly_tavern import SillyTavernCardV3
 from .card_preprocessor import CardPreprocessor, PreprocessedCard
 from .character_extractor import CharacterExtraction, CharacterExtractor
 from .data_extractor import DataExtractor
+from .equipment_extractor import EquipmentExtraction, EquipmentExtractor
 from .intent_extractor import IntentExtraction, IntentExtractor
+from .item_extractor import ItemExtraction, ItemExtractor
 from .location_extractor import LocationExtraction, LocationExtractor
 from .lorebook_classifier import LorebookClassification, LorebookClassifier
 from .narrative_extractor import NarrativeExtraction, NarrativeExtractor
@@ -55,6 +57,8 @@ class _ReconstructionState(BaseModel):
     narrative: NarrativeExtraction | None = None
     intents: IntentExtraction | None = None
     variables: VariableSchemaExtraction | None = None
+    items: ItemExtraction | None = None
+    equipment: EquipmentExtraction | None = None
     assembled: AssembledWorld | None = None
 
 
@@ -73,6 +77,8 @@ class WorldReconstructor:
         graph.add_node("extract_narrative", self._extract_narrative)
         graph.add_node("extract_intents", self._extract_intents)
         graph.add_node("extract_variables", self._extract_variables)
+        graph.add_node("extract_items", self._extract_items)
+        graph.add_node("extract_equipment", self._extract_equipment)
         graph.add_node("assemble", self._assemble)
 
         graph.add_edge(START, "preprocess")
@@ -83,7 +89,9 @@ class WorldReconstructor:
         graph.add_edge("extract_world_lore", "extract_narrative")
         graph.add_edge("extract_narrative", "extract_intents")
         graph.add_edge("extract_intents", "extract_variables")
-        graph.add_edge("extract_variables", "assemble")
+        graph.add_edge("extract_variables", "extract_items")
+        graph.add_edge("extract_items", "extract_equipment")
+        graph.add_edge("extract_equipment", "assemble")
         graph.add_edge("assemble", END)
         return graph.compile()
 
@@ -133,6 +141,18 @@ class WorldReconstructor:
         )
         return {"variables": variables}
 
+    async def _extract_items(self, state: _ReconstructionState) -> dict:
+        items = await ItemExtractor(database=self._db).extract(
+            state.preprocessed, state.classification, language=state.language,
+        )
+        return {"items": items}
+
+    async def _extract_equipment(self, state: _ReconstructionState) -> dict:
+        equipment = await EquipmentExtractor(database=self._db).extract(
+            state.preprocessed, state.classification, language=state.language,
+        )
+        return {"equipment": equipment}
+
     @staticmethod
     def _assemble(state: _ReconstructionState) -> dict:
         assembled = WorldAssembler().assemble(
@@ -144,6 +164,8 @@ class WorldReconstructor:
             narrative=state.narrative,
             intents=state.intents,
             variables=state.variables,
+            items=state.items,
+            equipment=state.equipment,
         )
         return {"assembled": assembled}
 

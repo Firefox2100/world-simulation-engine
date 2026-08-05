@@ -196,7 +196,8 @@ async def test_get_sillytavern_import_status_reports_configured_when_all_compone
             ComponentType.ST_LOREBOOK_CLASSIFIER, ComponentType.ST_CHARACTER_EXTRACTOR,
             ComponentType.ST_LOCATION_EXTRACTOR, ComponentType.ST_WORLD_LORE_EXTRACTOR,
             ComponentType.ST_NARRATIVE_EXTRACTOR, ComponentType.ST_INTENT_EXTRACTOR,
-            ComponentType.ST_VARIABLE_SCHEMA_EXTRACTOR,
+            ComponentType.ST_VARIABLE_SCHEMA_EXTRACTOR, ComponentType.ST_ITEM_EXTRACTOR,
+            ComponentType.ST_EQUIPMENT_EXTRACTOR,
     ):
         await database.config.link_global_chat(chat_config.id, component)
     await driver.close()

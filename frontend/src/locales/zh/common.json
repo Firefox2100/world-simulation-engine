@@ -442,6 +442,32 @@
         "description": "描述",
         "remove": "移除背景角色"
       },
+      "items": {
+        "title": "物品",
+        "add": "添加物品",
+        "untitled": "未命名物品",
+        "name": "名称",
+        "description": "描述",
+        "unique": "唯一物品",
+        "quantity": "数量",
+        "quality": "品质",
+        "holder": "持有者",
+        "location": "所在地点",
+        "none": "无",
+        "remove": "移除物品"
+      },
+      "equipment": {
+        "title": "装备",
+        "add": "添加装备",
+        "untitled": "未命名装备",
+        "name": "名称",
+        "description": "描述",
+        "quality": "品质",
+        "slot": "穿戴部位",
+        "holder": "穿戴者",
+        "none": "无",
+        "remove": "移除装备"
+      },
       "events": {
         "title": "事件",
         "untitled": "未命名事件",
@@ -585,7 +611,8 @@
       "llms": "LLM",
       "tts": "TTS",
       "images": "图像",
-      "stt": "语音识别"
+      "stt": "语音识别",
+      "stImport": "SillyTavern 导入"
     },
     "empty": {
       "connections": "暂无连接配置。",
@@ -594,6 +621,26 @@
       "tts": "暂无 TTS 配置。",
       "images": "暂无图像生成配置。",
       "stt": "尚未配置语音识别后端。只需要一个，所有模拟都会共用它。"
+    },
+    "stImport": {
+      "loading": "正在加载 SillyTavern 导入配置...",
+      "error": "无法加载 SillyTavern 导入配置：{{error}}",
+      "hint": "为 SillyTavern 卡片导入流程的每个阶段指定一个已有的 LLM 配置。这些设置是全局共享的——不属于任何特定世界或模拟——并且必须全部设置完成才能导入卡片。",
+      "save": "保存",
+      "saving": "正在保存...",
+      "saved": "已保存。",
+      "saveError": "无法保存：{{error}}",
+      "components": {
+        "st_lorebook_classifier": "世界书分类器",
+        "st_character_extractor": "角色提取器",
+        "st_location_extractor": "地点提取器",
+        "st_world_lore_extractor": "世界观提取器",
+        "st_narrative_extractor": "叙事提取器",
+        "st_intent_extractor": "意图提取器",
+        "st_variable_schema_extractor": "变量结构提取器",
+        "st_item_extractor": "物品提取器",
+        "st_equipment_extractor": "装备提取器"
+      }
     },
     "providers": {
       "openai": "OpenAI",

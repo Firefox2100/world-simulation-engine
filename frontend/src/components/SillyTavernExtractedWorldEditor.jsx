@@ -87,6 +87,9 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
     const characters = sections.characters ?? [];
     const locations = sections.locations ?? [];
     const backgroundCharacters = sections.background_characters ?? [];
+    const items = sections.items ?? [];
+    const itemStacks = sections.item_stacks ?? [];
+    const equipment = sections.equipment ?? [];
     const events = sections.events ?? [];
     const memories = sections.memories ?? [];
     const intents = sections.intents ?? [];
@@ -102,14 +105,18 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
         onChange({ ...assembled, world: { ...world, [field]: value } });
     }
 
-    function updateSection(section, items) {
-        onChange({ ...assembled, sections: { ...sections, [section]: items } });
+    function updateSection(section, rows) {
+        onChange({ ...assembled, sections: { ...sections, [section]: rows } });
+    }
+
+    function updateSections(patch) {
+        onChange({ ...assembled, sections: { ...sections, ...patch } });
     }
 
     function updateItem(section, index, patch) {
-        const items = sections[section].slice();
-        items[index] = { ...items[index], ...patch };
-        updateSection(section, items);
+        const rows = sections[section].slice();
+        rows[index] = { ...rows[index], ...patch };
+        updateSection(section, rows);
     }
 
     function removeItem(section, index) {
@@ -118,6 +125,39 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
 
     function addItem(section, item) {
         updateSection(section, [...(sections[section] ?? []), item]);
+    }
+
+    function stackForItem(itemId) {
+        return itemStacks.find((stack) => stack.item_id === itemId);
+    }
+
+    function updateItemFields(itemId, patch) {
+        updateSection("items", items.map((item) => (item.id === itemId ? { ...item, ...patch } : item)));
+    }
+
+    function updateStackFields(itemId, patch) {
+        updateSection(
+            "item_stacks",
+            itemStacks.map((stack) => (stack.item_id === itemId ? { ...stack, ...patch } : stack)),
+        );
+    }
+
+    function addItemWithStack() {
+        const itemId = newId();
+        updateSections({
+            items: [...items, { id: itemId, name: "", description: "", unique: false }],
+            item_stacks: [
+                ...itemStacks,
+                { id: newId(), item_id: itemId, quantity: 1, quality: null, holder_id: null, location_id: null },
+            ],
+        });
+    }
+
+    function removeItemWithStack(itemId) {
+        updateSections({
+            items: items.filter((item) => item.id !== itemId),
+            item_stacks: itemStacks.filter((stack) => stack.item_id !== itemId),
+        });
     }
 
     return (
@@ -358,6 +398,196 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                                 value={character.description ?? ""}
                                 onChange={(event) => updateItem("background_characters", index, { description: event.target.value })}
                             />
+                        </div>
+                    </EntityCard>
+                ))}
+            </EntitySection>
+
+            <EntitySection
+                title={t("sillyTavernImport.review.items.title")}
+                onAdd={addItemWithStack}
+                addLabel={t("sillyTavernImport.review.items.add")}
+            >
+                {items.map((item) => {
+                    const stack = stackForItem(item.id);
+                    return (
+                        <EntityCard
+                            key={item.id}
+                            title={item.name || t("sillyTavernImport.review.items.untitled")}
+                            onRemove={() => removeItemWithStack(item.id)}
+                            removeLabel={t("sillyTavernImport.review.items.remove")}
+                        >
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.items.name")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={item.name ?? ""}
+                                    onChange={(event) => updateItemFields(item.id, { name: event.target.value })}
+                                />
+                            </div>
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.items.description")}</label>
+                                <textarea
+                                    className="multi-line-input"
+                                    value={item.description ?? ""}
+                                    onChange={(event) => updateItemFields(item.id, { description: event.target.value })}
+                                />
+                            </div>
+                            <label className="checkbox-field">
+                                {t("sillyTavernImport.review.items.unique")}
+                                <input
+                                    type="checkbox"
+                                    checked={Boolean(item.unique)}
+                                    onChange={(event) => updateItemFields(item.id, { unique: event.target.checked })}
+                                />
+                            </label>
+                            <div className="st-import-field-pair">
+                                <div className="form-field">
+                                    <label>{t("sillyTavernImport.review.items.quantity")}</label>
+                                    <input
+                                        className="single-line-input"
+                                        type="number"
+                                        min="1"
+                                        value={stack?.quantity ?? 1}
+                                        onChange={(event) =>
+                                            updateStackFields(item.id, { quantity: Number(event.target.value) })
+                                        }
+                                    />
+                                </div>
+                                <div className="form-field">
+                                    <label>{t("sillyTavernImport.review.items.quality")}</label>
+                                    <input
+                                        className="single-line-input"
+                                        type="text"
+                                        value={stack?.quality ?? ""}
+                                        onChange={(event) =>
+                                            updateStackFields(item.id, { quality: event.target.value || null })
+                                        }
+                                    />
+                                </div>
+                            </div>
+                            <div className="st-import-field-pair">
+                                <div className="form-field">
+                                    <label>{t("sillyTavernImport.review.items.holder")}</label>
+                                    <select
+                                        className="single-line-input"
+                                        value={stack?.holder_id ?? ""}
+                                        onChange={(event) =>
+                                            updateStackFields(item.id, {
+                                                holder_id: event.target.value || null,
+                                                location_id: event.target.value ? null : stack?.location_id ?? null,
+                                            })
+                                        }
+                                    >
+                                        <option value="">{t("sillyTavernImport.review.items.none")}</option>
+                                        {allPeople.map((person) => (
+                                            <option key={person.id} value={person.id}>
+                                                {person.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-field">
+                                    <label>{t("sillyTavernImport.review.items.location")}</label>
+                                    <select
+                                        className="single-line-input"
+                                        value={stack?.location_id ?? ""}
+                                        onChange={(event) =>
+                                            updateStackFields(item.id, {
+                                                location_id: event.target.value || null,
+                                                holder_id: event.target.value ? null : stack?.holder_id ?? null,
+                                            })
+                                        }
+                                    >
+                                        <option value="">{t("sillyTavernImport.review.items.none")}</option>
+                                        {locations.map((location) => (
+                                            <option key={location.id} value={location.id}>
+                                                {location.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </EntityCard>
+                    );
+                })}
+            </EntitySection>
+
+            <EntitySection
+                title={t("sillyTavernImport.review.equipment.title")}
+                onAdd={() =>
+                    addItem("equipment", {
+                        id: newId(), name: "", description: "", quality: null, holder_id: null,
+                        equipped: true, equipped_position: null,
+                    })
+                }
+                addLabel={t("sillyTavernImport.review.equipment.add")}
+            >
+                {equipment.map((item, index) => (
+                    <EntityCard
+                        key={item.id}
+                        title={item.name || t("sillyTavernImport.review.equipment.untitled")}
+                        onRemove={() => removeItem("equipment", index)}
+                        removeLabel={t("sillyTavernImport.review.equipment.remove")}
+                    >
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.equipment.name")}</label>
+                            <input
+                                className="single-line-input"
+                                type="text"
+                                value={item.name ?? ""}
+                                onChange={(event) => updateItem("equipment", index, { name: event.target.value })}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.equipment.description")}</label>
+                            <textarea
+                                className="multi-line-input"
+                                value={item.description ?? ""}
+                                onChange={(event) => updateItem("equipment", index, { description: event.target.value })}
+                            />
+                        </div>
+                        <div className="st-import-field-pair">
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.equipment.quality")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={item.quality ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("equipment", index, { quality: event.target.value || null })
+                                    }
+                                />
+                            </div>
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.equipment.slot")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={item.equipped_position ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("equipment", index, { equipped_position: event.target.value || null })
+                                    }
+                                />
+                            </div>
+                        </div>
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.equipment.holder")}</label>
+                            <select
+                                className="single-line-input"
+                                value={item.holder_id ?? ""}
+                                onChange={(event) =>
+                                    updateItem("equipment", index, { holder_id: event.target.value || null })
+                                }
+                            >
+                                <option value="">{t("sillyTavernImport.review.equipment.none")}</option>
+                                {allPeople.map((person) => (
+                                    <option key={person.id} value={person.id}>
+                                        {person.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </EntityCard>
                 ))}

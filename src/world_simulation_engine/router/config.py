@@ -331,6 +331,15 @@ async def _list_chat_assignments(source_id: str, db: db_dep) -> list[ComponentCh
     ]
 
 
+async def _list_global_chat_assignments(components: list[ComponentType], db: db_dep) -> list[ComponentChatConfig]:
+    result = []
+    for component in components:
+        chat_config = await db.config.get_global_chat(component)
+        if chat_config:
+            result.append(ComponentChatConfig(component=component, config=chat_config))
+    return result
+
+
 async def _list_embed_assignments(source_id: str, db: db_dep) -> list[ComponentEmbedConfig]:
     configs = await db.config.list_embeds_by_source(source_id)
     return [
@@ -435,6 +444,44 @@ async def create_ollama_chat_config(chat_config: OllamaChatModelConfig, db: db_d
 @config_router.post("/config/llm/openai", response_model=OpenAiChatModelConfig, response_model_exclude_none=True)
 async def create_openai_chat_config(chat_config: OpenAiChatModelConfig, db: db_dep):
     return await db.config.create_chat(chat_config)
+
+
+@config_router.get(
+    "/config/llm/global-connections",
+    response_model=list[ComponentChatConfig],
+    response_model_exclude_none=True,
+)
+async def list_global_llm_connections(
+        db: db_dep,
+        components: list[ComponentType] = Query(..., description="The components to look up"),
+):
+    """The chat-model assignments not tied to any simulation/world - used by pipelines like the
+    SillyTavern importer (`ComponentType.ST_*`) whose config is set up once for the whole
+    deployment rather than per-simulation. Mirrors `list_simulation_llm_connections` but reads
+    `ConfigStore.get_global_chat` instead of a source-scoped lookup."""
+    return await _list_global_chat_assignments(components, db)
+
+
+@config_router.put(
+    "/config/llm/global-connections",
+    response_model=list[ComponentChatConfig],
+    response_model_exclude_none=True,
+)
+async def set_global_llm_connections(config_update: ComponentModelConfigBatchUpdate, db: db_dep):
+    for assignment in config_update.assignments:
+        if assignment.config_id:
+            linked = await db.config.link_global_chat(assignment.config_id, assignment.component)
+            if not linked:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"LLM config {assignment.config_id} not found",
+                )
+        else:
+            await db.config.unlink_global_chat(assignment.component)
+
+    return await _list_global_chat_assignments(
+        [assignment.component for assignment in config_update.assignments], db,
+    )
 
 
 @config_router.get("/config/llm/{config_id}", response_model=ChatModelConfigUnion, response_model_exclude_none=True)

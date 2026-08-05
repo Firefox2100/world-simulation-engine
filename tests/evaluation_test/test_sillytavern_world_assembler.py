@@ -5,12 +5,12 @@ from uuid import uuid4
 import pytest
 
 from world_simulation_engine.component.sillytavern_converter import CardPreprocessor, CharacterExtractor, \
-    DataExtractor, IntentExtractor, LocationExtractor, NarrativeExtractor, VariableSchemaExtractor, \
-    WorldAssembler, WorldLoreExtractor
+    DataExtractor, EquipmentExtractor, IntentExtractor, ItemExtractor, LocationExtractor, \
+    NarrativeExtractor, VariableSchemaExtractor, WorldAssembler, WorldLoreExtractor
 from world_simulation_engine.component.sillytavern_converter.lorebook_classifier import LorebookClassifier
 from world_simulation_engine.misc.enums import ComponentType, SupportedLanguage
 from world_simulation_engine.model import BackgroundCharacter, Character, EntityRelationship, \
-    EntityVariableSet, Event, Intent, Location, MemoryAtom, Turn, World
+    EntityVariableSet, Equipment, Event, Intent, Item, ItemStack, Location, MemoryAtom, Turn, World
 
 
 CARDS_DIR = Path("tests/evaluation_test/assets/st-cards")
@@ -29,7 +29,8 @@ _ALL_COMPONENTS = (
     ComponentType.ST_LOREBOOK_CLASSIFIER, ComponentType.ST_CHARACTER_EXTRACTOR,
     ComponentType.ST_LOCATION_EXTRACTOR, ComponentType.ST_WORLD_LORE_EXTRACTOR,
     ComponentType.ST_NARRATIVE_EXTRACTOR, ComponentType.ST_INTENT_EXTRACTOR,
-    ComponentType.ST_VARIABLE_SCHEMA_EXTRACTOR,
+    ComponentType.ST_VARIABLE_SCHEMA_EXTRACTOR, ComponentType.ST_ITEM_EXTRACTOR,
+    ComponentType.ST_EQUIPMENT_EXTRACTOR,
 )
 
 
@@ -76,6 +77,12 @@ def _assert_rows_validate(assembled, world_id: str) -> None:
         EntityVariableSet.model_validate({
             **row, "id": str(uuid4()), "source_id": world_id, "owner_id": row["owner_id"], "version": 1,
         })
+    for row in assembled.sections["items"]:
+        Item.model_validate(row)
+    for row in assembled.sections["item_stacks"]:
+        ItemStack.model_validate(row)
+    for row in assembled.sections["equipment"]:
+        Equipment.model_validate(row)
 
 
 @pytest.mark.parametrize(
@@ -100,10 +107,12 @@ async def test_assemble_world_from_real_sillytavern_card(card_path: Path, global
     narrative = await NarrativeExtractor(database=db).extract(preprocessed, classification, characters, language=language)
     intents = await IntentExtractor(database=db).extract(characters, language=language)
     variables = await VariableSchemaExtractor(database=db).extract(preprocessed, classification, language=language)
+    items = await ItemExtractor(database=db).extract(preprocessed, classification, language=language)
+    equipment = await EquipmentExtractor(database=db).extract(preprocessed, classification, language=language)
 
     assembled = WorldAssembler().assemble(
         preprocessed, language=language, characters=characters, locations=locations, world_lore=world_lore,
-        narrative=narrative, intents=intents, variables=variables,
+        narrative=narrative, intents=intents, variables=variables, items=items, equipment=equipment,
     )
 
     _assert_rows_validate(assembled, world_id="evaluation-world")

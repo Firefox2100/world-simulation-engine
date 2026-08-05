@@ -799,6 +799,82 @@ def test_component_model_config_batch_links(config_api):
     ]
 
 
+def test_global_llm_connections_link_and_unlink_without_a_source(config_api):
+    client = config_api.client
+    classifier_chat = client.post("/config/llm/openai", json=openai_chat_payload("Classifier Chat")).json()
+    character_chat = client.post("/config/llm/openai", json=openai_chat_payload("Character Extractor Chat")).json()
+    components = [ComponentType.ST_LOREBOOK_CLASSIFIER, ComponentType.ST_CHARACTER_EXTRACTOR]
+
+    assert client.get(
+        "/config/llm/global-connections",
+        params={"components": components},
+    ).json() == []
+
+    link_response = client.put(
+        "/config/llm/global-connections",
+        json={
+            "assignments": [
+                {"component": ComponentType.ST_LOREBOOK_CLASSIFIER, "config_id": classifier_chat["id"]},
+                {"component": ComponentType.ST_CHARACTER_EXTRACTOR, "config_id": character_chat["id"]},
+            ],
+        },
+    )
+
+    assert link_response.status_code == 200
+    assert link_response.json() == [
+        {"component": ComponentType.ST_LOREBOOK_CLASSIFIER, "config": classifier_chat},
+        {"component": ComponentType.ST_CHARACTER_EXTRACTOR, "config": character_chat},
+    ]
+    assert client.get(
+        "/config/llm/global-connections",
+        params={"components": components},
+    ).json() == link_response.json()
+
+    reassign_response = client.put(
+        "/config/llm/global-connections",
+        json={
+            "assignments": [
+                {"component": ComponentType.ST_LOREBOOK_CLASSIFIER, "config_id": character_chat["id"]},
+            ],
+        },
+    )
+
+    assert reassign_response.status_code == 200
+    assert reassign_response.json() == [{"component": ComponentType.ST_LOREBOOK_CLASSIFIER, "config": character_chat}]
+
+    unlink_response = client.put(
+        "/config/llm/global-connections",
+        json={
+            "assignments": [
+                {"component": ComponentType.ST_LOREBOOK_CLASSIFIER, "config_id": None},
+                {"component": ComponentType.ST_CHARACTER_EXTRACTOR, "config_id": None},
+            ],
+        },
+    )
+
+    assert unlink_response.status_code == 200
+    assert unlink_response.json() == []
+    assert client.get(
+        "/config/llm/global-connections",
+        params={"components": components},
+    ).json() == []
+
+
+def test_global_llm_connections_returns_404_for_a_missing_config(config_api):
+    client = config_api.client
+
+    response = client.put(
+        "/config/llm/global-connections",
+        json={
+            "assignments": [
+                {"component": ComponentType.ST_LOREBOOK_CLASSIFIER, "config_id": str(uuid4())},
+            ],
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_config_endpoints_return_404_for_missing_resources(config_api):
     client = config_api.client
     missing_id = str(uuid4())

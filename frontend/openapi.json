@@ -2205,6 +2205,101 @@
         }
       }
     },
+    "/config/llm/global-connections": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "List Global Llm Connections",
+        "description": "The chat-model assignments not tied to any simulation/world - used by pipelines like the\nSillyTavern importer (`ComponentType.ST_*`) whose config is set up once for the whole\ndeployment rather than per-simulation. Mirrors `list_simulation_llm_connections` but reads\n`ConfigStore.get_global_chat` instead of a source-scoped lookup.",
+        "operationId": "list_global_llm_connections_config_llm_global_connections_get",
+        "parameters": [
+          {
+            "name": "components",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ComponentType"
+              },
+              "description": "The components to look up",
+              "title": "Components"
+            },
+            "description": "The components to look up"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentChatConfig"
+                  },
+                  "title": "Response List Global Llm Connections Config Llm Global Connections Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Global Llm Connections",
+        "operationId": "set_global_llm_connections_config_llm_global_connections_put",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComponentModelConfigBatchUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ComponentChatConfig"
+                  },
+                  "title": "Response Set Global Llm Connections Config Llm Global Connections Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/llm/{config_id}": {
       "get": {
         "tags": [
@@ -22264,7 +22359,9 @@
           "st_world_lore_extractor",
           "st_narrative_extractor",
           "st_intent_extractor",
-          "st_variable_schema_extractor"
+          "st_variable_schema_extractor",
+          "st_item_extractor",
+          "st_equipment_extractor"
         ],
         "title": "ComponentType"
       },

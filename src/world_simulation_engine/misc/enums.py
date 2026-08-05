@@ -54,6 +54,8 @@ class ComponentType(StrEnum):
     ST_NARRATIVE_EXTRACTOR = "st_narrative_extractor"
     ST_INTENT_EXTRACTOR = "st_intent_extractor"
     ST_VARIABLE_SCHEMA_EXTRACTOR = "st_variable_schema_extractor"
+    ST_ITEM_EXTRACTOR = "st_item_extractor"
+    ST_EQUIPMENT_EXTRACTOR = "st_equipment_extractor"
 
 
 class ConnectionType(StrEnum):
@@ -288,6 +290,7 @@ class LorebookItemBucket(StrEnum):
     HISTORY_EVENT = "history_event"
     WORLD_LORE = "world_lore"
     LOCATION = "location"
+    ITEM = "item"
     PACING_INSTRUCTION = "pacing_instruction"
     HIDDEN_TRUTH = "hidden_truth"
     VARIABLE_META = "variable_meta"

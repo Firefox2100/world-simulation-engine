@@ -442,6 +442,32 @@
         "description": "Description",
         "remove": "Remove background character"
       },
+      "items": {
+        "title": "Items",
+        "add": "Add item",
+        "untitled": "Unnamed item",
+        "name": "Name",
+        "description": "Description",
+        "unique": "Unique",
+        "quantity": "Quantity",
+        "quality": "Quality",
+        "holder": "Held by",
+        "location": "Found in",
+        "none": "None",
+        "remove": "Remove item"
+      },
+      "equipment": {
+        "title": "Equipment",
+        "add": "Add equipment",
+        "untitled": "Unnamed equipment",
+        "name": "Name",
+        "description": "Description",
+        "quality": "Quality",
+        "slot": "Worn on",
+        "holder": "Worn by",
+        "none": "None",
+        "remove": "Remove equipment"
+      },
       "events": {
         "title": "Events",
         "untitled": "Unnamed event",
@@ -585,7 +611,8 @@
       "llms": "LLMs",
       "tts": "TTS",
       "images": "Images",
-      "stt": "Speech recognition"
+      "stt": "Speech recognition",
+      "stImport": "SillyTavern import"
     },
     "empty": {
       "connections": "No connections are available.",
@@ -594,6 +621,26 @@
       "tts": "No TTS configurations are available.",
       "images": "No image generation configurations are available.",
       "stt": "No speech recognition backend is configured yet. Only one is needed - it is shared by every simulation."
+    },
+    "stImport": {
+      "loading": "Loading SillyTavern import configuration...",
+      "error": "Unable to load SillyTavern import configuration: {{error}}",
+      "hint": "Assign an existing LLM configuration to each stage of the SillyTavern card import pipeline. These are shared globally - not tied to any single world or simulation - and must all be set before a card can be imported.",
+      "save": "Save",
+      "saving": "Saving...",
+      "saved": "Saved.",
+      "saveError": "Unable to save: {{error}}",
+      "components": {
+        "st_lorebook_classifier": "Lorebook classifier",
+        "st_character_extractor": "Character extractor",
+        "st_location_extractor": "Location extractor",
+        "st_world_lore_extractor": "World lore extractor",
+        "st_narrative_extractor": "Narrative extractor",
+        "st_intent_extractor": "Intent extractor",
+        "st_variable_schema_extractor": "Variable schema extractor",
+        "st_item_extractor": "Item extractor",
+        "st_equipment_extractor": "Equipment extractor"
+      }
     },
     "providers": {
       "openai": "OpenAI",

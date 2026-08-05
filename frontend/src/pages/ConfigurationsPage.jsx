@@ -17,15 +17,18 @@ import {
     fetchAllTalkStatus,
     fetchConnections,
     fetchEmbeddingConfigs,
+    fetchGlobalLlmConfigs,
     fetchImageConfigs,
     fetchLlmConfigs,
     fetchSttConfigs,
     fetchTtsConfigs,
     setEmbeddingConfigConnection,
+    setGlobalLlmConfigs,
     setImageConfigConnection,
     setLlmConfigConnection,
     setSttConfigConnection,
     setTtsConfigConnection,
+    stImportComponents,
     updateConnection,
     updateEmbeddingConfig,
     updateImageConfig,
@@ -35,7 +38,7 @@ import {
 } from "@/api/configurations";
 import { ConnectionProviderIcon } from "@/components/ConnectionProviderIcon";
 
-const tabs = ["connections", "embeddings", "llms", "tts", "images", "stt"];
+const tabs = ["connections", "embeddings", "llms", "tts", "images", "stt", "stImport"];
 const llmProviders = [
     "openai",
     "ollama",
@@ -1624,6 +1627,120 @@ function FieldLabel({ htmlFor, label, required }) {
     );
 }
 
+function SillyTavernExtractorConfig({ llmConfigs }) {
+    const { t } = useTranslation();
+    const [assignments, setAssignments] = useState({});
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState(null);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetchGlobalLlmConfigs(stImportComponents)
+            .then((rows) => {
+                if (cancelled) {
+                    return;
+                }
+
+                const map = {};
+                rows.forEach((row) => {
+                    map[row.component] = row.config.id;
+                });
+                setAssignments(map);
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    function updateAssignment(component, configId) {
+        setSaved(false);
+        setAssignments((current) => ({ ...current, [component]: configId }));
+    }
+
+    async function handleSave() {
+        setSaving(true);
+        setSaveError(null);
+        setSaved(false);
+
+        try {
+            await setGlobalLlmConfigs(
+                stImportComponents.map((component) => ({
+                    component,
+                    config_id: assignments[component] || null,
+                })),
+            );
+            setSaved(true);
+        } catch (err) {
+            setSaveError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return <p className="status-text">{t("configurations.stImport.loading")}</p>;
+    }
+
+    if (error) {
+        return <p className="status-text error-text">{t("configurations.stImport.error", { error })}</p>;
+    }
+
+    return (
+        <div className="st-import-config">
+            <p className="st-import-config-hint">{t("configurations.stImport.hint")}</p>
+            <div className="world-editor-config-matrix st-import-config-matrix">
+                <div className="world-editor-config-matrix-header">
+                    <span>{t("worldCreate.newEditor.fields.component")}</span>
+                    <span>{t("worldCreate.newEditor.fields.llmConfig")}</span>
+                </div>
+                {stImportComponents.map((component) => (
+                    <div className="world-editor-config-row" key={component}>
+                        <div className="world-editor-component-name">
+                            {t(`configurations.stImport.components.${component}`)}
+                        </div>
+                        <select
+                            className="single-line-input"
+                            value={assignments[component] ?? ""}
+                            onChange={(event) => updateAssignment(component, event.target.value)}
+                        >
+                            <option value="">{t("worldCreate.newEditor.emptySelect")}</option>
+                            {llmConfigs.map((config) => (
+                                <option key={config.id} value={config.id}>
+                                    {config.name || config.model || config.id}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                ))}
+            </div>
+            {saveError ? (
+                <p className="status-text error-text">{t("configurations.stImport.saveError", { error: saveError })}</p>
+            ) : null}
+            <div className="st-import-config-actions">
+                <button type="button" className="primary-button" onClick={handleSave} disabled={saving}>
+                    {saving ? t("configurations.stImport.saving") : t("configurations.stImport.save")}
+                </button>
+                {saved ? <span className="st-import-config-saved">{t("configurations.stImport.saved")}</span> : null}
+            </div>
+        </div>
+    );
+}
+
 export function ConfigurationsPage() {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState("connections");
@@ -1686,6 +1803,9 @@ export function ConfigurationsPage() {
     // STT is global - simulations don't pick their own backend, so at most one config should
     // exist. Once one is set up, editing it is done via the row's own edit action instead.
     const sttCreateDisabled = activeTab === "stt" && sttConfigs.length > 0;
+    // The ST-import tab is an assignment matrix (existing chat configs -> components), not a
+    // creatable record kind - it has no create/modal flow at all.
+    const hideCreateButton = sttCreateDisabled || activeTab === "stImport";
 
     async function handleDelete(kind, item) {
         const name = titleFor(kind, item);
@@ -1727,7 +1847,7 @@ export function ConfigurationsPage() {
                     <h1>{t("configurations.title")}</h1>
                     <p>{t("configurations.subtitle")}</p>
                 </div>
-                {sttCreateDisabled ? null : (
+                {hideCreateButton ? null : (
                     <button
                         type="button"
                         className="primary-button"
@@ -1761,6 +1881,8 @@ export function ConfigurationsPage() {
                 <p className="status-text">{t("configurations.loading")}</p>
             ) : error ? (
                 <p className="status-text error-text">{t("configurations.error", { error })}</p>
+            ) : activeTab === "stImport" ? (
+                <SillyTavernExtractorConfig llmConfigs={llms} />
             ) : data[activeTab].length === 0 ? (
                 <p className="connection-empty-text">{t(`configurations.empty.${activeTab}`)}</p>
             ) : (
