@@ -484,6 +484,32 @@ async def set_global_llm_connections(config_update: ComponentModelConfigBatchUpd
     )
 
 
+class ImageUrlWhitelist(BaseModel):
+    base_urls: list[str] = Field(
+        default_factory=list,
+        description="Base URL prefixes the SillyTavern import pipeline trusts enough to "
+                    "auto-download an image link from without asking the user first. Any "
+                    "extracted URL starting with one of these is downloaded automatically.",
+    )
+
+
+@config_router.get(
+    "/config/sillytavern/image-url-whitelist",
+    response_model=ImageUrlWhitelist,
+)
+async def get_image_url_whitelist(db: db_dep):
+    return ImageUrlWhitelist(base_urls=await db.config.get_image_url_whitelist())
+
+
+@config_router.put(
+    "/config/sillytavern/image-url-whitelist",
+    response_model=ImageUrlWhitelist,
+)
+async def set_image_url_whitelist(whitelist: ImageUrlWhitelist, db: db_dep):
+    base_urls = await db.config.set_image_url_whitelist(whitelist.base_urls)
+    return ImageUrlWhitelist(base_urls=base_urls)
+
+
 @config_router.get("/config/llm/{config_id}", response_model=ChatModelConfigUnion, response_model_exclude_none=True)
 async def get_chat_config(config_id: str, db: db_dep):
     chat_config = await db.config.get_chat(config_id)

@@ -2074,6 +2074,22 @@ body {
     background: #f3f4f6;
 }
 
+.st-import-section .media-picker-card {
+    position: relative;
+    cursor: default;
+}
+
+.st-import-section .media-picker-card .st-import-remove-button {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 999px;
+    width: 22px;
+    height: 22px;
+    line-height: 1;
+}
+
 .media-picker-card span {
     padding: 9px;
     display: block;
@@ -2805,6 +2821,45 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+.st-import-image-candidate-list {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.st-import-image-candidate {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.st-import-image-candidate-url {
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+
+.st-import-image-candidate-source {
+    flex-shrink: 0;
+    font-size: 0.85em;
+    opacity: 0.7;
+}
+
+.st-import-whitelist-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.st-import-whitelist-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.st-import-whitelist-row .single-line-input {
+    flex: 1;
 }
 
 .st-import-chip {

@@ -211,6 +211,20 @@ export async function setGlobalLlmConfigs(assignments) {
     });
 }
 
+export async function fetchImageUrlWhitelist() {
+    return apiRequest("/config/sillytavern/image-url-whitelist");
+}
+
+export async function setImageUrlWhitelist(baseUrls) {
+    return apiRequest("/config/sillytavern/image-url-whitelist", {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ base_urls: baseUrls }),
+    });
+}
+
 export async function fetchWorldLlmConfigs(worldId) {
     return apiRequest(`/worlds/${worldId}/llm-connections`);
 }

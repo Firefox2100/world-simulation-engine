@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.logging import configure_event_logging, log_event
 from world_simulation_engine.service import DatabaseService
+from world_simulation_engine.service.media_download_service import MediaDownloadService
 from world_simulation_engine.service.storage_service import StorageService
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.workflow_loader import WorkflowLoader
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
     )
     storage = StorageService(CONFIG.data_folder)
     await storage.initialise()
+    media_download_service = MediaDownloadService()
     interrupted_jobs = await database.generation_job.fail_incomplete_jobs(
         "Generation interrupted by application restart",
     )
@@ -37,6 +39,7 @@ async def lifespan(app: FastAPI):
 
     app.state.database = database
     app.state.storage = storage
+    app.state.media_download_service = media_download_service
     app.state.prompt_loader = prompt_loader
     app.state.workflow_loader = workflow_loader
     simulator = WorldSimulator(

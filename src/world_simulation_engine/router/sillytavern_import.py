@@ -1,18 +1,21 @@
+import asyncio
 import base64
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, ValidationError
 
-from world_simulation_engine.component.sillytavern_converter import AssembledWorld, DataExtractor, \
-    WorldReconstructor
+from world_simulation_engine.component.sillytavern_converter import AssembledWorld, ConversionReport, \
+    DataExtractor, ImageCandidateRow, ImageExtraction, ImageExtractor, ImageScanSummary, WorldReconstructor, \
+    build_downloaded_media_row
 from world_simulation_engine.misc.enums import ComponentType, SupportedLanguage
 from world_simulation_engine.model import World
 from world_simulation_engine.model.silly_tavern import (
-    SillyTavernCardV3, SillyTavernCardV3BookEntry, SillyTavernCardV3Data, SillyTavernCardV3LoreBook,
+    SillyTavernCardV3, SillyTavernCardV3Asset, SillyTavernCardV3BookEntry, SillyTavernCardV3Data,
+    SillyTavernCardV3LoreBook,
 )
 from world_simulation_engine.service import AuthorNotFoundError, WorldImportError, \
     WorldImportService
-from .utils import db_dep, storage_dep
+from .utils import db_dep, media_download_dep, storage_dep
 
 sillytavern_import_router = APIRouter(
     tags=["SillyTavern Import"],
@@ -64,6 +67,18 @@ class ParsedSillyTavernCard(BaseModel):
     tags: list[str] = Field(default_factory=list)
     lorebook_entries: list[ParsedLorebookEntry] = Field(default_factory=list)
     cover_image_data_uri: str | None = None
+    assets: list[SillyTavernCardV3Asset] = Field(
+        default_factory=list,
+        description="Round-tripped verbatim, not user-editable - carried through to /extract so "
+                    "the image-link scan can see V3 asset URIs.",
+    )
+    extensions: dict = Field(
+        default_factory=dict,
+        description="Round-tripped verbatim, not user-editable - carried through to /extract so "
+                    "the image-link scan can see script/extension content.",
+    )
+    image_candidates: list[ImageCandidateRow] = Field(default_factory=list)
+    image_scan: ImageScanSummary = Field(default_factory=ImageScanSummary)
 
 
 class SillyTavernImportStatus(BaseModel):
@@ -100,12 +115,48 @@ class SillyTavernExtractCard(BaseModel):
     post_history_instructions: str = ""
     tags: list[str] = Field(default_factory=list)
     lorebook_entries: list[SillyTavernExtractLorebookEntry] = Field(default_factory=list)
+    assets: list[SillyTavernCardV3Asset] = Field(
+        default_factory=list,
+        description="Round-tripped verbatim from /parse - see ParsedSillyTavernCard.assets.",
+    )
+    extensions: dict = Field(
+        default_factory=dict,
+        description="Round-tripped verbatim from /parse - see ParsedSillyTavernCard.extensions.",
+    )
 
 
 class SillyTavernExtractRequest(BaseModel):
     card: SillyTavernExtractCard
+    selected_image_urls: list[str] = Field(default_factory=list)
     language: SupportedLanguage = Field(
         description="Same meaning as every other stage's language parameter.",
+    )
+
+
+class SillyTavernExtractResponse(BaseModel):
+    """Superset of `AssembledWorld` - the LLM extraction pipeline's result plus the image-link
+    pipeline's result, merged once both finish (they run concurrently, see `extract_sillytavern_card`).
+    `sections["media"]` already contains the auto-downloaded (whitelisted) images, ready to import
+    as-is; `image_candidates` are the ones that need the user to opt in via `/images/fetch`."""
+
+    world: dict
+    sections: dict[str, list]
+    report: ConversionReport
+    image_candidates: list[ImageCandidateRow] = Field(default_factory=list)
+    image_scan: ImageScanSummary = Field(
+        default_factory=ImageScanSummary,
+        description="Always present, even when every count is zero, so the review UI can show "
+                    "what the image-link scan actually found rather than going silent.",
+    )
+
+
+class SillyTavernImageFetchRequest(BaseModel):
+    urls: list[str] = Field(description="Candidate URLs the user checked for download.")
+
+
+class SillyTavernImageFetchResponse(BaseModel):
+    media_rows: list[dict] = Field(
+        description="`sections['media']`-shaped rows, ready to merge into the reviewed world.",
     )
 
 
@@ -149,6 +200,8 @@ def _build_synthetic_card(card: SillyTavernExtractCard) -> SillyTavernCardV3:
             post_history_instructions=card.post_history_instructions,
             tags=card.tags,
             character_book=SillyTavernCardV3LoreBook(entries=entries),
+            assets=card.assets or None,
+            extensions=card.extensions,
         ),
     )
 
@@ -156,7 +209,9 @@ def _build_synthetic_card(card: SillyTavernExtractCard) -> SillyTavernCardV3:
 @sillytavern_import_router.post(
     "/worlds/import/sillytavern/parse", response_model=ParsedSillyTavernCard,
 )
-async def parse_sillytavern_card(file: UploadFile = File(...)):
+async def parse_sillytavern_card(
+        request: Request, file: UploadFile = File(...),
+):
     """Parses a card and returns its raw fields for the import review UI, without running any
     extraction stage or touching the database - the user reviews/edits this first (left side),
     then `/extract` (right side) feeds the edited result into the real pipeline."""
@@ -173,6 +228,16 @@ async def parse_sillytavern_card(file: UploadFile = File(...)):
 
     data = extracted.card.data
     book_entries = data.character_book.entries if data.character_book else []
+    # The production app supplies these shared services. Keeping parse usable on a bare FastAPI
+    # router is useful for offline/card-format consumers; in that case the scan is simply empty.
+    if all(hasattr(request.app.state, name) for name in ("database", "storage", "media_download_service")):
+        image_scan = await ImageExtractor(
+            media_download_service=request.app.state.media_download_service,
+            storage=request.app.state.storage,
+            whitelist=await request.app.state.database.config.get_image_url_whitelist(),
+        ).scan(extracted.card)
+    else:
+        image_scan = ImageExtraction()
 
     return ParsedSillyTavernCard(
         name=data.name,
@@ -203,6 +268,10 @@ async def parse_sillytavern_card(file: UploadFile = File(...)):
         cover_image_data_uri=(
             f"data:image/png;base64,{base64.b64encode(extracted.image).decode('ascii')}"
         ),
+        assets=data.assets or [],
+        extensions=data.extensions or {},
+        image_candidates=image_scan.candidates,
+        image_scan=image_scan.summary,
     )
 
 
@@ -218,15 +287,33 @@ async def get_sillytavern_import_status(db: db_dep):
     return SillyTavernImportStatus(configured=not missing, missing_components=missing)
 
 
-@sillytavern_import_router.post("/worlds/import/sillytavern/extract", response_model=AssembledWorld)
-async def extract_sillytavern_card(db: db_dep, request: SillyTavernExtractRequest):
+@sillytavern_import_router.post(
+    "/worlds/import/sillytavern/extract", response_model=SillyTavernExtractResponse,
+)
+async def extract_sillytavern_card(
+        db: db_dep, storage: storage_dep, media_download_service: media_download_dep,
+        request: SillyTavernExtractRequest,
+):
     """Runs the full extraction pipeline (stages 1-3) on the user-edited card and returns the
     assembled result *without persisting it* - the review page shows this for further editing, and
-    a separate `/commit` call actually writes it to the database once the user is done."""
+    a separate `/commit` call actually writes it to the database once the user is done.
+
+    Concurrently (`asyncio.gather`, neither waits on the other) also scans the card for image
+    links, downloads the ones from a whitelisted source outright, and returns the rest as
+    `image_candidates` for the user to opt into via `/images/fetch` - see `ImageExtractor`."""
     synthetic_card = _build_synthetic_card(request.card)
+    whitelist = await db.config.get_image_url_whitelist()
+    image_extractor = ImageExtractor(
+        media_download_service=media_download_service, storage=storage, whitelist=whitelist,
+    )
     try:
-        return await WorldReconstructor(database=db).reconstruct_from_card(
-            synthetic_card, language=request.language,
+        assembled, image_result = await asyncio.gather(
+            WorldReconstructor(database=db).reconstruct_from_card(
+                synthetic_card, language=request.language,
+            ),
+            image_extractor.extract(
+                synthetic_card, selected_urls=request.selected_image_urls,
+            ),
         )
     except ValueError as exc:
         # Most likely an unconfigured global chat model (see /status) - surfaced mid-run, not
@@ -235,6 +322,36 @@ async def extract_sillytavern_card(db: db_dep, request: SillyTavernExtractReques
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
+
+    sections = {**assembled.sections, "media": image_result.media_rows}
+    world = {**assembled.world, "media_ids": [row["id"] for row in image_result.media_rows]}
+    for note in image_result.notes:
+        assembled.report.note(note)
+
+    return SillyTavernExtractResponse(
+        world=world, sections=sections, report=assembled.report,
+        image_candidates=image_result.candidates, image_scan=image_result.summary,
+    )
+
+
+@sillytavern_import_router.post(
+    "/worlds/import/sillytavern/images/fetch", response_model=SillyTavernImageFetchResponse,
+)
+async def fetch_sillytavern_images(
+        storage: storage_dep, media_download_service: media_download_dep,
+        request: SillyTavernImageFetchRequest,
+):
+    """Downloads the candidate image URLs the user checked on the review page. Re-runs the SSRF
+    filter server-side regardless of what the client sent (`MediaDownloadService.fetch_and_store`
+    always does) - client-side selection is never trusted as a safety boundary."""
+    downloaded = await media_download_service.download_many(request.urls)
+    staged = await asyncio.gather(*(storage.stage_bytes(content) for _, content in downloaded))
+    return SillyTavernImageFetchResponse(
+        media_rows=[
+            build_downloaded_media_row(url, temporary, content)
+            for (url, content), temporary in zip(downloaded, staged, strict=True)
+        ],
+    )
 
 
 @sillytavern_import_router.post("/worlds/import/sillytavern/commit", response_model=World)
@@ -247,15 +364,25 @@ async def commit_sillytavern_world(
     `POST /worlds/{id}/cover-image` flow once this call returns the new world's id, rather than
     duplicating that upload/media-creation logic in this endpoint too."""
     try:
+        sections = {**request.sections}
+        media_rows = []
+        for row in sections.get("media", []):
+            cleaned = dict(row)
+            temporary_id = cleaned.pop("temporary_id", None)
+            cleaned.pop("preview_data_uri", None)
+            if temporary_id:
+                await storage.promote_staged(temporary_id, expected_digest=cleaned["hash"])
+            media_rows.append(cleaned)
+        sections["media"] = media_rows
         return await WorldImportService(database=db, storage=storage).import_assembled_sections(
-            request.world, request.sections, request.author_id,
+            request.world, sections, request.author_id,
         )
     except AuthorNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Author {exc} not found",
         ) from exc
-    except WorldImportError as exc:
+    except (WorldImportError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

@@ -22,6 +22,11 @@ class StoredObject:
     size: int
 
 
+@dataclass(frozen=True, slots=True)
+class StagedObject(StoredObject):
+    token: str
+
+
 class FormatNormaliser:
     @staticmethod
     def normalise_image(image_data: bytes) -> bytes:
@@ -205,6 +210,35 @@ class StorageService:
             chunks(),
             expected_digest=expected_digest,
         )
+
+    async def stage_bytes(self, content: bytes) -> StagedObject:
+        """Write bytes to the private temporary area without publishing them as stored content."""
+        token = uuid.uuid4().hex
+        digest = hashlib.sha256(content).hexdigest()
+        path = self._temporary_root / f"st-import-{token}.tmp"
+        async with aiofiles.open(path, mode="xb") as output:
+            await output.write(content)
+        return StagedObject(token=token, digest=digest, size=len(content))
+
+    async def promote_staged(self, token: str, *, expected_digest: str) -> StoredObject:
+        """Publish a staged import after final user confirmation.
+
+        Tokens are UUID hex strings, so callers cannot use this API to address arbitrary files.
+        """
+        try:
+            uuid.UUID(hex=token)
+        except ValueError as exc:
+            raise ValueError("Invalid temporary object token") from exc
+        path = self._temporary_root / f"st-import-{token}.tmp"
+        try:
+            async with aiofiles.open(path, mode="rb") as source:
+                content = await source.read()
+        except FileNotFoundError as exc:
+            raise ValueError("Temporary image has expired or is unavailable") from exc
+        try:
+            return await self.save_bytes(content, expected_digest=expected_digest)
+        finally:
+            await self._unlink_if_exists(path)
 
     async def get(self,
                   digest: str,

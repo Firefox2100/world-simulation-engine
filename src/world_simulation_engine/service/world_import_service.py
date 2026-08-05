@@ -25,8 +25,8 @@ from pydantic import TypeAdapter, ValidationError
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import BackgroundCharacter, Character, CharacterTtsConfig, ChatModelConfigUnion, \
     Container, EmbedModelConfigUnion, EntityRelationship, EntityVariableSet, Equipment, Event, \
-    ImageModelConfigUnion, Intent, Item, ItemStack, Landmark, Location, MediaFile, MemoryAtom, PromptMediaFile, \
-    Turn, TtsModelConfigUnion, WorkflowMediaFile, World
+    ImageModelConfigUnion, ImportedImageMediaFile, Intent, Item, ItemStack, Landmark, Location, MediaFile, \
+    MemoryAtom, PromptMediaFile, Turn, TtsModelConfigUnion, WorkflowMediaFile, World
 from world_simulation_engine.service.database import DatabaseService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 from world_simulation_engine.service.storage_service import StorageService
@@ -52,6 +52,8 @@ def _media_model_from_row(row: dict) -> MediaFile:
         return PromptMediaFile.model_validate(row)
     if row.get("workflow_name") is not None:
         return WorkflowMediaFile.model_validate(row)
+    if row.get("source_url") is not None:
+        return ImportedImageMediaFile.model_validate(row)
     return MediaFile.model_validate(row)
 
 
@@ -202,6 +204,13 @@ class WorldImportService:
         world_cover = media_id_map.get(world_row.get("cover_media_id"))
         if world_cover:
             await self._db.media.set_cover_image(world.id, world_cover)
+
+        # Generic (non-cover) media attachment - e.g. images downloaded during SillyTavern import
+        # that aren't the world's cover, just extra media associated with it.
+        for provisional_media_id in world_row.get("media_ids", []):
+            media_id = media_id_map.get(provisional_media_id)
+            if media_id:
+                await self._db.media.add_media(world.id, media_id)
 
     # -- archive reading -------------------------------------------------------------------
 

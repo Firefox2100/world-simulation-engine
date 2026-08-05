@@ -860,6 +860,29 @@ def test_global_llm_connections_link_and_unlink_without_a_source(config_api):
     ).json() == []
 
 
+def test_image_url_whitelist_get_and_put_round_trips(config_api):
+    client = config_api.client
+
+    assert client.get("/config/sillytavern/image-url-whitelist").json() == {"base_urls": []}
+
+    put_response = client.put(
+        "/config/sillytavern/image-url-whitelist",
+        json={"base_urls": ["https://trusted.example.com/", "https://cdn.example.com/"]},
+    )
+
+    assert put_response.status_code == 200
+    assert put_response.json() == {"base_urls": ["https://trusted.example.com/", "https://cdn.example.com/"]}
+    assert client.get("/config/sillytavern/image-url-whitelist").json() == put_response.json()
+
+    overwrite_response = client.put(
+        "/config/sillytavern/image-url-whitelist",
+        json={"base_urls": ["https://only-one.example.com/"]},
+    )
+
+    assert overwrite_response.json() == {"base_urls": ["https://only-one.example.com/"]}
+    assert client.get("/config/sillytavern/image-url-whitelist").json() == overwrite_response.json()
+
+
 def test_global_llm_connections_returns_404_for_a_missing_config(config_api):
     client = config_api.client
 

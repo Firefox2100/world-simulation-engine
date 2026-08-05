@@ -6,6 +6,9 @@ from .classifiable_items import ClassifiableItem, classifiable_items, content_by
 from .data_extractor import DataExtractor, ExtractedCharacterCard
 from .equipment_extractor import EquipmentCandidates, EquipmentExtraction, EquipmentExtractor, \
     EquipmentFieldCandidate, ExtractedEquipment
+from .image_extractor import ImageCandidateRow, ImageExtraction, ImageExtractor, ImageScanSummary, \
+    build_downloaded_media_row
+from .image_link_extractor import ImageLinkExtraction, ImageLinkExtractor, ImageUrlCandidate
 from .intent_extractor import ExtractedIntent, IntentCandidate, IntentCandidates, IntentExtraction, IntentExtractor
 from .item_extractor import ExtractedItem, ItemCandidates, ItemExtraction, ItemExtractor, \
     ItemFieldCandidate

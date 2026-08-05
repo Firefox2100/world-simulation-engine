@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { commitSillyTavernWorld, extractSillyTavernCard, getSillyTavernImportStatus, parseSillyTavernCard } from "@/api/sillytavernImport";
+import {
+    commitSillyTavernWorld, extractSillyTavernCard,
+    getSillyTavernImportStatus, parseSillyTavernCard,
+} from "@/api/sillytavernImport";
 import { getDefaultAuthorId, uploadWorldCoverImage } from "@/api/worlds";
 import { SillyTavernDropzone } from "@/components/SillyTavernDropzone";
 import { SillyTavernExtractedWorldEditor } from "@/components/SillyTavernExtractedWorldEditor";
@@ -35,12 +38,17 @@ export function SillyTavernImportPage() {
     const [greetings, setGreetings] = useState([]);
     const [selectedGreetingKey, setSelectedGreetingKey] = useState(FIRST_MES_KEY);
     const [lorebookEntries, setLorebookEntries] = useState([]);
+    const [cardAssets, setCardAssets] = useState([]);
+    const [cardExtensions, setCardExtensions] = useState({});
 
     const [status, setStatus] = useState(null);
     const [language, setLanguage] = useState(i18n.language?.startsWith("zh") ? "zh" : "en");
     const [extracting, setExtracting] = useState(false);
     const [extractError, setExtractError] = useState(null);
     const [assembled, setAssembled] = useState(null);
+    const [imageCandidates, setImageCandidates] = useState([]);
+    const [imageScan, setImageScan] = useState(null);
+    const [selectedImageUrls, setSelectedImageUrls] = useState([]);
 
     const [committing, setCommitting] = useState(false);
     const [commitError, setCommitError] = useState(null);
@@ -100,6 +108,11 @@ export function SillyTavernImportPage() {
             setSelectedGreetingKey(FIRST_MES_KEY);
             setLorebookEntries(parsedCard.lorebook_entries ?? []);
             setCoverImage(parsedCard.cover_image_data_uri ?? null);
+            setCardAssets(parsedCard.assets ?? []);
+            setCardExtensions(parsedCard.extensions ?? {});
+            setImageCandidates(parsedCard.image_candidates ?? []);
+            setImageScan(parsedCard.image_scan ?? null);
+            setSelectedImageUrls([]);
         } catch (err) {
             setError(err.message);
             setFields(null);
@@ -125,6 +138,8 @@ export function SillyTavernImportPage() {
         setGreetings([]);
         setLorebookEntries([]);
         setCoverImage(null);
+        setCardAssets([]);
+        setCardExtensions({});
         setFileName(null);
         setOriginalFile(null);
         setError(null);
@@ -137,6 +152,9 @@ export function SillyTavernImportPage() {
     async function handleExtract() {
         setExtractError(null);
         setExtracting(true);
+        setImageCandidates([]);
+        setImageScan(null);
+        setSelectedImageUrls([]);
 
         try {
             const selectedGreeting = greetings.find((greeting) => greeting.key === selectedGreetingKey);
@@ -154,14 +172,26 @@ export function SillyTavernImportPage() {
                 lorebook_entries: lorebookEntries
                     .filter((entry) => entry.enabled)
                     .map((entry) => ({ name: entry.name, keys: entry.keys, content: entry.content })),
+                assets: cardAssets,
+                extensions: cardExtensions,
             };
 
-            setAssembled(await extractSillyTavernCard(card, language));
+            const result = await extractSillyTavernCard(card, language, selectedImageUrls);
+            setAssembled(result);
+            setImageCandidates(result.image_candidates ?? []);
+            setImageScan(result.image_scan ?? null);
+            setSelectedImageUrls([]);
         } catch (err) {
             setExtractError(err.message);
         } finally {
             setExtracting(false);
         }
+    }
+
+    function toggleImageCandidate(url, checked) {
+        setSelectedImageUrls((current) => (
+            checked ? [...current, url] : current.filter((selected) => selected !== url)
+        ));
     }
 
     async function handleCommit() {
@@ -170,13 +200,26 @@ export function SillyTavernImportPage() {
 
         try {
             const authorId = await getDefaultAuthorId();
-            const world = await commitSillyTavernWorld(assembled.world, assembled.sections, authorId);
+            const mediaRows = assembled.sections.media ?? [];
+            const world = {
+                ...assembled.world,
+                media_ids: mediaRows.map((row) => row.id),
+            };
+            const sections = {
+                ...assembled.sections,
+                media: mediaRows.map((row) => {
+                    const cleaned = { ...row };
+                    delete cleaned.preview_data_uri;
+                    return cleaned;
+                }),
+            };
+            const committed = await commitSillyTavernWorld(world, sections, authorId);
 
             if (originalFile) {
-                await uploadWorldCoverImage(world.id, originalFile).catch(() => {});
+                await uploadWorldCoverImage(committed.id, originalFile).catch(() => {});
             }
 
-            setCommittedWorld(world);
+            setCommittedWorld(committed);
         } catch (err) {
             setCommitError(err.message);
         } finally {
@@ -355,6 +398,53 @@ export function SillyTavernImportPage() {
                                     </div>
                                 )}
                             </section>
+
+                            {imageScan ? (
+                                <section className="st-import-section">
+                                    <h2>{t("sillyTavernImport.imageCandidates.title")}</h2>
+                                    <p className="st-import-section-hint">
+                                        {t("sillyTavernImport.imageCandidates.summary", {
+                                            found: imageScan.found,
+                                            autoDownloaded: imageScan.auto_downloaded,
+                                            awaitingReview: imageScan.awaiting_review,
+                                            droppedUnsafe: imageScan.dropped_unsafe,
+                                            droppedNonImage: imageScan.dropped_non_image,
+                                        })}
+                                    </p>
+                                    {imageCandidates.length > 0 ? (
+                                        <>
+                                            <p className="st-import-section-hint">
+                                                {t("sillyTavernImport.imageCandidates.hint")}
+                                            </p>
+                                            <label className="st-import-chip st-import-image-candidate">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={imageCandidates.length > 0 && selectedImageUrls.length === imageCandidates.length}
+                                                    onChange={(event) => setSelectedImageUrls(
+                                                        event.target.checked ? imageCandidates.map((candidate) => candidate.url) : [],
+                                                    )}
+                                                />
+                                                <span>{t("sillyTavernImport.imageCandidates.selectAll", { defaultValue: "Select all" })}</span>
+                                            </label>
+                                            <div className="st-import-chip-list st-import-image-candidate-list">
+                                                {imageCandidates.map((candidate) => (
+                                                    <label key={candidate.url} className="st-import-chip st-import-image-candidate">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedImageUrls.includes(candidate.url)}
+                                                            onChange={(event) => toggleImageCandidate(candidate.url, event.target.checked)}
+                                                        />
+                                                        <span className="st-import-image-candidate-url">{candidate.url}</span>
+                                                        <span className="st-import-image-candidate-source">
+                                                            {t(`sillyTavernImport.imageCandidates.source.${candidate.source}`)}
+                                                        </span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : null}
+                                </section>
+                            ) : null}
                         </div>
                     ) : null}
                 </section>

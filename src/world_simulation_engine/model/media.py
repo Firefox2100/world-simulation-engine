@@ -107,6 +107,17 @@ class GeneratedImageMediaFile(MediaFile):
     )
 
 
+class ImportedImageMediaFile(MediaFile):
+    type: MediaType = Field(
+        MediaType.PNG,
+        description="Type of the imported image media file",
+    )
+    source_url: str = Field(
+        ...,
+        description="The original URL this image was downloaded from, kept for traceability",
+    )
+
+
 class GeneratedVoiceMediaFile(MediaFile):
     type: MediaType = Field(
         MediaType.WAV,

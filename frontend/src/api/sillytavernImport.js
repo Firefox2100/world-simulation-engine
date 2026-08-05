@@ -14,13 +14,23 @@ export async function getSillyTavernImportStatus() {
     return apiRequest("/worlds/import/sillytavern/status");
 }
 
-export async function extractSillyTavernCard(card, language) {
+export async function extractSillyTavernCard(card, language, selectedImageUrls = []) {
     return apiRequest("/worlds/import/sillytavern/extract", {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ card, language }),
+        body: JSON.stringify({ card, language, selected_image_urls: selectedImageUrls }),
+    });
+}
+
+export async function fetchSillyTavernImages(urls) {
+    return apiRequest("/worlds/import/sillytavern/images/fetch", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ urls }),
     });
 }
 

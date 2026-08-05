@@ -59,5 +59,35 @@ class Settings(BaseSettings):
                     "Send-dispatched fan-out directly rather than via a separate semaphore."
     )
 
+    sillytavern_image_download_max_concurrency: int = Field(
+        4,
+        description="Maximum number of concurrent outbound HEAD/GET requests when probing or "
+                    "downloading image links found in a SillyTavern card."
+    )
+    sillytavern_image_download_max_bytes: int = Field(
+        10 * 1024 * 1024,
+        description="Maximum response body size accepted when downloading a candidate image link, "
+                    "enforced both against Content-Length and against the actual bytes streamed."
+    )
+    sillytavern_image_download_connect_timeout: float = Field(
+        5.0,
+        description="Connect timeout, in seconds, for outbound image link HEAD/GET requests."
+    )
+    sillytavern_image_download_read_timeout: float = Field(
+        10.0,
+        description="Read timeout, in seconds, for outbound image link GET requests."
+    )
+    sillytavern_image_download_head_timeout: float = Field(
+        5.0,
+        description="Total timeout, in seconds, for the cheaper HEAD probe used to decide whether "
+                    "a non-whitelisted image link is worth showing the user for review."
+    )
+    sillytavern_image_download_max_redirects: int = Field(
+        3,
+        description="Maximum number of redirect hops followed when downloading a candidate image "
+                    "link. Each hop's target is re-validated against the SSRF filter before being "
+                    "followed, never just the original URL."
+    )
+
 
 CONFIG = Settings(_env_file=os.getenv('WSE_ENV_FILE', '.env'))      # type: ignore

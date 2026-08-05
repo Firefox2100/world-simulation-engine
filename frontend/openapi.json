@@ -2300,6 +2300,66 @@
         }
       }
     },
+    "/config/sillytavern/image-url-whitelist": {
+      "get": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Get Image Url Whitelist",
+        "operationId": "get_image_url_whitelist_config_sillytavern_image_url_whitelist_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageUrlWhitelist"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Config"
+        ],
+        "summary": "Set Image Url Whitelist",
+        "operationId": "set_image_url_whitelist_config_sillytavern_image_url_whitelist_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageUrlWhitelist"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageUrlWhitelist"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/llm/{config_id}": {
       "get": {
         "tags": [
@@ -16283,7 +16343,7 @@
           "SillyTavern Import"
         ],
         "summary": "Extract Sillytavern Card",
-        "description": "Runs the full extraction pipeline (stages 1-3) on the user-edited card and returns the\nassembled result *without persisting it* - the review page shows this for further editing, and\na separate `/commit` call actually writes it to the database once the user is done.",
+        "description": "Runs the full extraction pipeline (stages 1-3) on the user-edited card and returns the\nassembled result *without persisting it* - the review page shows this for further editing, and\na separate `/commit` call actually writes it to the database once the user is done.\n\nConcurrently (`asyncio.gather`, neither waits on the other) also scans the card for image\nlinks, downloads the ones from a whitelisted source outright, and returns the rest as\n`image_candidates` for the user to opt into via `/images/fetch` - see `ImageExtractor`.",
         "operationId": "extract_sillytavern_card_worlds_import_sillytavern_extract_post",
         "requestBody": {
           "content": {
@@ -16301,7 +16361,49 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssembledWorld"
+                  "$ref": "#/components/schemas/SillyTavernExtractResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/import/sillytavern/images/fetch": {
+      "post": {
+        "tags": [
+          "SillyTavern Import"
+        ],
+        "summary": "Fetch Sillytavern Images",
+        "description": "Downloads the candidate image URLs the user checked on the review page. Re-runs the SSRF\nfilter server-side regardless of what the client sent (`MediaDownloadService.fetch_and_store`\nalways does) - client-side selection is never trusted as a safety boundary.",
+        "operationId": "fetch_sillytavern_images_worlds_import_sillytavern_images_fetch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SillyTavernImageFetchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SillyTavernImageFetchResponse"
                 }
               }
             }
@@ -19847,33 +19949,6 @@
         ],
         "title": "AnthropicChatModelConfig",
         "description": "The specialised configuration for using a chat model with Anthropic."
-      },
-      "AssembledWorld": {
-        "properties": {
-          "world": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "World"
-          },
-          "sections": {
-            "additionalProperties": {
-              "items": {},
-              "type": "array"
-            },
-            "type": "object",
-            "title": "Sections"
-          },
-          "report": {
-            "$ref": "#/components/schemas/ConversionReport"
-          }
-        },
-        "type": "object",
-        "required": [
-          "world",
-          "sections",
-          "report"
-        ],
-        "title": "AssembledWorld"
       },
       "Author": {
         "properties": {
@@ -25882,6 +25957,38 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ImageCandidateRow": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "probably_image": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probably Image",
+            "description": "True: a HEAD request confirmed an image. False is never stored here (those are dropped before this row is created). None: HEAD failed/timed out."
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "source",
+          "probably_image"
+        ],
+        "title": "ImageCandidateRow",
+        "description": "A safe-enough-to-consider, but not auto-trusted, image URL - shown to the user with a\ncheckbox so they can opt into fetching it (`POST .../images/fetch`)."
+      },
       "ImageConfigUpdate": {
         "properties": {
           "model": {
@@ -26047,6 +26154,57 @@
           "scene"
         ],
         "title": "ImageGenerationType"
+      },
+      "ImageScanSummary": {
+        "properties": {
+          "found": {
+            "type": "integer",
+            "title": "Found",
+            "default": 0
+          },
+          "auto_downloaded": {
+            "type": "integer",
+            "title": "Auto Downloaded",
+            "default": 0
+          },
+          "awaiting_review": {
+            "type": "integer",
+            "title": "Awaiting Review",
+            "default": 0
+          },
+          "dropped_unsafe": {
+            "type": "integer",
+            "title": "Dropped Unsafe",
+            "default": 0
+          },
+          "dropped_non_image": {
+            "type": "integer",
+            "title": "Dropped Non Image",
+            "default": 0
+          },
+          "failed_downloads": {
+            "type": "integer",
+            "title": "Failed Downloads",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ImageScanSummary",
+        "description": "Always populated, even when every count is zero - the review UI shows this unconditionally\n(not just when there's something to act on) so \"the scan found nothing\" and \"the scan found\nthings but they all got filtered\" are never indistinguishable to the user."
+      },
+      "ImageUrlWhitelist": {
+        "properties": {
+          "base_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Base Urls",
+            "description": "Base URL prefixes the SillyTavern import pipeline trusts enough to auto-download an image link from without asking the user first. Any extracted URL starting with one of these is downloaded automatically."
+          }
+        },
+        "type": "object",
+        "title": "ImageUrlWhitelist"
       },
       "Intent": {
         "properties": {
@@ -30254,6 +30412,20 @@
               }
             ],
             "title": "Cover Image Data Uri"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/SillyTavernCardV3Asset"
+            },
+            "type": "array",
+            "title": "Assets",
+            "description": "Round-tripped verbatim, not user-editable - carried through to /extract so the image-link scan can see V3 asset URIs."
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extensions",
+            "description": "Round-tripped verbatim, not user-editable - carried through to /extract so the image-link scan can see script/extension content."
           }
         },
         "type": "object",
@@ -31355,6 +31527,38 @@
         ],
         "title": "Salience"
       },
+      "SillyTavernCardV3Asset": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "The type of the asset"
+          },
+          "uri": {
+            "type": "string",
+            "title": "Uri",
+            "description": "The URI of the asset"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The name of the asset"
+          },
+          "ext": {
+            "type": "string",
+            "title": "Ext",
+            "description": "The extension of the asset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "uri",
+          "name",
+          "ext"
+        ],
+        "title": "SillyTavernCardV3Asset"
+      },
       "SillyTavernCommitRequest": {
         "properties": {
           "world": {
@@ -31444,6 +31648,20 @@
             },
             "type": "array",
             "title": "Lorebook Entries"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/SillyTavernCardV3Asset"
+            },
+            "type": "array",
+            "title": "Assets",
+            "description": "Round-tripped verbatim from /parse - see ParsedSillyTavernCard.assets."
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extensions",
+            "description": "Round-tripped verbatim from /parse - see ParsedSillyTavernCard.extensions."
           }
         },
         "type": "object",
@@ -31501,6 +31719,80 @@
           "language"
         ],
         "title": "SillyTavernExtractRequest"
+      },
+      "SillyTavernExtractResponse": {
+        "properties": {
+          "world": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "World"
+          },
+          "sections": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Sections"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ConversionReport"
+          },
+          "image_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ImageCandidateRow"
+            },
+            "type": "array",
+            "title": "Image Candidates"
+          },
+          "image_scan": {
+            "$ref": "#/components/schemas/ImageScanSummary",
+            "description": "Always present, even when every count is zero, so the review UI can show what the image-link scan actually found rather than going silent."
+          }
+        },
+        "type": "object",
+        "required": [
+          "world",
+          "sections",
+          "report"
+        ],
+        "title": "SillyTavernExtractResponse",
+        "description": "Superset of `AssembledWorld` - the LLM extraction pipeline's result plus the image-link\npipeline's result, merged once both finish (they run concurrently, see `extract_sillytavern_card`).\n`sections[\"media\"]` already contains the auto-downloaded (whitelisted) images, ready to import\nas-is; `image_candidates` are the ones that need the user to opt in via `/images/fetch`."
+      },
+      "SillyTavernImageFetchRequest": {
+        "properties": {
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Urls",
+            "description": "Candidate URLs the user checked for download."
+          }
+        },
+        "type": "object",
+        "required": [
+          "urls"
+        ],
+        "title": "SillyTavernImageFetchRequest"
+      },
+      "SillyTavernImageFetchResponse": {
+        "properties": {
+          "media_rows": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Media Rows",
+            "description": "`sections['media']`-shaped rows, ready to merge into the reviewed world."
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_rows"
+        ],
+        "title": "SillyTavernImageFetchResponse"
       },
       "SillyTavernImportStatus": {
         "properties": {

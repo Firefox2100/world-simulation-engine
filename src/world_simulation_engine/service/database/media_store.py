@@ -1,8 +1,8 @@
 from neo4j import AsyncDriver
 
 from world_simulation_engine.misc.enums import ComponentType, MediaType, SupportedLanguage
-from world_simulation_engine.model import GeneratedImageMediaFile, GeneratedVoiceMediaFile, MediaFile, \
-    PromptMediaFile, WorkflowMediaFile
+from world_simulation_engine.model import GeneratedImageMediaFile, GeneratedVoiceMediaFile, \
+    ImportedImageMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
 
 
 def _media_from_node(media_node) -> MediaFile:
@@ -38,6 +38,11 @@ def _media_from_node(media_node) -> MediaFile:
             transient_tags=media_node.get("transient_tags") or [],
             transient_description=media_node.get("transient_description") or "",
             negative_prompt=media_node.get("negative_prompt"),
+        )
+    if media_node.get("source_url") is not None:
+        return ImportedImageMediaFile(
+            **data,
+            source_url=media_node["source_url"],
         )
     if media_node.get("presentation_block_id") is not None:
         return GeneratedVoiceMediaFile(
@@ -92,7 +97,8 @@ class MediaStore:
                 turn_id: $turn_id,
                 character_id: $character_id,
                 text: $text,
-                voice_reference: $voice_reference
+                voice_reference: $voice_reference,
+                source_url: $source_url
             })
             RETURN m
             """,
@@ -118,6 +124,7 @@ class MediaStore:
                 "character_id": getattr(media, "character_id", None),
                 "text": getattr(media, "text", None),
                 "voice_reference": getattr(media, "voice_reference", None),
+                "source_url": getattr(media, "source_url", None),
             },
         )
 

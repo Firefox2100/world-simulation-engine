@@ -388,6 +388,22 @@
       "keys": "Keys (comma-separated)",
       "content": "Content"
     },
+    "imageCandidates": {
+      "title": "Image links",
+      "summary": "{{found}} image link(s) found in the card - {{autoDownloaded}} downloaded automatically, {{awaitingReview}} awaiting your review below, {{droppedUnsafe}} dropped as unsafe, {{droppedNonImage}} dropped (not an image).",
+      "hint": "These aren't from a trusted source. Select the ones to download while extraction runs.",
+      "selectAll": "Select all",
+      "source": {
+        "first_message": "opening message",
+        "lorebook": "world book entry",
+        "asset": "card asset",
+        "script": "script",
+        "other": "other card field"
+      },
+      "fetchSelected": "Fetch selected",
+      "fetching": "Fetching...",
+      "fetchError": "Could not fetch the selected images: {{error}}"
+    },
     "review": {
       "notConfigured": "Configure a chat model for every SillyTavern extraction stage in Configurations before importing.",
       "languageLabel": "Extraction language",
@@ -467,6 +483,11 @@
         "holder": "Worn by",
         "none": "None",
         "remove": "Remove equipment"
+      },
+      "media": {
+        "title": "Downloaded images",
+        "hint": "Images downloaded from the card. Remove any you don't want imported.",
+        "remove": "Remove image"
       },
       "events": {
         "title": "Events",
@@ -640,7 +661,10 @@
         "st_variable_schema_extractor": "Variable schema extractor",
         "st_item_extractor": "Item extractor",
         "st_equipment_extractor": "Equipment extractor"
-      }
+      },
+      "whitelistHint": "Base URL prefixes trusted enough to auto-download an image link from without asking first. Any extracted URL starting with one of these is downloaded automatically; anything else is only downloaded if you check it on the review page.",
+      "whitelistAdd": "Add URL prefix",
+      "whitelistRemove": "Remove"
     },
     "providers": {
       "openai": "OpenAI",

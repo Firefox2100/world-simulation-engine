@@ -1644,6 +1644,30 @@ class ConfigStore:
 
         return _stt_from_node(record["config"], record["config_labels"], record["connection"])
 
+    async def get_image_url_whitelist(self) -> list[str]:
+        """Base URL prefixes the SillyTavern import pipeline trusts enough to auto-download an
+        image link from without asking the user first (see `MediaDownloadService`/`ImageExtractor`).
+        Global, not per-simulation/world - a singleton node, since there's nothing to scope it to."""
+        result = await self._driver.execute_query(
+            "MATCH (c:SillyTavernImageUrlWhitelist {id: 'singleton'}) RETURN c.base_urls AS base_urls"
+        )
+
+        record = result.records[0] if result.records else None
+        return list(record["base_urls"]) if record and record["base_urls"] else []
+
+    async def set_image_url_whitelist(self, base_urls: list[str]) -> list[str]:
+        result = await self._driver.execute_query(
+            """
+            MERGE (c:SillyTavernImageUrlWhitelist {id: 'singleton'})
+            SET c.base_urls = $base_urls
+            RETURN c.base_urls AS base_urls
+            """,
+            parameters_={"base_urls": base_urls},
+        )
+
+        record = result.records[0] if result.records else None
+        return list(record["base_urls"]) if record and record["base_urls"] else []
+
     async def delete_stt(self, config_id: str) -> bool:
         result = await self._driver.execute_query(
             f"""

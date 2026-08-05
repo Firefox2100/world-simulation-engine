@@ -14,6 +14,7 @@ from world_simulation_engine.misc.enums import ComponentType, ConnectionType, Su
 from world_simulation_engine.model import Author, ConnectionConfig, OllamaChatModelConfig
 from world_simulation_engine.router import sillytavern_import_router
 from world_simulation_engine.service import DatabaseService, StorageService
+from world_simulation_engine.service.media_download_service import MediaDownloadService
 
 _CARD_PATH = Path("tests/evaluation_test/assets/st-cards/01.png")
 
@@ -89,6 +90,7 @@ def sillytavern_import_api(neo4j_container, tmp_path, monkeypatch):
         await storage.initialise()
         app.state.database = database
         app.state.storage = storage
+        app.state.media_download_service = MediaDownloadService()
 
         try:
             yield
@@ -120,6 +122,52 @@ def test_extract_sillytavern_card_returns_the_assembled_world_without_persisting
     assert extract_calls[0]["card"].data.name == "Kiki Mora"
     assert extract_calls[0]["card"].data.first_mes == "Hi chat!"
     assert extract_calls[0]["card"].data.character_book.entries[0].content == "The seal breaks."
+
+
+def test_extract_sillytavern_card_returns_empty_image_candidates_when_no_links_are_present(sillytavern_import_api):
+    client, _author, _extract_calls = sillytavern_import_api
+
+    response = client.post(
+        "/worlds/import/sillytavern/extract",
+        json={"card": _EXTRACT_CARD_PAYLOAD, "language": SupportedLanguage.ENGLISH.value},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["image_candidates"] == []
+    assert body["sections"]["media"] == []
+    assert body["world"]["media_ids"] == []
+    assert body["image_scan"] == {
+        "found": 0, "auto_downloaded": 0, "awaiting_review": 0,
+        "dropped_unsafe": 0, "dropped_non_image": 0, "failed_downloads": 0,
+    }
+
+
+def test_extract_sillytavern_card_drops_unsafe_image_links_without_any_network_call(
+        sillytavern_import_api, monkeypatch,
+):
+    client, _author, _extract_calls = sillytavern_import_api
+
+    async def always_unsafe(self, url):
+        # Every candidate is dropped before either of these get a non-empty list, so a real
+        # MediaDownloadService with no mocked transport is safe to use here - `probe_many`/
+        # `fetch_and_store_many` are no-ops (no network I/O at all) on an empty URL list.
+        return False
+
+    monkeypatch.setattr(MediaDownloadService, "is_safe_url", always_unsafe)
+
+    payload = dict(_EXTRACT_CARD_PAYLOAD)
+    payload["first_message"] = "See http://internal.example.com/secret.png"
+
+    response = client.post(
+        "/worlds/import/sillytavern/extract",
+        json={"card": payload, "language": SupportedLanguage.ENGLISH.value},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["image_candidates"] == []
+    assert body["sections"]["media"] == []
 
 
 def test_extract_sillytavern_card_returns_409_when_no_chat_model_is_configured(sillytavern_import_api, monkeypatch):

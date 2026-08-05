@@ -38,7 +38,8 @@ from .image_generation_config import ImageGenerationConfig
 from .simulation_audit import SimulationAuditEvent
 from .intent import Intent
 from .tts_generation_config import TtsGenerationConfig
-from .media import GeneratedImageMediaFile, GeneratedVoiceMediaFile, MediaFile, PromptMediaFile, WorkflowMediaFile
+from .media import GeneratedImageMediaFile, GeneratedVoiceMediaFile, ImportedImageMediaFile, MediaFile, \
+    PromptMediaFile, WorkflowMediaFile
 from .model_config import OllamaChatModelConfig, OpenAiChatModelConfig, AnthropicChatModelConfig, \
     OpenRouterChatModelConfig, GoogleGenAiChatModelConfig, MistralAiChatModelConfig, \
     CohereChatModelConfig, PerplexityChatModelConfig, GroqChatModelConfig, DeepSeekChatModelConfig, \

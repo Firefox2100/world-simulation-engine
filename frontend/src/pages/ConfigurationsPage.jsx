@@ -19,12 +19,14 @@ import {
     fetchEmbeddingConfigs,
     fetchGlobalLlmConfigs,
     fetchImageConfigs,
+    fetchImageUrlWhitelist,
     fetchLlmConfigs,
     fetchSttConfigs,
     fetchTtsConfigs,
     setEmbeddingConfigConnection,
     setGlobalLlmConfigs,
     setImageConfigConnection,
+    setImageUrlWhitelist,
     setLlmConfigConnection,
     setSttConfigConnection,
     setTtsConfigConnection,
@@ -1741,6 +1743,119 @@ function SillyTavernExtractorConfig({ llmConfigs }) {
     );
 }
 
+function SillyTavernImageWhitelistConfig() {
+    const { t } = useTranslation();
+    const [baseUrls, setBaseUrls] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState(null);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetchImageUrlWhitelist()
+            .then((result) => {
+                if (!cancelled) {
+                    setBaseUrls(result.base_urls || []);
+                }
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    function updateBaseUrl(index, value) {
+        setSaved(false);
+        setBaseUrls((current) => current.map((url, i) => (i === index ? value : url)));
+    }
+
+    function removeBaseUrl(index) {
+        setSaved(false);
+        setBaseUrls((current) => current.filter((_, i) => i !== index));
+    }
+
+    function addBaseUrl() {
+        setSaved(false);
+        setBaseUrls((current) => [...current, ""]);
+    }
+
+    async function handleSave() {
+        setSaving(true);
+        setSaveError(null);
+        setSaved(false);
+
+        try {
+            const cleaned = baseUrls.map((url) => url.trim()).filter(Boolean);
+            const result = await setImageUrlWhitelist(cleaned);
+            setBaseUrls(result.base_urls || []);
+            setSaved(true);
+        } catch (err) {
+            setSaveError(err.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    if (loading) {
+        return <p className="status-text">{t("configurations.stImport.loading")}</p>;
+    }
+
+    if (error) {
+        return <p className="status-text error-text">{t("configurations.stImport.error", { error })}</p>;
+    }
+
+    return (
+        <div className="st-import-config">
+            <p className="st-import-config-hint">{t("configurations.stImport.whitelistHint")}</p>
+            <div className="st-import-whitelist-list">
+                {baseUrls.map((url, index) => (
+                    <div className="st-import-whitelist-row" key={index}>
+                        <input
+                            type="text"
+                            className="single-line-input"
+                            value={url}
+                            placeholder="https://example.com/images/"
+                            onChange={(event) => updateBaseUrl(index, event.target.value)}
+                        />
+                        <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => removeBaseUrl(index)}
+                        >
+                            {t("configurations.stImport.whitelistRemove")}
+                        </button>
+                    </div>
+                ))}
+            </div>
+            {saveError ? (
+                <p className="status-text error-text">{t("configurations.stImport.saveError", { error: saveError })}</p>
+            ) : null}
+            <div className="st-import-config-actions">
+                <button type="button" className="secondary-button" onClick={addBaseUrl}>
+                    {t("configurations.stImport.whitelistAdd")}
+                </button>
+                <button type="button" className="primary-button" onClick={handleSave} disabled={saving}>
+                    {saving ? t("configurations.stImport.saving") : t("configurations.stImport.save")}
+                </button>
+                {saved ? <span className="st-import-config-saved">{t("configurations.stImport.saved")}</span> : null}
+            </div>
+        </div>
+    );
+}
+
 export function ConfigurationsPage() {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState("connections");
@@ -1882,7 +1997,10 @@ export function ConfigurationsPage() {
             ) : error ? (
                 <p className="status-text error-text">{t("configurations.error", { error })}</p>
             ) : activeTab === "stImport" ? (
-                <SillyTavernExtractorConfig llmConfigs={llms} />
+                <>
+                    <SillyTavernExtractorConfig llmConfigs={llms} />
+                    <SillyTavernImageWhitelistConfig />
+                </>
             ) : data[activeTab].length === 0 ? (
                 <p className="connection-empty-text">{t(`configurations.empty.${activeTab}`)}</p>
             ) : (

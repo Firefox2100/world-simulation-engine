@@ -95,6 +95,7 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
     const intents = sections.intents ?? [];
     const relationships = sections.entity_relationships ?? [];
     const variableSets = sections.entity_variable_sets ?? [];
+    const media = sections.media ?? [];
 
     const allPeople = [
         ...characters.map((character) => ({ id: character.id, name: character.name, type: "character" })),
@@ -955,6 +956,34 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                     </EntityCard>
                 ))}
             </EntitySection>
+
+            {media.length > 0 ? (
+                <section className="st-import-section">
+                    <h2>{t("sillyTavernImport.review.media.title")}</h2>
+                    <p className="st-import-section-hint">{t("sillyTavernImport.review.media.hint")}</p>
+                    <div className="media-picker-grid">
+                        {media.map((mediaRow, index) => (
+                            <div className="media-picker-card" key={mediaRow.id}>
+                                <img
+                                    className="media-picker-card-image"
+                                    src={mediaRow.preview_data_uri}
+                                    alt={mediaRow.title || mediaRow.filename}
+                                    loading="lazy"
+                                    decoding="async"
+                                />
+                                <button
+                                    type="button"
+                                    className="icon-button st-import-remove-button"
+                                    aria-label={t("sillyTavernImport.review.media.remove")}
+                                    onClick={() => removeItem("media", index)}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            ) : null}
         </div>
     );
 }
