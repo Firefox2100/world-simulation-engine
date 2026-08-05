@@ -448,7 +448,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
 
     now = datetime.now(UTC).isoformat()
     world_row = {
-        "name": "Imported World", "description": "A cursed village.",
+        "name": "Imported World", "description": "A coastal town.",
         "starting_time": now, "language": "en",
     }
     sections = {
@@ -458,8 +458,8 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
         ],
         "landmarks": [],
         "characters": [{
-            "id": "char-1", "user_controlled": False, "name": "Kiki", "age": 21, "gender": "female",
-            "appearance": "Plain", "description": "A streamer.", "public_state": "Present",
+            "id": "char-1", "user_controlled": False, "name": "Example", "age": 21, "gender": "female",
+            "appearance": "Plain", "description": "A fictional resident.", "public_state": "Present",
             "private_state": "Thinking",
             "current_activity": {
                 "name": "idle", "started_at": None, "expected_end": None,
@@ -473,11 +473,11 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
             "id": "turn-1", "sequence": 0, "type": "system_response", "content": "Hi!", "start_time": now,
         }],
         "events": [{
-            "id": "evt-1", "name": "The War", "summary": "They fought.", "turn_ids": ["turn-1"],
+            "id": "evt-1", "name": "The Project", "summary": "They collaborated.", "turn_ids": ["turn-1"],
             "involved_characters": [{"character_id": "char-1", "involvement": "participate"}],
         }],
         "memories": [{
-            "id": "mem-1", "summary": "We fought.", "keywords": ["war"], "embedding": None,
+            "id": "mem-1", "summary": "We collaborated.", "keywords": ["project"], "embedding": None,
             "event_id": "evt-1", "support_type": "direct",
             "character_links": [{
                 "character_id": "char-1", "confidence": 1.0, "salience": "medium",
@@ -485,7 +485,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
             }],
         }],
         "intents": [{
-            "id": "int-1", "type": "quest", "name": "Solve it", "description": "Find the truth.",
+            "id": "int-1", "type": "quest", "name": "Complete review", "description": "Complete the review.",
             "keywords": [], "embedding": None, "priority": 0.9, "urgency": 0.5, "status": "active",
             "desired_state": None, "success_conditions": [], "failure_conditions": [],
             "maintenance_conditions": [], "deadline": None, "horizon": "long", "constraints": [],
@@ -493,7 +493,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
             "character_id": "char-1", "created_by_event_id": None, "contributed_by_event_ids": [],
         }],
         "entity_relationships": [{
-            "label": "rivals", "public_description": "Old rivals.", "private_description": None,
+            "label": "colleagues", "public_description": "Former colleagues.", "private_description": None,
             "visibility": "objective", "perspective_character_id": None, "confidence": 1.0,
             "details": {"kind": "generic", "attributes": {}}, "evidence_memory_ids": [],
             "source": {"type": "character", "id": "char-1", "name": None},
@@ -517,7 +517,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
     )
 
     assert world.name == "Imported World"
-    assert world.description == "A cursed village."
+    assert world.description == "A coastal town."
 
     locations = await db.location.list_locations(world_id=world.id)
     assert {location.name for location in locations} == {"City", "House"}
@@ -527,28 +527,28 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
     assert parent_map[house.id] == city.id
 
     characters = await db.character.list_characters(world_id=world.id)
-    assert [character.name for character in characters] == ["Kiki"]
-    kiki = characters[0]
+    assert [character.name for character in characters] == ["Example"]
+    example = characters[0]
 
     background_characters = await db.character.list_background_characters(world_id=world.id)
     assert [character.name for character in background_characters] == ["User"]
     user_stub = background_characters[0]
 
-    events = await db.event.list_events(character_id=kiki.id)
-    assert [event.name for event in events] == ["The War"]
+    events = await db.event.list_events(character_id=example.id)
+    assert [event.name for event in events] == ["The Project"]
 
-    memories = await db.memory.list_memories(character_id=kiki.id)
-    assert [memory.summary for memory in memories] == ["We fought."]
+    memories = await db.memory.list_memories(character_id=example.id)
+    assert [memory.summary for memory in memories] == ["We collaborated."]
 
-    intents = await db.intent.list_intents(character_id=kiki.id)
-    assert [intent.name for intent in intents] == ["Solve it"]
+    intents = await db.intent.list_intents(character_id=example.id)
+    assert [intent.name for intent in intents] == ["Complete review"]
 
     relationships = await db.entity_relationship.list_relationships(scope_id=world.id, active_only=False)
     assert len(relationships) == 1
-    assert relationships[0].source.id == kiki.id
+    assert relationships[0].source.id == example.id
     assert relationships[0].target.id == user_stub.id
 
-    variable_set = await db.variable.get_variable_set(kiki.id)
+    variable_set = await db.variable.get_variable_set(example.id)
     assert variable_set is not None
     assert variable_set.variables[0].name == "hp"
     assert variable_set.variables[0].value == 100

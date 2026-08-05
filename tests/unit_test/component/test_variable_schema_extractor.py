@@ -95,14 +95,14 @@ async def test_extract_returns_empty_without_calling_llm_when_first_message_has_
 
 async def test_extract_dispatches_a_call_for_a_first_message_initial_value_block():
     card = make_card(
-        first_message="<UpdateVariable>\n<initvar>\n小雨:\n  好感度: 50\n</initvar>\n</UpdateVariable>",
+        first_message="<UpdateVariable>\n<initvar>\n示例角色:\n  好感度: 50\n</initvar>\n</UpdateVariable>",
     )
     extractor = VariableSchemaExtractor(database=Mock())
     extractor._prepare_global_prompt = AsyncMock(return_value=[])
     extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
         invoke_structured_with_repair=AsyncMock(return_value=VariableSchemaCandidates(variables=[
             VariableFieldCandidate(
-                owner_hint="小雨", name="好感度", value_type=VariableValueType.INTEGER,
+                owner_hint="示例角色", name="好感度", value_type=VariableValueType.INTEGER,
                 default_value=50, description="Affection towards the user.",
             ),
         ])),
@@ -112,7 +112,7 @@ async def test_extract_dispatches_a_call_for_a_first_message_initial_value_block
 
     assert len(extraction.variables) == 1
     variable = extraction.variables[0]
-    assert variable.owner_hint == "小雨"
+    assert variable.owner_hint == "示例角色"
     assert variable.name == "好感度"
     assert variable.default_value == 50
     assert variable.source_item_ids == ["first_message"]
@@ -125,7 +125,7 @@ async def test_extract_orders_first_message_variables_after_schema_source_variab
         variable_schema_candidates=[
             VariableScriptCandidate(source="tavern_helper_script", name="Schema", content="z.object({...})"),
         ],
-        first_message="<UpdateVariable><initvar>小雨:\n  好感度: 50\n</initvar></UpdateVariable>",
+        first_message="<UpdateVariable><initvar>示例角色:\n  好感度: 50\n</initvar></UpdateVariable>",
     )
     extractor = VariableSchemaExtractor(database=Mock())
     extractor._prepare_global_prompt = AsyncMock(return_value=[])
@@ -134,7 +134,7 @@ async def test_extract_orders_first_message_variables_after_schema_source_variab
         if run_name == "variable_schema_extractor.extract_first_message":
             return VariableSchemaCandidates(variables=[
                 VariableFieldCandidate(
-                    owner_hint="小雨", name="好感度", value_type=VariableValueType.INTEGER,
+                    owner_hint="示例角色", name="好感度", value_type=VariableValueType.INTEGER,
                     default_value=50, description="Affection towards the user.",
                 ),
             ])
@@ -153,5 +153,5 @@ async def test_extract_orders_first_message_variables_after_schema_source_variab
 
     assert [(v.owner_hint, v.source_item_ids) for v in extraction.variables] == [
         ("owner_column", ["script:0"]),
-        ("小雨", ["first_message"]),
+        ("示例角色", ["first_message"]),
     ]

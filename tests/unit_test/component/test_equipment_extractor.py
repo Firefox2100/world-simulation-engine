@@ -14,7 +14,7 @@ def make_card(*, lorebook_entries=None, first_message="") -> PreprocessedCard:
 
 async def test_extract_dispatches_one_call_per_item_bucket_entry():
     card = make_card(lorebook_entries=[
-        PreprocessedLorebookEntry(source_id="1", name="随身物品", content="小雨总是穿着一件磨损的旅行斗篷。"),
+        PreprocessedLorebookEntry(source_id="1", name="随身物品", content="示例角色总是穿着一件磨损的旅行斗篷。"),
     ])
     classification = LorebookClassification(items=[
         ClassifiedItem(item_id="entry:1", buckets=[LorebookItemBucket.ITEM]),
@@ -25,7 +25,7 @@ async def test_extract_dispatches_one_call_per_item_bucket_entry():
         invoke_structured_with_repair=AsyncMock(return_value=EquipmentCandidates(equipment=[
             EquipmentFieldCandidate(
                 name="磨损的旅行斗篷", description="一件带兜帽的羊毛斗篷。", quality="磨损",
-                holder_hint="小雨", slot="外套",
+                holder_hint="示例角色", slot="外套",
             ),
         ])),
     ))
@@ -35,7 +35,7 @@ async def test_extract_dispatches_one_call_per_item_bucket_entry():
     assert len(extraction.equipment) == 1
     equipment = extraction.equipment[0]
     assert equipment.name == "磨损的旅行斗篷"
-    assert equipment.holder_hint == "小雨"
+    assert equipment.holder_hint == "示例角色"
     assert equipment.slot == "外套"
     assert equipment.source_item_ids == ["entry:1"]
     prompt_call = extractor._prepare_global_prompt.await_args
@@ -44,7 +44,7 @@ async def test_extract_dispatches_one_call_per_item_bucket_entry():
 
 async def test_extract_ignores_lorebook_entries_not_classified_as_item():
     card = make_card(lorebook_entries=[
-        PreprocessedLorebookEntry(source_id="1", name="Bio", content="Alex is a streamer."),
+        PreprocessedLorebookEntry(source_id="1", name="Bio", content="Example Character is a fictional resident."),
     ])
     classification = LorebookClassification(items=[
         ClassifiedItem(item_id="entry:1", buckets=[LorebookItemBucket.CHARACTER_BIO]),
@@ -71,14 +71,14 @@ async def test_extract_returns_empty_without_calling_llm_when_no_signal():
 
 async def test_extract_dispatches_a_call_for_a_first_message_initial_value_block():
     card = make_card(
-        first_message="<UpdateVariable>\n<initvar>\n小雨:\n  着装:\n    上装: 白衬衫\n</initvar>\n</UpdateVariable>",
+        first_message="<UpdateVariable>\n<initvar>\n示例角色:\n  着装:\n    上装: 白衬衫\n</initvar>\n</UpdateVariable>",
     )
     extractor = EquipmentExtractor(database=Mock())
     extractor._prepare_global_prompt = AsyncMock(return_value=[])
     extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
         invoke_structured_with_repair=AsyncMock(return_value=EquipmentCandidates(equipment=[
             EquipmentFieldCandidate(
-                name="白衬衫", description="A white shirt.", holder_hint="小雨", slot="上装",
+                name="白衬衫", description="A white shirt.", holder_hint="示例角色", slot="上装",
             ),
         ])),
     ))
@@ -87,7 +87,7 @@ async def test_extract_dispatches_a_call_for_a_first_message_initial_value_block
 
     assert len(extraction.equipment) == 1
     equipment = extraction.equipment[0]
-    assert equipment.holder_hint == "小雨"
+    assert equipment.holder_hint == "示例角色"
     assert equipment.slot == "上装"
     assert equipment.source_item_ids == ["first_message"]
     prompt_call = extractor._prepare_global_prompt.await_args

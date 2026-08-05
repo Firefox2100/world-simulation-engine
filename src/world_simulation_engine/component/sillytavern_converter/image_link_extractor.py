@@ -3,10 +3,7 @@ text scanning, so this takes the *raw* `SillyTavernCardV3`, not `PreprocessedCar
 `CardPreprocessor` already discards `extensions`/`assets` (out of scope for every other stage) and
 macro-normalizes free text, neither of which matters for finding a URL substring.
 
-Image links have turned up in real cards in places well beyond the "obvious" three (opening
-message, lorebook entry content, V3 `assets`): notably a card whose gallery images lived inside
-`extensions.regex_scripts[].replaceString` - a big blob of injected HTML/JS, itself one value
-buried inside `extensions`, not a field with any special handling of its own. Rather than
+Image links may appear beyond the obvious fields, including inside extension HTML or scripts. Rather than
 enumerate every free-text field a card spec might ever contain (and inevitably miss the next
 one), this does two passes: a handful of *labelled* scans over the fields most commonly used for
 image links (better `source` tagging for the review UI), then a catch-all pass over the entire

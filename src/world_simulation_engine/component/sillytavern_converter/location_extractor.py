@@ -3,12 +3,12 @@ into candidate `Location`s.
 
 Two independent paths, chosen by what stage 1 actually found (see SILLYTAVERN_IMPORT_PLAN.md §5):
 
-- Cards with `location`-bucket lorebook items (e.g. card 03's `地点/<country>/<city>/<place>`
-  entries): one structured-output LLM call per item, extracting name/description/best-guess
+- Cards with `location`-bucket lorebook items: one structured-output LLM call per item, extracting
+  name/description/best-guess
   containing-location name, then deterministically stitching parent references into a tree by
   exact name match within this batch - never fabricating a level the content doesn't itself imply.
-- Cards with none (01/02/04, where no lorebook entry is ever about a place): a single bounded
-  fallback call over `scenario`/`first_message` prose, synthesizing a minimal (<=2) flat location
+- Cards with none: a single bounded fallback call over `scenario`/`first_message` prose,
+  synthesizing a minimal (<=2) flat location
   set - or nothing at all, if that prose gives no location cues either.
 
 Each extracted location mints its own provisional id (`ExtractedLocation.id`/`parent_id`), same
@@ -175,10 +175,7 @@ class LocationExtractor(SillyTavernPipelineComponent):
         if not card.scenario.strip() and not card.first_message.strip():
             return LocationExtraction(locations=[])
 
-        # Both fields are fed into one call, not itemized, so provenance can't be narrowed to a
-        # single item - record whichever of the two actually had content, rather than leaving
-        # source_item_ids empty (a real gap found via evaluation: card 01's fallback location had
-        # no traceable source at all, unlike every other stage-2 output).
+        # Record whichever combined-input fields supplied content for provenance.
         source_item_ids = [
             item_id for item_id, has_content in (
                 ("field:scenario", bool(card.scenario.strip())),

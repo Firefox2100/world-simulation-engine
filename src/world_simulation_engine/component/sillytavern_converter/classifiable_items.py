@@ -8,11 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .card_preprocessor import PreprocessedCard
 
-# Card-level fields worth classifying individually - per cards 02/04, the "real" character
-# definition or world lore is just as likely to live in a top-level field as in the lorebook.
-# creator_notes is included because it is where authors put GM/author-only truth the character
-# must not know (e.g. card 01's "CANONICAL GM-SIDE TRUTH") - exactly the hidden_truth bucket this
-# pipeline's knowledge-boundary rule depends on catching, not incidental packaging metadata.
+# Top-level fields can contain character definitions, world lore, or author-only hidden truths.
 CLASSIFIABLE_FIELDS = (
     "description", "personality", "scenario", "system_prompt", "post_history_instructions", "creator_notes",
 )

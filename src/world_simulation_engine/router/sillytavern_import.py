@@ -1,13 +1,19 @@
 import asyncio
 import base64
+import json
+import time
+from contextlib import suppress
+from uuid import uuid4
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from world_simulation_engine.component.sillytavern_converter import AssembledWorld, ConversionReport, \
     DataExtractor, ImageCandidateRow, ImageExtraction, ImageExtractor, ImageScanSummary, WorldReconstructor, \
     build_downloaded_media_row
 from world_simulation_engine.misc.enums import ComponentType, SupportedLanguage
+from world_simulation_engine.misc.logging import log_event
 from world_simulation_engine.model import World
 from world_simulation_engine.model.silly_tavern import (
     SillyTavernCardV3, SillyTavernCardV3Asset, SillyTavernCardV3BookEntry, SillyTavernCardV3Data,
@@ -35,6 +41,7 @@ _REQUIRED_COMPONENTS = (
     ComponentType.ST_ITEM_EXTRACTOR,
     ComponentType.ST_EQUIPMENT_EXTRACTOR,
 )
+_SSE_KEEPALIVE_SECONDS = 45
 
 
 class ParsedLorebookEntry(BaseModel):
@@ -288,7 +295,9 @@ async def get_sillytavern_import_status(db: db_dep):
 
 
 @sillytavern_import_router.post(
-    "/worlds/import/sillytavern/extract", response_model=SillyTavernExtractResponse,
+    "/worlds/import/sillytavern/extract",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {}}}},
 )
 async def extract_sillytavern_card(
         db: db_dep, storage: storage_dep, media_download_service: media_download_dep,
@@ -301,36 +310,122 @@ async def extract_sillytavern_card(
     Concurrently (`asyncio.gather`, neither waits on the other) also scans the card for image
     links, downloads the ones from a whitelisted source outright, and returns the rest as
     `image_candidates` for the user to opt into via `/images/fetch` - see `ImageExtractor`."""
-    synthetic_card = _build_synthetic_card(request.card)
-    whitelist = await db.config.get_image_url_whitelist()
-    image_extractor = ImageExtractor(
-        media_download_service=media_download_service, storage=storage, whitelist=whitelist,
+    request_id = uuid4().hex
+    started = time.monotonic()
+    log_event(
+        "sillytavern_extraction_started", request_id=request_id,
+        selected_image_count=len(request.selected_image_urls),
     )
-    try:
-        assembled, image_result = await asyncio.gather(
-            WorldReconstructor(database=db).reconstruct_from_card(
-                synthetic_card, language=request.language,
-            ),
-            image_extractor.extract(
-                synthetic_card, selected_urls=request.selected_image_urls,
-            ),
-        )
-    except ValueError as exc:
-        # Most likely an unconfigured global chat model (see /status) - surfaced mid-run, not
-        # something the client can fix by editing the card, so 409 rather than 400.
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
+    queue: asyncio.Queue[tuple[str, object]] = asyncio.Queue(maxsize=8)
 
-    sections = {**assembled.sections, "media": image_result.media_rows}
-    world = {**assembled.world, "media_ids": [row["id"] for row in image_result.media_rows]}
-    for note in image_result.notes:
-        assembled.report.note(note)
+    async def emit(event: str, data: object) -> None:
+        await queue.put((event, data))
 
-    return SillyTavernExtractResponse(
-        world=world, sections=sections, report=assembled.report,
-        image_candidates=image_result.candidates, image_scan=image_result.summary,
+    async def run_extraction() -> None:
+        reconstruction_task = None
+        image_task = None
+        try:
+            synthetic_card = _build_synthetic_card(request.card)
+            whitelist = await db.config.get_image_url_whitelist()
+            image_extractor = ImageExtractor(
+                media_download_service=media_download_service, storage=storage, whitelist=whitelist,
+            )
+            reconstruction_task = asyncio.create_task(
+                WorldReconstructor(database=db).reconstruct_from_card(
+                    synthetic_card, language=request.language,
+                ),
+            )
+            async def extract_images():
+                result = await image_extractor.extract(
+                    synthetic_card, selected_urls=request.selected_image_urls,
+                )
+                await emit("section_start", {"name": "media", "total": len(result.media_rows)})
+                for row in result.media_rows:
+                    await emit("section_item", {"name": "media", "row": row})
+                return result
+
+            image_task = asyncio.create_task(extract_images())
+            assembled, image_result = await asyncio.gather(reconstruction_task, image_task)
+
+            for note in image_result.notes:
+                assembled.report.note(note)
+            world = {
+                **assembled.world,
+                "media_ids": [row["id"] for row in image_result.media_rows],
+            }
+            await emit("world", world)
+            for section_name, rows in assembled.sections.items():
+                if section_name == "media":
+                    continue  # emitted by the concurrent image branch above
+                await emit("section_start", {"name": section_name, "total": len(rows)})
+                for row in rows:
+                    await emit("section_item", {"name": section_name, "row": row})
+            await emit("report", assembled.report.model_dump(mode="json"))
+            for candidate in image_result.candidates:
+                await emit("image_candidate", candidate.model_dump(mode="json"))
+            await emit("image_scan", image_result.summary.model_dump(mode="json"))
+            await emit("complete", {"request_id": request_id})
+            log_event(
+                "sillytavern_extraction_completed", request_id=request_id,
+                duration_seconds=round(time.monotonic() - started, 3),
+                preview_count=len(image_result.media_rows),
+            )
+        except ValueError as exc:
+            log_event(
+                "sillytavern_extraction_rejected", request_id=request_id,
+                duration_seconds=round(time.monotonic() - started, 3),
+                error_type=type(exc).__name__, error=str(exc),
+            )
+            await emit("error", {"detail": str(exc), "request_id": request_id})
+        except Exception as exc:
+            log_event(
+                "sillytavern_extraction_failed", request_id=request_id,
+                duration_seconds=round(time.monotonic() - started, 3),
+                error_type=type(exc).__name__, error=str(exc),
+            )
+            await emit("error", {
+                "detail": f"Extraction failed on the server (reference {request_id}).",
+                "request_id": request_id,
+            })
+        finally:
+            pending = [task for task in (reconstruction_task, image_task) if task is not None]
+            for task in pending:
+                if not task.done():
+                    task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            await emit("stream_end", None)
+
+    def encode_event(event: str, data: object) -> str:
+        payload = json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str)
+        return f"event: {event}\ndata: {payload}\n\n"
+
+    async def event_stream():
+        worker = asyncio.create_task(run_extraction())
+        try:
+            yield encode_event("started", {"request_id": request_id})
+            while True:
+                try:
+                    event, data = await asyncio.wait_for(queue.get(), timeout=_SSE_KEEPALIVE_SECONDS)
+                except TimeoutError:
+                    # SSE comments are ignored by clients but count as traffic through proxies.
+                    yield ": keep-alive\n\n"
+                    continue
+                if event == "stream_end":
+                    break
+                yield encode_event(event, data)
+        finally:
+            if not worker.done():
+                worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await worker
+
+    return StreamingResponse(
+        event_stream(), media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

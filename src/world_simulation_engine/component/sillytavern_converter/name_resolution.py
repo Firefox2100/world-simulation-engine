@@ -2,12 +2,8 @@
 already-extracted entity by name (an LLM can copy a short string reasonably reliably, but not a
 uuid - see SILLYTAVERN_IMPORT_PLAN.md §6.2).
 
-Exact match first, falling back to substring containment when there's exactly one candidate it
-could mean - this local model doesn't always reproduce a multi-part name byte-for-byte across
-calls (confirmed on a real card: a relationship about "艾琳·莫里亚蒂" failed to resolve under
-exact-match-only lookup because the model returned the shorter "艾琳"). An ambiguous partial match
-(more than one candidate) or a name below the minimum length is treated as unresolved rather than
-guessed at - same guard `CharacterExtractor._merge_similar_names` uses for the same reason.
+Exact match comes first, followed by substring containment when exactly one candidate matches.
+Ambiguous or very short partial matches remain unresolved.
 """
 
 _MIN_FUZZY_NAME_LENGTH = 2

@@ -26,11 +26,8 @@ _MAX_BUCKETS_PER_ITEM = 4
 class LorebookItemClassification(BaseModel):
     """Structured output for one classification call.
 
-    `buckets` is a list, not a single value: real card content routinely mixes categories in one
-    entry (e.g. a character's own lorebook entry that is simultaneously their bio, a history event
-    they were part of, and their relationship to another character - confirmed on card 03, where
-    every one of 17 characters' entries mixed all three and none were ever separately routed to
-    `NarrativeExtractor` under single-label classification). Every stage-2 extractor filters via
+    `buckets` is a list because one entry can mix biography, event, and relationship content.
+    Every stage-2 extractor filters via
     `LorebookClassification.by_bucket`, which now checks membership rather than equality, so one
     item can be picked up by multiple downstream extractors, each pulling its own facet out of the
     same raw text via its own dedicated prompt.

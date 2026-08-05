@@ -45,7 +45,24 @@ export default defineConfig({
         target: 'http://localhost:9797',
         changeOrigin: false,
         xfwd: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        // SillyTavern extraction can legitimately run for many minutes. Make the development
+        // proxy contract explicit and surface upstream disconnects in the npm dev console.
+        proxyTimeout: 30 * 60 * 1000,
+        timeout: 30 * 60 * 1000,
+        configure: (proxy) => {
+          proxy.on('error', (error, request) => {
+            console.error(`[vite proxy] ${request.method} ${request.url}: ${error.message}`)
+          })
+          proxy.on('proxyRes', (proxyResponse, request) => {
+            if (request.url.includes('/worlds/import/sillytavern/extract')) {
+              console.info(
+                `[vite proxy] ${request.method} ${request.url} -> ${proxyResponse.statusCode}`
+                + ` content-length=${proxyResponse.headers['content-length'] ?? 'streamed'}`,
+              )
+            }
+          })
+        },
       },
     }
   },

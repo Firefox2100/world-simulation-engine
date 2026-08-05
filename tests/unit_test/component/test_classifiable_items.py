@@ -5,8 +5,8 @@ from world_simulation_engine.component.sillytavern_converter.classifiable_items 
 
 def make_card() -> PreprocessedCard:
     return PreprocessedCard(
-        name="Kiki",
-        description="Kiki is a streamer.",
+        name="Example",
+        description="Example is a fictional resident.",
         personality="",
         scenario="",
         first_message="Hi!",
@@ -29,8 +29,8 @@ def test_classifiable_items_covers_nonempty_fields_and_all_lorebook_entries():
     # Empty fields (personality, scenario, system_prompt, post_history_instructions) are skipped.
     assert not any(item_id.startswith("field:personality") for item_id in item_ids)
     description_item = next(item for item in items if item.item_id == "field:description")
-    assert description_item.content == "Kiki is a streamer."
-    assert description_item.card_name == "Kiki"
+    assert description_item.content == "Example is a fictional resident."
+    assert description_item.card_name == "Example"
     entry_item = next(item for item in items if item.item_id == "entry:1")
     assert entry_item.label == "Stage 1"
     assert entry_item.keys == ["seal"]
@@ -52,7 +52,7 @@ def test_content_by_item_id_indexes_the_same_items():
     index = content_by_item_id(card)
 
     assert index == {
-        "field:description": "Kiki is a streamer.",
+        "field:description": "Example is a fictional resident.",
         "entry:1": "The seal breaks.",
         "entry:2": "Empty-named entry.",
     }

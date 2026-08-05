@@ -9,8 +9,8 @@ from world_simulation_engine.misc.enums import LorebookItemBucket, SupportedLang
 
 def make_card() -> PreprocessedCard:
     return PreprocessedCard(
-        name="Kiki",
-        description="Kiki is a streamer.",
+        name="Example",
+        description="Example is a fictional resident.",
         personality="",
         scenario="",
         first_message="Hi!",
@@ -31,8 +31,8 @@ async def test_classify_dispatches_one_call_per_item_and_tags_results():
 
     def classify_by_content(**kwargs):
         content = kwargs["data"]["content"]
-        if "streamer" in content:
-            return LorebookItemClassification(buckets=[LorebookItemBucket.CHARACTER_BIO], target_name="Kiki")
+        if "fictional resident" in content:
+            return LorebookItemClassification(buckets=[LorebookItemBucket.CHARACTER_BIO], target_name="Example")
         if "seal" in content or "breaks" in content:
             return LorebookItemClassification(buckets=[LorebookItemBucket.HISTORY_EVENT])
         return LorebookItemClassification(buckets=[LorebookItemBucket.IRRELEVANT])
@@ -46,24 +46,20 @@ async def test_classify_dispatches_one_call_per_item_and_tags_results():
     by_id = {item.item_id: item for item in result.items}
     assert len(by_id) == 3
     assert by_id["field:description"].buckets == [LorebookItemBucket.CHARACTER_BIO]
-    assert by_id["field:description"].target_name == "Kiki"
+    assert by_id["field:description"].target_name == "Example"
     assert by_id["entry:1"].buckets == [LorebookItemBucket.HISTORY_EVENT]
     assert by_id["entry:2"].buckets == [LorebookItemBucket.IRRELEVANT]
     assert result.by_bucket(LorebookItemBucket.HISTORY_EVENT) == [by_id["entry:1"]]
 
 
 async def test_classify_supports_multiple_buckets_on_one_item():
-    # Real content routinely mixes categories in one entry (confirmed on card 03: every one of 17
-    # characters' entries mixed bio/history/relationship content, invisible to NarrativeExtractor
-    # under single-label classification) - by_bucket must find such an item under every one of its
-    # labels, not just its first.
     card = make_card()
     classifier = LorebookClassifier(database=Mock())
     classifier._prepare_global_prompt = AsyncMock(return_value=[])
     classifier._prepare_global_llm_service = AsyncMock(return_value=SimpleNamespace(
         invoke_structured_with_repair=AsyncMock(return_value=LorebookItemClassification(
             buckets=[LorebookItemBucket.CHARACTER_BIO, LorebookItemBucket.HISTORY_EVENT],
-            target_name="Kiki",
+            target_name="Example",
         )),
     ))
 

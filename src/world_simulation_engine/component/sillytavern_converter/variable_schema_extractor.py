@@ -2,8 +2,8 @@
 tracked-variable schema (SillyTavern MVU/Zod scripts, or a human-readable restatement of one) into
 candidate `VariableDefinition`s (§4 - `EntityVariableSet`'s per-owner variable list).
 
-Only meaningful for cards like card 03, which embeds a real Zod schema (`extensions.tavern_helper.
-scripts`, forwarded by `CardPreprocessor` as `PreprocessedCard.variable_schema_candidates`) and/or a
+Handles embedded Zod schemas (`extensions.tavern_helper.scripts`, forwarded by `CardPreprocessor`
+as `PreprocessedCard.variable_schema_candidates`) and/or a
 `variable_meta`-bucket lorebook entry restating the same schema in prose. One call per source - a
 script candidate or a `variable_meta` item - using the same prompt/schema for both, since both
 describe the same kind of thing (a named, typed, defaulted, described tracked variable) just in

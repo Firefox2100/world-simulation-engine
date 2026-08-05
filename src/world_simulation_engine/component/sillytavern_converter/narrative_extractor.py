@@ -12,9 +12,7 @@ idiom as `LocationExtractor`'s `parent_name` resolution - see §6.2). A name tha
 anything in the roster is dropped, never guessed at; an event/relationship left with no resolvable
 participant is dropped entirely rather than persisted with a dangling reference. Name resolution
 (`name_resolution.resolve_name`/`resolve_names`, shared with `WorldAssembler`) falls back to
-substring containment when there's no byte-exact match, since this local model doesn't always
-reproduce a multi-part roster name verbatim across calls - confirmed on a real card, where a
-relationship about "艾琳·莫里亚蒂" resolved to zero relationships under exact-match-only resolution.
+substring containment when there is no exact match because local models may shorten roster names.
 """
 
 import functools

@@ -4,7 +4,7 @@ from world_simulation_engine.model.silly_tavern import SillyTavernCardV3
 
 def make_card(data_overrides: dict | None = None) -> SillyTavernCardV3:
     data = {
-        "name": "Kiki",
+        "name": "Example",
         "description": "{{char}} is friends with {{user}}.",
         "personality": "",
         "scenario": "",

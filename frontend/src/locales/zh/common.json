@@ -409,6 +409,28 @@
       "languageLabel": "提取语言",
       "start": "开始提取",
       "extracting": "正在提取世界数据……可能需要一些时间。",
+      "progress": {
+        "connecting": "正在连接提取数据流……",
+        "connected": "数据流已连接，结果到达时会显示在下方。",
+        "keepalives": "等待期间已保持连接 {{count}} 次。",
+        "sections": {
+          "media": "图片",
+          "characters": "角色",
+          "background_characters": "背景角色",
+          "locations": "地点",
+          "landmarks": "地标",
+          "items": "物品",
+          "item_stacks": "物品堆",
+          "equipment": "装备",
+          "containers": "容器",
+          "turns": "开场回合",
+          "events": "事件",
+          "memories": "记忆",
+          "intents": "意图",
+          "entity_relationships": "关系",
+          "entity_variable_sets": "变量"
+        }
+      },
       "extractError": "提取失败：{{error}}",
       "retry": "重试",
       "needsCard": "请先在左侧加载卡片。",

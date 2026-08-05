@@ -2,9 +2,8 @@
 bucket items into a single `World.description`.
 
 Unlike `CharacterExtractor`/`LocationExtractor`, this is a many-to-one consolidation, not a
-fan-out: every `world_lore`-bucket item (which already includes a card's own `description` field
-when stage 1 classifies it that way - e.g. card 04, where `description` holds only shared setting
-lore, no single protagonist) is handed to one structured-output call that writes a single cohesive
+fan-out: every `world_lore`-bucket item, including a card description classified as shared setting
+lore, is handed to one structured-output call that writes a single cohesive
 description, mirroring `MemorySummarizer`'s "many sources, one summary" shape rather than
 `LorebookClassifier`'s "one call per item" shape. No per-world narration-style output is produced
 here - see SILLYTAVERN_IMPORT_PLAN.md §4, the user rejected that as redundant with the existing

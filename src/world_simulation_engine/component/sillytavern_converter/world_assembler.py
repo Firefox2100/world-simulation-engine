@@ -56,19 +56,40 @@ _USER_STUB_DESCRIPTION = (
     "replace or reassign once a real user persona exists for this world."
 )
 
-# World.starting_time drives the simulation clock, so it must be a real datetime - never left
-# null. Preference order: (1) an explicit "world"-scoped tracked variable that is clearly a
-# date/time (real evidence: card 03's own MVU schema defines "当前日期"/"当前时间", exactly this
-# kind of simulation clock, dropped everywhere else per §5's "world"-scope limitation but reused
-# here for the one thing it's actually needed for); (2) otherwise default to the import time,
-# flagged low-confidence in the report for the user to review - inferring a date from free-form
-# prose is deliberately not attempted here (would need a dedicated LLM pass; not built this
-# iteration given the explicit-variable signal already covers the strongest case).
+# Prefer an explicit world-scoped date/time variable for the simulation clock. Otherwise use the
+# import time and flag the fallback for review.
 _DATE_TERMS = (re.compile("日期"), re.compile(r"\bdate\b", re.IGNORECASE))
 _TIME_TERMS = (re.compile("时间"), re.compile(r"\btime\b", re.IGNORECASE))
 _CN_DATE_PATTERN = re.compile(r"(?P<year>\d{4})年(?P<month>\d{1,2})月(?P<day>\d{1,2})日")
 _ISO_DATE_PATTERN = re.compile(r"(?P<year>\d{4})[-/](?P<month>\d{1,2})[-/](?P<day>\d{1,2})")
 _TIME_PATTERN = re.compile(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})")
+
+# The simulation owns exactly one clock (`World.starting_time`, resolved above from a "world"-scoped
+# date/time variable when one exists). A per-owner tracked variable that duplicates that concept (an
+# in-card "time passed"/"current date" counter) would drift from the real clock the moment the
+# simulation starts advancing turns, so these are never imported as `EntityVariableSet` entries -
+# regardless of which owner they were hinted at, unlike the world-scope-only restriction
+# `_resolve_starting_time` applies when picking the clock's initial value. Reuses `_DATE_TERMS`/
+# `_TIME_TERMS` rather than a separate list, since "is this variable about a date/time" is the same
+# question in both places.
+_TIME_VARIABLE_NAME_TERMS = (
+    re.compile("日期"), re.compile("时间"), re.compile("经过时间"), re.compile("时间流逝"),
+    re.compile("已过去"),
+    # `\bdate\b`/`\btime\b` (as used by `_DATE_TERMS`/`_TIME_TERMS` above) would miss snake_case
+    # names like "time_passed"/"current_date" because `\b` does not split on underscores.
+    re.compile(
+        r"(?:^|[_\W])(?:time|date|elapsed|duration|clock|calendar|timestamp)(?:$|[_\W])",
+        re.IGNORECASE,
+    ),
+)
+
+# Split punctuation-delimited multi-owner hints before resolving each name independently.
+_OWNER_HINT_SPLIT_PATTERN = re.compile(r"[/、,，;；&]+|\s+(?:and|和)\s+")
+
+
+def _split_owner_hint(hint: str) -> list[str]:
+    parts = [part.strip() for part in _OWNER_HINT_SPLIT_PATTERN.split(hint) if part.strip()]
+    return parts or [hint.strip()]
 
 
 def _mentions_any(text: str, patterns) -> bool:
@@ -277,11 +298,7 @@ class WorldAssembler:
 
     @staticmethod
     def _resolve_user(characters: CharacterExtraction) -> tuple[str | None, dict | None]:
-        """`{{user}}` maps to whichever character the card itself flagged as user-controlled, if
-        any; otherwise a minimal `BackgroundCharacter` stub is synthesized so the reference still
-        resolves to *something* rather than rendering empty (real evidence: card 01's own
-        `first_message` addresses `{{user}}` directly - "she turns toward {{user}}" - so leaving it
-        unresolved would be a visible narrative gap, not just a theoretical one)."""
+        """Resolve `{{user}}` to a user-controlled character or a minimal background stub."""
         for character in characters.characters:
             if character.result.user_controlled:
                 return character.id, None
@@ -423,30 +440,29 @@ class WorldAssembler:
         }
 
     @staticmethod
-    def _resolve_owner(
+    def _resolve_owners(
             hint: str,
             id_by_character_name: dict[str, str],
             location_id_by_name: dict[str, str],
             *,
             user_id: str,
-    ) -> tuple[str, str] | None:
-        # "self"/"自身" in a tracked-variable schema conventionally means the player's own stats
-        # (health, inventory, skills - an MVU-style stat tracker), not the card's own named
-        # protagonist: confirmed on a real card, where every "self"-hinted variable (姓名/年龄/
-        # 生命值/随身物品/...) was clearly the player character's own state in a survival-RPG card
-        # with no single named protagonist to match card.name against at all. `user_id` always
-        # resolves (either a real user_controlled character or the synthesized stub - see
-        # `_resolve_user`), so this branch never falls through to "unresolved" the way the
-        # `{{char}}` self_id placeholder resolution can.
+    ) -> list[tuple[str, str]]:
+        # A schema owner of "self" refers to the player's tracked state. `user_id` always resolves
+        # to either a user-controlled character or the synthesized stub.
         if hint.strip().lower() == "self":
-            return "character", user_id
-        character_id = resolve_name(hint, id_by_character_name)
-        if character_id:
-            return "character", character_id
-        location_id = resolve_name(hint, location_id_by_name)
-        if location_id:
-            return "location", location_id
-        return None
+            return [("character", user_id)]
+
+        owners: list[tuple[str, str]] = []
+        for name in _split_owner_hint(hint):
+            character_id = resolve_name(name, id_by_character_name)
+            if character_id:
+                owner = ("character", character_id)
+            else:
+                location_id = resolve_name(name, location_id_by_name)
+                owner = ("location", location_id) if location_id else None
+            if owner and owner not in owners:
+                owners.append(owner)
+        return owners
 
     def _variable_set_rows(
             self,
@@ -460,6 +476,15 @@ class WorldAssembler:
         grouped: dict[tuple[str, str], dict[str, dict]] = {}
 
         for variable in variables.variables:
+            if _mentions_any(variable.name, _TIME_VARIABLE_NAME_TERMS):
+                report.note(
+                    f"Dropped variable {variable.name!r}: time/date-tracking variables are never "
+                    "imported as tracked state - the simulation manages its own clock via "
+                    "World.starting_time.",
+                    low_confidence=True,
+                )
+                continue
+
             type_matches = VariableDefinition.matches_value_type(
                 variable.default_value, variable.value_type,
             )
@@ -471,10 +496,10 @@ class WorldAssembler:
                 )
                 continue
 
-            owner = self._resolve_owner(
+            owners = self._resolve_owners(
                 variable.owner_hint, id_by_character_name, location_id_by_name, user_id=user_id,
             )
-            if not owner:
+            if not owners:
                 report.note(
                     f"Dropped variable {variable.name!r}: could not resolve owner hint "
                     f"{variable.owner_hint!r} to an extracted character or location.",
@@ -482,20 +507,25 @@ class WorldAssembler:
                 )
                 continue
 
-            by_name = grouped.setdefault(owner, {})
-            if variable.name in by_name:
-                continue  # cross-source duplicate (e.g. same variable in both a script and its
-                # human-readable restatement) - first occurrence wins, per §5's deferred-dedup note
-            by_name[variable.name] = {
-                "name": variable.name,
-                "value_type": variable.value_type,
-                "value": variable.default_value,
-                "default_value": variable.default_value,
-                "description": variable.description,
-                "minimum": variable.minimum,
-                "maximum": variable.maximum,
-                "allowed_values": variable.allowed_values,
-            }
+            # A hint naming several owners at once (e.g. "Avery/Blair/Casey" - one schema
+            # entry meant to apply per-character across the whole cast) gets the same variable
+            # definition attached to each resolved owner independently, rather than only the first.
+            for owner in owners:
+                by_name = grouped.setdefault(owner, {})
+                if variable.name in by_name:
+                    continue  # cross-source duplicate (e.g. same variable in both a script and its
+                    # human-readable restatement) - first occurrence wins, per §5's deferred-dedup
+                    # note
+                by_name[variable.name] = {
+                    "name": variable.name,
+                    "value_type": variable.value_type,
+                    "value": variable.default_value,
+                    "default_value": variable.default_value,
+                    "description": variable.description,
+                    "minimum": variable.minimum,
+                    "maximum": variable.maximum,
+                    "allowed_values": variable.allowed_values,
+                }
 
         now = datetime.now(timezone.utc).isoformat()
         return [

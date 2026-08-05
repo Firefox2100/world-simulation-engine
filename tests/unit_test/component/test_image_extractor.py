@@ -1,3 +1,4 @@
+import base64
 from unittest.mock import AsyncMock
 
 from world_simulation_engine.component.sillytavern_converter import ImageExtractor
@@ -39,7 +40,10 @@ def make_storage():
 
 
 def make_downloaded(url: str) -> DownloadedImage:
-    return DownloadedImage(url=url, stored=StoredObject(digest="a" * 64, size=3), content=b"abc")
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+    return DownloadedImage(url=url, stored=StoredObject(digest="a" * 64, size=len(png)), content=png)
 
 
 async def test_extract_returns_empty_when_no_urls_found():
@@ -136,7 +140,7 @@ async def test_selected_review_url_is_staged_and_returned_for_preview():
 
     assert result.candidates == []
     assert result.media_rows[0]["temporary_id"] == "1" * 32
-    assert result.media_rows[0]["preview_data_uri"].startswith("data:image/png;base64,")
+    assert result.media_rows[0]["preview_data_uri"].startswith("data:image/webp;base64,")
 
 
 async def test_scan_finds_nested_regex_script_url_before_downloading():

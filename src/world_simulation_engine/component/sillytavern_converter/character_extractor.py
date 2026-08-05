@@ -96,9 +96,8 @@ class CharacterExtraction(BaseModel):
 def _merge_similar_names(names: set[str]) -> dict[str, str]:
     """Map each name to a canonical form, merging names that are substrings of one another.
 
-    Best-effort: stage 1 classifies every item in isolation, so the same character can come back
-    under different surface forms across items (e.g. "陌白" vs "陌白·福尔摩斯" - observed on a real
-    card). Names shorter than `_MIN_NAME_MERGE_LENGTH` are never merge *targets* for another name,
+    Stage 1 classifies every item in isolation, so the same character can appear under different
+    surface forms across items. Names shorter than `_MIN_NAME_MERGE_LENGTH` are never merge targets,
     to avoid a short/common substring accidentally absorbing an unrelated longer name.
     """
     canonical: dict[str, str] = {}
@@ -131,24 +130,15 @@ class CharacterExtractor(SillyTavernPipelineComponent):
         ]
 
         bio_classifications = classification.by_bucket(LorebookItemBucket.CHARACTER_BIO)
-        # A bio item stage 1 left unnamed is only assumed to be about "the card's own character"
-        # when NO bio item anywhere is named - a genuinely single-protagonist card with nothing to
-        # disambiguate. Once at least one bio item IS named, an unnamed one is far more likely a
-        # stage-1 classification gap (real example: card 03's entry:20, a second bio fragment about
-        # an already-named character that just didn't restate their name) than a second, separate
-        # reference to the whole card as if it were itself a character - falling back to card.name
-        # there previously fabricated a bogus duplicate character named after the card's own title
-        # (e.g. "尸变纪元 v0.5"). Such items are dropped instead, per §3.7's "never fabricate".
+        # Only use the card name when every bio item is unnamed. Otherwise, dropping an unnamed
+        # fragment avoids fabricating a duplicate character from the card title.
         has_named_bio = any(classified.target_name for classified in bio_classifications)
 
         character_buckets = (
             LorebookItemBucket.CHARACTER_BIO, LorebookItemBucket.CHARACTER_VOICE,
             LorebookItemBucket.HISTORY_EVENT, LorebookItemBucket.RELATIONSHIP,
         )
-        # Every target_name across all four buckets is merged together up front, not just bio
-        # names - otherwise a voice/history entry spelled differently from its character's bio
-        # entry (e.g. "陌白·福尔摩斯" vs "陌白" - both appear on a real card) has no canonical form
-        # to resolve to and gets silently dropped instead of attached to the right cluster.
+        # Merge names across every character-related bucket so shortened forms share a cluster.
         names = {
             classified.target_name
             for bucket in character_buckets

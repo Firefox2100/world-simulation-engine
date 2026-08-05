@@ -44,6 +44,7 @@ export function SillyTavernImportPage() {
     const [status, setStatus] = useState(null);
     const [language, setLanguage] = useState(i18n.language?.startsWith("zh") ? "zh" : "en");
     const [extracting, setExtracting] = useState(false);
+    const [streamProgress, setStreamProgress] = useState(null);
     const [extractError, setExtractError] = useState(null);
     const [assembled, setAssembled] = useState(null);
     const [imageCandidates, setImageCandidates] = useState([]);
@@ -87,6 +88,7 @@ export function SillyTavernImportPage() {
         setOriginalFile(file);
         setAssembled(null);
         setExtractError(null);
+        setStreamProgress(null);
         setCommittedWorld(null);
         setCommitError(null);
 
@@ -145,6 +147,7 @@ export function SillyTavernImportPage() {
         setError(null);
         setAssembled(null);
         setExtractError(null);
+        setStreamProgress(null);
         setCommittedWorld(null);
         setCommitError(null);
     }
@@ -152,6 +155,7 @@ export function SillyTavernImportPage() {
     async function handleExtract() {
         setExtractError(null);
         setExtracting(true);
+        setStreamProgress({ connected: false, keepalives: 0, sections: {} });
         setImageCandidates([]);
         setImageScan(null);
         setSelectedImageUrls([]);
@@ -176,7 +180,9 @@ export function SillyTavernImportPage() {
                 extensions: cardExtensions,
             };
 
-            const result = await extractSillyTavernCard(card, language, selectedImageUrls);
+            const result = await extractSillyTavernCard(
+                card, language, selectedImageUrls, setStreamProgress,
+            );
             setAssembled(result);
             setImageCandidates(result.image_candidates ?? []);
             setImageScan(result.image_scan ?? null);
@@ -494,7 +500,35 @@ export function SillyTavernImportPage() {
                         </div>
                     ) : extracting ? (
                         <div className="st-import-placeholder">
-                            <p className="status-text">{t("sillyTavernImport.review.extracting")}</p>
+                            <div className="st-import-stream-progress" aria-live="polite">
+                                <p className="status-text">{t("sillyTavernImport.review.extracting")}</p>
+                                <p className="st-import-section-hint">
+                                    {streamProgress?.connected
+                                        ? t("sillyTavernImport.review.progress.connected")
+                                        : t("sillyTavernImport.review.progress.connecting")}
+                                </p>
+                                <div className="st-import-stream-counters">
+                                    {Object.entries(streamProgress?.sections ?? {})
+                                        .filter(([, count]) => count.total > 0 || count.received > 0)
+                                        .map(([name, count]) => (
+                                            <div className="st-import-stream-counter" key={name}>
+                                                <span>
+                                                    {t(`sillyTavernImport.review.progress.sections.${name}`, {
+                                                        defaultValue: name.replaceAll("_", " "),
+                                                    })}
+                                                </span>
+                                                <strong>{count.received}/{count.total ?? "?"}</strong>
+                                            </div>
+                                        ))}
+                                </div>
+                                {streamProgress?.keepalives > 0 ? (
+                                    <p className="st-import-section-hint">
+                                        {t("sillyTavernImport.review.progress.keepalives", {
+                                            count: streamProgress.keepalives,
+                                        })}
+                                    </p>
+                                ) : null}
+                            </div>
                         </div>
                     ) : (
                         <div className="st-import-placeholder">

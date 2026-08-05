@@ -22,7 +22,7 @@ def make_character(name: str, char_id: str, do_not_know=None) -> ExtractedCharac
     )
 
 
-def make_card(*, history_content="They fought a war together.", relationship_content="Old friends.") -> PreprocessedCard:
+def make_card(*, history_content="They completed a project together.", relationship_content="Longtime colleagues.") -> PreprocessedCard:
     return PreprocessedCard(
         name="Card",
         lorebook_entries=[
@@ -43,7 +43,7 @@ async def test_extract_resolves_names_to_ids_and_respects_do_not_know():
     card = make_card()
     classification = make_classification()
     characters = CharacterExtraction(characters=[
-        make_character("Alice", "id-alice", do_not_know=["the murder weapon"]),
+        make_character("Alice", "id-alice", do_not_know=["the archived report"]),
         make_character("Bob", "id-bob"),
     ])
     extractor = NarrativeExtractor(database=Mock())
@@ -53,12 +53,12 @@ async def test_extract_resolves_names_to_ids_and_respects_do_not_know():
         output_model = kwargs["output_model"]
         if output_model is HistoryEventCandidate:
             return HistoryEventCandidate(
-                event_name="The War", event_summary="They fought together.",
-                involved_names=["Alice", "Bob"], memory_summary="We fought together.",
-                memory_keywords=["war"], knowing_names=["Bob"],
+                event_name="The Project", event_summary="They collaborated successfully.",
+                involved_names=["Alice", "Bob"], memory_summary="We completed the project together.",
+                memory_keywords=["project"], knowing_names=["Bob"],
             )
         return RelationshipCandidate(
-            source_name="Alice", target_name="Bob", label="old friends", description="Known for years.",
+            source_name="Alice", target_name="Bob", label="colleagues", description="Known for years.",
         )
 
     extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
@@ -150,22 +150,22 @@ async def test_extract_resolves_relationship_with_a_partial_name_from_the_model(
         ClassifiedItem(item_id="entry:2", buckets=[LorebookItemBucket.RELATIONSHIP]),
     ])
     characters = CharacterExtraction(characters=[
-        make_character("艾琳·莫里亚蒂", "id-irene"),
-        make_character("陌白·福尔摩斯", "id-mobai"),
+        make_character("Riley Bennett", "id-riley"),
+        make_character("Casey Morgan", "id-casey"),
     ])
     extractor = NarrativeExtractor(database=Mock())
     extractor._prepare_global_prompt = AsyncMock(return_value=[])
     extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
         invoke_structured_with_repair=AsyncMock(return_value=RelationshipCandidate(
-            source_name="艾琳", target_name="陌白·福尔摩斯", label="rivals", description="Old rivals.",
+            source_name="Riley", target_name="Casey Morgan", label="colleagues", description="Former colleagues.",
         )),
     ))
 
     extraction = await extractor.extract(card, classification, characters, language=SupportedLanguage.ENGLISH)
 
     assert len(extraction.relationships) == 1
-    assert extraction.relationships[0].source_character_id == "id-irene"
-    assert extraction.relationships[0].target_character_id == "id-mobai"
+    assert extraction.relationships[0].source_character_id == "id-riley"
+    assert extraction.relationships[0].target_character_id == "id-casey"
 
 
 async def test_extract_returns_empty_without_calling_llm_when_no_relevant_items():

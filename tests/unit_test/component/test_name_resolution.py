@@ -2,13 +2,10 @@ from world_simulation_engine.component.sillytavern_converter.name_resolution imp
 
 
 def test_resolve_name_falls_back_to_substring_match():
-    # Regression for a real bug found on card 02: a relationship about "艾琳·莫里亚蒂" resolved to
-    # zero relationships because the model returned "艾琳" (a shorter surface form), which failed
-    # exact-match resolution against the full roster name.
-    id_by_name = {"艾琳·莫里亚蒂": "id-irene", "陌白·福尔摩斯": "id-mobai"}
+    id_by_name = {"Riley Bennett": "id-riley", "Casey Morgan": "id-casey"}
 
-    assert resolve_name("艾琳", id_by_name) == "id-irene"
-    assert resolve_name("艾琳·莫里亚蒂", id_by_name) == "id-irene"
+    assert resolve_name("Riley", id_by_name) == "id-riley"
+    assert resolve_name("Riley Bennett", id_by_name) == "id-riley"
 
 
 def test_resolve_name_returns_none_for_ambiguous_partial_match():
@@ -18,10 +15,10 @@ def test_resolve_name_returns_none_for_ambiguous_partial_match():
 
 
 def test_resolve_name_never_matches_below_minimum_length():
-    id_by_name = {"凛": "id-lin"}
+    id_by_name = {"A": "id-short"}
 
-    assert resolve_name("凛", id_by_name) == "id-lin"  # exact match still works
-    assert resolve_name("神代凛霜", id_by_name) is None  # no fuzzy absorption of a longer unrelated name
+    assert resolve_name("A", id_by_name) == "id-short"  # exact match still works
+    assert resolve_name("Ada", id_by_name) is None  # no fuzzy absorption of a longer unrelated name
 
 
 def test_resolve_names_drops_unresolved_and_preserves_order():

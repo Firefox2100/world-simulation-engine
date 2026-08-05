@@ -27,14 +27,14 @@ def make_character(
     )
 
 
-def make_card(name: str = "Kiki Mora", first_message: str = "Hi there.") -> PreprocessedCard:
+def make_card(name: str = "Example Character", first_message: str = "Hi there.") -> PreprocessedCard:
     return PreprocessedCard(name=name, first_message=first_message)
 
 
 def test_assemble_resolves_self_via_card_name_and_rewrites_placeholders():
-    card = make_card(name="Kiki Mora", first_message="Hi, character['user']!")
+    card = make_card(name="Example Character", first_message="Hi, character['user']!")
     characters = CharacterExtraction(characters=[
-        make_character("Kiki Mora", "id-kiki", description="A streamer, character['self']."),
+        make_character("Example Character", "id-example", description="A fictional resident, character['self']."),
     ])
     assembler = WorldAssembler()
 
@@ -44,8 +44,8 @@ def test_assemble_resolves_self_via_card_name_and_rewrites_placeholders():
     )
 
     character_row = assembled.sections["characters"][0]
-    assert character_row["id"] == "id-kiki"
-    assert character_row["description"] == "A streamer, character['id-kiki']."
+    assert character_row["id"] == "id-example"
+    assert character_row["description"] == "A fictional resident, character['id-example']."
     # No {{char}}-resolution issue to report for this card - only the always-present
     # no-explicit-starting-time note (no variables supplied in this test).
     assert [entry.message for entry in assembled.report.entries] == [
@@ -59,8 +59,8 @@ def test_assemble_resolves_self_via_card_name_and_rewrites_placeholders():
 
 
 def test_assemble_notes_unresolved_self_when_card_name_matches_no_character():
-    card = make_card(name="尸变纪元 v0.5")
-    characters = CharacterExtraction(characters=[make_character("马库斯", "id-marcus")])
+    card = make_card(name="Example World")
+    characters = CharacterExtraction(characters=[make_character("Taylor", "id-taylor")])
     assembler = WorldAssembler()
 
     assembled = assembler.assemble(
@@ -74,7 +74,7 @@ def test_assemble_notes_unresolved_self_when_card_name_matches_no_character():
 def test_assemble_uses_user_controlled_character_instead_of_a_stub():
     card = make_card()
     characters = CharacterExtraction(characters=[
-        make_character("Kiki Mora", "id-kiki"),
+        make_character("Example Character", "id-example"),
         make_character("The Guest", "id-guest", user_controlled=True),
     ])
     assembler = WorldAssembler()
@@ -126,11 +126,11 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
         make_character("Alice", "id-alice"), make_character("Bob", "id-bob"),
     ])
     narrative = NarrativeExtraction(
-        events=[ExtractedEvent(id="evt-1", name="The War", summary="They fought.", involved_character_ids=["id-alice", "id-bob"])],
-        memories=[ExtractedMemory(id="mem-1", event_id="evt-1", summary="We fought.", keywords=["war"], character_ids=["id-alice"])],
+        events=[ExtractedEvent(id="evt-1", name="The Project", summary="They collaborated.", involved_character_ids=["id-alice", "id-bob"])],
+        memories=[ExtractedMemory(id="mem-1", event_id="evt-1", summary="We collaborated.", keywords=["project"], character_ids=["id-alice"])],
         relationships=[ExtractedRelationship(
             id="rel-1", source_character_id="id-alice", target_character_id="id-bob",
-            label="rivals", description="Old rivals.",
+            label="colleagues", description="Former colleagues.",
         )],
     )
     assembler = WorldAssembler()
@@ -155,7 +155,7 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
     relationship_row = assembled.sections["entity_relationships"][0]
     assert relationship_row["source"] == {"type": "character", "id": "id-alice", "name": None}
     assert relationship_row["target"] == {"type": "character", "id": "id-bob", "name": None}
-    assert relationship_row["public_description"] == "Old rivals."
+    assert relationship_row["public_description"] == "Former colleagues."
 
 
 def test_assemble_intent_row_carries_character_id_and_defaults():
@@ -181,16 +181,16 @@ def test_assemble_intent_row_carries_character_id_and_defaults():
 
 
 def test_assemble_variables_group_by_resolved_owner_and_dedupe_across_sources():
-    card = make_card(name="Kiki Mora")
-    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
     locations = LocationExtraction(locations=[ExtractedLocation(id="loc-1", name="Bedroom", description="A room.")])
     variables = VariableSchemaExtraction(variables=[
         ExtractedVariable(
-            owner_hint="Kiki Mora", name="hp", value_type=VariableValueType.INTEGER, default_value=100,
+            owner_hint="Example Character", name="hp", value_type=VariableValueType.INTEGER, default_value=100,
             description="Health.", source_item_ids=["script:0"],
         ),
         ExtractedVariable(
-            owner_hint="Kiki Mora", name="hp", value_type=VariableValueType.INTEGER, default_value=999,
+            owner_hint="Example Character", name="hp", value_type=VariableValueType.INTEGER, default_value=999,
             description="Duplicate from another source.", source_item_ids=["entry:1"],
         ),
         ExtractedVariable(
@@ -206,21 +206,89 @@ def test_assemble_variables_group_by_resolved_owner_and_dedupe_across_sources():
     )
 
     variable_sets = {row["owner_id"]: row for row in assembled.sections["entity_variable_sets"]}
-    assert set(variable_sets) == {"id-kiki", "loc-1"}
-    kiki_vars = variable_sets["id-kiki"]
-    assert kiki_vars["owner_type"] == "character"
-    assert len(kiki_vars["variables"]) == 1  # duplicate "hp" from the second source dropped
-    assert kiki_vars["variables"][0]["value"] == 100  # first occurrence wins
+    assert set(variable_sets) == {"id-example", "loc-1"}
+    example_vars = variable_sets["id-example"]
+    assert example_vars["owner_type"] == "character"
+    assert len(example_vars["variables"]) == 1  # duplicate "hp" from the second source dropped
+    assert example_vars["variables"][0]["value"] == 100  # first occurrence wins
 
     location_vars = variable_sets["loc-1"]
     assert location_vars["owner_type"] == "location"
     assert location_vars["variables"][0]["name"] == "cleanliness"
 
 
-def test_assemble_self_hinted_variable_maps_to_user_controlled_character():
-    card = make_card(name="Kiki Mora")
+def test_assemble_variable_with_multiple_slash_separated_owner_names_attaches_to_each():
+    card = make_card(name="Example Character")
     characters = CharacterExtraction(characters=[
-        make_character("Kiki Mora", "id-kiki"),
+        make_character("Avery", "id-avery"),
+        make_character("Blair", "id-blair"),
+        make_character("Casey", "id-casey"),
+    ])
+    variables = VariableSchemaExtraction(variables=[
+        ExtractedVariable(
+            owner_hint="Avery/Blair/Casey", name="好感度", value_type=VariableValueType.INTEGER,
+            default_value=0, description="Affection.", source_item_ids=["script:0"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.CHINESE, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
+    )
+
+    variable_sets = {row["owner_id"]: row for row in assembled.sections["entity_variable_sets"]}
+    assert set(variable_sets) == {"id-avery", "id-blair", "id-casey"}
+    for owner_id in ("id-avery", "id-blair", "id-casey"):
+        assert variable_sets[owner_id]["owner_type"] == "character"
+        assert variable_sets[owner_id]["variables"][0]["name"] == "好感度"
+
+
+def test_assemble_drops_time_tracking_variables_regardless_of_owner():
+    # Real finding: the simulation manages its own clock (World.starting_time) - a per-owner
+    # "time_passed"/"current_date" style tracked variable would drift from it, so these are dropped
+    # outright rather than imported, whether or not their owner_hint would otherwise have resolved.
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
+    variables = VariableSchemaExtraction(variables=[
+        ExtractedVariable(
+            owner_hint="Example Character", name="time_passed", value_type=VariableValueType.INTEGER,
+            default_value=0, description="Turns elapsed.", source_item_ids=["script:0"],
+        ),
+        ExtractedVariable(
+            owner_hint="world", name="current_date", value_type=VariableValueType.STRING,
+            default_value="not a date", description="Tracked date.", source_item_ids=["script:0"],
+        ),
+        ExtractedVariable(
+            owner_hint="Example Character", name="hp", value_type=VariableValueType.INTEGER,
+            default_value=100, description="Health.", source_item_ids=["script:0"],
+        ),
+    ])
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters, locations=LocationExtraction(),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
+    )
+
+    example_vars = assembled.sections["entity_variable_sets"][0]["variables"]
+    assert [variable["name"] for variable in example_vars] == ["hp"]
+    assert any(
+        "time_passed" in entry.message and "clock" in entry.message and entry.low_confidence
+        for entry in assembled.report.entries
+    )
+    assert any(
+        "current_date" in entry.message and "clock" in entry.message and entry.low_confidence
+        for entry in assembled.report.entries
+    )
+
+
+def test_assemble_self_hinted_variable_maps_to_user_controlled_character():
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[
+        make_character("Example Character", "id-example"),
         make_character("The Guest", "id-guest", user_controlled=True),
     ])
     variables = VariableSchemaExtraction(variables=[
@@ -243,12 +311,9 @@ def test_assemble_self_hinted_variable_maps_to_user_controlled_character():
 
 
 def test_assemble_self_hinted_variable_maps_to_synthesized_user_stub_when_no_persona_exists():
-    # Real finding: an MVU-style variable schema's "self"/"自身" section conventionally tracks the
-    # player's own stats, not the card's named protagonist - confirmed on a real survival-RPG card
-    # where every "self"-hinted variable (name/age/hp/inventory/...) was clearly the player's own
-    # state, and the card had no single protagonist for card.name to match against at all.
-    card = make_card(name="尸变纪元 v0.5")
-    characters = CharacterExtraction(characters=[make_character("马库斯", "id-marcus")])
+    # A schema owner of "self" maps to the player's tracked state.
+    card = make_card(name="Example World")
+    characters = CharacterExtraction(characters=[make_character("Taylor", "id-taylor")])
     variables = VariableSchemaExtraction(variables=[
         ExtractedVariable(
             owner_hint="self", name="hp", value_type=VariableValueType.INTEGER, default_value=100,
@@ -289,8 +354,8 @@ def test_assemble_drops_variable_with_unresolvable_owner_hint():
 
 
 def test_assemble_drops_variable_with_inconsistent_value_type():
-    card = make_card(name="Kiki Mora")
-    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
     variables = VariableSchemaExtraction(variables=[
         ExtractedVariable(
             owner_hint="self", name="hp", value_type=VariableValueType.INTEGER,
@@ -309,13 +374,13 @@ def test_assemble_drops_variable_with_inconsistent_value_type():
 
 
 def test_assemble_items_resolve_holder_and_location_hints():
-    card = make_card(name="Kiki Mora")
-    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
     locations = LocationExtraction(locations=[ExtractedLocation(id="loc-1", name="Bedroom", description="A room.")])
     items = ItemExtraction(items=[
         ExtractedItem(
             name="Locket", description="A silver locket.", unique=True, quantity=1,
-            holder_hint="Kiki Mora", source_item_ids=["entry:1"],
+            holder_hint="Example Character", source_item_ids=["entry:1"],
         ),
         ExtractedItem(
             name="Old chair", description="A wooden chair.", unique=False, quantity=1,
@@ -335,7 +400,7 @@ def test_assemble_items_resolve_holder_and_location_hints():
     assert set(item_rows) == {"Locket", "Old chair"}
 
     locket_stack = stack_rows[item_rows["Locket"]["id"]]
-    assert locket_stack["holder_id"] == "id-kiki"
+    assert locket_stack["holder_id"] == "id-example"
     assert locket_stack["location_id"] is None
 
     chair_stack = stack_rows[item_rows["Old chair"]["id"]]
@@ -344,9 +409,9 @@ def test_assemble_items_resolve_holder_and_location_hints():
 
 
 def test_assemble_self_hinted_item_maps_to_user_controlled_character():
-    card = make_card(name="Kiki Mora")
+    card = make_card(name="Example Character")
     characters = CharacterExtraction(characters=[
-        make_character("Kiki Mora", "id-kiki"),
+        make_character("Example Character", "id-example"),
         make_character("The Guest", "id-guest", user_controlled=True),
     ])
     items = ItemExtraction(items=[
@@ -389,16 +454,16 @@ def test_assemble_drops_item_with_unresolvable_holder_and_location_hints():
 
 
 def test_assemble_drops_second_item_of_the_same_name():
-    card = make_card(name="Kiki Mora")
-    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
     items = ItemExtraction(items=[
         ExtractedItem(
             name="Locket", description="First mention.", unique=True, quantity=1,
-            holder_hint="Kiki Mora", source_item_ids=["entry:1"],
+            holder_hint="Example Character", source_item_ids=["entry:1"],
         ),
         ExtractedItem(
             name="Locket", description="Duplicate mention from another entry.", unique=True,
-            quantity=1, holder_hint="Kiki Mora", source_item_ids=["entry:2"],
+            quantity=1, holder_hint="Example Character", source_item_ids=["entry:2"],
         ),
     ])
     assembler = WorldAssembler()
@@ -414,11 +479,11 @@ def test_assemble_drops_second_item_of_the_same_name():
 
 
 def test_assemble_equipment_resolves_holder_hint():
-    card = make_card(name="Kiki Mora")
-    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
     equipment = EquipmentExtraction(equipment=[
         ExtractedEquipment(
-            name="Travel cloak", description="A wool cloak.", quality="worn", holder_hint="Kiki Mora",
+            name="Travel cloak", description="A wool cloak.", quality="worn", holder_hint="Example Character",
             slot="outerwear", source_item_ids=["entry:1"],
         ),
     ])
@@ -432,15 +497,15 @@ def test_assemble_equipment_resolves_holder_hint():
 
     equipment_row = assembled.sections["equipment"][0]
     assert equipment_row["name"] == "Travel cloak"
-    assert equipment_row["holder_id"] == "id-kiki"
+    assert equipment_row["holder_id"] == "id-example"
     assert equipment_row["equipped"] is True
     assert equipment_row["equipped_position"] == "outerwear"
 
 
 def test_assemble_self_hinted_equipment_maps_to_user_controlled_character():
-    card = make_card(name="Kiki Mora")
+    card = make_card(name="Example Character")
     characters = CharacterExtraction(characters=[
-        make_character("Kiki Mora", "id-kiki"),
+        make_character("Example Character", "id-example"),
         make_character("The Guest", "id-guest", user_controlled=True),
     ])
     equipment = EquipmentExtraction(equipment=[
@@ -487,16 +552,16 @@ def test_assemble_imports_equipment_unassigned_when_holder_hint_is_unresolvable(
 
 
 def test_assemble_drops_second_equipment_of_the_same_name():
-    card = make_card(name="Kiki Mora")
-    characters = CharacterExtraction(characters=[make_character("Kiki Mora", "id-kiki")])
+    card = make_card(name="Example Character")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
     equipment = EquipmentExtraction(equipment=[
         ExtractedEquipment(
-            name="Locket necklace", description="First mention.", holder_hint="Kiki Mora",
+            name="Locket necklace", description="First mention.", holder_hint="Example Character",
             source_item_ids=["entry:1"],
         ),
         ExtractedEquipment(
             name="Locket necklace", description="Duplicate mention from another entry.",
-            holder_hint="Kiki Mora", source_item_ids=["entry:2"],
+            holder_hint="Example Character", source_item_ids=["entry:2"],
         ),
     ])
     assembler = WorldAssembler()
@@ -512,8 +577,8 @@ def test_assemble_drops_second_equipment_of_the_same_name():
 
 
 def test_assemble_world_row_uses_card_name_and_world_lore_description():
-    card = make_card(name="Kiki Mora")
-    world_lore = WorldLoreExtraction(description="A cursed village.", source_item_ids=["entry:1"])
+    card = make_card(name="Example Character")
+    world_lore = WorldLoreExtraction(description="A coastal town.", source_item_ids=["entry:1"])
     assembler = WorldAssembler()
 
     assembled = assembler.assemble(
@@ -521,8 +586,8 @@ def test_assemble_world_row_uses_card_name_and_world_lore_description():
         narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
-    assert assembled.world["name"] == "Kiki Mora"
-    assert assembled.world["description"] == "A cursed village."
+    assert assembled.world["name"] == "Example Character"
+    assert assembled.world["description"] == "A coastal town."
 
 
 def test_assemble_world_row_has_no_description_when_no_world_lore():
@@ -541,9 +606,9 @@ def test_assembled_rows_validate_against_the_real_domain_models():
     """Every row WorldAssembler produces must actually construct the real pydantic model
     WorldImportService will validate it against at persistence time - shape drift here would only
     surface as an obscure ValidationError deep inside stage 4, so it's cheaper to catch here."""
-    card = make_card(name="Kiki Mora", first_message="Hi, character['user']!")
+    card = make_card(name="Example Character", first_message="Hi, character['user']!")
     characters = CharacterExtraction(characters=[
-        make_character("Kiki Mora", "id-kiki", description="A streamer, character['self']."),
+        make_character("Example Character", "id-example", description="A fictional resident, character['self']."),
         make_character("Bob", "id-bob"),
     ])
     locations = LocationExtraction(locations=[
@@ -552,21 +617,21 @@ def test_assembled_rows_validate_against_the_real_domain_models():
     ])
     narrative = NarrativeExtraction(
         events=[ExtractedEvent(
-            id="evt-1", name="The War", summary="They fought.",
-            involved_character_ids=["id-kiki", "id-bob"],
+            id="evt-1", name="The Project", summary="They collaborated.",
+            involved_character_ids=["id-example", "id-bob"],
         )],
         memories=[ExtractedMemory(
-            id="mem-1", event_id="evt-1", summary="We fought.", keywords=["war"],
-            character_ids=["id-kiki"],
+            id="mem-1", event_id="evt-1", summary="We collaborated.", keywords=["project"],
+            character_ids=["id-example"],
         )],
         relationships=[ExtractedRelationship(
-            id="rel-1", source_character_id="id-kiki", target_character_id="id-bob",
-            label="rivals", description="Old rivals.",
+            id="rel-1", source_character_id="id-example", target_character_id="id-bob",
+            label="colleagues", description="Former colleagues.",
         )],
     )
     intents = IntentExtraction(intents=[
         ExtractedIntent(
-            id="int-1", character_id="id-kiki", name="Solve the case", type=IntentType.QUEST,
+            id="int-1", character_id="id-example", name="Solve the case", type=IntentType.QUEST,
             description="Find the truth.", priority=0.9, urgency=0.5, status=IntentStatus.ACTIVE,
             horizon=IntentHorizon.LONG,
         ),
@@ -580,12 +645,12 @@ def test_assembled_rows_validate_against_the_real_domain_models():
     items = ItemExtraction(items=[
         ExtractedItem(
             name="Locket", description="A silver locket.", unique=True, quantity=1,
-            holder_hint="Kiki Mora", source_item_ids=["entry:1"],
+            holder_hint="Example Character", source_item_ids=["entry:1"],
         ),
     ])
     equipment = EquipmentExtraction(equipment=[
         ExtractedEquipment(
-            name="Travel cloak", description="A wool cloak.", quality="worn", holder_hint="Kiki Mora",
+            name="Travel cloak", description="A wool cloak.", quality="worn", holder_hint="Example Character",
             slot="outerwear", source_item_ids=["entry:2"],
         ),
     ])
@@ -641,7 +706,7 @@ def test_assemble_infers_starting_time_from_explicit_world_date_and_time_variabl
     variables = VariableSchemaExtraction(variables=[
         ExtractedVariable(
             owner_hint="world", name="当前日期", value_type=VariableValueType.STRING,
-            default_value="2024年03月15日", description="世界当前的日期", source_item_ids=["script:0"],
+            default_value="2030年06月10日", description="世界当前的日期", source_item_ids=["script:0"],
         ),
         ExtractedVariable(
             owner_hint="world", name="当前时间", value_type=VariableValueType.STRING,
@@ -656,7 +721,7 @@ def test_assemble_infers_starting_time_from_explicit_world_date_and_time_variabl
         intents=IntentExtraction(), variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
-    assert assembled.world["starting_time"] == "2024-03-15T08:30:00+00:00"
+    assert assembled.world["starting_time"] == "2030-06-10T08:30:00+00:00"
     assert any("Starting time inferred" in entry.message for entry in assembled.report.entries)
 
 
@@ -685,12 +750,12 @@ def test_assemble_ignores_non_world_or_unparseable_date_variables_and_flags_the_
         # Not "world"-scoped - a character's own birthdate is not the simulation clock.
         ExtractedVariable(
             owner_hint="self", name="出生日期", value_type=VariableValueType.STRING,
-            default_value="1998年05月01日", description="角色的出生日期", source_item_ids=["script:0"],
+            default_value="2000年01月01日", description="角色的出生日期", source_item_ids=["script:0"],
         ),
         # "world"-scoped but the value doesn't actually contain a parseable date.
         ExtractedVariable(
             owner_hint="world", name="世界现状", value_type=VariableValueType.STRING,
-            default_value="秩序崩坏", description="Current world date and situation.",
+            default_value="状态稳定", description="Current world date and situation.",
             source_item_ids=["script:0"],
         ),
     ])

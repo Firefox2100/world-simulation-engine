@@ -11,10 +11,12 @@ depends on the other's output and the user asked for both to proceed without wai
 
 import base64
 import asyncio
+import io
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
+from PIL import Image
 
 from world_simulation_engine.misc.enums import MediaType
 from world_simulation_engine.model import ImportedImageMediaFile
@@ -70,10 +72,17 @@ def build_downloaded_media_row(url: str, staged: StagedObject, content: bytes) -
         created_at=datetime.now(timezone.utc),
         source_url=url,
     )
+    # Never inline the full-resolution original. Cards can contain hundreds of multi-megabyte
+    # images; concatenating those into one JSON body can exhaust a proxy/browser even though the
+    # backend completed successfully. The original remains staged unchanged for final promotion.
+    with Image.open(io.BytesIO(content)) as image:
+        image.thumbnail((512, 512))
+        preview = io.BytesIO()
+        image.save(preview, format="WEBP", quality=75, method=4)
     return {
         **media.model_dump(mode="json"),
         "temporary_id": staged.token,
-        "preview_data_uri": f"data:image/png;base64,{base64.b64encode(content).decode('ascii')}",
+        "preview_data_uri": f"data:image/webp;base64,{base64.b64encode(preview.getvalue()).decode('ascii')}",
     }
 
 

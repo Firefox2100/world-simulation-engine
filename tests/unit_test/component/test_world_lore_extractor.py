@@ -11,9 +11,9 @@ from world_simulation_engine.misc.enums import LorebookItemBucket, SupportedLang
 def make_card() -> PreprocessedCard:
     return PreprocessedCard(
         name="Card",
-        description="A cursed village bound by an old pact.",
+        description="A coastal town shaped by an old trade route.",
         lorebook_entries=[
-            PreprocessedLorebookEntry(source_id="1", name="cult", content="A demon cult operates in secret."),
+            PreprocessedLorebookEntry(source_id="1", name="guild", content="A local guild maintains historical records."),
             PreprocessedLorebookEntry(source_id="2", name="bio", content="Not lore, a character bio."),
         ],
     )
@@ -29,18 +29,18 @@ async def test_extract_consolidates_all_world_lore_items_in_one_call():
     extractor = WorldLoreExtractor(database=Mock())
     extractor._prepare_global_prompt = AsyncMock(return_value=[])
     llm_service = Mock(invoke_structured_with_repair=AsyncMock(
-        return_value=WorldLoreExtractionResult(description="A cursed village troubled by a secret demon cult."),
+        return_value=WorldLoreExtractionResult(description="A coastal town supported by a record-keeping guild."),
     ))
     extractor._prepare_global_llm_service = AsyncMock(return_value=llm_service)
 
     extraction = await extractor.extract(card, classification, language=SupportedLanguage.ENGLISH)
 
-    assert extraction.description == "A cursed village troubled by a secret demon cult."
+    assert extraction.description == "A coastal town supported by a record-keeping guild."
     assert set(extraction.source_item_ids) == {"field:description", "entry:1"}
     llm_service.invoke_structured_with_repair.assert_awaited_once()
     call_data = llm_service.invoke_structured_with_repair.await_args.kwargs["data"]
     assert set(call_data["lore_items"]) == {
-        "A cursed village bound by an old pact.", "A demon cult operates in secret.",
+        "A coastal town shaped by an old trade route.", "A local guild maintains historical records.",
     }
 
 

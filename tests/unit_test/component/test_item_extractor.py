@@ -14,7 +14,7 @@ def make_card(*, lorebook_entries=None) -> PreprocessedCard:
 
 async def test_extract_dispatches_one_call_per_item_bucket_entry():
     card = make_card(lorebook_entries=[
-        PreprocessedLorebookEntry(source_id="1", name="随身物品", content="小明总是随身携带一把生锈的短刀。"),
+        PreprocessedLorebookEntry(source_id="1", name="随身物品", content="示例角色总是随身携带一把生锈的短刀。"),
     ])
     classification = LorebookClassification(items=[
         ClassifiedItem(item_id="entry:1", buckets=[LorebookItemBucket.ITEM]),
@@ -25,7 +25,7 @@ async def test_extract_dispatches_one_call_per_item_bucket_entry():
         invoke_structured_with_repair=AsyncMock(return_value=ItemCandidates(items=[
             ItemFieldCandidate(
                 name="生锈的短刀", description="一把老旧生锈的短刀。", quality="生锈",
-                holder_hint="小明",
+                holder_hint="示例角色",
             ),
         ])),
     ))
@@ -35,7 +35,7 @@ async def test_extract_dispatches_one_call_per_item_bucket_entry():
     assert len(extraction.items) == 1
     item = extraction.items[0]
     assert item.name == "生锈的短刀"
-    assert item.holder_hint == "小明"
+    assert item.holder_hint == "示例角色"
     assert item.quantity == 1
     assert item.source_item_ids == ["entry:1"]
     prompt_call = extractor._prepare_global_prompt.await_args
@@ -44,7 +44,7 @@ async def test_extract_dispatches_one_call_per_item_bucket_entry():
 
 async def test_extract_ignores_lorebook_entries_not_classified_as_item():
     card = make_card(lorebook_entries=[
-        PreprocessedLorebookEntry(source_id="1", name="Bio", content="Kiki is a streamer."),
+        PreprocessedLorebookEntry(source_id="1", name="Bio", content="Example is a fictional resident."),
     ])
     classification = LorebookClassification(items=[
         ClassifiedItem(item_id="entry:1", buckets=[LorebookItemBucket.CHARACTER_BIO]),
