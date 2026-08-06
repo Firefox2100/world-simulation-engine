@@ -6,7 +6,8 @@ Stages run strictly sequentially (§3.5/§9.6): stage 0 (`CardPreprocessor`) and
 stage-2 extractor are themselves internally fanned-out (`fan_out.run_fan_out`, capped by
 `CONFIG.sillytavern_import_max_concurrency`) but run one stage after another here, never
 concurrently with each other - later stages depend on earlier ones (`NarrativeExtractor`/
-`IntentExtractor` need `CharacterExtractor`'s roster) and a 50-entry card would otherwise fire
+`IntentExtractor` need `CharacterExtractor`'s roster, while opening/spatial extraction needs the
+assembled entity rosters) and a 50-entry card would otherwise fire
 hundreds of simultaneous requests across stages at once.
 
 `language` is supplied by the caller for the whole run (never guessed or auto-detected) - the
@@ -38,6 +39,9 @@ from .item_extractor import ItemExtraction, ItemExtractor
 from .location_extractor import LocationExtraction, LocationExtractor
 from .lorebook_classifier import LorebookClassification, LorebookClassifier
 from .narrative_extractor import NarrativeExtraction, NarrativeExtractor
+from .opening_turn_extractor import OpeningTurnExtraction, OpeningTurnExtractor
+from .private_knowledge_extractor import PrivateKnowledgeExtraction, PrivateKnowledgeExtractor
+from .spatial_state_extractor import SpatialStateExtraction, SpatialStateExtractor
 from .variable_schema_extractor import VariableSchemaExtraction, VariableSchemaExtractor
 from .world_assembler import AssembledWorld, WorldAssembler
 from .world_lore_extractor import WorldLoreExtraction, WorldLoreExtractor
@@ -59,6 +63,9 @@ class _ReconstructionState(BaseModel):
     variables: VariableSchemaExtraction | None = None
     items: ItemExtraction | None = None
     equipment: EquipmentExtraction | None = None
+    opening_turns: OpeningTurnExtraction | None = None
+    spatial_state: SpatialStateExtraction | None = None
+    private_knowledge: PrivateKnowledgeExtraction | None = None
     assembled: AssembledWorld | None = None
 
 
@@ -79,6 +86,9 @@ class WorldReconstructor:
         graph.add_node("extract_variables", self._extract_variables)
         graph.add_node("extract_items", self._extract_items)
         graph.add_node("extract_equipment", self._extract_equipment)
+        graph.add_node("extract_opening_turns", self._extract_opening_turns)
+        graph.add_node("extract_spatial_state", self._extract_spatial_state)
+        graph.add_node("extract_private_knowledge", self._extract_private_knowledge)
         graph.add_node("assemble", self._assemble)
 
         graph.add_edge(START, "preprocess")
@@ -91,7 +101,10 @@ class WorldReconstructor:
         graph.add_edge("extract_intents", "extract_variables")
         graph.add_edge("extract_variables", "extract_items")
         graph.add_edge("extract_items", "extract_equipment")
-        graph.add_edge("extract_equipment", "assemble")
+        graph.add_edge("extract_equipment", "extract_opening_turns")
+        graph.add_edge("extract_opening_turns", "extract_spatial_state")
+        graph.add_edge("extract_spatial_state", "extract_private_knowledge")
+        graph.add_edge("extract_private_knowledge", "assemble")
         graph.add_edge("assemble", END)
         return graph.compile()
 
@@ -153,6 +166,26 @@ class WorldReconstructor:
         )
         return {"equipment": equipment}
 
+    async def _extract_opening_turns(self, state: _ReconstructionState) -> dict:
+        opening_turns = await OpeningTurnExtractor(database=self._db).extract(
+            state.preprocessed, state.characters, language=state.language,
+        )
+        return {"opening_turns": opening_turns}
+
+    async def _extract_spatial_state(self, state: _ReconstructionState) -> dict:
+        spatial_state = await SpatialStateExtractor(database=self._db).extract(
+            state.preprocessed, state.characters, state.locations, state.items, state.equipment,
+            language=state.language,
+        )
+        return {"spatial_state": spatial_state}
+
+    async def _extract_private_knowledge(self, state: _ReconstructionState) -> dict:
+        private_knowledge = await PrivateKnowledgeExtractor(database=self._db).extract(
+            state.characters, state.locations, state.items, state.equipment, state.narrative,
+            language=state.language,
+        )
+        return {"private_knowledge": private_knowledge}
+
     @staticmethod
     def _assemble(state: _ReconstructionState) -> dict:
         assembled = WorldAssembler().assemble(
@@ -166,6 +199,9 @@ class WorldReconstructor:
             variables=state.variables,
             items=state.items,
             equipment=state.equipment,
+            opening_turns=state.opening_turns,
+            spatial_state=state.spatial_state,
+            private_knowledge=state.private_knowledge,
         )
         return {"assembled": assembled}
 

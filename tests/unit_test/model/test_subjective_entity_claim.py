@@ -25,6 +25,15 @@ def test_claim_supports_typed_non_character_subject():
     assert claim.category == "safety"
 
 
+def test_claim_may_be_authored_in_world_but_has_exactly_one_scope():
+    claim = make_claim(simulation_id=None, world_id="world_1")
+    assert claim.world_id == "world_1"
+    with pytest.raises(ValueError):
+        make_claim(simulation_id=None, world_id=None)
+    with pytest.raises(ValueError):
+        make_claim(world_id="world_1")
+
+
 def test_claim_rejects_self_model_and_overlapping_evidence():
     with pytest.raises(ValidationError, match="another entity"):
         make_claim(subject=RelationshipEntityRef(type="character", id="observer"))

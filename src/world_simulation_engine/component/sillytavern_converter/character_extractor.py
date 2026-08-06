@@ -48,11 +48,6 @@ class CharacterCluster(BaseModel):
     bio_content: list[str] = Field(default_factory=list)
     voice_content: list[str] = Field(default_factory=list)
     related_history: list[str] = Field(default_factory=list)
-    card_secrets: list[str] = Field(
-        default_factory=list,
-        description="Every hidden_truth-bucket item in the whole card, so the model can decide "
-                    "which (if any) this character must not know.",
-    )
     source_item_ids: list[str] = Field(default_factory=list)
 
 
@@ -72,12 +67,6 @@ class CharacterExtractionResult(BaseModel):
     current_activity: str
     speech_style: str = ""
     user_controlled: bool = False
-    do_not_know: list[str] = Field(
-        default_factory=list,
-        max_length=6,
-        description="Specific secrets/facts (from the supplied card secrets) this character must "
-                    "not know, in plain language - empty if none apply to this character.",
-    )
 
 
 class ExtractedCharacter(BaseModel):
@@ -123,12 +112,6 @@ class CharacterExtractor(SillyTavernPipelineComponent):
     @staticmethod
     def _build_clusters(card: PreprocessedCard, classification: LorebookClassification) -> list[CharacterCluster]:
         content_by_id = content_by_item_id(card)
-        secrets = [
-            content_by_id[classified.item_id]
-            for classified in classification.by_bucket(LorebookItemBucket.HIDDEN_TRUTH)
-            if classified.item_id in content_by_id
-        ]
-
         bio_classifications = classification.by_bucket(LorebookItemBucket.CHARACTER_BIO)
         # Only use the card name when every bio item is unnamed. Otherwise, dropping an unnamed
         # fragment avoids fabricating a duplicate character from the card title.
@@ -154,7 +137,7 @@ class CharacterExtractor(SillyTavernPipelineComponent):
         def cluster_for(name: str) -> CharacterCluster:
             canonical = canonical_names.get(name, name)
             return clusters.setdefault(canonical, CharacterCluster(
-                target_name=canonical, card_name=card.name, card_secrets=secrets,
+                target_name=canonical, card_name=card.name,
             ))
 
         for classified in bio_classifications:
@@ -206,9 +189,7 @@ class CharacterExtractor(SillyTavernPipelineComponent):
             data=cluster.model_dump(exclude={"id"}),
             repair_instruction=(
                 "Return a single CharacterExtractionResult JSON object only. age must be a "
-                "concrete integer (your best estimate if not stated). do_not_know must only list "
-                "secrets from the supplied card secrets that clearly apply to this character, or "
-                "an empty list."
+                "concrete integer (your best estimate if not stated)."
             ),
             run_name="character_extractor.extract_one",
         )

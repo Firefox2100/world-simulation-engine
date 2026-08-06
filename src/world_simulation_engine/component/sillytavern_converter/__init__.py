@@ -18,7 +18,14 @@ from .lorebook_classifier import ClassifiedItem, LorebookClassification, Loreboo
     LorebookItemClassification
 from .narrative_extractor import ExtractedEvent, ExtractedMemory, ExtractedRelationship, \
     HistoryEventCandidate, NarrativeExtraction, NarrativeExtractor, RelationshipCandidate
+from .opening_turn_extractor import ExtractedOpeningTurn, OpeningTurnCandidate, OpeningTurnCandidates, \
+    OpeningTurnExtraction, OpeningTurnExtractor
 from .pipeline_component import SillyTavernPipelineComponent
+from .private_knowledge_extractor import ExtractedPrivateKnowledgeClaim, \
+    PrivateKnowledgeClaimCandidate, PrivateKnowledgeClaimCandidates, PrivateKnowledgeExtraction, \
+    PrivateKnowledgeExtractor
+from .spatial_state_extractor import ExtractedSpatialPlacement, SpatialEntityType, \
+    SpatialPlacementCandidate, SpatialPlacementCandidates, SpatialStateExtraction, SpatialStateExtractor
 from .variable_schema_extractor import ExtractedVariable, VariableFieldCandidate, VariableSchemaCandidates, \
     VariableSchemaExtraction, VariableSchemaExtractor
 from .world_assembler import AssembledWorld, ConversionReport, ConversionReportEntry, WorldAssembler

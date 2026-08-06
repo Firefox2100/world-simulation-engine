@@ -26,7 +26,8 @@ from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import BackgroundCharacter, Character, CharacterTtsConfig, ChatModelConfigUnion, \
     Container, EmbedModelConfigUnion, EntityRelationship, EntityVariableSet, Equipment, Event, \
     ImageModelConfigUnion, ImportedImageMediaFile, Intent, Item, ItemStack, Landmark, Location, MediaFile, \
-    MemoryAtom, PromptMediaFile, Turn, TtsModelConfigUnion, WorkflowMediaFile, World
+    MemoryAtom, PromptMediaFile, RelationshipEntityRef, SubjectiveEntityClaim, Turn, \
+    TtsModelConfigUnion, WorkflowMediaFile, World
 from world_simulation_engine.service.database import DatabaseService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 from world_simulation_engine.service.storage_service import StorageService
@@ -109,6 +110,9 @@ class WorldImportService:
             "memories": self._read_jsonl(archive, "data/memories.jsonl"),
             "intents": self._read_jsonl(archive, "data/intents.jsonl"),
             "entity_relationships": self._read_jsonl(archive, "data/entity_relationships.jsonl"),
+            "subjective_entity_claims": self._read_optional_jsonl(
+                archive, "data/subjective_entity_claims.jsonl",
+            ),
             # Optional: added after entity variable sets existed. Older archives simply don't have
             # this file, and a world/simulation with no tracked variables is a normal, common case
             # even for archives that do.
@@ -190,6 +194,9 @@ class WorldImportService:
         memory_id_map = await self._import_memories(sections["memories"], event_id_map, id_map)
         await self._import_intents(sections["intents"], id_map, event_id_map)
         await self._import_relationships(world.id, sections["entity_relationships"], id_map, memory_id_map)
+        await self._import_subjective_claims(
+            world.id, sections.get("subjective_entity_claims", []), id_map, memory_id_map,
+        )
         await self._import_entity_variable_sets(world.id, sections["entity_variable_sets"], id_map)
 
         await self._import_chat_assignments(world.id, sections["chat_configs"])
@@ -610,6 +617,35 @@ class WorldImportService:
                 "version": 1,
             })
             await self._db.entity_relationship.create_relationship(relationship)
+
+    async def _import_subjective_claims(self, world_id: str, rows: list[dict],
+                                        id_map: dict[str, str], memory_id_map: dict[str, str]) -> None:
+        for row in rows:
+            observer_id = id_map.get(row.get("observer_character_id"))
+            subject_row = row.get("subject") or {}
+            subject_id = id_map.get(subject_row.get("id"))
+            supporting_ids = [
+                memory_id_map[memory_id]
+                for memory_id in row.get("supporting_memory_ids", [])
+                if memory_id in memory_id_map
+            ]
+            if not observer_id or not subject_id or not supporting_ids:
+                continue
+            claim = SubjectiveEntityClaim.model_validate({
+                **row,
+                "id": str(uuid4()),
+                "world_id": world_id,
+                "simulation_id": None,
+                "observer_character_id": observer_id,
+                "subject": RelationshipEntityRef.model_validate({**subject_row, "id": subject_id}),
+                "supporting_memory_ids": supporting_ids,
+                "contradicting_memory_ids": [
+                    memory_id_map[memory_id]
+                    for memory_id in row.get("contradicting_memory_ids", [])
+                    if memory_id in memory_id_map
+                ],
+            })
+            await self._db.subjective_entity_claim.create_world_claim(claim)
 
     async def _import_entity_variable_sets(self,
                                            world_id: str,

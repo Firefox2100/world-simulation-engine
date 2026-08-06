@@ -22436,7 +22436,10 @@
           "st_intent_extractor",
           "st_variable_schema_extractor",
           "st_item_extractor",
-          "st_equipment_extractor"
+          "st_equipment_extractor",
+          "st_opening_turn_extractor",
+          "st_spatial_state_extractor",
+          "st_private_knowledge_extractor"
         ],
         "title": "ComponentType"
       },
@@ -24314,6 +24317,14 @@
             "type": "string",
             "title": "Summary",
             "description": "The summary of the event"
+          },
+          "outcome": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ],
+            "title": "Outcome",
+            "description": "What changed or resulted when this event concluded"
           }
         },
         "type": "object",

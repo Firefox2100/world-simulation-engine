@@ -1,6 +1,7 @@
 """Neo4j persistence for observer-private entity claims."""
 
 import json
+from datetime import datetime, timezone
 
 from neo4j import AsyncDriver
 
@@ -25,7 +26,7 @@ class SubjectiveEntityClaimStore:
         if hasattr(last, "to_native"):
             last = last.to_native()
         return SubjectiveEntityClaim(
-            id=node["id"], simulation_id=node["simulation_id"],
+            id=node["id"], simulation_id=node.get("simulation_id"), world_id=node.get("world_id"),
             observer_character_id=node["observer_character_id"],
             subject=RelationshipEntityRef(type=node["subject_type"], id=record["subject"]["id"],
                                           name=record["subject"].get("name")),
@@ -42,6 +43,96 @@ class SubjectiveEntityClaimStore:
         return claim.model_dump(mode="python", exclude={"subject"}) | {
             "subject_id": claim.subject.id, "subject_type": claim.subject.type,
         }
+
+    async def create_world_claim(self, claim: SubjectiveEntityClaim) -> SubjectiveEntityClaim | None:
+        """Create authored positive knowledge; absence of a claim remains ordinary unknown state."""
+        if not claim.world_id or claim.simulation_id:
+            raise ValueError("An authored claim must be world-scoped")
+        result = await self._driver.execute_query(
+            """
+            MATCH (world:World {id: $world_id})-[:CONTAINS*0..]->(observer:Character {id: $observer_character_id})
+            MATCH (subject {id: $subject_id})
+            WHERE ($subject_type IN labels(subject) OR
+              toLower(replace($subject_type, '_', '')) IN [label IN labels(subject) | toLower(label)])
+              AND EXISTS { MATCH (world)-[:CONTAINS*0..]->(subject) }
+            OPTIONAL MATCH (memory:MemoryAtom)
+            WHERE memory.id IN $evidence_ids AND EXISTS { MATCH (observer)-[:REMEMBERS]->(memory) }
+            WITH world, observer, subject, collect(DISTINCT memory) AS memories
+            WHERE size(memories) = size($evidence_ids)
+              AND NOT EXISTS { MATCH (:SubjectiveEntityClaim {id: $id}) }
+            CREATE (claim:SubjectiveEntityClaim {id:$id, world_id:$world_id,
+              observer_character_id:$observer_character_id, subject_type:$subject_type,
+              category:$category, statement:$statement, normalized_statement:$normalized_statement,
+              stance:$stance, confidence:$confidence, first_observed_at:$first_observed_at,
+              last_updated_at:$last_updated_at, supporting_memory_ids:$supporting_memory_ids,
+              contradicting_memory_ids:$contradicting_memory_ids, version:$version, active:$active})
+            MERGE (world)-[:CONTAINS]->(claim)
+            MERGE (observer)-[:HOLDS_MODEL]->(claim)
+            MERGE (claim)-[:ABOUT]->(subject)
+            FOREACH (memory IN memories | MERGE (memory)-[:CLAIM_EVIDENCE]->(claim))
+            RETURN claim, subject, $supporting_memory_ids AS supporting_memory_ids,
+              $contradicting_memory_ids AS contradicting_memory_ids
+            """,
+            parameters_=self._params(claim) | {
+                "evidence_ids": list(dict.fromkeys(
+                    [*claim.supporting_memory_ids, *claim.contradicting_memory_ids]
+                )),
+            },
+        )
+        return self._from_record(result.records[0]) if result.records else None
+
+    async def copy_world_claims(self, *, world_id: str, simulation_id: str,
+                                entity_pairs: list[dict], memory_pairs: list[dict]) -> list[dict]:
+        """Copy authored beliefs to runtime ids so simulator perspective queries can consume them."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World {id:$world_id})-[:CONTAINS]->(source_claim:SubjectiveEntityClaim)
+            MATCH (source_claim)-[:ABOUT]->(source_subject)
+            WITH source_claim, source_subject,
+              [pair IN $entity_pairs WHERE pair.source_id=source_claim.observer_character_id][0] AS observer_pair,
+              [pair IN $entity_pairs WHERE pair.source_id=source_subject.id][0] AS subject_pair
+            WHERE observer_pair IS NOT NULL AND subject_pair IS NOT NULL
+            MATCH (simulation:Simulation {id:$simulation_id})
+            MATCH (observer:Character {id:observer_pair.copy_id})
+            MATCH (subject {id:subject_pair.copy_id})
+            WITH source_claim, simulation, observer, subject,
+              [memory_id IN source_claim.supporting_memory_ids |
+                [pair IN $memory_pairs WHERE pair.source_id=memory_id][0].copy_id] AS supporting_ids,
+              [memory_id IN source_claim.contradicting_memory_ids |
+                [pair IN $memory_pairs WHERE pair.source_id=memory_id][0].copy_id] AS contradicting_ids
+            CREATE (claim:SubjectiveEntityClaim {id:randomUUID(), simulation_id:$simulation_id,
+              observer_character_id:observer.id, subject_type:source_claim.subject_type,
+              category:source_claim.category, statement:source_claim.statement,
+              normalized_statement:source_claim.normalized_statement, stance:source_claim.stance,
+              confidence:source_claim.confidence, first_observed_at:source_claim.first_observed_at,
+              last_updated_at:$copied_at, supporting_memory_ids:supporting_ids,
+              contradicting_memory_ids:contradicting_ids, version:1, active:source_claim.active})
+            MERGE (simulation)-[:CONTAINS]->(claim)
+            MERGE (observer)-[:HOLDS_MODEL]->(claim)
+            MERGE (claim)-[:ABOUT]->(subject)
+            WITH source_claim, claim, supporting_ids + contradicting_ids AS evidence_ids
+            UNWIND evidence_ids AS evidence_id
+            MATCH (memory:MemoryAtom {id:evidence_id})
+            MERGE (memory)-[:CLAIM_EVIDENCE]->(claim)
+            RETURN source_claim.id AS source_id, claim.id AS copy_id
+            """,
+            parameters_={
+                "world_id": world_id, "simulation_id": simulation_id,
+                "entity_pairs": entity_pairs, "memory_pairs": memory_pairs,
+                "copied_at": datetime.now(timezone.utc),
+            },
+        )
+        return [dict(record) for record in result.records]
+
+    async def list_world_claims(self, world_id: str) -> list[SubjectiveEntityClaim]:
+        result = await self._driver.execute_query(
+            """MATCH (:World {id:$world_id})-[:CONTAINS]->(claim:SubjectiveEntityClaim)-[:ABOUT]->(subject)
+            RETURN claim, subject, claim.supporting_memory_ids AS supporting_memory_ids,
+              claim.contradicting_memory_ids AS contradicting_memory_ids
+            ORDER BY claim.observer_character_id, claim.confidence DESC""",
+            parameters_={"world_id": world_id},
+        )
+        return [self._from_record(record) for record in result.records]
 
     async def create_claim(self, claim: SubjectiveEntityClaim) -> SubjectiveEntityClaim | None:
         result = await self._driver.execute_query(

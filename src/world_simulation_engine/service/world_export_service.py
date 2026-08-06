@@ -97,6 +97,7 @@ class WorldExportService:
             active_only=False,
             limit=_ALL_RELATIONSHIPS_LIMIT,
         )
+        subjective_claims = await db.subjective_entity_claim.list_world_claims(world_id)
         entity_variable_sets = await db.variable.list_variable_sets_by_source(world_id)
 
         chat_assignments = await db.config.list_chats_by_source(world_id)
@@ -219,6 +220,9 @@ class WorldExportService:
             ]))
             archive.writestr("data/entity_relationships.jsonl", _jsonl([
                 _dump(relationship) for relationship in relationships
+            ]))
+            archive.writestr("data/subjective_entity_claims.jsonl", _jsonl([
+                _dump(claim) for claim in subjective_claims
             ]))
             archive.writestr("data/entity_variable_sets.jsonl", _jsonl([
                 _dump(variable_set) for variable_set in entity_variable_sets

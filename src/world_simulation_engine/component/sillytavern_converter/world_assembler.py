@@ -2,7 +2,8 @@
 
 Takes every stage-2 output (`CharacterExtraction`, `LocationExtraction`, `WorldLoreExtraction`,
 `NarrativeExtraction`, `IntentExtraction`, `VariableSchemaExtraction`, `ItemExtraction`,
-`EquipmentExtraction`) and resolves them into one `WorldImportService`-shaped bundle (§7): a `world`
+`EquipmentExtraction`, `OpeningTurnExtraction`, `SpatialStateExtraction`) and resolves them into one
+`WorldImportService`-shaped bundle (§7): a `world`
 row plus a `sections` dict of the exact same `dict[str, list[dict]]` shape
 `WorldImportService._import_world_contents` already consumes. Every stage-2 entity already carries a
 provisional id (§6.2), so this stage needs no new id-minting scheme of its own - it only needs to
@@ -13,11 +14,9 @@ resolve on its own (variable `owner_hint`, item/equipment `holder_hint`/`locatio
 `_rewrite_placeholders` below for why only `first_message` actually needs this in practice).
 
 `items`/`item_stacks` are built by `_item_and_stack_rows` (mirrors `_variable_set_rows`'s
-hint-resolution shape) - an item whose `holder_hint`/`location_hint` never resolves to a real
-character/location is dropped entirely (report note, low_confidence), since
-`WorldImportService._import_item_stacks` treats an unplaced stack (no holder *and* no location) as
-a fatal `WorldImportError`, not something it skips - unlike a dropped variable, which is silently
-tolerable downstream. `equipment` is built by `_equipment_rows` - `Equipment` has no such "must be
+hint-resolution shape). An item whose placement remains unknown is retained as an `Item` type, but
+has no concrete `ItemStack`, because `WorldImportService._import_item_stacks` rejects an unplaced
+stack. `equipment` is built by `_equipment_rows` - `Equipment` has no such "must be
 placed somewhere" constraint at persistence time (unlike `ItemStack`), so a candidate whose
 `holder_hint` never resolves is still imported, just unassigned and flagged low-confidence, not
 dropped. Still not covered by any stage-2 extractor, so always empty here: landmarks, containers,
@@ -46,6 +45,9 @@ from .item_extractor import ItemExtraction
 from .location_extractor import LocationExtraction
 from .name_resolution import resolve_name
 from .narrative_extractor import NarrativeExtraction
+from .opening_turn_extractor import OpeningTurnExtraction
+from .private_knowledge_extractor import PrivateKnowledgeExtraction
+from .spatial_state_extractor import SpatialEntityType, SpatialStateExtraction
 from .variable_schema_extractor import VariableSchemaExtraction
 from .world_lore_extractor import WorldLoreExtraction
 
@@ -158,8 +160,14 @@ class WorldAssembler:
             variables: VariableSchemaExtraction,
             items: ItemExtraction,
             equipment: EquipmentExtraction,
+            opening_turns: OpeningTurnExtraction | None = None,
+            spatial_state: SpatialStateExtraction | None = None,
+            private_knowledge: PrivateKnowledgeExtraction | None = None,
     ) -> AssembledWorld:
         report = ConversionReport()
+        opening_turns = opening_turns or OpeningTurnExtraction()
+        spatial_state = spatial_state or SpatialStateExtraction()
+        private_knowledge = private_knowledge or PrivateKnowledgeExtraction()
 
         id_by_character_name = {
             character.target_name: character.id for character in characters.characters
@@ -175,20 +183,45 @@ class WorldAssembler:
 
         user_id, user_stub_row = self._resolve_user(characters)
 
+        placement_by_entity = {
+            (placement.entity_type, placement.entity_name): placement
+            for placement in spatial_state.placements
+        }
         character_rows = [
-            self._character_row(character, self_id=self_id, user_id=user_id)
+            self._character_row(
+                character, self_id=self_id, user_id=user_id,
+                placement=placement_by_entity.get(
+                    (SpatialEntityType.CHARACTER, character.target_name),
+                ),
+            )
             for character in characters.characters
         ]
+        for character, row in zip(characters.characters, character_rows):
+            if not row["location_id"]:
+                report.note(
+                    f"Character {character.target_name!r} has no inferred initial location; "
+                    "retained without spatial placement for manual review.",
+                    low_confidence=True,
+                )
         location_rows = [
             self._location_row(location, self_id=self_id, user_id=user_id)
             for location in locations.locations
         ]
 
-        turn_id = str(uuid4())
-        turn_row = self._turn_row(card, turn_id, self_id=self_id, user_id=user_id)
+        history_turn_rows, history_turn_id_by_event = self._history_turn_rows(
+            narrative, self_id=self_id, user_id=user_id,
+        )
+        opening_rows = self._turn_rows(
+            card, opening_turns, self_id=self_id, user_id=user_id,
+        )
+        turn_rows = history_turn_rows + opening_rows
+        for sequence, row in enumerate(turn_rows):
+            row["sequence"] = sequence
 
         event_rows = [
-            self._event_row(event, turn_id, self_id=self_id, user_id=user_id)
+            self._event_row(
+                event, history_turn_id_by_event[event.id], self_id=self_id, user_id=user_id,
+            )
             for event in narrative.events
         ]
         memory_rows = [
@@ -203,16 +236,21 @@ class WorldAssembler:
             self._relationship_row(relationship, self_id=self_id, user_id=user_id)
             for relationship in narrative.relationships
         ]
+        knowledge_rows = [
+            self._private_knowledge_row(claim)
+            for claim in private_knowledge.claims
+        ]
 
         location_id_by_name = {location.name: location.id for location in locations.locations}
         variable_rows = self._variable_set_rows(
             variables, id_by_character_name, location_id_by_name, user_id=user_id, report=report,
         )
         item_rows, item_stack_rows = self._item_and_stack_rows(
-            items, id_by_character_name, location_id_by_name, user_id=user_id, report=report,
+            items, id_by_character_name, location_id_by_name, placement_by_entity,
+            user_id=user_id, report=report,
         )
         equipment_rows = self._equipment_rows(
-            equipment, id_by_character_name, user_id=user_id, report=report,
+            equipment, id_by_character_name, placement_by_entity, user_id=user_id, report=report,
         )
 
         world_description = None
@@ -237,11 +275,12 @@ class WorldAssembler:
             "item_stacks": item_stack_rows,
             "equipment": equipment_rows,
             "containers": [],
-            "turns": [turn_row],
+            "turns": turn_rows,
             "events": event_rows,
             "memories": memory_rows,
             "intents": intent_rows,
             "entity_relationships": relationship_rows,
+            "subjective_entity_claims": knowledge_rows,
             "entity_variable_sets": variable_rows,
             "chat_configs": [],
             "embed_configs": [],
@@ -308,7 +347,9 @@ class WorldAssembler:
         return stub_id, stub_row
 
     @staticmethod
-    def _character_row(character, *, self_id: str | None, user_id: str | None) -> dict:
+    def _character_row(
+            character, *, self_id: str | None, user_id: str | None, placement=None,
+    ) -> dict:
         result = character.result
 
         def rewrite(text: str) -> str:
@@ -329,6 +370,8 @@ class WorldAssembler:
                 "interruptible": True, "constraints": [],
             },
             "speech_style": rewrite(result.speech_style),
+            "location_id": placement.location_id if placement else None,
+            "position": placement.position if placement else None,
         }
 
     @staticmethod
@@ -342,19 +385,50 @@ class WorldAssembler:
         }
 
     @staticmethod
-    def _turn_row(
-            card: PreprocessedCard, turn_id: str, *, self_id: str | None, user_id: str | None,
-    ) -> dict:
-        content = (
-            card.first_message.strip() or "(imported world - no opening message on the source card)"
-        )
-        return {
-            "id": turn_id,
-            "sequence": 0,
-            "type": TurnType.SYSTEM_RESPONSE,
-            "content": _rewrite_placeholders(content, self_id=self_id, user_id=user_id),
-            "start_time": datetime.now(timezone.utc).isoformat(),
-        }
+    def _turn_rows(
+            card: PreprocessedCard, opening: OpeningTurnExtraction, *,
+            self_id: str | None, user_id: str | None,
+    ) -> list[dict]:
+        extracted = opening.turns
+        if not extracted:
+            content = card.first_message.strip() or (
+                "(imported world - no opening message on the source card)"
+            )
+            extracted = [{"type": TurnType.SYSTEM_RESPONSE, "content": content}]
+        now = datetime.now(timezone.utc).isoformat()
+        return [
+            {
+                "id": str(uuid4()),
+                "sequence": sequence,
+                "type": turn.type if hasattr(turn, "type") else turn["type"],
+                "content": _rewrite_placeholders(
+                    turn.content if hasattr(turn, "content") else turn["content"],
+                    self_id=self_id, user_id=user_id,
+                ),
+                "start_time": now,
+            }
+            for sequence, turn in enumerate(extracted)
+        ]
+
+    @staticmethod
+    def _history_turn_rows(
+            narrative: NarrativeExtraction, *, self_id: str | None, user_id: str | None,
+    ) -> tuple[list[dict], dict[str, str]]:
+        now = datetime.now(timezone.utc).isoformat()
+        rows = []
+        turn_id_by_event = {}
+        for sequence, event in enumerate(narrative.events):
+            turn_id = str(uuid4())
+            turn_id_by_event[event.id] = turn_id
+            content = event.summary
+            if event.outcome:
+                content = f"{content}\n\nOutcome: {event.outcome}"
+            rows.append({
+                "id": turn_id, "sequence": sequence, "type": TurnType.SYSTEM_RESPONSE,
+                "content": _rewrite_placeholders(content, self_id=self_id, user_id=user_id),
+                "start_time": now,
+            })
+        return rows, turn_id_by_event
 
     @staticmethod
     def _event_row(event, turn_id: str, *, self_id: str | None, user_id: str | None) -> dict:
@@ -362,11 +436,35 @@ class WorldAssembler:
             "id": event.id,
             "name": event.name,
             "summary": _rewrite_placeholders(event.summary, self_id=self_id, user_id=user_id),
+            "outcome": _rewrite_placeholders(
+                event.outcome, self_id=self_id, user_id=user_id,
+            ) if event.outcome else None,
             "turn_ids": [turn_id],
             "involved_characters": [
                 {"character_id": character_id, "involvement": "participate"}
                 for character_id in event.involved_character_ids
             ],
+        }
+
+    @staticmethod
+    def _private_knowledge_row(claim) -> dict:
+        now = datetime.now(timezone.utc).isoformat()
+        statement = claim.statement.strip()
+        return {
+            "id": claim.id,
+            "observer_character_id": claim.observer_character_id,
+            "subject": {"type": claim.subject_type, "id": claim.subject_id, "name": None},
+            "category": claim.category,
+            "statement": statement,
+            "normalized_statement": " ".join(statement.casefold().split()),
+            "stance": claim.stance,
+            "confidence": claim.confidence,
+            "supporting_memory_ids": claim.supporting_memory_ids,
+            "contradicting_memory_ids": [],
+            "first_observed_at": now,
+            "last_updated_at": now,
+            "version": 1,
+            "active": True,
         }
 
     @staticmethod
@@ -420,15 +518,17 @@ class WorldAssembler:
 
     @staticmethod
     def _relationship_row(relationship, *, self_id: str | None, user_id: str | None) -> dict:
+        is_private = relationship.visibility == "private"
+        description = _rewrite_placeholders(
+            relationship.description, self_id=self_id, user_id=user_id,
+        )
         return {
             "label": relationship.label,
-            "public_description": _rewrite_placeholders(
-                relationship.description, self_id=self_id, user_id=user_id,
-            ),
-            "private_description": None,
-            "visibility": "objective",
-            "perspective_character_id": None,
-            "confidence": 1.0,
+            "public_description": None if is_private else description,
+            "private_description": description if is_private else None,
+            "visibility": relationship.visibility,
+            "perspective_character_id": relationship.perspective_character_id,
+            "confidence": relationship.confidence,
             "details": {"kind": "generic", "attributes": {}},
             "evidence_memory_ids": [],
             "source": {"type": "character", "id": relationship.source_character_id, "name": None},
@@ -553,6 +653,7 @@ class WorldAssembler:
             items: ItemExtraction,
             id_by_character_name: dict[str, str],
             location_id_by_name: dict[str, str],
+            placement_by_entity: dict,
             *,
             user_id: str | None,
             report: ConversionReport,
@@ -572,21 +673,31 @@ class WorldAssembler:
             location_id = None
             if not holder_id and candidate.location_hint:
                 location_id = resolve_name(candidate.location_hint, location_id_by_name)
+            placement = placement_by_entity.get((SpatialEntityType.ITEM, candidate.name))
+            if not holder_id and not location_id and placement:
+                location_id = placement.location_id
 
             if not holder_id and not location_id:
                 # ItemStack requires a holder *or* a location to import at all (§5/§7) - unlike a
                 # dropped variable, an unplaced stack would be a fatal WorldImportError downstream,
                 # not something WorldImportService tolerates, so this must never be emitted.
+                # Preserve knowledge that the item type exists even when no concrete stack can be
+                # placed. The simulation discourages unknown placement, but Item itself is valid.
+                seen_names.add(candidate.name)
+                item_rows.append({
+                    "id": candidate.id, "name": candidate.name,
+                    "description": candidate.description, "unique": candidate.unique,
+                })
                 report.note(
-                    f"Dropped item {candidate.name!r}: could not resolve holder hint "
+                    f"Item {candidate.name!r} has no imported stack: could not resolve holder hint "
                     f"{candidate.holder_hint!r} or location hint {candidate.location_hint!r} to "
-                    "an extracted character or location.",
+                    "an extracted character or location; retained existence as an Item type only.",
                     low_confidence=True,
                 )
                 continue
 
             seen_names.add(candidate.name)
-            item_id = str(uuid4())
+            item_id = candidate.id
             item_rows.append({
                 "id": item_id,
                 "name": candidate.name,
@@ -600,6 +711,7 @@ class WorldAssembler:
                 "quality": candidate.quality,
                 "holder_id": holder_id,
                 "location_id": location_id,
+                "position": placement.position if placement and not holder_id else None,
             })
 
         return item_rows, stack_rows
@@ -608,6 +720,7 @@ class WorldAssembler:
             self,
             equipment: EquipmentExtraction,
             id_by_character_name: dict[str, str],
+            placement_by_entity: dict,
             *,
             user_id: str | None,
             report: ConversionReport,
@@ -631,16 +744,25 @@ class WorldAssembler:
                     f"{candidate.holder_hint!r} to an extracted character - imported unassigned.",
                     low_confidence=True,
                 )
+            placement = placement_by_entity.get((SpatialEntityType.EQUIPMENT, candidate.name))
+            if not holder_id and not placement:
+                report.note(
+                    f"Equipment {candidate.name!r} has no inferred holder or initial location; "
+                    "retained unplaced for manual review.",
+                    low_confidence=True,
+                )
 
             seen_names.add(candidate.name)
             rows.append({
-                "id": str(uuid4()),
+                "id": candidate.id,
                 "name": candidate.name,
                 "description": candidate.description,
                 "quality": candidate.quality,
                 "holder_id": holder_id,
                 "equipped": True,
                 "equipped_position": candidate.slot,
+                "location_id": placement.location_id if placement and not holder_id else None,
+                "position": placement.position if placement and not holder_id else None,
             })
 
         return rows

@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Infer initial physical placement from the current scenario and opening scene. Return one SpatialPlacementCandidates JSON object only, with no markdown, explanation, or extra keys.\n\nOutput schema:\n{\"placements\":[{\"entity_type\":\"character|item|equipment\",\"entity_name\":\"exact supplied name\",\"location_name\":\"exact supplied location name\",\"position\":\"short detail or null\"}]}\n\nRules for local models:\n1. entity_type and entity_name must identify one entry in the supplied character, item, or equipment lists.\n2. location_name must exactly copy one supplied location. Never invent a location or use vague text such as 'somewhere'.\n3. Use current-scene evidence only. Backstory such as 'grew up in Paris' is not current placement.\n4. A held or worn entity shares its holder's physical location, but include it only when both holder and holder location are clear.\n5. position is an optional fine-grained phrase inside the location, such as 'beside the window'. It is not another location.\n6. Omit uncertain entities. An empty placements list is valid. Do not force every entity into a location."
+  },
+  {
+    "role": "user",
+    "content": "## Allowed locations\n{% for name in locations %}- {{ name }}\n{% endfor %}\n\n## Characters\n{% for character in characters %}- {{ character.name }} | public state: {{ character.public_state }} | current activity: {{ character.current_activity }}\n{% else %}- none\n{% endfor %}\n\n## Items\n{% for name in items %}- {{ name }}\n{% else %}- none\n{% endfor %}\n\n## Equipment\n{% for name in equipment %}- {{ name }}\n{% else %}- none\n{% endfor %}\n\n## Scenario\n{{ scenario if scenario else '(none)' }}\n\n## Opening message\n{{ opening_message if opening_message else '(none)' }}"
+  }
+]

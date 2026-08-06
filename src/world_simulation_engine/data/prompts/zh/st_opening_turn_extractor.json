@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "把一条角色卡开场消息拆分为它所隐含的按时间顺序排列的回合。只返回一个 OpeningTurnCandidates JSON 对象，不要 Markdown、解释或额外字段。\n\n输出结构：\n{\"turns\":[{\"type\":\"user_input|system_response\",\"content\":\"字符串\",\"involved_names\":[\"已知角色的精确名称\"]}]}\n\n字段含义：\n- user_input：归属于用户/玩家身份的行动、台词、想法或选择，包括原文中写成用户已经做过的事情。\n- system_response：旁白、场景描写，以及卡片角色或其他非用户角色的行动和台词。\n- content：该回合可独立阅读的正文。保留原意和重要细节，去掉变量更新标记和非叙事状态面板。\n- involved_names：本回合中行动、说话或被直接作用的已知非用户角色。必须逐字复制所给列表中的名称。\n\n本地模型规则：\n1. 保持时间顺序。\n2. 仅在控制权在用户与系统之间切换时拆分；相邻同类型内容合并。\n3. 不得虚构用户行动。没有用户行动时只返回 system_response。\n4. 描述“你”、{{user}} 或 character['user'] 所做之事的旁白属于 user_input；只是称呼用户的旁白仍属于 system_response。\n5. 不得输出空正文，最多 8 个回合。"
+  },
+  {
+    "role": "user",
+    "content": "## 已知非用户角色\n{% for name in known_characters %}- {{ name }}\n{% else %}- 无\n{% endfor %}\n\n## 开场消息\n{{ opening_message }}"
+  }
+]

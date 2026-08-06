@@ -1,10 +1,10 @@
 [
   {
     "role": "system",
-    "content": "你要把导入的角色卡内容中的一个角色，提取为本系统自己的角色模型。只输出一个 CharacterExtractionResult 结构化 JSON 对象；不要解释、Markdown 或额外字段。\n\n字段：\n- name：角色姓名，与源内容中的拼写完全一致。\n- age：一个具体整数。若未明确说明，请根据上下文（外貌、身份、性格）给出你的最佳估计——绝不能含糊或省略。\n- gender：简短自由文本（如“女”“男”“非二元”），若未说明则根据上下文推断。\n- appearance：1-3 句外貌描述，从源内容归纳/推断，不要整段照搬。\n- description：一段自成一体的角色描述，涵盖背景、性格与身份——用你自己的表述写出，不要照抄原文。\n- public_state：这个角色目前表面上在做/呈现什么，根据传记/语言内容及提供的场景上下文推断。\n- private_state：这个角色私下在想什么、想要什么或隐瞒什么，从内容推断——但要排除 do_not_know 中列出的、该角色不应知晓的内容。\n- current_activity：一个简短标签，描述角色此刻正在做什么（例如“直播中”“在吧台招待客人”）——根据上下文推断出一个合理的活动；只有在完全没有任何线索时才使用“idle”。\n- speech_style：这个角色说话的方式——语域、口头禅、句子节奏——从提供的语言/对白示例中提炼；若未提供语言示例，则根据性格/描述给出合理猜测。\n- user_controlled：只有当该角色明确代表玩家控制的人设模板（而非故事中的普通角色）时才为 true，其余情况均为 false——几乎所有角色（包括本卡的主角）都应为 false。\n- do_not_know：用你自己的话列出的具体秘密清单，取自提供的“卡片秘密”，且该角色被明确或明显禁止知晓。只有当内容给出真实、具体的理由表明该角色不知情时才列入。否则留空——不要猜测。\n\n本地模型规则：\n- 每个字段都必须填入具体内容；age/gender/appearance/description/public_state/private_state/current_activity 绝不能输出 null 或空字符串。\n- do_not_know 通常为空——只有在提供的卡片秘密支持时才填入。\n- 不要编造提供内容之外没有依据的事实，但在模型要求填值而原文未明说时，应做合理的综合/推断。"
+    "content": "你要把导入角色卡中的一个角色提取为本系统角色模型。只输出一个 CharacterExtractionResult JSON 对象，不要解释、Markdown 或额外字段。\n\n字段：name 为原文姓名；age 为具体整数；gender 为简短文本；appearance 为 1-3 句外貌；description 总结背景、性格和身份；public_state 是当前可见状态；private_state 仅写该角色自身内容明确支持的当前思想、欲望或隐瞒意图；current_activity 为简短当前活动；speech_style 为说话风格；user_controlled 仅在明确是玩家人设模板时为 true。\n\n开放世界规则：\n- 不要描述角色不知道什么。缺少知识应由不存在记忆/信念记录来表示。\n- 除非该角色自己的内容明确支持，不得把世界秘密或他人私下状态写入 private_state。\n- 所有必填字段必须具体且非空。\n- 不得编造无依据事实，但应完成 age、gender、current_activity 所需的有限估计。"
   },
   {
     "role": "user",
-    "content": "卡片名称: {{ card_name }}\n角色（源内容中的工作名）: {{ target_name }}\n\n## 传记内容\n{% for text in bio_content %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}\n\n## 语言/对白示例\n{% for text in voice_content %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}\n\n## 相关历史/关系提及\n{% for text in related_history %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}\n\n## 卡片秘密（是否适用于该角色见 do_not_know 说明）\n{% for text in card_secrets %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}"
+    "content": "卡片名称: {{ card_name }}\n角色（源内容中的工作名）: {{ target_name }}\n\n## 传记内容\n{% for text in bio_content %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}\n\n## 语言/对白示例\n{% for text in voice_content %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}\n\n## 相关历史/关系提及\n{% for text in related_history %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}"
   }
 ]

@@ -10,7 +10,7 @@ Memories and claims model character perspective. `MemoryAtom` nodes store compac
 | --- | --- |
 | `MemoryAtom` | `id`, `summary`, `keywords`, `embedding` |
 | `REMEMBERS` relationship | confidence, salience, behavioral relevance, stance metadata |
-| `SubjectiveEntityClaim` | `id`, `simulation_id`, `observer_character_id`, `subject`, `category`, `statement`, `normalized_statement`, `stance`, `confidence`, supporting and contradicting memory ids, timestamps, `version`, `active` |
+| `SubjectiveEntityClaim` | `id`, exactly one of `world_id`/`simulation_id`, `observer_character_id`, `subject`, `category`, `statement`, `normalized_statement`, `stance`, `confidence`, supporting and contradicting memory ids, timestamps, `version`, `active` |
 | `SubjectiveClaimChangeAudit` | `id`, `claim_id`, `simulation_id`, `turn_id`, `observer_character_id`, `change_type`, evidence memory ids, timestamps |
 
 ## Relationships
@@ -20,7 +20,7 @@ Memories and claims model character perspective. `MemoryAtom` nodes store compac
 - `(:Character)-[:HOLDS_MODEL]->(:SubjectiveEntityClaim)`
 - `(:SubjectiveEntityClaim)-[:ABOUT]->(:Character|BackgroundCharacter|Location|Landmark|Item|ItemStack|Equipment|Container|...)`
 - `(:MemoryAtom)-[:CLAIM_EVIDENCE]->(:SubjectiveEntityClaim)`
-- `(:Simulation)-[:CONTAINS]->(:SubjectiveEntityClaim)`
+- `(:World|Simulation)-[:CONTAINS]->(:SubjectiveEntityClaim)`
 - `(:Simulation)-[:CONTAINS]->(:SubjectiveClaimChangeAudit)`
 - `(:Turn)-[:TRIGGERED]->(:SubjectiveClaimChangeAudit)`
 - `(:SubjectiveClaimChangeAudit)-[:CHANGED]->(:SubjectiveEntityClaim)`
@@ -29,13 +29,13 @@ Memories and claims model character perspective. `MemoryAtom` nodes store compac
 
 Memories are produced from events and then attached to the characters who remember them. A memory can be shared by multiple characters, but each `REMEMBERS` relationship can carry character-specific relevance.
 
-Subjective claims belong to a simulation and an observer character. They describe a subject entity from that observer's perspective and are revised over time by simulator proposals and state commits.
+Subjective claims belong to a world template or simulation and an observer character. They describe a subject entity from that observer's perspective. Authored claims are copied into a simulation; runtime claims are then revised by simulator proposals and state commits.
 
 ## Creation and deletion behaviour
 
 Creating a memory attaches it to an event with `SUPPORTS` and to one or more characters with `REMEMBERS`. Reassigning memory characters replaces the existing remembered links. Deleting a memory removes the memory node and its evidence links.
 
-Creating a subjective claim validates that the observer belongs to the simulation and that the subject is visible in the simulation or inherited world graph. Claim updates create audit nodes when the change is part of a turn.
+Creating a subjective claim validates that observer, subject, and evidence belong to the same world/simulation perspective. Claim updates create audit nodes when a runtime change is part of a turn.
 
 ## Invariants
 
@@ -87,4 +87,7 @@ CREATE (memory)-[:CLAIM_EVIDENCE]->(claim);
 - `/simulations/{simulation_id}/input` for simulator-driven memory and claim updates during a turn
 
 Subjective claims are primarily maintained by the simulation pipeline and backing stores. A broad public CRUD router is not exposed for them in the same way as memories.
-
+Knowledge is open-world: the absence of a memory or claim means only that the graph has no positive
+record for that observer. It must not be interpreted or persisted as a negative "does not know"
+fact. Authored world claims are copied with remapped observers, subjects, and memory evidence when a
+simulation is created, after which runtime updates create simulation-scoped versions and audits.

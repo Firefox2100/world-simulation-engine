@@ -35,6 +35,9 @@ export const stImportComponents = [
     "st_variable_schema_extractor",
     "st_item_extractor",
     "st_equipment_extractor",
+    "st_opening_turn_extractor",
+    "st_spatial_state_extractor",
+    "st_private_knowledge_extractor",
 ];
 
 export async function fetchConnections() {

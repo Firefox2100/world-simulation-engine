@@ -20,6 +20,7 @@ resolves is dropped entirely (as a low-confidence report note) rather than impor
 """
 
 import functools
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,6 +70,7 @@ class ItemCandidates(BaseModel):
 
 
 class ExtractedItem(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     description: str
     unique: bool

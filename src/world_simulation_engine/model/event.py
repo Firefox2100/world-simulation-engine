@@ -16,3 +16,7 @@ class Event(BaseModel):
         ...,
         description="The summary of the event",
     )
+    outcome: Optional[str] = Field(
+        None,
+        description="What changed or resulted when this event concluded",
+    )

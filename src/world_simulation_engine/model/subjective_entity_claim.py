@@ -46,7 +46,8 @@ class SubjectiveEntityClaim(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default_factory=lambda: str(uuid4()))
-    simulation_id: str
+    simulation_id: str | None = None
+    world_id: str | None = None
     observer_character_id: str
     subject: RelationshipEntityRef
     category: SubjectiveClaimCategory
@@ -63,6 +64,8 @@ class SubjectiveEntityClaim(BaseModel):
 
     @model_validator(mode="after")
     def validate_claim(self) -> "SubjectiveEntityClaim":
+        if bool(self.simulation_id) == bool(self.world_id):
+            raise ValueError("A subjective claim must belong to exactly one World or Simulation")
         if self.subject.id == self.observer_character_id:
             raise ValueError("Subjective entity claims must concern another entity")
         self.supporting_memory_ids = list(dict.fromkeys(self.supporting_memory_ids))

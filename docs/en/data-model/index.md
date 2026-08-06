@@ -77,6 +77,7 @@ flowchart LR
     Simulation -->|CONTAINS| Turn
     Simulation -->|CONTAINS| EntityRelationship
     Simulation -->|CONTAINS| SubjectiveEntityClaim
+    World -->|CONTAINS| SubjectiveEntityClaim
     Simulation -->|CONTAINS| EmotionState
     Simulation -->|HAS_GENERATION_JOB| GenerationJob
     Simulation -->|HAS_GRAPH_STATE_SNAPSHOT| GraphStateSnapshot
@@ -186,4 +187,3 @@ flowchart LR
 - Physical placement is exclusive in normal state: an object is either in a location, held/equipped by another entity, or contained by a container.
 - Turns record proposals with `PROPOSED_STATE_CHANGE`; the graph becomes committed truth only when the state committer writes the proposed changes.
 - Private context is modeled on character fields, subjective claims, relationship visibility, memories, and emotion state. Presentation APIs should expose only the appropriate rendered view.
-

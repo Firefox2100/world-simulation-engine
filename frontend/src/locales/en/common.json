@@ -683,7 +683,10 @@
         "st_intent_extractor": "Intent extractor",
         "st_variable_schema_extractor": "Variable schema extractor",
         "st_item_extractor": "Item extractor",
-        "st_equipment_extractor": "Equipment extractor"
+        "st_equipment_extractor": "Equipment extractor",
+        "st_opening_turn_extractor": "Opening turn extractor",
+        "st_spatial_state_extractor": "Spatial state extractor",
+        "st_private_knowledge_extractor": "Private knowledge extractor"
       },
       "whitelistHint": "Base URL prefixes trusted enough to auto-download an image link from without asking first. Any extracted URL starting with one of these is downloaded automatically; anything else is only downloaded if you check it on the review page.",
       "whitelistAdd": "Add URL prefix",

@@ -57,7 +57,7 @@ def make_classification() -> LorebookClassification:
     ])
 
 
-def test_build_clusters_groups_by_canonical_name_and_carries_secrets():
+def test_build_clusters_groups_by_canonical_name_without_encoding_unknowns():
     card = make_card()
     classification = make_classification()
 
@@ -71,7 +71,6 @@ def test_build_clusters_groups_by_canonical_name_and_carries_secrets():
     jordan = by_name["Jordan Lee"]
     assert jordan.bio_content == ["Jordan Lee is quiet."]
     assert jordan.voice_content == ["\"Have some tea.\""]
-    assert jordan.card_secrets == ["Jordan Lee privately holds the archive key."]
 
     casey = by_name["Casey Morgan"]
     assert casey.bio_content == ["Casey is a researcher."]
@@ -163,7 +162,6 @@ async def test_extract_dispatches_one_call_per_cluster():
     def extract_by_name(**kwargs):
         assert "id" not in kwargs["data"]  # provisional id is for cross-referencing only, not LLM input
         target_name = kwargs["data"]["target_name"]
-        do_not_know = ["archive key"] if target_name == "Jordan Lee" else []
         return CharacterExtractionResult(
             name=target_name,
             age=30,
@@ -173,7 +171,6 @@ async def test_extract_dispatches_one_call_per_cluster():
             public_state="Present",
             private_state="Thinking",
             current_activity="idle",
-            do_not_know=do_not_know,
         )
 
     extractor._prepare_global_llm_service = AsyncMock(return_value=SimpleNamespace(
@@ -184,8 +181,6 @@ async def test_extract_dispatches_one_call_per_cluster():
 
     by_name = {entry.target_name: entry for entry in extraction.characters}
     assert set(by_name) == {"Casey Morgan", "Jordan Lee"}
-    assert by_name["Jordan Lee"].result.do_not_know == ["archive key"]
-    assert by_name["Casey Morgan"].result.do_not_know == []
     assert set(by_name["Jordan Lee"].source_item_ids) == {"entry:2", "entry:3"}
 
     assert by_name["Jordan Lee"].id and by_name["Casey Morgan"].id

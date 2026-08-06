@@ -5,9 +5,13 @@ from world_simulation_engine.component.sillytavern_converter import CharacterExt
     ExtractedEvent, ExtractedIntent, ExtractedItem, ExtractedLocation, ExtractedMemory, \
     ExtractedRelationship, ExtractedVariable, IntentExtraction, ItemExtraction, LocationExtraction, \
     NarrativeExtraction, PreprocessedCard, VariableSchemaExtraction, WorldAssembler, WorldLoreExtraction
+from world_simulation_engine.component.sillytavern_converter import ExtractedOpeningTurn, \
+    ExtractedPrivateKnowledgeClaim, ExtractedSpatialPlacement, OpeningTurnExtraction, \
+    PrivateKnowledgeExtraction, SpatialEntityType, SpatialStateExtraction
 from world_simulation_engine.misc.enums import IntentHorizon, IntentStatus, IntentType, SupportedLanguage
 from world_simulation_engine.model import BackgroundCharacter, Character, EntityRelationship, \
-    EntityVariableSet, Equipment, Event, Intent, Item, ItemStack, Location, MemoryAtom, Turn, World
+    EntityVariableSet, Equipment, Event, Intent, Item, ItemStack, Location, MemoryAtom, \
+    SubjectiveEntityClaim, Turn, World
 from world_simulation_engine.model.variable import VariableValueType
 
 
@@ -46,12 +50,10 @@ def test_assemble_resolves_self_via_card_name_and_rewrites_placeholders():
     character_row = assembled.sections["characters"][0]
     assert character_row["id"] == "id-example"
     assert character_row["description"] == "A fictional resident, character['id-example']."
-    # No {{char}}-resolution issue to report for this card - only the always-present
-    # no-explicit-starting-time note (no variables supplied in this test).
-    assert [entry.message for entry in assembled.report.entries] == [
-        "No explicit starting-time variable found on this card - defaulted to the import "
-        "time; review and adjust before starting a simulation from this world.",
-    ]
+    messages = [entry.message for entry in assembled.report.entries]
+    assert not any("Could not identify a single primary character" in message for message in messages)
+    assert any("has no inferred initial location" in message for message in messages)
+    assert any("No explicit starting-time variable" in message for message in messages)
 
     turn_row = assembled.sections["turns"][0]
     stub_id = assembled.sections["background_characters"][0]["id"]
@@ -102,6 +104,45 @@ def test_assemble_builds_turn_from_first_message_with_fallback_when_empty():
     assert turn_row["content"]
 
 
+def test_assemble_uses_extracted_opening_turn_sequence_and_keeps_user_action_separate():
+    assembler = WorldAssembler()
+    assembled = assembler.assemble(
+        make_card(first_message="unsplit source"), language=SupportedLanguage.ENGLISH,
+        characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(),
+        items=ItemExtraction(), equipment=EquipmentExtraction(),
+        opening_turns=OpeningTurnExtraction(turns=[
+            ExtractedOpeningTurn(type="user_input", content="I open the door."),
+            ExtractedOpeningTurn(type="system_response", content="The host looks up."),
+        ]),
+    )
+
+    assert [(row["sequence"], row["type"], row["content"]) for row in assembled.sections["turns"]] == [
+        (0, "user_input", "I open the door."),
+        (1, "system_response", "The host looks up."),
+    ]
+
+
+def test_assemble_applies_spatial_placement_to_character():
+    character = make_character("Alice", "id-alice")
+    assembled = WorldAssembler().assemble(
+        make_card(), language=SupportedLanguage.ENGLISH,
+        characters=CharacterExtraction(characters=[character]),
+        locations=LocationExtraction(locations=[
+            ExtractedLocation(id="loc-room", name="Room", description="A room."),
+        ]),
+        world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
+        spatial_state=SpatialStateExtraction(placements=[ExtractedSpatialPlacement(
+            entity_type=SpatialEntityType.CHARACTER, entity_name="Alice",
+            location_id="loc-room", position="near the door",
+        )]),
+    )
+
+    assert assembled.sections["characters"][0]["location_id"] == "loc-room"
+    assert assembled.sections["characters"][0]["position"] == "near the door"
+
+
 def test_assemble_locations_carry_parent_id_through():
     card = make_card()
     locations = LocationExtraction(locations=[
@@ -126,7 +167,10 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
         make_character("Alice", "id-alice"), make_character("Bob", "id-bob"),
     ])
     narrative = NarrativeExtraction(
-        events=[ExtractedEvent(id="evt-1", name="The Project", summary="They collaborated.", involved_character_ids=["id-alice", "id-bob"])],
+        events=[ExtractedEvent(
+            id="evt-1", name="The Project", summary="They collaborated.",
+            outcome="The prototype worked.", involved_character_ids=["id-alice", "id-bob"],
+        )],
         memories=[ExtractedMemory(id="mem-1", event_id="evt-1", summary="We collaborated.", keywords=["project"], character_ids=["id-alice"])],
         relationships=[ExtractedRelationship(
             id="rel-1", source_character_id="id-alice", target_character_id="id-bob",
@@ -140,9 +184,14 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
         narrative=narrative, intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
-    turn_id = assembled.sections["turns"][0]["id"]
+    history_turn = assembled.sections["turns"][0]
+    opening_turn = assembled.sections["turns"][1]
+    turn_id = history_turn["id"]
+    assert history_turn["content"] == "They collaborated.\n\nOutcome: The prototype worked."
+    assert opening_turn["content"] == card.first_message
     event_row = assembled.sections["events"][0]
     assert event_row["turn_ids"] == [turn_id]
+    assert event_row["outcome"] == "The prototype worked."
     assert {inv["character_id"] for inv in event_row["involved_characters"]} == {"id-alice", "id-bob"}
     assert all(inv["involvement"] == "participate" for inv in event_row["involved_characters"])
 
@@ -156,6 +205,30 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
     assert relationship_row["source"] == {"type": "character", "id": "id-alice", "name": None}
     assert relationship_row["target"] == {"type": "character", "id": "id-bob", "name": None}
     assert relationship_row["public_description"] == "Former colleagues."
+
+
+def test_assemble_private_knowledge_is_positive_evidence_backed_world_import_data():
+    characters = CharacterExtraction(characters=[
+        make_character("Alice", "id-alice"), make_character("Bob", "id-bob"),
+    ])
+    claim = ExtractedPrivateKnowledgeClaim(
+        id="claim-1", observer_character_id="id-alice", subject_id="id-bob",
+        subject_type="character", category="history", statement="Bob survived the fire.",
+        stance="believes", confidence=.9, supporting_memory_ids=["mem-1"],
+    )
+    assembled = WorldAssembler().assemble(
+        make_card(), language=SupportedLanguage.ENGLISH, characters=characters,
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
+        private_knowledge=PrivateKnowledgeExtraction(claims=[claim]),
+    )
+
+    row = assembled.sections["subjective_entity_claims"][0]
+    validated = SubjectiveEntityClaim.model_validate({**row, "world_id": "world-1"})
+    assert validated.observer_character_id == "id-alice"
+    assert validated.subject.id == "id-bob"
+    assert validated.supporting_memory_ids == ["mem-1"]
 
 
 def test_assemble_intent_row_carries_character_id_and_defaults():
@@ -432,7 +505,7 @@ def test_assemble_self_hinted_item_maps_to_user_controlled_character():
     assert stack_row["holder_id"] == "id-guest"
 
 
-def test_assemble_drops_item_with_unresolvable_holder_and_location_hints():
+def test_assemble_retains_item_type_without_stack_when_placement_is_unknown():
     card = make_card()
     items = ItemExtraction(items=[
         ExtractedItem(
@@ -448,9 +521,12 @@ def test_assemble_drops_item_with_unresolvable_holder_and_location_hints():
         intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=items, equipment=EquipmentExtraction(),
     )
 
-    assert assembled.sections["items"] == []
+    assert assembled.sections["items"][0]["name"] == "Mystery box"
     assert assembled.sections["item_stacks"] == []
-    assert any("Mystery box" in entry.message and entry.low_confidence for entry in assembled.report.entries)
+    assert any(
+        "retained existence as an Item type only" in entry.message and entry.low_confidence
+        for entry in assembled.report.entries
+    )
 
 
 def test_assemble_drops_second_item_of_the_same_name():

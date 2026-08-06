@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Extract positive, private beliefs held by one observer from memories already assigned to that observer. Return one PrivateKnowledgeClaimCandidates JSON object only; no markdown, explanation, or extra keys.\n\nSchema:\n{\"claims\":[{\"subject_id\":\"exact supplied id\",\"category\":\"appearance|personality|preference|aversion|capability|habit|value|relationship_expectation|identity|state|safety|access|contents|purpose|condition|ownership|risk|history|other\",\"statement\":\"what the observer believes\",\"stance\":\"believes|suspects|uncertain|doubts|denies\",\"confidence\":0.0,\"supporting_memory_ids\":[\"exact supplied memory id\"]}]}\n\nOpen-world rules for local models:\n1. Encode only a positive belief, suspicion, doubt, or denial actually supported by the observer's supplied memories.\n2. Never encode ignorance, absence of knowledge, secrecy alone, or statements like 'observer does not know X'. Unknown means no claim.\n3. A claim concerns another supplied entity, never the observer themself.\n4. subject_id and every memory id must be copied exactly.\n5. Every claim needs at least one supporting memory assigned to this observer.\n6. Keep the statement scoped to the observer's fallible perspective; do not promote it to objective truth.\n7. claims: [] is correct and common. Maximum 12 claims."
+  },
+  {
+    "role": "user",
+    "content": "## Observer\n{{ observer.name }} (id: {{ observer.id }})\n\n## Allowed subjects\n{% for subject in subjects %}- {{ subject.type }} {{ subject.name }} (id: {{ subject.id }})\n{% else %}- none\n{% endfor %}\n\n## Memories this observer actually has\n{% for memory in memories %}- {{ memory.summary }} (id: {{ memory.id }}; keywords: {{ memory.keywords | join(', ') }})\n{% else %}- none\n{% endfor %}"
+  }
+]

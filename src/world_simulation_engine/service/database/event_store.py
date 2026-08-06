@@ -16,6 +16,7 @@ class EventStore:
             id=event_node["id"],
             name=event_node["name"],
             summary=event_node["summary"],
+            outcome=event_node.get("outcome"),
         )
 
     async def create_event(self,
@@ -35,7 +36,8 @@ class EventStore:
             CREATE (event:Event {
                 id: $id,
                 name: $name,
-                summary: $summary
+                summary: $summary,
+                outcome: $outcome
             })
             WITH event, turns
             UNWIND turns AS turn
@@ -46,6 +48,7 @@ class EventStore:
                 "id": event.id,
                 "name": event.name,
                 "summary": event.summary,
+                "outcome": event.outcome,
                 "turn_ids": turn_ids,
             },
         )
@@ -365,7 +368,8 @@ class EventStore:
             CREATE (event:Event {
                 id: randomUUID(),
                 name: source_event.name,
-                summary: source_event.summary
+                summary: source_event.summary,
+                outcome: source_event.outcome
             })
             RETURN source_event.id AS source_id, event.id AS copy_id, event
             ORDER BY event.name

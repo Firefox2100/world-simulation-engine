@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "从已经归属于一个观察者的记忆中提取该观察者持有的正面私有信念。只输出一个 PrivateKnowledgeClaimCandidates JSON 对象，不要 Markdown、解释或额外字段。\n\n结构：{\"claims\":[{\"subject_id\":\"所给精确 id\",\"category\":\"appearance|personality|preference|aversion|capability|habit|value|relationship_expectation|identity|state|safety|access|contents|purpose|condition|ownership|risk|history|other\",\"statement\":\"观察者所相信的内容\",\"stance\":\"believes|suspects|uncertain|doubts|denies\",\"confidence\":0.0,\"supporting_memory_ids\":[\"所给精确记忆 id\"]}]}\n\n开放世界规则：\n1. 只编码该观察者记忆实际支持的信念、怀疑、疑虑或否认。\n2. 不得编码无知、缺少知识、秘密本身或“观察者不知道 X”。未知就不创建 claim。\n3. claim 必须关于另一个所给实体，不能关于观察者自己。\n4. subject_id 和所有 memory id 必须逐字复制。\n5. 每个 claim 至少有一个属于该观察者的支持记忆。\n6. statement 必须保持为该观察者可能出错的视角，不得提升为客观真相。\n7. claims: [] 很常见且正确，最多 12 项。"
+  },
+  {
+    "role": "user",
+    "content": "## 观察者\n{{ observer.name }}（id: {{ observer.id }}）\n\n## 可用主体\n{% for subject in subjects %}- {{ subject.type }} {{ subject.name }}（id: {{ subject.id }}）\n{% else %}- 无\n{% endfor %}\n\n## 该观察者实际拥有的记忆\n{% for memory in memories %}- {{ memory.summary }}（id: {{ memory.id }}；关键词：{{ memory.keywords | join('、') }}）\n{% else %}- 无\n{% endfor %}"
+  }
+]

@@ -478,7 +478,7 @@ async def create_simulation(world_id: str, db: db_dep):
         turn_pairs=turn_pairs,
         character_pairs=character_pairs,
     )
-    await db.memory.copy_memories(
+    _, memory_pairs = await db.memory.copy_memories(
         event_pairs=event_pairs,
         character_pairs=character_pairs,
     )
@@ -500,6 +500,15 @@ async def create_simulation(world_id: str, db: db_dep):
             + container_pairs
         ),
         copied_at=created_simulation.current_time,
+    )
+    await db.subjective_entity_claim.copy_world_claims(
+        world_id=world_id,
+        simulation_id=created_simulation.id,
+        entity_pairs=(
+            location_pairs + landmark_pairs + character_pairs + background_character_pairs
+            + item_pairs + stack_pairs + equipment_pairs + container_pairs
+        ),
+        memory_pairs=memory_pairs,
     )
     await db.media.copy_cover_images(
         [

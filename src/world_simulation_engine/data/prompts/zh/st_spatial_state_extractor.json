@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "根据当前情景和开场场景推断实体的初始物理位置。只返回一个 SpatialPlacementCandidates JSON 对象，不要 Markdown、解释或额外字段。\n\n输出结构：\n{\"placements\":[{\"entity_type\":\"character|item|equipment\",\"entity_name\":\"所给精确名称\",\"location_name\":\"所给地点精确名称\",\"position\":\"简短细节或 null\"}]}\n\n本地模型规则：\n1. entity_type 和 entity_name 必须对应所给角色、物品或装备列表中的一项。\n2. location_name 必须逐字复制一个所给地点。不得虚构地点，也不得使用“某处”等模糊文字。\n3. 只使用当前场景证据。“曾在北京长大”等背景经历不是当前位置。\n4. 被携带或穿戴的实体与持有者处于同一物理地点，但仅在持有者及其位置都明确时输出。\n5. position 是地点内部可选的细节，如“窗边”，不是另一个地点。\n6. 不确定的实体应省略。placements 可以为空，不要强迫每个实体都有位置。"
+  },
+  {
+    "role": "user",
+    "content": "## 可用地点\n{% for name in locations %}- {{ name }}\n{% endfor %}\n\n## 角色\n{% for character in characters %}- {{ character.name }} | 公开状态：{{ character.public_state }} | 当前活动：{{ character.current_activity }}\n{% else %}- 无\n{% endfor %}\n\n## 物品\n{% for name in items %}- {{ name }}\n{% else %}- 无\n{% endfor %}\n\n## 装备\n{% for name in equipment %}- {{ name }}\n{% else %}- 无\n{% endfor %}\n\n## 情景\n{{ scenario if scenario else '（无）' }}\n\n## 开场消息\n{{ opening_message if opening_message else '（无）' }}"
+  }
+]

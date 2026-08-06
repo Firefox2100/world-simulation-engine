@@ -332,6 +332,8 @@ async def test_get_sillytavern_import_status_reports_configured_when_all_compone
             ComponentType.ST_NARRATIVE_EXTRACTOR, ComponentType.ST_INTENT_EXTRACTOR,
             ComponentType.ST_VARIABLE_SCHEMA_EXTRACTOR, ComponentType.ST_ITEM_EXTRACTOR,
             ComponentType.ST_EQUIPMENT_EXTRACTOR,
+            ComponentType.ST_OPENING_TURN_EXTRACTOR, ComponentType.ST_SPATIAL_STATE_EXTRACTOR,
+            ComponentType.ST_PRIVATE_KNOWLEDGE_EXTRACTOR,
     ):
         await database.config.link_global_chat(chat_config.id, component)
     await driver.close()

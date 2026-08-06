@@ -56,6 +56,9 @@ class ComponentType(StrEnum):
     ST_VARIABLE_SCHEMA_EXTRACTOR = "st_variable_schema_extractor"
     ST_ITEM_EXTRACTOR = "st_item_extractor"
     ST_EQUIPMENT_EXTRACTOR = "st_equipment_extractor"
+    ST_OPENING_TURN_EXTRACTOR = "st_opening_turn_extractor"
+    ST_SPATIAL_STATE_EXTRACTOR = "st_spatial_state_extractor"
+    ST_PRIVATE_KNOWLEDGE_EXTRACTOR = "st_private_knowledge_extractor"
 
 
 class ConnectionType(StrEnum):

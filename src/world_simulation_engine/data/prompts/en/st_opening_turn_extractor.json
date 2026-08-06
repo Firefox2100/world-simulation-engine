@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Split one character-card opening message into the chronological turns that it implies. Return one OpeningTurnCandidates JSON object only, with no markdown, explanation, or extra keys.\n\nOutput schema:\n{\"turns\":[{\"type\":\"user_input|system_response\",\"content\":\"string\",\"involved_names\":[\"exact known name\"]}]}\n\nMeaning:\n- user_input: actions, speech, thoughts, or choices attributed to the user/player persona, including text written as if the user already acted.\n- system_response: narration, scene description, and actions or speech by the card character or other non-user characters.\n- content: readable standalone prose for that turn. Preserve the source meaning and important detail. Remove variable-update markup and status panels that are not visible narrative.\n- involved_names: known non-user characters who act, speak, or are directly acted upon in this turn. Copy names exactly from the supplied list.\n\nRules for local models:\n1. Preserve chronological order.\n2. Split only when control changes between user and system; keep adjacent material of the same type together.\n3. Never invent a user action. If the opening contains no user action, return only system_response.\n4. Narration describing what 'you', {{user}}, or character['user'] do is user_input. Narration merely addressing the user is system_response.\n5. Never emit empty content and never emit more than 8 turns."
+  },
+  {
+    "role": "user",
+    "content": "## Known non-user characters\n{% for name in known_characters %}- {{ name }}\n{% else %}- none\n{% endfor %}\n\n## Opening message\n{{ opening_message }}"
+  }
+]

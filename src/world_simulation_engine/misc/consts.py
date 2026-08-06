@@ -33,6 +33,9 @@ class Prompts(TypedDict, total=False):
     st_item_extractor: list[dict]
     st_equipment_extractor: list[dict]
     st_equipment_initial_value_extractor: list[dict]
+    st_opening_turn_extractor: list[dict]
+    st_spatial_state_extractor: list[dict]
+    st_private_knowledge_extractor: list[dict]
     narrator: list[dict]
     ooc_handler: list[dict]
     scene_coordinator: list[dict]
@@ -80,6 +83,9 @@ PROMPT_NAMES = [
     "st_item_extractor",
     "st_equipment_extractor",
     "st_equipment_initial_value_extractor",
+    "st_opening_turn_extractor",
+    "st_spatial_state_extractor",
+    "st_private_knowledge_extractor",
     "narrator",
     "ooc_handler",
     "scene_coordinator",

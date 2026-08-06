@@ -61,6 +61,7 @@ class MemoryStore:
             id=event_node["id"],
             name=event_node["name"],
             summary=event_node["summary"],
+            outcome=event_node.get("outcome"),
         )
 
     @staticmethod

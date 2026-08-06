@@ -26,6 +26,7 @@ persistence time, so an equipment candidate whose holder never resolves is still
 """
 
 import functools
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -72,6 +73,7 @@ class EquipmentCandidates(BaseModel):
 
 
 class ExtractedEquipment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     description: str
     quality: str | None = None

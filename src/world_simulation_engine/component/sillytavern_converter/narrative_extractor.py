@@ -3,9 +3,9 @@ and `relationship` buckets into candidate `Event`/`MemoryAtom`/`EntityRelationsh
 
 Runs after `CharacterExtractor` (needs its output as the character roster) - one structured-output
 call per `history_event` item and one per `relationship` item, fanned out together in a single
-batch. Per SILLYTAVERN_IMPORT_PLAN.md §3.3's knowledge-boundary rule, every call is given the
-roster of already-extracted characters together with each one's `do_not_know` list, and the model
-is instructed to only attach a memory to characters it doesn't contradict - but since an LLM cannot
+batch. Every call receives the already-extracted character roster and must positively identify the
+characters who know or remember an event. Missing knowledge produces no memory link under the
+open-world model. Since an LLM cannot
 reliably invent or copy a provisional uuid, every reference is by name, copied verbatim from the
 supplied roster, and resolved to the real provisional id deterministically in code afterward (same
 idiom as `LocationExtractor`'s `parent_name` resolution - see §6.2). A name that doesn't match
@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.enums import ComponentType, LorebookItemBucket, SupportedLanguage
+from world_simulation_engine.model import RelationshipVisibility
 
 from .card_preprocessor import PreprocessedCard
 from .character_extractor import CharacterExtraction
@@ -47,8 +48,11 @@ class HistoryEventCandidate(BaseModel):
     memory_keywords: list[str] = Field(default_factory=list, max_length=_MAX_KEYWORDS)
     knowing_names: list[str] = Field(
         default_factory=list, max_length=_MAX_ROSTER_NAMES,
-        description="Subset of involved_names who actually remember/know this - excluding anyone "
-                    "whose supplied do_not_know list rules it out.",
+        description="Characters the source positively establishes as knowing or remembering this.",
+    )
+    outcome: str | None = Field(
+        default=None,
+        description="What changed or resulted when the event ended; null if no outcome is stated.",
     )
 
 
@@ -61,12 +65,19 @@ class RelationshipCandidate(BaseModel):
     target_name: str
     label: str
     description: str
+    visibility: RelationshipVisibility = RelationshipVisibility.OBJECTIVE
+    perspective_name: str | None = Field(
+        default=None,
+        description="Exact known character whose private perspective this is; required for private.",
+    )
+    confidence: float = Field(default=1, ge=0, le=1)
 
 
 class ExtractedEvent(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     summary: str
+    outcome: str | None = None
     involved_character_ids: list[str] = Field(default_factory=list)
     source_item_ids: list[str] = Field(default_factory=list)
 
@@ -86,6 +97,9 @@ class ExtractedRelationship(BaseModel):
     target_character_id: str
     label: str
     description: str
+    visibility: RelationshipVisibility = RelationshipVisibility.OBJECTIVE
+    perspective_character_id: str | None = None
+    confidence: float = 1
     source_item_ids: list[str] = Field(default_factory=list)
 
 
@@ -97,7 +111,7 @@ class NarrativeExtraction(BaseModel):
 
 def _roster(characters: CharacterExtraction) -> tuple[list[dict], dict[str, str]]:
     roster = [
-        {"name": character.target_name, "do_not_know": character.result.do_not_know}
+        {"name": character.target_name}
         for character in characters.characters
     ]
     id_by_name = {character.target_name: character.id for character in characters.characters}
@@ -145,7 +159,8 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
             repair_instruction=(
                 "Return a single RelationshipCandidate JSON object only. source_name and "
                 "target_name must be two different names copied exactly from known_characters - "
-                "never invent a new name. label and description must be non-empty."
+                "never invent a new name. A private relationship requires perspective_name copied "
+                "from known_characters; otherwise use objective or public and null perspective_name."
             ),
             run_name="narrative_extractor.extract_relationship",
         )
@@ -163,15 +178,16 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
             if not involved_ids:
                 continue  # no resolvable participant - never persist a dangling/fabricated event
             event = ExtractedEvent(
-                name=candidate.event_name, summary=candidate.event_summary,
+                name=candidate.event_name, summary=candidate.event_summary, outcome=candidate.outcome,
                 involved_character_ids=involved_ids, source_item_ids=[item_id],
             )
             knowing_ids = _resolve_names(candidate.knowing_names, id_by_name)
-            memories.append(ExtractedMemory(
-                event_id=event.id, summary=candidate.memory_summary,
-                keywords=candidate.memory_keywords,
-                character_ids=knowing_ids or involved_ids, source_item_ids=[item_id],
-            ))
+            if knowing_ids:
+                memories.append(ExtractedMemory(
+                    event_id=event.id, summary=candidate.memory_summary,
+                    keywords=candidate.memory_keywords,
+                    character_ids=knowing_ids, source_item_ids=[item_id],
+                ))
             events.append(event)
         return events, memories
 
@@ -187,9 +203,15 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
             target_id = _resolve_name(candidate.target_name, id_by_name)
             if not source_id or not target_id or source_id == target_id:
                 continue  # unresolved or self-referential - never fabricate a relationship
+            perspective_id = _resolve_name(candidate.perspective_name, id_by_name) \
+                if candidate.perspective_name else None
+            if candidate.visibility == RelationshipVisibility.PRIVATE and not perspective_id:
+                continue
             relationships.append(ExtractedRelationship(
                 source_character_id=source_id, target_character_id=target_id,
-                label=candidate.label, description=candidate.description, source_item_ids=[item_id],
+                label=candidate.label, description=candidate.description,
+                visibility=candidate.visibility, perspective_character_id=perspective_id,
+                confidence=candidate.confidence, source_item_ids=[item_id],
             ))
         return relationships
 
