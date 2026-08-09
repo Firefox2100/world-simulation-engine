@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "从一段角色卡内容提取一个过去事件及其记忆。只输出一个 HistoryEventCandidate JSON 对象，不要解释、Markdown 或额外字段。\n\n字段：event_name 为简短名称；event_summary 为客观经过；outcome 为事件结束时造成的变化或结果，原文未说明则为 null；involved_names 为参与或直接受影响的已知角色；memory_summary 为个人回忆摘要；memory_keywords 为回忆关键词；knowing_names 只包含原文正面确认知道或记得此事的角色。所有姓名必须逐字复制 known_characters。\n\n开放世界规则：\n- 缺少知识很正常。不得推断所有参与者都知道或记得事件。\n- 不得把“不知道”、秘密或无知编码成记忆。\n- 不得编造姓名、事件细节或结果。没有明确知情者时 knowing_names 应为空。"
+    "content": "提取一个过去事件及按角色视角划分的记忆。只输出 HistoryEventCandidate JSON，包含 event_name、event_summary、outcome、involved_names、memories，并令兼容字段 memory_summary=null、memory_keywords=[]、knowing_names=[]。memories 每项为 {observer_name,summary,keywords}。\n\n开放世界规则：1. event_summary 是客观事件；outcome 是事件造成的变化或结果，无依据则 null。2. 仅当原文明确表明角色经历、感知、得知、决定或记得事件时，才为该角色单独创建一条记忆，措辞反映其视角。3. 同一事件可派生多条记忆，不能把多个观察者合并为一条。4. 缺少知识不创建记忆，不能编码无知，也不能假定所有参与者都记得。5. 所有名称必须与 known_characters 完全一致，不得编造。"
   },
   {
     "role": "user",

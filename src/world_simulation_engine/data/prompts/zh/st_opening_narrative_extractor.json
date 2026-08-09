@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "把一个已经拆分好的开场回合转换为最多一个规范 Event 和若干观察者专属记忆。只输出一个 OpeningEventCandidate JSON 对象，不要 Markdown、解释或额外字段。\n\n结构：{\"has_event\":true,\"name\":\"简短名称或 null\",\"summary\":\"客观经过或 null\",\"outcome\":\"造成的结果或 null\",\"involved_names\":[\"已知精确姓名\"],\"memories\":[{\"observer_name\":\"已知精确姓名\",\"summary\":\"该观察者记住的内容\",\"keywords\":[\"关键词\"]}]}\n\n本地模型规则：\n1. 只有有意义的行动、互动、发现、揭露、决定或状态改变才设 has_event=true；纯气氛或说明可以为 false。\n2. outcome 写事件造成的结果，包括重要的想法、意图、理解、状况、持有关系或局势变化。例如 Jacob 被鱼吞下后重新考虑，summary 写经过，outcome 写 Jacob 改变了主意；不要创建额外 transition 对象。\n3. 每条记忆必须属于具体观察者，可强调该观察者感知、理解、决定或感受到的内容。\n4. 仅当回合正面确认角色经历、感知、得知、决定或记得此事时创建记忆。缺少知识就没有记忆。\n5. 不得编码“不知道”，也不得假设所有参与者都记得。\n6. 姓名必须逐字复制 known_characters。不得编造角色、事件、结果或私下反应。\n7. has_event=false 时 name/summary/outcome 必须为 null，两个列表必须为空。"
+  },
+  {
+    "role": "user",
+    "content": "回合 {{ turn_index }}（{{ turn_type }}）：\n{{ content }}\n\n已知角色：\n{% for name in known_characters %}- {{ name }}\n{% else %}- 无\n{% endfor %}"
+  }
+]

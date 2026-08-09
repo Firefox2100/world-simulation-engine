@@ -40,6 +40,7 @@ from .location_extractor import LocationExtraction, LocationExtractor
 from .lorebook_classifier import LorebookClassification, LorebookClassifier
 from .narrative_extractor import NarrativeExtraction, NarrativeExtractor
 from .opening_turn_extractor import OpeningTurnExtraction, OpeningTurnExtractor
+from .opening_narrative_extractor import OpeningNarrativeExtractor
 from .private_knowledge_extractor import PrivateKnowledgeExtraction, PrivateKnowledgeExtractor
 from .spatial_state_extractor import SpatialStateExtraction, SpatialStateExtractor
 from .variable_schema_extractor import VariableSchemaExtraction, VariableSchemaExtractor
@@ -66,6 +67,7 @@ class _ReconstructionState(BaseModel):
     opening_turns: OpeningTurnExtraction | None = None
     spatial_state: SpatialStateExtraction | None = None
     private_knowledge: PrivateKnowledgeExtraction | None = None
+    opening_narrative: NarrativeExtraction | None = None
     assembled: AssembledWorld | None = None
 
 
@@ -89,6 +91,7 @@ class WorldReconstructor:
         graph.add_node("extract_opening_turns", self._extract_opening_turns)
         graph.add_node("extract_spatial_state", self._extract_spatial_state)
         graph.add_node("extract_private_knowledge", self._extract_private_knowledge)
+        graph.add_node("extract_opening_narrative", self._extract_opening_narrative)
         graph.add_node("assemble", self._assemble)
 
         graph.add_edge(START, "preprocess")
@@ -103,7 +106,8 @@ class WorldReconstructor:
         graph.add_edge("extract_items", "extract_equipment")
         graph.add_edge("extract_equipment", "extract_opening_turns")
         graph.add_edge("extract_opening_turns", "extract_spatial_state")
-        graph.add_edge("extract_spatial_state", "extract_private_knowledge")
+        graph.add_edge("extract_spatial_state", "extract_opening_narrative")
+        graph.add_edge("extract_opening_narrative", "extract_private_knowledge")
         graph.add_edge("extract_private_knowledge", "assemble")
         graph.add_edge("assemble", END)
         return graph.compile()
@@ -144,7 +148,7 @@ class WorldReconstructor:
 
     async def _extract_intents(self, state: _ReconstructionState) -> dict:
         intents = await IntentExtractor(database=self._db).extract(
-            state.characters, language=state.language,
+            state.characters, state.narrative, language=state.language,
         )
         return {"intents": intents}
 
@@ -180,11 +184,27 @@ class WorldReconstructor:
         return {"spatial_state": spatial_state}
 
     async def _extract_private_knowledge(self, state: _ReconstructionState) -> dict:
+        narrative = self._combined_narrative(state)
         private_knowledge = await PrivateKnowledgeExtractor(database=self._db).extract(
-            state.characters, state.locations, state.items, state.equipment, state.narrative,
+            state.characters, state.locations, state.items, state.equipment, narrative,
             language=state.language,
         )
         return {"private_knowledge": private_knowledge}
+
+    async def _extract_opening_narrative(self, state: _ReconstructionState) -> dict:
+        opening_narrative = await OpeningNarrativeExtractor(database=self._db).extract(
+            state.opening_turns, state.characters, language=state.language,
+        )
+        return {"opening_narrative": opening_narrative}
+
+    @staticmethod
+    def _combined_narrative(state: _ReconstructionState) -> NarrativeExtraction:
+        opening = state.opening_narrative or NarrativeExtraction()
+        return NarrativeExtraction(
+            events=[*state.narrative.events, *opening.events],
+            memories=[*state.narrative.memories, *opening.memories],
+            relationships=[*state.narrative.relationships, *opening.relationships],
+        )
 
     @staticmethod
     def _assemble(state: _ReconstructionState) -> dict:
@@ -202,6 +222,7 @@ class WorldReconstructor:
             opening_turns=state.opening_turns,
             spatial_state=state.spatial_state,
             private_knowledge=state.private_knowledge,
+            opening_narrative=state.opening_narrative,
         )
         return {"assembled": assembled}
 

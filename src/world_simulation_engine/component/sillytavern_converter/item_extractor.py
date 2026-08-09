@@ -25,7 +25,9 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from world_simulation_engine.misc.config import CONFIG
-from world_simulation_engine.misc.enums import ComponentType, LorebookItemBucket, SupportedLanguage
+from world_simulation_engine.misc.enums import (
+    ComponentType, ContainerState, LorebookItemBucket, SupportedLanguage,
+)
 
 from .card_preprocessor import PreprocessedCard
 from .classifiable_items import content_by_item_id
@@ -67,6 +69,20 @@ class ItemCandidates(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ItemFieldCandidate] = Field(default_factory=list, max_length=_MAX_ITEMS_PER_SOURCE)
+    containers: list["ContainerFieldCandidate"] = Field(default_factory=list, max_length=12)
+
+
+class ContainerFieldCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str
+    state: ContainerState
+    owner_hint: str | None = None
+    holder_hint: str | None = None
+    location_hint: str | None = None
+    position: str | None = None
+    unlocking_item_names: list[str] = Field(default_factory=list, max_length=6)
 
 
 class ExtractedItem(BaseModel):
@@ -83,6 +99,20 @@ class ExtractedItem(BaseModel):
 
 class ItemExtraction(BaseModel):
     items: list[ExtractedItem] = Field(default_factory=list)
+    containers: list["ExtractedContainer"] = Field(default_factory=list)
+
+
+class ExtractedContainer(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str
+    description: str
+    state: ContainerState
+    owner_hint: str | None = None
+    holder_hint: str | None = None
+    location_hint: str | None = None
+    position: str | None = None
+    unlocking_item_names: list[str] = Field(default_factory=list)
+    source_item_ids: list[str] = Field(default_factory=list)
 
 
 class ItemExtractor(SillyTavernPipelineComponent):
@@ -150,4 +180,9 @@ class ItemExtractor(SillyTavernPipelineComponent):
             for (item_id, _, _), batch in zip(sources, results)
             for candidate in batch.items
         ]
-        return ItemExtraction(items=items)
+        containers = [
+            ExtractedContainer(source_item_ids=[item_id], **candidate.model_dump())
+            for (item_id, _, _), batch in zip(sources, results)
+            for candidate in batch.containers
+        ]
+        return ItemExtraction(items=items, containers=containers)

@@ -4,6 +4,7 @@ from world_simulation_engine.component.sillytavern_converter import CharacterExt
     ExtractedCharacter
 from world_simulation_engine.component.sillytavern_converter.intent_extractor import IntentCandidate, \
     IntentCandidates, IntentExtractor
+from world_simulation_engine.component.sillytavern_converter import ExtractedEvent, NarrativeExtraction
 from world_simulation_engine.misc.enums import IntentHorizon, IntentStatus, IntentType, SupportedLanguage
 
 
@@ -60,3 +61,31 @@ async def test_extract_returns_empty_without_calling_llm_when_no_characters():
 
     assert extraction.intents == []
     extractor._prepare_global_llm_service.assert_not_awaited()
+
+
+async def test_extract_keeps_only_resolved_event_causality_and_full_intent_fields():
+    characters = CharacterExtraction(characters=[make_character("Alice", "id-alice")])
+    narrative = NarrativeExtraction(events=[ExtractedEvent(
+        id="evt-case", name="Case assigned", summary="Alice received the case.",
+        involved_character_ids=["id-alice"],
+    )])
+    extractor = IntentExtractor(database=Mock())
+    extractor._prepare_global_prompt = AsyncMock(return_value=[])
+    extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
+        invoke_structured_with_repair=AsyncMock(return_value=IntentCandidates(intents=[
+            IntentCandidate(
+                name="Solve the case", type=IntentType.QUEST, description="Find the truth.",
+                priority=.9, urgency=.5, status=IntentStatus.ACTIVE,
+                horizon=IntentHorizon.LONG, success_conditions=["The culprit is identified."],
+                current_plan=["Review the evidence."], created_by_event_id="evt-case",
+                contributing_event_ids=["unknown", "evt-case"],
+            ),
+        ])),
+    ))
+
+    result = await extractor.extract(characters, narrative, language=SupportedLanguage.ENGLISH)
+
+    assert result.intents[0].success_conditions == ["The culprit is identified."]
+    assert result.intents[0].current_plan == ["Review the evidence."]
+    assert result.intents[0].created_by_event_id == "evt-case"
+    assert result.intents[0].contributing_event_ids == []

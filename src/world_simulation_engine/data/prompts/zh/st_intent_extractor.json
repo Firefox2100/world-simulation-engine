@@ -1,10 +1,10 @@
 [
   {
     "role": "system",
-    "content": "你要根据这个角色已经提取出的档案，推断出他的驱动性意图（目标、计划、义务、任务），转换为本系统自己的 Intent 模型。只输出一个 IntentCandidates 结构化 JSON 对象；不要解释、Markdown 或额外字段。\n\n字段（intents 是一个最多包含 3 个对象的列表，每个对象包含）：\n- name：该意图的简短标签（例如“找回遗失的物品”）。\n- type：必须是以下之一：need（需求）| obligation（义务）| quest（任务）| agenda（计划）| aspiration（志向）| relationship（关系）| habit（习惯）| reaction（反应）。\n- description：一段自成一体的描述，说明这个意图是什么、角色为何拥有它——用你自己的表述写出，不要照抄原文。\n- priority：0 到 1 之间的数值，表示相对于该角色其他关切，这件事有多重要。\n- urgency：0 到 1 之间的数值，表示当下这件事有多紧迫。\n- status：必须是以下之一：active（进行中）| paused（暂停）| completed（已完成）| failed（已失败）| abandoned（已放弃）——对刚导入的角色几乎总是“active”。\n- horizon：必须是以下之一：immediate（即时）| short（短期）| day（一天内）| long（长期）| open_ended（无限期）——表示解决这件事大概还有多远。\n- desired_state：该角色希望达成的结果的简短描述；若内容并未明确暗示，则为 null。\n\n本地模型规则：\n- 对于档案中没有明确驱动性目标的次要/背景角色，返回空的 intents 列表是正确且常见的结果——不要为了填满列表而编造一个意图。\n- 只推断提供的档案（description/public_state/private_state/current_activity）中真正暗示的意图——不要编造无关的目标。\n- 绝不要输出超过 3 个意图——只选择最明确、最重要的那些。"
+    "content": "推断角色当前真正驱动行动的意图。只输出一个 IntentCandidates JSON 对象，不要 Markdown 或额外字段。每个意图必须包含：name、type（need|obligation|quest|agenda|aspiration|relationship|habit|reaction）、description、priority、urgency、status、horizon、desired_state，以及 success_conditions、failure_conditions、maintenance_conditions、constraints、current_plan、next_action_biases、blockers、open_threads、created_by_event_id、contributing_event_ids。各列表允许为空；事件字段只能使用所给事件的准确 id。\n\n本地模型规则：\n1. 最多输出 3 个明确的当前意图；没有依据时返回空列表。\n2. 已完成的过去行为、性格、能力和叙事身份本身不是当前意图。\n3. created_by_event_id 只指产生该意图的一个事件；contributing_event_ids 只指强化、改变、阻碍或实质塑造该意图的事件。仅仅参与事件不构成因果。\n4. 条件、计划、倾向、阻碍和未决线索只有在文本支持时才填写，不得编造。\n5. desired_state 是角色希望成为现实的状态；success_conditions 是可观察的完成判据。"
   },
   {
     "role": "user",
-    "content": "角色: {{ name }}\n\n## 描述\n{{ description }}\n\n## 公开状态\n{{ public_state }}\n\n## 私下状态\n{{ private_state }}\n\n## 当前活动\n{{ current_activity }}"
+    "content": "角色：{{ name }}\n描述：{{ description }}\n公开状态：{{ public_state }}\n私下状态：{{ private_state }}\n当前活动：{{ current_activity }}\n\n相关事件：\n{% for event in events %}- id={{ event.id }}；名称={{ event.name }}；摘要={{ event.summary }}；结果={{ event.outcome }}\n{% else %}- 无\n{% endfor %}"
   }
 ]

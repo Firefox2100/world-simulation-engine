@@ -13,17 +13,21 @@ from world_simulation_engine.service.storage_service import FormatNormaliser
 @dataclass(frozen=True, slots=True)
 class ExtractedCharacterCard:
     card: SillyTavernCardV3
-    image: bytes
+    image: bytes | None = None
 
 
 class DataExtractor:
-    """Parses a raw SillyTavern PNG character card into this system's card model.
+    """Parses a SillyTavern character card into this system's card model.
 
-    SillyTavern embeds character data as base64-encoded JSON in PNG text chunks: "ccv3" holds a V3
-    card, "chara" holds a V2 (or, in older exports, spec-less V1) card. When both chunks are
-    present, "chara" is kept only for backward compatibility with older readers, so "ccv3" takes
-    precedence.
+    Two upload formats are supported: a PNG card, which embeds character data as base64-encoded
+    JSON in PNG text chunks ("ccv3" holds a V3 card, "chara" holds a V2, or in older exports a
+    spec-less V1, card - when both are present "chara" is kept only for backward compatibility
+    with older readers, so "ccv3" takes precedence); and a plain JSON export of the same "chara"
+    chunk payload, with no cover image. Format is detected from the file's magic bytes rather than
+    its declared content type/filename, since neither is trustworthy.
     """
+
+    _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
     @staticmethod
     def _load_image(card_bytes: bytes) -> Image.Image:
@@ -66,6 +70,16 @@ class DataExtractor:
 
         return payload
 
+    def _parse_card_payload(self, payload: dict[str, Any]) -> SillyTavernCardV3:
+        spec = payload.get("spec")
+
+        if spec == "chara_card_v3":
+            return SillyTavernCardV3.model_validate(self._repair_v3_character_book(payload))
+        if spec == "chara_card_v2":
+            return SillyTavernCardV2.model_validate(payload).to_v3()
+
+        raise ValueError(f"Unsupported or missing character card spec {spec!r}")
+
     def _parse_card(self, info: dict[str, Any]) -> SillyTavernCardV3:
         if "ccv3" in info:
             payload = self._decode_chunk(info["ccv3"], chunk_name="ccv3")
@@ -73,26 +87,41 @@ class DataExtractor:
 
         if "chara" in info:
             payload = self._decode_chunk(info["chara"], chunk_name="chara")
-            spec = payload.get("spec")
-
-            if spec == "chara_card_v3":
-                return SillyTavernCardV3.model_validate(self._repair_v3_character_book(payload))
-            if spec == "chara_card_v2":
-                return SillyTavernCardV2.model_validate(payload).to_v3()
-
-            raise ValueError(f"Unsupported or missing character card spec {spec!r} in 'chara' text chunk")
+            try:
+                return self._parse_card_payload(payload)
+            except ValueError as e:
+                raise ValueError(f"{e} in 'chara' text chunk") from e
 
         raise ValueError("PNG does not contain an embedded SillyTavern character card ('chara'/'ccv3' text chunk)")
 
-    def extract(self, card_bytes: bytes) -> ExtractedCharacterCard:
-        """Parse the embedded character card and strip it out of the accompanying cover image.
-
-        Returns the character data normalised to the V3 spec, alongside the PNG re-encoded without
-        its embedded text chunks - the card data is restructured and persisted separately by later
-        stages of the import workflow, so it must not be duplicated inside the stored image.
-        """
+    def _extract_png(self, card_bytes: bytes) -> ExtractedCharacterCard:
         image = self._load_image(card_bytes)
         card = self._parse_card(image.info)
         cleaned_image = FormatNormaliser.normalise_image(card_bytes)
 
         return ExtractedCharacterCard(card=card, image=cleaned_image)
+
+    def _extract_json(self, card_bytes: bytes) -> ExtractedCharacterCard:
+        try:
+            payload = json.loads(card_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise ValueError("File is not a valid PNG character card or JSON character card export") from e
+
+        if not isinstance(payload, dict):
+            raise ValueError("JSON character card export must be a JSON object")
+
+        return ExtractedCharacterCard(card=self._parse_card_payload(payload), image=None)
+
+    def extract(self, card_bytes: bytes) -> ExtractedCharacterCard:
+        """Parse a character card, either a PNG with the card embedded in its text chunks or a
+        plain JSON export of the same payload, detected from the file's magic bytes.
+
+        For a PNG upload, returns the character data normalised to the V3 spec alongside the PNG
+        re-encoded without its embedded text chunks - the card data is restructured and persisted
+        separately by later stages of the import workflow, so it must not be duplicated inside the
+        stored image. A JSON upload carries no image, so `image` is `None`.
+        """
+        if card_bytes.startswith(self._PNG_MAGIC):
+            return self._extract_png(card_bytes)
+
+        return self._extract_json(card_bytes)

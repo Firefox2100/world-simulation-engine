@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 PhysicalEntityType = Literal[
+    "world",
     "character",
     "background_character",
     "item",

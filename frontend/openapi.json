@@ -22439,7 +22439,8 @@
           "st_equipment_extractor",
           "st_opening_turn_extractor",
           "st_spatial_state_extractor",
-          "st_private_knowledge_extractor"
+          "st_private_knowledge_extractor",
+          "st_opening_narrative_extractor"
         ],
         "title": "ComponentType"
       },

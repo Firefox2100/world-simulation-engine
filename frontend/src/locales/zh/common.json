@@ -360,7 +360,7 @@
     "chooseAnother": "选择其他文件",
     "dropzone": {
       "prompt": "将文件拖到此处，或点击选择文件",
-      "hint": "SillyTavern 角色卡（.png）"
+      "hint": "SillyTavern 角色卡（.png 或 .json）"
     },
     "fields": {
       "name": "角色名称",
@@ -685,7 +685,8 @@
         "st_equipment_extractor": "装备提取器",
         "st_opening_turn_extractor": "开场回合提取器",
         "st_spatial_state_extractor": "空间状态提取器",
-        "st_private_knowledge_extractor": "私有知识提取器"
+        "st_private_knowledge_extractor": "私有知识提取器",
+        "st_opening_narrative_extractor": "开场叙事提取器"
       },
       "whitelistHint": "以这些前缀开头的图片链接会被视为可信任来源，无需确认即可自动下载。其他链接只有在审核页面上被勾选后才会下载。",
       "whitelistAdd": "添加 URL 前缀",

@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "Convert one already-separated opening turn into at most one canonical Event and zero or more observer-specific memories. Return one OpeningEventCandidate JSON object only; no markdown, explanation, or extra keys.\n\nSchema: {\"has_event\":true,\"name\":\"short name or null\",\"summary\":\"objective account or null\",\"outcome\":\"resulting change or null\",\"involved_names\":[\"exact known name\"],\"memories\":[{\"observer_name\":\"exact known name\",\"summary\":\"what this observer remembers\",\"keywords\":[\"keyword\"]}]}\n\nRules for local models:\n1. has_event is true only for a meaningful action, interaction, discovery, revelation, decision, or state-changing occurrence. Pure atmosphere or exposition may be false.\n2. outcome records what resulted, including an important change of mind, intention, understanding, condition, possession, or situation. Example: after Jacob is swallowed by a fish and reconsiders, summary describes what happened and outcome says Jacob changed his mind. Do not create a separate transition object.\n3. Each memory is observer-specific. Its summary may emphasize what that observer perceived, understood, decided, or felt.\n4. Create a memory only when the turn positively establishes that the named character experienced, perceived, learned, decided, or remembers it. Missing knowledge creates no memory.\n5. Never encode 'does not know'. Never infer that all involved characters remember the event.\n6. Names must be copied exactly from known_characters. Do not invent characters, events, outcomes, or private reactions.\n7. If has_event is false, name/summary/outcome must be null and both lists empty."
+  },
+  {
+    "role": "user",
+    "content": "Turn {{ turn_index }} ({{ turn_type }}):\n{{ content }}\n\nKnown characters:\n{% for name in known_characters %}- {{ name }}\n{% else %}- none\n{% endfor %}"
+  }
+]

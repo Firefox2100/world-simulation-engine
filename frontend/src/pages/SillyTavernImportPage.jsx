@@ -221,7 +221,7 @@ export function SillyTavernImportPage() {
             };
             const committed = await commitSillyTavernWorld(world, sections, authorId);
 
-            if (originalFile) {
+            if (originalFile && coverImage) {
                 await uploadWorldCoverImage(committed.id, originalFile).catch(() => {});
             }
 

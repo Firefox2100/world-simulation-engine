@@ -1,8 +1,9 @@
 from uuid import uuid4
 
 from world_simulation_engine.component.sillytavern_converter import CharacterExtraction, \
-    CharacterExtractionResult, EquipmentExtraction, ExtractedCharacter, ExtractedEquipment, \
-    ExtractedEvent, ExtractedIntent, ExtractedItem, ExtractedLocation, ExtractedMemory, \
+    CharacterExtractionResult, EquipmentExtraction, ExtractedCharacter, ExtractedContainer, \
+    ExtractedEquipment, ExtractedEvent, ExtractedIntent, ExtractedItem, ExtractedLandmark, \
+    ExtractedLocation, ExtractedMemory, \
     ExtractedRelationship, ExtractedVariable, IntentExtraction, ItemExtraction, LocationExtraction, \
     NarrativeExtraction, PreprocessedCard, VariableSchemaExtraction, WorldAssembler, WorldLoreExtraction
 from world_simulation_engine.component.sillytavern_converter import ExtractedOpeningTurn, \
@@ -123,6 +124,42 @@ def test_assemble_uses_extracted_opening_turn_sequence_and_keeps_user_action_sep
     ]
 
 
+def test_assemble_attaches_opening_event_and_memory_to_existing_opening_turn():
+    characters = CharacterExtraction(characters=[make_character("Jacob", "id-jacob")])
+    opening_narrative = NarrativeExtraction(
+        events=[ExtractedEvent(
+            id="evt-fish", name="Swallowed by the fish",
+            summary="A great fish swallowed Jacob.",
+            outcome="Jacob decided to obey.", opening_turn_index=0,
+            involved_character_ids=["id-jacob"],
+        )],
+        memories=[ExtractedMemory(
+            id="mem-fish", event_id="evt-fish",
+            summary="Being swallowed persuaded Jacob to obey.",
+            keywords=["fish", "obey"], character_ids=["id-jacob"],
+        )],
+    )
+
+    assembled = WorldAssembler().assemble(
+        make_card(first_message="A great fish swallows Jacob."),
+        language=SupportedLanguage.ENGLISH, characters=characters,
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(),
+        equipment=EquipmentExtraction(),
+        opening_turns=OpeningTurnExtraction(turns=[
+            ExtractedOpeningTurn(type="system_response", content="A great fish swallows Jacob."),
+        ]),
+        opening_narrative=opening_narrative,
+    )
+
+    assert len(assembled.sections["turns"]) == 1
+    assert assembled.sections["events"][0]["turn_ids"] == [assembled.sections["turns"][0]["id"]]
+    assert assembled.sections["events"][0]["outcome"] == "Jacob decided to obey."
+    assert assembled.sections["memories"][0]["event_id"] == "evt-fish"
+    assert assembled.sections["memories"][0]["character_links"][0]["character_id"] == "id-jacob"
+
+
 def test_assemble_applies_spatial_placement_to_character():
     character = make_character("Alice", "id-alice")
     assembled = WorldAssembler().assemble(
@@ -159,6 +196,41 @@ def test_assemble_locations_carry_parent_id_through():
     by_id = {row["id"]: row for row in assembled.sections["locations"]}
     assert by_id["loc-2"]["parent_location_id"] == "loc-1"
     assert by_id["loc-1"]["parent_location_id"] is None
+
+
+def test_assemble_builds_landmark_and_container_relationship_rows():
+    characters = CharacterExtraction(characters=[make_character("Alice", "id-alice")])
+    locations = LocationExtraction(
+        locations=[ExtractedLocation(id="loc-vault", name="Vault", description="A vault.")],
+        landmarks=[ExtractedLandmark(
+            id="landmark-altar", name="Stone Altar", description="A fixed altar.",
+            location_id="loc-vault",
+        )],
+    )
+    items = ItemExtraction(
+        items=[ExtractedItem(
+            id="item-key", name="Brass key", description="A small key.", unique=True,
+            quantity=1, holder_hint="Alice",
+        )],
+        containers=[ExtractedContainer(
+            id="container-chest", name="Chest", description="A locked chest.", state="locked",
+            owner_hint="Alice", location_hint="Vault", position="beneath the altar",
+            unlocking_item_names=["Brass key"],
+        )],
+    )
+
+    assembled = WorldAssembler().assemble(
+        make_card(), language=SupportedLanguage.ENGLISH, characters=characters,
+        locations=locations, world_lore=WorldLoreExtraction(), narrative=NarrativeExtraction(),
+        intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=items,
+        equipment=EquipmentExtraction(),
+    )
+
+    assert assembled.sections["landmarks"][0]["location_id"] == "loc-vault"
+    container = assembled.sections["containers"][0]
+    assert container["owner_id"] == "id-alice"
+    assert container["location_id"] == "loc-vault"
+    assert container["unlocking_item_ids"] == ["item-key"]
 
 
 def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_ids():
@@ -316,6 +388,25 @@ def test_assemble_variable_with_multiple_slash_separated_owner_names_attaches_to
     for owner_id in ("id-avery", "id-blair", "id-casey"):
         assert variable_sets[owner_id]["owner_type"] == "character"
         assert variable_sets[owner_id]["variables"][0]["name"] == "好感度"
+
+
+def test_assemble_attaches_non_clock_global_state_to_world_variable_set():
+    variables = VariableSchemaExtraction(variables=[ExtractedVariable(
+        owner_hint="world", name="weather", value_type=VariableValueType.STRING,
+        default_value="stormy", description="The world's current weather condition.",
+    )])
+
+    assembled = WorldAssembler().assemble(
+        make_card(), language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(),
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables,
+        items=ItemExtraction(), equipment=EquipmentExtraction(),
+    )
+
+    variable_set = assembled.sections["entity_variable_sets"][0]
+    assert variable_set["owner_type"] == "world"
+    assert variable_set["owner_id"] == assembled.world["id"]
+    assert variable_set["variables"][0]["name"] == "weather"
 
 
 def test_assemble_drops_time_tracking_variables_regardless_of_owner():

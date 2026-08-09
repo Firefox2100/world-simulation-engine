@@ -180,6 +180,8 @@ class WorldImportService:
         media_id_map = await self._import_media(archive, sections["media"])
 
         id_map: dict[str, str] = {}
+        if world_row.get("id"):
+            id_map[world_row["id"]] = world.id
         await self._import_locations(world.id, sections["locations"], id_map)
         await self._import_landmarks(sections["landmarks"], id_map, media_id_map)
         await self._import_characters(world.id, sections["characters"], id_map, media_id_map)

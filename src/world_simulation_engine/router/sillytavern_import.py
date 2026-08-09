@@ -43,6 +43,7 @@ _REQUIRED_COMPONENTS = (
     ComponentType.ST_OPENING_TURN_EXTRACTOR,
     ComponentType.ST_SPATIAL_STATE_EXTRACTOR,
     ComponentType.ST_PRIVATE_KNOWLEDGE_EXTRACTOR,
+    ComponentType.ST_OPENING_NARRATIVE_EXTRACTOR,
 )
 _SSE_KEEPALIVE_SECONDS = 45
 
@@ -277,6 +278,7 @@ async def parse_sillytavern_card(
         ],
         cover_image_data_uri=(
             f"data:image/png;base64,{base64.b64encode(extracted.image).decode('ascii')}"
+            if extracted.image is not None else None
         ),
         assets=data.assets or [],
         extensions=data.extensions or {},

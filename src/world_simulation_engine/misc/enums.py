@@ -59,6 +59,7 @@ class ComponentType(StrEnum):
     ST_OPENING_TURN_EXTRACTOR = "st_opening_turn_extractor"
     ST_SPATIAL_STATE_EXTRACTOR = "st_spatial_state_extractor"
     ST_PRIVATE_KNOWLEDGE_EXTRACTOR = "st_private_knowledge_extractor"
+    ST_OPENING_NARRATIVE_EXTRACTOR = "st_opening_narrative_extractor"
 
 
 class ConnectionType(StrEnum):

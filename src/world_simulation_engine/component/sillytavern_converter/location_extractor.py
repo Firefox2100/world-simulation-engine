@@ -46,6 +46,14 @@ class LocationCandidate(BaseModel):
                     "verbatim from the supplied content, only if the content itself implies "
                     "nesting - null if this is a top-level location or nesting isn't clear.",
     )
+    landmarks: list["LandmarkCandidate"] = Field(default_factory=list, max_length=12)
+
+
+class LandmarkCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str
 
 
 class SynthesizedLocations(BaseModel):
@@ -66,8 +74,17 @@ class ExtractedLocation(BaseModel):
     source_item_ids: list[str] = Field(default_factory=list)
 
 
+class ExtractedLandmark(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    name: str
+    description: str
+    location_id: str
+    source_item_ids: list[str] = Field(default_factory=list)
+
+
 class LocationExtraction(BaseModel):
     locations: list[ExtractedLocation] = Field(default_factory=list)
+    landmarks: list[ExtractedLandmark] = Field(default_factory=list)
 
 
 def _stitch_parents(candidates: list[tuple[LocationCandidate, str]]) -> list[ExtractedLocation]:
@@ -170,7 +187,17 @@ class LocationExtractor(SillyTavernPipelineComponent):
                 run_name="location_extractor.extract",
             )
             item_ids = [item_id for item_id, _, _ in location_items]
-            return LocationExtraction(locations=_stitch_parents(list(zip(candidates, item_ids))))
+            paired = list(zip(candidates, item_ids))
+            extracted = _stitch_parents(paired)
+            landmarks = [
+                ExtractedLandmark(
+                    name=landmark.name, description=landmark.description,
+                    location_id=location.id, source_item_ids=[item_id],
+                )
+                for (candidate, item_id), location in zip(paired, extracted)
+                for landmark in candidate.landmarks
+            ]
+            return LocationExtraction(locations=extracted, landmarks=landmarks)
 
         if not card.scenario.strip() and not card.first_message.strip():
             return LocationExtraction(locations=[])

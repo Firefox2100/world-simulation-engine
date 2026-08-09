@@ -4,8 +4,8 @@ from world_simulation_engine.component.sillytavern_converter import ExtractedCha
     CharacterExtractionResult, PreprocessedCard, PreprocessedLorebookEntry
 from world_simulation_engine.component.sillytavern_converter.lorebook_classifier import ClassifiedItem, \
     LorebookClassification
-from world_simulation_engine.component.sillytavern_converter.narrative_extractor import HistoryEventCandidate, \
-    NarrativeExtractor, RelationshipCandidate
+from world_simulation_engine.component.sillytavern_converter.narrative_extractor import \
+    HistoricalMemoryCandidate, HistoryEventCandidate, NarrativeExtractor, RelationshipCandidate
 from world_simulation_engine.misc.enums import LorebookItemBucket, SupportedLanguage
 
 
@@ -122,6 +122,36 @@ async def test_extract_does_not_create_memory_when_knowing_names_empty():
     extraction = await extractor.extract(card, classification, characters, language=SupportedLanguage.ENGLISH)
 
     assert extraction.memories == []
+
+
+async def test_extract_creates_separate_perspective_memories_from_one_event():
+    card = make_card()
+    classification = LorebookClassification(items=[
+        ClassifiedItem(item_id="entry:1", buckets=[LorebookItemBucket.HISTORY_EVENT]),
+    ])
+    characters = CharacterExtraction(characters=[
+        make_character("Alice", "id-alice"), make_character("Bob", "id-bob"),
+    ])
+    extractor = NarrativeExtractor(database=Mock())
+    extractor._prepare_global_prompt = AsyncMock(return_value=[])
+    extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
+        invoke_structured_with_repair=AsyncMock(return_value=HistoryEventCandidate(
+            event_name="Argument", event_summary="Alice and Bob argued.",
+            involved_names=["Alice", "Bob"], memories=[
+                HistoricalMemoryCandidate(
+                    observer_name="Alice", summary="Bob refused to listen.", keywords=["argument"],
+                ),
+                HistoricalMemoryCandidate(
+                    observer_name="Bob", summary="Alice accused me unfairly.", keywords=["argument"],
+                ),
+            ],
+        )),
+    ))
+
+    result = await extractor.extract(card, classification, characters, language=SupportedLanguage.ENGLISH)
+
+    assert len(result.memories) == 2
+    assert {memory.character_ids[0] for memory in result.memories} == {"id-alice", "id-bob"}
 
 
 async def test_extract_drops_relationship_with_unresolved_or_self_reference():

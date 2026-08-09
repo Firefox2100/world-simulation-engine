@@ -29,6 +29,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
     equipment = EquipmentExtraction()
     opening_turns = OpeningTurnExtraction()
     spatial_state = SpatialStateExtraction()
+    opening_narrative = NarrativeExtraction()
     private_knowledge = PrivateKnowledgeExtraction()
     assembled = AssembledWorld(world={"name": "Card"}, sections={}, report=ConversionReport())
 
@@ -44,6 +45,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             patch.object(wr_module, "EquipmentExtractor") as equipment_extractor_cls, \
             patch.object(wr_module, "OpeningTurnExtractor") as opening_turn_extractor_cls, \
             patch.object(wr_module, "SpatialStateExtractor") as spatial_state_extractor_cls, \
+            patch.object(wr_module, "OpeningNarrativeExtractor") as opening_narrative_extractor_cls, \
             patch.object(wr_module, "PrivateKnowledgeExtractor") as private_knowledge_extractor_cls, \
             patch.object(wr_module, "WorldAssembler") as assembler_cls:
 
@@ -59,6 +61,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
         equipment_extractor_cls.return_value.extract = AsyncMock(return_value=equipment)
         opening_turn_extractor_cls.return_value.extract = AsyncMock(return_value=opening_turns)
         spatial_state_extractor_cls.return_value.extract = AsyncMock(return_value=spatial_state)
+        opening_narrative_extractor_cls.return_value.extract = AsyncMock(return_value=opening_narrative)
         private_knowledge_extractor_cls.return_value.extract = AsyncMock(return_value=private_knowledge)
         assembler_cls.return_value.assemble.return_value = assembled
 
@@ -83,7 +86,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             preprocessed, classification, characters, language=SupportedLanguage.ENGLISH,
         )
         intent_extractor_cls.return_value.extract.assert_awaited_once_with(
-            characters, language=SupportedLanguage.ENGLISH,
+            characters, narrative, language=SupportedLanguage.ENGLISH,
         )
         variable_extractor_cls.return_value.extract.assert_awaited_once_with(
             preprocessed, classification, language=SupportedLanguage.ENGLISH,
@@ -100,6 +103,9 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
         spatial_state_extractor_cls.return_value.extract.assert_awaited_once_with(
             preprocessed, characters, locations, items, equipment,
             language=SupportedLanguage.ENGLISH,
+        )
+        opening_narrative_extractor_cls.return_value.extract.assert_awaited_once_with(
+            opening_turns, characters, language=SupportedLanguage.ENGLISH,
         )
         private_knowledge_extractor_cls.return_value.extract.assert_awaited_once_with(
             characters, locations, items, equipment, narrative,
@@ -118,6 +124,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             equipment=equipment,
             opening_turns=opening_turns,
             spatial_state=spatial_state,
+            opening_narrative=opening_narrative,
             private_knowledge=private_knowledge,
         )
 

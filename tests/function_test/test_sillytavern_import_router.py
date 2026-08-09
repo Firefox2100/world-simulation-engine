@@ -66,6 +66,35 @@ def _synthetic_card_png() -> bytes:
     return output.getvalue()
 
 
+def _synthetic_card_json() -> bytes:
+    payload = {
+        "spec": "chara_card_v3",
+        "spec_version": "3.0",
+        "data": {
+            **_EXTRACT_CARD_PAYLOAD,
+            "first_mes": _EXTRACT_CARD_PAYLOAD["first_message"],
+            "mes_example": "",
+            "creator_notes": "",
+            "system_prompt": "",
+            "post_history_instructions": "",
+            "alternate_greetings": [],
+            "tags": ["test"],
+            "creator": "",
+            "character_version": "",
+            "extensions": {},
+            "character_book": {
+                "name": "Example lore",
+                "entries": [{
+                    "id": 1, "keys": ["seal"], "secondary_keys": [], "comment": "Stage 1",
+                    "content": "The seal breaks.", "enabled": True, "insertion_order": 0,
+                    "priority": 10, "constant": False, "position": "before_char", "use_regex": False,
+                }],
+            },
+        },
+    }
+    return json.dumps(payload).encode()
+
+
 def _sse_events(response) -> list[tuple[str, dict]]:
     events = []
     for block in response.text.split("\n\n"):
@@ -334,6 +363,7 @@ async def test_get_sillytavern_import_status_reports_configured_when_all_compone
             ComponentType.ST_EQUIPMENT_EXTRACTOR,
             ComponentType.ST_OPENING_TURN_EXTRACTOR, ComponentType.ST_SPATIAL_STATE_EXTRACTOR,
             ComponentType.ST_PRIVATE_KNOWLEDGE_EXTRACTOR,
+            ComponentType.ST_OPENING_NARRATIVE_EXTRACTOR,
     ):
         await database.config.link_global_chat(chat_config.id, component)
     await driver.close()
@@ -377,6 +407,50 @@ def test_parse_sillytavern_card_returns_400_for_a_non_card_file():
         response = client.post(
             "/worlds/import/sillytavern/parse",
             files={"file": ("not-a-card.png", b"not a real png file", "image/png")},
+        )
+
+    assert response.status_code == 400
+
+
+def test_parse_sillytavern_card_accepts_a_plain_json_export_with_no_cover_image():
+    app = FastAPI()
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse",
+            files={"file": ("example.json", _synthetic_card_json(), "application/json")},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Example Character"
+    assert body["first_mes"]
+    assert isinstance(body["lorebook_entries"], list) and len(body["lorebook_entries"]) == 1
+    assert body["cover_image_data_uri"] is None
+
+
+def test_parse_sillytavern_card_returns_400_for_unparsable_json():
+    app = FastAPI()
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse",
+            files={"file": ("broken.json", b"{not valid json", "application/json")},
+        )
+
+    assert response.status_code == 400
+
+
+def test_parse_sillytavern_card_returns_400_for_json_missing_a_supported_spec():
+    app = FastAPI()
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse",
+            files={"file": ("legacy.json", json.dumps({"name": "No spec here"}).encode(), "application/json")},
         )
 
     assert response.status_code == 400

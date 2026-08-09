@@ -163,11 +163,18 @@ class WorldAssembler:
             opening_turns: OpeningTurnExtraction | None = None,
             spatial_state: SpatialStateExtraction | None = None,
             private_knowledge: PrivateKnowledgeExtraction | None = None,
+            opening_narrative: NarrativeExtraction | None = None,
     ) -> AssembledWorld:
         report = ConversionReport()
         opening_turns = opening_turns or OpeningTurnExtraction()
         spatial_state = spatial_state or SpatialStateExtraction()
         private_knowledge = private_knowledge or PrivateKnowledgeExtraction()
+        opening_narrative = opening_narrative or NarrativeExtraction()
+        combined_narrative = NarrativeExtraction(
+            events=[*narrative.events, *opening_narrative.events],
+            memories=[*narrative.memories, *opening_narrative.memories],
+            relationships=[*narrative.relationships, *opening_narrative.relationships],
+        )
 
         id_by_character_name = {
             character.target_name: character.id for character in characters.characters
@@ -209,24 +216,29 @@ class WorldAssembler:
         ]
 
         history_turn_rows, history_turn_id_by_event = self._history_turn_rows(
-            narrative, self_id=self_id, user_id=user_id,
+            combined_narrative, self_id=self_id, user_id=user_id,
         )
         opening_rows = self._turn_rows(
             card, opening_turns, self_id=self_id, user_id=user_id,
         )
         turn_rows = history_turn_rows + opening_rows
+        opening_turn_ids = {index: row["id"] for index, row in enumerate(opening_rows)}
         for sequence, row in enumerate(turn_rows):
             row["sequence"] = sequence
 
         event_rows = [
             self._event_row(
-                event, history_turn_id_by_event[event.id], self_id=self_id, user_id=user_id,
+                event,
+                opening_turn_ids[event.opening_turn_index]
+                if event.opening_turn_index is not None
+                else history_turn_id_by_event[event.id],
+                self_id=self_id, user_id=user_id,
             )
-            for event in narrative.events
+            for event in combined_narrative.events
         ]
         memory_rows = [
             self._memory_row(memory, self_id=self_id, user_id=user_id)
-            for memory in narrative.memories
+            for memory in combined_narrative.memories
         ]
         intent_rows = [
             self._intent_row(intent, self_id=self_id, user_id=user_id)
@@ -234,16 +246,18 @@ class WorldAssembler:
         ]
         relationship_rows = [
             self._relationship_row(relationship, self_id=self_id, user_id=user_id)
-            for relationship in narrative.relationships
+            for relationship in combined_narrative.relationships
         ]
         knowledge_rows = [
             self._private_knowledge_row(claim)
             for claim in private_knowledge.claims
         ]
 
+        world_id = str(uuid4())
         location_id_by_name = {location.name: location.id for location in locations.locations}
         variable_rows = self._variable_set_rows(
-            variables, id_by_character_name, location_id_by_name, user_id=user_id, report=report,
+            variables, id_by_character_name, location_id_by_name,
+            user_id=user_id, world_id=world_id, report=report,
         )
         item_rows, item_stack_rows = self._item_and_stack_rows(
             items, id_by_character_name, location_id_by_name, placement_by_entity,
@@ -251,6 +265,17 @@ class WorldAssembler:
         )
         equipment_rows = self._equipment_rows(
             equipment, id_by_character_name, placement_by_entity, user_id=user_id, report=report,
+        )
+        landmark_rows = [
+            {
+                "id": landmark.id, "name": landmark.name,
+                "description": landmark.description, "location_id": landmark.location_id,
+            }
+            for landmark in locations.landmarks
+        ]
+        container_rows = self._container_rows(
+            items, id_by_character_name, location_id_by_name, item_rows,
+            user_id=user_id, report=report,
         )
 
         world_description = None
@@ -260,6 +285,7 @@ class WorldAssembler:
             )
         starting_time = self._resolve_starting_time(variables, report=report)
         world_row = {
+            "id": world_id,
             "name": card.name,
             "description": world_description,
             "starting_time": starting_time.isoformat(),
@@ -268,13 +294,13 @@ class WorldAssembler:
 
         sections: dict[str, list] = {
             "locations": location_rows,
-            "landmarks": [],
+            "landmarks": landmark_rows,
             "characters": character_rows,
             "background_characters": [user_stub_row] if user_stub_row else [],
             "items": item_rows,
             "item_stacks": item_stack_rows,
             "equipment": equipment_rows,
-            "containers": [],
+            "containers": container_rows,
             "turns": turn_rows,
             "events": event_rows,
             "memories": memory_rows,
@@ -417,7 +443,10 @@ class WorldAssembler:
         now = datetime.now(timezone.utc).isoformat()
         rows = []
         turn_id_by_event = {}
-        for sequence, event in enumerate(narrative.events):
+        historical_events = [
+            event for event in narrative.events if event.opening_turn_index is None
+        ]
+        for sequence, event in enumerate(historical_events):
             turn_id = str(uuid4())
             turn_id_by_event[event.id] = turn_id
             content = event.summary
@@ -501,19 +530,19 @@ class WorldAssembler:
             "urgency": intent.urgency,
             "status": intent.status,
             "desired_state": rewrite(intent.desired_state) if intent.desired_state else None,
-            "success_conditions": [],
-            "failure_conditions": [],
-            "maintenance_conditions": [],
+            "success_conditions": [rewrite(value) for value in intent.success_conditions],
+            "failure_conditions": [rewrite(value) for value in intent.failure_conditions],
+            "maintenance_conditions": [rewrite(value) for value in intent.maintenance_conditions],
             "deadline": None,
             "horizon": intent.horizon,
-            "constraints": [],
-            "current_plan": [],
-            "next_action_biases": [],
-            "blockers": [],
-            "open_threads": [],
+            "constraints": [rewrite(value) for value in intent.constraints],
+            "current_plan": [rewrite(value) for value in intent.current_plan],
+            "next_action_biases": [rewrite(value) for value in intent.next_action_biases],
+            "blockers": [rewrite(value) for value in intent.blockers],
+            "open_threads": [rewrite(value) for value in intent.open_threads],
             "character_id": intent.character_id,
-            "created_by_event_id": None,
-            "contributed_by_event_ids": [],
+            "created_by_event_id": intent.created_by_event_id,
+            "contributed_by_event_ids": intent.contributing_event_ids,
         }
 
     @staticmethod
@@ -545,12 +574,14 @@ class WorldAssembler:
             id_by_character_name: dict[str, str],
             location_id_by_name: dict[str, str],
             *,
-            user_id: str,
+            user_id: str, world_id: str,
     ) -> list[tuple[str, str]]:
         # A schema owner of "self" refers to the player's tracked state. `user_id` always resolves
         # to either a user-controlled character or the synthesized stub.
         if hint.strip().lower() == "self":
             return [("character", user_id)]
+        if hint.strip().lower() == "world":
+            return [("world", world_id)]
 
         owners: list[tuple[str, str]] = []
         for name in _split_owner_hint(hint):
@@ -570,7 +601,7 @@ class WorldAssembler:
             id_by_character_name: dict[str, str],
             location_id_by_name: dict[str, str],
             *,
-            user_id: str,
+            user_id: str, world_id: str,
             report: ConversionReport,
     ) -> list[dict]:
         grouped: dict[tuple[str, str], dict[str, dict]] = {}
@@ -597,7 +628,8 @@ class WorldAssembler:
                 continue
 
             owners = self._resolve_owners(
-                variable.owner_hint, id_by_character_name, location_id_by_name, user_id=user_id,
+                variable.owner_hint, id_by_character_name, location_id_by_name,
+                user_id=user_id, world_id=world_id,
             )
             if not owners:
                 report.note(
@@ -647,6 +679,51 @@ class WorldAssembler:
         if hint.strip().lower() == "self":
             return user_id
         return resolve_name(hint, id_by_character_name)
+
+    @staticmethod
+    def _container_rows(
+            extraction: ItemExtraction,
+            id_by_character_name: dict[str, str],
+            location_id_by_name: dict[str, str],
+            item_rows: list[dict],
+            *, user_id: str | None, report: ConversionReport,
+    ) -> list[dict]:
+        item_id_by_name = {row["name"]: row["id"] for row in item_rows}
+
+        def character_id(hint: str | None) -> str | None:
+            if not hint:
+                return None
+            if hint.strip().lower() == "self":
+                return user_id
+            return resolve_name(hint, id_by_character_name)
+
+        rows = []
+        for container in extraction.containers:
+            location_id = resolve_name(container.location_hint, location_id_by_name) \
+                if container.location_hint else None
+            owner_id = character_id(container.owner_hint)
+            holder_id = character_id(container.holder_hint)
+            if container.location_hint and not location_id:
+                report.note(
+                    f"Container {container.name!r} has an unresolved location hint "
+                    f"{container.location_hint!r}; retained with unknown location.",
+                    low_confidence=True,
+                )
+            rows.append({
+                "id": container.id,
+                "name": container.name,
+                "description": container.description,
+                "state": container.state,
+                "owner_id": owner_id,
+                "holder_id": holder_id,
+                "location_id": location_id,
+                "position": container.position,
+                "unlocking_item_ids": [
+                    item_id_by_name[name] for name in container.unlocking_item_names
+                    if name in item_id_by_name
+                ],
+            })
+        return rows
 
     def _item_and_stack_rows(
             self,

@@ -51,7 +51,7 @@ export function SillyTavernDropzone({ onFileSelected, disabled }) {
             <input
                 ref={inputRef}
                 type="file"
-                accept=".png,image/png"
+                accept=".png,image/png,.json,application/json"
                 className="st-import-dropzone-input"
                 disabled={disabled}
                 onChange={(event) => {

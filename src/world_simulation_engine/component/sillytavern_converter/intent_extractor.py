@@ -25,6 +25,7 @@ from world_simulation_engine.misc.enums import (
 
 from .character_extractor import CharacterExtraction, ExtractedCharacter
 from .fan_out import build_fan_out_graph, run_fan_out
+from .narrative_extractor import NarrativeExtraction
 from .pipeline_component import SillyTavernPipelineComponent
 
 _MAX_INTENTS_PER_CHARACTER = 3
@@ -43,6 +44,16 @@ class IntentCandidate(BaseModel):
     status: IntentStatus
     horizon: IntentHorizon
     desired_state: str | None = None
+    success_conditions: list[str] = Field(default_factory=list, max_length=5)
+    failure_conditions: list[str] = Field(default_factory=list, max_length=5)
+    maintenance_conditions: list[str] = Field(default_factory=list, max_length=5)
+    constraints: list[str] = Field(default_factory=list, max_length=5)
+    current_plan: list[str] = Field(default_factory=list, max_length=6)
+    next_action_biases: list[str] = Field(default_factory=list, max_length=5)
+    blockers: list[str] = Field(default_factory=list, max_length=5)
+    open_threads: list[str] = Field(default_factory=list, max_length=5)
+    created_by_event_id: str | None = None
+    contributing_event_ids: list[str] = Field(default_factory=list, max_length=5)
 
 
 class IntentCandidates(BaseModel):
@@ -66,6 +77,16 @@ class ExtractedIntent(BaseModel):
     status: IntentStatus
     horizon: IntentHorizon
     desired_state: str | None = None
+    success_conditions: list[str] = Field(default_factory=list)
+    failure_conditions: list[str] = Field(default_factory=list)
+    maintenance_conditions: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    current_plan: list[str] = Field(default_factory=list)
+    next_action_biases: list[str] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    open_threads: list[str] = Field(default_factory=list)
+    created_by_event_id: str | None = None
+    contributing_event_ids: list[str] = Field(default_factory=list)
 
 
 class IntentExtraction(BaseModel):
@@ -80,13 +101,17 @@ class IntentExtractor(SillyTavernPipelineComponent):
         self._fan_out_graph = build_fan_out_graph()
 
     async def _extract_one(
-            self, *, character: ExtractedCharacter, language: SupportedLanguage,
+            self, *, character: ExtractedCharacter, narrative: NarrativeExtraction,
+            language: SupportedLanguage,
     ) -> IntentCandidates:
         prompt = await self._prepare_global_prompt(
             language=language, prompt_name="st_intent_extractor",
         )
         llm = await self._prepare_global_llm_service()
-        return await llm.invoke_structured_with_repair(
+        relevant_events = [
+            event for event in narrative.events if character.id in event.involved_character_ids
+        ]
+        result = await llm.invoke_structured_with_repair(
             output_model=IntentCandidates,
             messages=prompt,
             data={
@@ -95,6 +120,7 @@ class IntentExtractor(SillyTavernPipelineComponent):
                 "public_state": character.result.public_state,
                 "private_state": character.result.private_state,
                 "current_activity": character.result.current_activity,
+                "events": [event.model_dump() for event in relevant_events],
             },
             repair_instruction=(
                 "Return a single IntentCandidates JSON object only, with at most "
@@ -103,20 +129,33 @@ class IntentExtractor(SillyTavernPipelineComponent):
             ),
             run_name="intent_extractor.extract_one",
         )
+        known_event_ids = {event.id for event in relevant_events}
+        for intent in result.intents:
+            if intent.created_by_event_id not in known_event_ids:
+                intent.created_by_event_id = None
+            intent.contributing_event_ids = list(dict.fromkeys(
+                event_id for event_id in intent.contributing_event_ids
+                if event_id in known_event_ids and event_id != intent.created_by_event_id
+            ))
+        return result
 
     async def extract(
             self,
             characters: CharacterExtraction,
+            narrative: NarrativeExtraction | None = None,
             *,
             language: SupportedLanguage,
     ) -> IntentExtraction:
         if not characters.characters:
             return IntentExtraction()
+        narrative = narrative or NarrativeExtraction()
 
         results = await run_fan_out(
             self._fan_out_graph,
             [
-                functools.partial(self._extract_one, character=character, language=language)
+                functools.partial(
+                    self._extract_one, character=character, narrative=narrative, language=language,
+                )
                 for character in characters.characters
             ],
             max_concurrency=CONFIG.sillytavern_import_max_concurrency,

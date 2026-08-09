@@ -1,8 +1,8 @@
 from unittest.mock import AsyncMock, Mock
 
 from world_simulation_engine.component.sillytavern_converter import PreprocessedCard, PreprocessedLorebookEntry
-from world_simulation_engine.component.sillytavern_converter.location_extractor import LocationCandidate, \
-    LocationExtractor, SynthesizedLocations, _stitch_parents
+from world_simulation_engine.component.sillytavern_converter.location_extractor import LandmarkCandidate, \
+    LocationCandidate, LocationExtractor, SynthesizedLocations, _stitch_parents
 from world_simulation_engine.component.sillytavern_converter.lorebook_classifier import ClassifiedItem, \
     LorebookClassification
 from world_simulation_engine.misc.enums import LorebookItemBucket, SupportedLanguage
@@ -78,6 +78,29 @@ async def test_extract_dispatches_one_call_per_location_item():
     assert set(by_name) == {"Example Region", "Example Archive"}
     assert by_name["Example Archive"].parent_id == by_name["Example Region"].id
     assert by_name["Example Region"].source_item_ids == ["entry:1"]
+
+
+async def test_extract_attaches_landmark_to_its_location():
+    card = make_card(lorebook_entries=[PreprocessedLorebookEntry(
+        source_id="1", name="Grove", content="The Moon Tree stands in the Grove.",
+    )])
+    classification = LorebookClassification(items=[
+        ClassifiedItem(item_id="entry:1", buckets=[LorebookItemBucket.LOCATION]),
+    ])
+    extractor = LocationExtractor(database=Mock())
+    extractor._prepare_global_prompt = AsyncMock(return_value=[])
+    extractor._prepare_global_llm_service = AsyncMock(return_value=Mock(
+        invoke_structured_with_repair=AsyncMock(return_value=LocationCandidate(
+            name="Grove", description="A wooded grove.", landmarks=[
+                LandmarkCandidate(name="Moon Tree", description="A singular ancient tree."),
+            ],
+        )),
+    ))
+
+    result = await extractor.extract(card, classification, language=SupportedLanguage.ENGLISH)
+
+    assert result.landmarks[0].location_id == result.locations[0].id
+    assert result.landmarks[0].name == "Moon Tree"
 
 
 async def test_extract_falls_back_to_synthesis_when_no_location_items():

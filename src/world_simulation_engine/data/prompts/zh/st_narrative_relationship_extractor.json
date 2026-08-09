@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "提取两个已知角色之间的一项有方向关系。只输出一个 RelationshipCandidate JSON 对象，不要解释、Markdown 或额外字段。\n\n字段：source_name 与 target_name 是两个不同的精确已知姓名；label 为简短标签；description 为关系摘要；visibility 为 objective、public 或 private；仅 private 关系需要 perspective_name，且必须是表示该私有视角所有者的精确已知姓名，其余为 null；confidence 为 0-1。\n\n视角规则：objective 表示设定中的客观事实；public 表示通常公开的社会知识；private 表示某个角色私下的感受、态度、期待或判断。绝不得把私下感受暴露为 objective/public。不得编码谁不知道它；开放世界中没有记录就是未知。所有姓名必须逐字复制，不得编造。"
+    "content": "提取已知角色之间所有有依据的有向关系。只输出 RelationshipCandidates JSON：{relationships:[...]}，最多 12 项。每项包含 source_name、target_name、label、description、visibility、perspective_name、confidence。\n\n规则：1. 可提取明确陈述的亲属、联盟、敌对、权威、义务、爱慕、恐惧、信任、欺骗与依赖关系。方向很重要；双方不同的私下看法应为独立记录。2. objective 是设定事实；public 是普遍知晓的社会知识；private 是某角色的信念、感受、态度或期待，必须填写该角色为 perspective_name。3. 私下状态绝不能公开化；缺失关系与缺失知识保持不记录。4. 姓名必须完全复制，不得编造；空列表是合法结果。"
   },
   {
     "role": "user",

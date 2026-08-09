@@ -360,7 +360,7 @@
     "chooseAnother": "Choose another file",
     "dropzone": {
       "prompt": "Drop the file here or click to select the file",
-      "hint": "SillyTavern character card (.png)"
+      "hint": "SillyTavern character card (.png or .json)"
     },
     "fields": {
       "name": "Character name",
@@ -686,7 +686,8 @@
         "st_equipment_extractor": "Equipment extractor",
         "st_opening_turn_extractor": "Opening turn extractor",
         "st_spatial_state_extractor": "Spatial state extractor",
-        "st_private_knowledge_extractor": "Private knowledge extractor"
+        "st_private_knowledge_extractor": "Private knowledge extractor",
+        "st_opening_narrative_extractor": "Opening narrative extractor"
       },
       "whitelistHint": "Base URL prefixes trusted enough to auto-download an image link from without asking first. Any extracted URL starting with one of these is downloaded automatically; anything else is only downloaded if you check it on the review page.",
       "whitelistAdd": "Add URL prefix",

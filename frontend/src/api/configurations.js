@@ -38,6 +38,7 @@ export const stImportComponents = [
     "st_opening_turn_extractor",
     "st_spatial_state_extractor",
     "st_private_knowledge_extractor",
+    "st_opening_narrative_extractor",
 ];
 
 export async function fetchConnections() {

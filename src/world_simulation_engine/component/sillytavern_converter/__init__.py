@@ -10,16 +10,19 @@ from .image_extractor import ImageCandidateRow, ImageExtraction, ImageExtractor,
     build_downloaded_media_row
 from .image_link_extractor import ImageLinkExtraction, ImageLinkExtractor, ImageUrlCandidate
 from .intent_extractor import ExtractedIntent, IntentCandidate, IntentCandidates, IntentExtraction, IntentExtractor
-from .item_extractor import ExtractedItem, ItemCandidates, ItemExtraction, ItemExtractor, \
-    ItemFieldCandidate
-from .location_extractor import ExtractedLocation, LocationCandidate, LocationExtraction, LocationExtractor, \
-    SynthesizedLocations
+from .item_extractor import ContainerFieldCandidate, ExtractedContainer, ExtractedItem, ItemCandidates, \
+    ItemExtraction, ItemExtractor, ItemFieldCandidate
+from .location_extractor import ExtractedLandmark, ExtractedLocation, LandmarkCandidate, LocationCandidate, \
+    LocationExtraction, LocationExtractor, SynthesizedLocations
 from .lorebook_classifier import ClassifiedItem, LorebookClassification, LorebookClassifier, \
     LorebookItemClassification
 from .narrative_extractor import ExtractedEvent, ExtractedMemory, ExtractedRelationship, \
-    HistoryEventCandidate, NarrativeExtraction, NarrativeExtractor, RelationshipCandidate
+    HistoricalMemoryCandidate, HistoryEventCandidate, NarrativeExtraction, NarrativeExtractor, \
+    RelationshipCandidate, RelationshipCandidates
 from .opening_turn_extractor import ExtractedOpeningTurn, OpeningTurnCandidate, OpeningTurnCandidates, \
     OpeningTurnExtraction, OpeningTurnExtractor
+from .opening_narrative_extractor import OpeningEventCandidate, OpeningMemoryCandidate, \
+    OpeningNarrativeExtractor
 from .pipeline_component import SillyTavernPipelineComponent
 from .private_knowledge_extractor import ExtractedPrivateKnowledgeClaim, \
     PrivateKnowledgeClaimCandidate, PrivateKnowledgeClaimCandidates, PrivateKnowledgeExtraction, \
