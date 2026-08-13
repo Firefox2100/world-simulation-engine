@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "只更新一个观察者对其他实体的私有认知模型。最多提出两个持久观点，只能使用给定的新记忆和 ID。观点描述单个实体；实体之间的关系应由关系系统处理。短暂行为、证据薄弱或已有内容应不更新。强化或反驳已有观点时必须使用其 claim_id。新观点的 evidence_effect 必须是 supports。只返回 SubjectiveClaimUpdateProposal JSON。"
+    "content": "只更新一个观察者对其他实体的私有认知模型。最多提出两个持久观点，只能使用给定的新记忆和 ID。观点描述单个实体；实体之间的关系应由关系系统处理。短暂行为、证据薄弱或已有内容应不更新。强化或反驳已有观点时必须使用其 claim_id。新观点的 evidence_effect 必须是 supports。只返回 SubjectiveClaimUpdateProposal JSON。\n\n标准示例（id/文本均为占位示例，请替换成你自己上下文中真实的 id 和证据）：\n无变化：{\"changes\":[]}\n新观点：{\"changes\":[{\"claim_id\":null,\"subject_id\":\"character_example_002\",\"category\":\"capability\",\"statement\":\"character_example_002 会撬锁。\",\"stance\":\"believes\",\"evidence_effect\":\"supports\",\"evidence_memory_ids\":[\"memory_example_001\"]}]}\n强化/反驳已有观点（claim_id 已知）：{\"changes\":[{\"claim_id\":\"claim_example_001\",\"subject_id\":\"character_example_002\",\"category\":\"personality\",\"statement\":\"character_example_002 比最初表现出来的更加谨慎。\",\"stance\":\"suspects\",\"evidence_effect\":\"contradicts\",\"evidence_memory_ids\":[\"memory_example_002\"]}]}"
   },
   {
     "role": "user",

@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "你要把导入角色卡中的一个角色提取为本系统角色模型。只输出一个 CharacterExtractionResult JSON 对象，不要解释、Markdown 或额外字段。\n\n字段：name 为原文姓名；age 为具体整数；gender 为简短文本；appearance 为 1-3 句外貌；description 总结背景、性格和身份；public_state 是当前可见状态；private_state 仅写该角色自身内容明确支持的当前思想、欲望或隐瞒意图；current_activity 为简短当前活动；speech_style 为说话风格；user_controlled 仅在明确是玩家人设模板时为 true。\n\n开放世界规则：\n- 不要描述角色不知道什么。缺少知识应由不存在记忆/信念记录来表示。\n- 除非该角色自己的内容明确支持，不得把世界秘密或他人私下状态写入 private_state。\n- 所有必填字段必须具体且非空。\n- 不得编造无依据事实，但应完成 age、gender、current_activity 所需的有限估计。"
+    "content": "你要把导入角色卡中的一个角色提取为本系统角色模型。只输出一个 CharacterExtractionResult JSON 对象，不要解释、Markdown 或额外字段。\n\n字段：name 为原文姓名；age 为具体整数；gender 为简短文本；appearance 为 1-3 句外貌；description 总结背景、性格和身份；public_state 是当前可见状态；private_state 仅写该角色自身内容明确支持的当前思想、欲望或隐瞒意图；current_activity 为简短当前活动；speech_style 为说话风格；user_controlled 仅在明确是玩家人设模板时为 true。\n\n开放世界规则：\n- 不要描述角色不知道什么。缺少知识应由不存在记忆/信念记录来表示。\n- 除非该角色自己的内容明确支持，不得把世界秘密或他人私下状态写入 private_state。\n- 所有必填字段必须具体且非空。\n- 不得编造无依据事实，但应完成 age、gender、current_activity 所需的有限估计。\n\n标准示例（完全虚构的占位内容——绝不要照搬这个示例的名字、性格特征或措辞，每个字段都应来自你自己的素材）：\n{\"name\":\"Example Character\",\"age\":29,\"gender\":\"女\",\"appearance\":\"中等身高，袖口沾着面粉，头发用简单的方式束起。\",\"description\":\"在集市上经营面包摊位，对顾客热情，但对自己的配方很讲究。\",\"public_state\":\"正在摊位上摆放新鲜出炉的面包。\",\"private_state\":\"希望攒够钱买第二台烤炉。\",\"current_activity\":\"在集市上卖面包\",\"speech_style\":\"说话热络健谈，常常话说到一半就转了话题。\",\"user_controlled\":false}"
   },
   {
     "role": "user",

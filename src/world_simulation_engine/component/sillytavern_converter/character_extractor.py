@@ -18,6 +18,7 @@ from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.enums import ComponentType, LorebookItemBucket, SupportedLanguage
 
 from .card_preprocessor import PreprocessedCard
+from .character_name_pool import character_related_names, merge_similar_names
 from .classifiable_items import content_by_item_id
 from .fan_out import build_fan_out_graph, run_fan_out
 from .lorebook_classifier import LorebookClassification
@@ -25,10 +26,10 @@ from .pipeline_component import SillyTavernPipelineComponent
 
 # A character extracted from voice-line content alone, with no matching bio entry anywhere, is
 # more likely a naming mismatch (stage 1 classifies each item with no cross-item context, so the
-# same person can surface under different surface forms - see _merge_similar_names) than a real
-# bio-less character; such voice-only clusters are dropped rather than fabricating a character
-# from dialogue samples alone.
-_MIN_NAME_MERGE_LENGTH = 2
+# same person can surface under different surface forms - see character_name_pool.merge_similar_names)
+# than a real bio-less character; such voice-only clusters are dropped rather than fabricating a
+# character from dialogue samples alone. Names with no bio at all (voice/history/relationship-only)
+# are instead picked up by BackgroundCharacterExtractor, which runs right after this stage.
 
 
 class CharacterCluster(BaseModel):
@@ -82,26 +83,6 @@ class CharacterExtraction(BaseModel):
     characters: list[ExtractedCharacter] = Field(default_factory=list)
 
 
-def _merge_similar_names(names: set[str]) -> dict[str, str]:
-    """Map each name to a canonical form, merging names that are substrings of one another.
-
-    Stage 1 classifies every item in isolation, so the same character can appear under different
-    surface forms across items. Names shorter than `_MIN_NAME_MERGE_LENGTH` are never merge targets,
-    to avoid a short/common substring accidentally absorbing an unrelated longer name.
-    """
-    canonical: dict[str, str] = {}
-    for name in sorted(names, key=len, reverse=True):
-        match = None
-        for existing in dict.fromkeys(canonical.values()):
-            if len(existing) < _MIN_NAME_MERGE_LENGTH or len(name) < _MIN_NAME_MERGE_LENGTH:
-                continue
-            if name in existing or existing in name:
-                match = existing
-                break
-        canonical[name] = match or name
-    return canonical
-
-
 class CharacterExtractor(SillyTavernPipelineComponent):
     COMPONENT_TYPE = ComponentType.ST_CHARACTER_EXTRACTOR
 
@@ -117,20 +98,11 @@ class CharacterExtractor(SillyTavernPipelineComponent):
         # fragment avoids fabricating a duplicate character from the card title.
         has_named_bio = any(classified.target_name for classified in bio_classifications)
 
-        character_buckets = (
-            LorebookItemBucket.CHARACTER_BIO, LorebookItemBucket.CHARACTER_VOICE,
-            LorebookItemBucket.HISTORY_EVENT, LorebookItemBucket.RELATIONSHIP,
-        )
         # Merge names across every character-related bucket so shortened forms share a cluster.
-        names = {
-            classified.target_name
-            for bucket in character_buckets
-            for classified in classification.by_bucket(bucket)
-            if classified.target_name
-        }
+        names = character_related_names(classification)
         if not has_named_bio:
             names.add(card.name)
-        canonical_names = _merge_similar_names(names)
+        canonical_names = merge_similar_names(names)
 
         clusters: dict[str, CharacterCluster] = {}
 

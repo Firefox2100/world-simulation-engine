@@ -121,12 +121,12 @@ class SimulatorComponent:
 {{% for entry in actors %}}
 {{% if entry.emotion %}}- {{{{ entry.{actor_key}.name }}}} ({{{{ entry.{actor_key}.id }}}}): valence {{{{ entry.emotion.valence }}}}, arousal {{{{ entry.emotion.arousal }}}}, dominance {{{{ entry.emotion.dominance }}}}, extensions {{{{ entry.emotion.dimensions }}}}
 {{% endif %}}{{% endfor %}}
-Use each actor's emotion only for that actor's risk, interruption, intent urgency, and tone. Never disclose one actor's private emotion to another."""
+Use each actor's emotion only for that actor's risk, interruption, intent urgency, and tone. Let high arousal or negative valence surface as physical tension, clipped phrasing, guarded posture, or abrupt movement; let calm or positive states surface as looser, slower, more open description. Do not default to calm or neutral framing when the emotion values indicate otherwise. Never disclose one actor's private emotion to another."""
         else:
             content = f"""## Private emotion constraint
 
 {{% if {expression} %}}- valence {{{{ {expression}.valence }}}}; arousal {{{{ {expression}.arousal }}}}; dominance {{{{ {expression}.dominance }}}}; extensions {{{{ {expression}.dimensions }}}}
-Use this as a soft constraint for risk tolerance, interruption, intent urgency, and tone. Do not state numeric values or expose private emotion.
+Use this as a soft constraint for risk tolerance, interruption, intent urgency, and tone. Let high arousal or negative valence surface as tension, clipped phrasing, or abrupt action; let calm or positive states surface as looser, slower phrasing. Do not default to calm or neutral framing when the emotion values indicate otherwise. Do not state numeric values or expose private emotion.
 {{% else %}}- disabled
 {{% endif %}}"""
         return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]

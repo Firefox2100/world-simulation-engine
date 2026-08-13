@@ -1,8 +1,9 @@
 """Stage 3 of the SillyTavern import pipeline: deterministic, no LLM calls.
 
-Takes every stage-2 output (`CharacterExtraction`, `LocationExtraction`, `WorldLoreExtraction`,
-`NarrativeExtraction`, `IntentExtraction`, `VariableSchemaExtraction`, `ItemExtraction`,
-`EquipmentExtraction`, `OpeningTurnExtraction`, `SpatialStateExtraction`) and resolves them into one
+Takes every stage-2 output (`CharacterExtraction`, `BackgroundCharacterExtraction`,
+`LocationExtraction`, `WorldLoreExtraction`, `NarrativeExtraction`, `IntentExtraction`,
+`VariableSchemaExtraction`, `ItemExtraction`, `EquipmentExtraction`, `OpeningTurnExtraction`,
+`SpatialStateExtraction`) and resolves them into one
 `WorldImportService`-shaped bundle (§7): a `world`
 row plus a `sections` dict of the exact same `dict[str, list[dict]]` shape
 `WorldImportService._import_world_contents` already consumes. Every stage-2 entity already carries a
@@ -37,6 +38,7 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.misc.enums import SupportedLanguage, TurnType
 from world_simulation_engine.model.variable import VariableDefinition
 
+from .background_character_extractor import BackgroundCharacterExtraction
 from .card_preprocessor import PreprocessedCard
 from .character_extractor import CharacterExtraction
 from .equipment_extractor import EquipmentExtraction
@@ -154,6 +156,7 @@ class WorldAssembler:
             language: SupportedLanguage,
             characters: CharacterExtraction,
             locations: LocationExtraction,
+            background_characters: BackgroundCharacterExtraction | None = None,
             world_lore: WorldLoreExtraction,
             narrative: NarrativeExtraction,
             intents: IntentExtraction,
@@ -166,6 +169,9 @@ class WorldAssembler:
             opening_narrative: NarrativeExtraction | None = None,
     ) -> AssembledWorld:
         report = ConversionReport()
+        background_characters = background_characters or BackgroundCharacterExtraction()
+        for note in background_characters.conversion_notes:
+            report.note(note, low_confidence=True)
         opening_turns = opening_turns or OpeningTurnExtraction()
         spatial_state = spatial_state or SpatialStateExtraction()
         private_knowledge = private_knowledge or PrivateKnowledgeExtraction()
@@ -175,6 +181,26 @@ class WorldAssembler:
             memories=[*narrative.memories, *opening_narrative.memories],
             relationships=[*narrative.relationships, *opening_narrative.relationships],
         )
+        for source_id in dict.fromkeys([
+            *narrative.dropped_event_source_ids, *opening_narrative.dropped_event_source_ids,
+        ]):
+            report.note(
+                f"History-event source {source_id!r} produced no name that resolved against the "
+                "extracted character roster - the event and any memories it would have created "
+                "were dropped entirely; review the source directly for anything missing.",
+                low_confidence=True,
+            )
+        for source_id in dict.fromkeys([
+            *narrative.dropped_relationship_source_ids,
+            *opening_narrative.dropped_relationship_source_ids,
+        ]):
+            report.note(
+                f"Relationship source {source_id!r} produced at least one candidate that was "
+                "dropped - either its source/target name did not resolve against the extracted "
+                "character roster, or it was a private relationship missing its owning "
+                "perspective character; review the source directly for anything missing.",
+                low_confidence=True,
+            )
 
         id_by_character_name = {
             character.target_name: character.id for character in characters.characters
@@ -187,6 +213,22 @@ class WorldAssembler:
                 "character['self'] references, if any, will render empty until resolved manually.",
                 low_confidence=True,
             )
+
+        # {{char}}/{{user}} and the main character_rows must only ever resolve against real main
+        # characters (id_by_character_name above) - but a holder_hint/owner_hint/location_hint
+        # written by item/equipment/variable extraction can just as legitimately name a background
+        # character (a guard, a bartender) as a main one, and those extractors have no way to know
+        # the difference when they wrote the hint. This combined map is for hint resolution only;
+        # main takes precedence on any name collision, though the background reconciliation pass
+        # already excludes names that resolve to a main character in the first place.
+        id_by_character_name_including_background = {
+            **{
+                name: character.id
+                for character in background_characters.characters
+                for name in (character.target_name, character.result.name)
+            },
+            **id_by_character_name,
+        }
 
         user_id, user_stub_row = self._resolve_user(characters)
 
@@ -255,16 +297,31 @@ class WorldAssembler:
 
         world_id = str(uuid4())
         location_id_by_name = {location.name: location.id for location in locations.locations}
+
+        background_character_rows = [
+            self._background_character_row(character, location_id_by_name=location_id_by_name)
+            for character in background_characters.characters
+        ]
+        for character, row in zip(background_characters.characters, background_character_rows):
+            if character.result.location_hint and not row["location_id"]:
+                report.note(
+                    f"Background character {character.result.name!r} has a location hint "
+                    f"{character.result.location_hint!r} that did not resolve to any extracted "
+                    "location; retained without spatial placement for manual review.",
+                    low_confidence=True,
+                )
+
         variable_rows = self._variable_set_rows(
-            variables, id_by_character_name, location_id_by_name,
+            variables, id_by_character_name_including_background, location_id_by_name,
             user_id=user_id, world_id=world_id, report=report,
         )
         item_rows, item_stack_rows = self._item_and_stack_rows(
-            items, id_by_character_name, location_id_by_name, placement_by_entity,
+            items, id_by_character_name_including_background, location_id_by_name, placement_by_entity,
             user_id=user_id, report=report,
         )
         equipment_rows = self._equipment_rows(
-            equipment, id_by_character_name, placement_by_entity, user_id=user_id, report=report,
+            equipment, id_by_character_name_including_background, placement_by_entity,
+            user_id=user_id, report=report,
         )
         landmark_rows = [
             {
@@ -274,7 +331,7 @@ class WorldAssembler:
             for landmark in locations.landmarks
         ]
         container_rows = self._container_rows(
-            items, id_by_character_name, location_id_by_name, item_rows,
+            items, id_by_character_name_including_background, location_id_by_name, item_rows,
             user_id=user_id, report=report,
         )
 
@@ -296,7 +353,9 @@ class WorldAssembler:
             "locations": location_rows,
             "landmarks": landmark_rows,
             "characters": character_rows,
-            "background_characters": [user_stub_row] if user_stub_row else [],
+            "background_characters": (
+                ([user_stub_row] if user_stub_row else []) + background_character_rows
+            ),
             "items": item_rows,
             "item_stacks": item_stack_rows,
             "equipment": equipment_rows,
@@ -398,6 +457,22 @@ class WorldAssembler:
             "speech_style": rewrite(result.speech_style),
             "location_id": placement.location_id if placement else None,
             "position": placement.position if placement else None,
+        }
+
+    @staticmethod
+    def _background_character_row(character, *, location_id_by_name: dict[str, str]) -> dict:
+        result = character.result
+        location_id = (
+            resolve_name(result.location_hint, location_id_by_name)
+            if result.location_hint else None
+        )
+        return {
+            "id": character.id,
+            "name": result.name,
+            "description": result.description,
+            "location_id": location_id,
+            "position": None,
+            "landmark_id": None,
         }
 
     @staticmethod

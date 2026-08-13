@@ -696,6 +696,167 @@
       ]
     }
   ],
+  "multi_actor_coordination_cases": [
+    {
+      "case_id": "arthur_and_clara_both_handle_ledger",
+      "probes": "exclusive_resource - two actors physically handling the same landmark at once (not passive observation, so the coordinator's public-landmark exception should not apply).",
+      "actor_plans": [
+        {
+          "actor_id": "character_arthur_moore",
+          "actions": [
+            {
+              "type": "manipulate",
+              "label": "add_note_to_ledger",
+              "target_ids": ["landmark_visitors_room_ledger"],
+              "utterance": null,
+              "intended_duration_seconds": 8,
+              "interruptible": true,
+              "interruption_triggers": ["clara_reaches_for_ledger"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        },
+        {
+          "actor_id": "character_clara_whitlock",
+          "actions": [
+            {
+              "type": "manipulate",
+              "label": "flip_ledger_to_recent_page",
+              "target_ids": ["landmark_visitors_room_ledger"],
+              "utterance": null,
+              "intended_duration_seconds": 6,
+              "interruptible": true,
+              "interruption_triggers": ["arthur_already_holds_ledger"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "eleanor_interrupts_arthur_and_clara",
+      "probes": "interruption - two actors both attempt to speak into the same moment, one addressed to the other.",
+      "actor_plans": [
+        {
+          "actor_id": "character_arthur_moore",
+          "actions": [
+            {
+              "type": "speak",
+              "label": "press_clara_on_room_7",
+              "target_ids": ["character_clara_whitlock"],
+              "utterance": "Who was really staying in Room 7, Miss Whitlock?",
+              "intended_duration_seconds": 5,
+              "interruptible": true,
+              "interruption_triggers": ["eleanor_cuts_in"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        },
+        {
+          "actor_id": "character_eleanor_graves",
+          "actions": [
+            {
+              "type": "speak",
+              "label": "redirect_arthur_from_clara",
+              "target_ids": ["character_arthur_moore"],
+              "utterance": "Mr. Moore, perhaps we should discuss town matters somewhere more private.",
+              "intended_duration_seconds": 4,
+              "interruptible": true,
+              "interruption_triggers": ["arthur_ignores_eleanor"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "eleanor_takes_receipt_clara_is_handing_over",
+      "probes": "mutually_incompatible - one actor's item hand-off and another actor's simultaneous seizure of the same item cannot both resolve as described.",
+      "actor_plans": [
+        {
+          "actor_id": "character_clara_whitlock",
+          "actions": [
+            {
+              "type": "give",
+              "label": "hand_room_7_receipt_to_arthur",
+              "target_ids": ["item_room_7_cash_receipt", "character_arthur_moore"],
+              "utterance": null,
+              "intended_duration_seconds": 4,
+              "interruptible": true,
+              "interruption_triggers": ["eleanor_intervenes"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        },
+        {
+          "actor_id": "character_eleanor_graves",
+          "actions": [
+            {
+              "type": "take",
+              "label": "take_receipt_before_arthur_sees_it",
+              "target_ids": ["item_room_7_cash_receipt", "character_clara_whitlock"],
+              "utterance": null,
+              "intended_duration_seconds": 3,
+              "interruptible": true,
+              "interruption_triggers": ["clara_already_handed_it_over"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "case_id": "clara_repeats_warning_a_fourth_time",
+      "probes": "repeated_reaction - reaction_history already shows this actor proposing the identical reaction 3 times; the coordinator should stop rather than ask for a 4th.",
+      "reaction_history": [
+        {
+          "actor_id": "character_clara_whitlock",
+          "action_signature": "warn_arthur_about_watchers",
+          "count": 3
+        }
+      ],
+      "actor_plans": [
+        {
+          "actor_id": "character_arthur_moore",
+          "actions": [
+            {
+              "type": "observe",
+              "label": "study_notice_board_for_older_papers",
+              "target_ids": ["landmark_notice_board"],
+              "utterance": null,
+              "intended_duration_seconds": 12,
+              "interruptible": true,
+              "interruption_triggers": ["someone_blocks_notice_board"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        },
+        {
+          "actor_id": "character_clara_whitlock",
+          "actions": [
+            {
+              "type": "speak",
+              "label": "warn_arthur_about_watchers",
+              "target_ids": ["character_arthur_moore"],
+              "utterance": "Mr. Moore, you really should stop drawing attention to yourself like that.",
+              "intended_duration_seconds": 4,
+              "interruptible": true,
+              "interruption_triggers": ["arthur_ignores_clara_again"],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "character_simulator_cases": [
     {
       "case_id": "clara_hears_room_7_question",

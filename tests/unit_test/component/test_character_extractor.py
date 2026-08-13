@@ -3,21 +3,22 @@ from unittest.mock import AsyncMock, Mock
 
 from world_simulation_engine.component.sillytavern_converter import PreprocessedCard, PreprocessedLorebookEntry
 from world_simulation_engine.component.sillytavern_converter.character_extractor import CharacterExtractionResult, \
-    CharacterExtractor, _merge_similar_names
+    CharacterExtractor
+from world_simulation_engine.component.sillytavern_converter.character_name_pool import merge_similar_names
 from world_simulation_engine.component.sillytavern_converter.lorebook_classifier import ClassifiedItem, \
     LorebookClassification
 from world_simulation_engine.misc.enums import LorebookItemBucket, SupportedLanguage
 
 
 def test_merge_similar_names_merges_substrings_into_the_longer_form():
-    canonical = _merge_similar_names({"Casey Morgan", "Casey"})
+    canonical = merge_similar_names({"Casey Morgan", "Casey"})
 
     assert canonical["Casey"] == "Casey Morgan"
     assert canonical["Casey Morgan"] == "Casey Morgan"
 
 
 def test_merge_similar_names_leaves_unrelated_names_distinct():
-    canonical = _merge_similar_names({"Example Character", "Clara Whitlock"})
+    canonical = merge_similar_names({"Example Character", "Clara Whitlock"})
 
     assert canonical["Example Character"] == "Example Character"
     assert canonical["Clara Whitlock"] == "Clara Whitlock"
@@ -25,7 +26,7 @@ def test_merge_similar_names_leaves_unrelated_names_distinct():
 
 def test_merge_similar_names_does_not_merge_names_shorter_than_minimum():
     # Single characters ("A") must never absorb an unrelated name just by substring luck.
-    canonical = _merge_similar_names({"A", "Ada"})
+    canonical = merge_similar_names({"A", "Ada"})
 
     assert canonical["A"] == "A"
     assert canonical["Ada"] == "Ada"

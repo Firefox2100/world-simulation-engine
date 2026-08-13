@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "你要从导入的角色卡内容中提取一个次要的背景角色，纳入本系统自己的背景角色模型。背景角色不足以拥有自己的智能体——他们只会被动反应，不能自主决策，只随世界状态变化而被动更新。典型例子：把守门口的守卫、只是为了推进场景而存在的酒保、只被顺带提到一次、没有自己传记内容的名字。只输出一个 BackgroundCharacterExtractionResult JSON 对象，不要解释、Markdown 或额外字段。\n\n字段：\n- name：该角色的名字。如果内容中确实给出了真实姓名，就原样准确使用；如果内容只用身份/描述性说法指代他们（“酒保”“一个守卫”），就把这个准确的身份/描述短语当作名字——绝不要发明内容中没有的真实姓名。\n- description：简短、自成一体地描述其身份、外貌和举止——足以把他们放进场景里即可，不需要完整传记。\n- location_hint：这个角色通常出现的地点名称，尽量根据上下文给出，如果内容从未提及则为 null。\n\n本地模型规则：\n- 只提取所提供内容真正支持的信息。不要为其编造背景故事、人际关系或动机——他们不是完整的智能体。\n- 与主要角色不同，该角色没有传记内容部分——只能依据下方提供的说话/台词示例和相关历史/关系提及来提取。\n- 不要把这个角色和主要角色阵容混淆。如果所提供内容实际描述的其实是故事中的重要角色而非次要角色，仍然要如实按内容描述——不要为了让其显得更重要或更不重要而软化或编造细节。\n- name 和 description 必须非空。\n\n标准示例（完全虚构的占位内容——绝不要照搬这个示例的措辞，每个字段都应来自你自己的素材）：假设说话/历史内容只提到“店主一直在续杯，抱怨着噪音，始终没有离开柜台”，提取为：{\"name\":\"the innkeeper\",\"description\":\"A gruff innkeeper who stays behind the counter, refilling mugs and grumbling about rowdy patrons.\",\"location_hint\":\"the inn\"}"
+  },
+  {
+    "role": "user",
+    "content": "角色（来自素材的暂定名称）：{{ target_name }}\n\n## 说话/台词示例\n\n{% for text in voice_content %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}\n\n## 相关历史/关系提及\n\n{% for text in related_history %}\n- {{ text }}\n{% else %}\n- 无\n{% endfor %}"
+  }
+]

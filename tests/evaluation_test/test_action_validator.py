@@ -8,11 +8,13 @@ from world_simulation_engine.component.simulator.character_simulator import Char
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 from world_simulation_engine.component.simulator.scene_coordinator import SceneCoordinator
 from world_simulation_engine.misc.enums import ComponentType, SceneCoordinationStatus
-from world_simulation_engine.model import ActionCandidateSet, CharacterActionPlan, ProposedAction
+from world_simulation_engine.model import ActionCandidateSet, CharacterActionPlan, ProposedAction, \
+    ReactionHistoryEntry
 
 from workflow_helpers import (
     ACTION_VALIDATOR_EVALUATION_CASES as EVALUATION_CASES,
     INPUT_PIPELINE_CASES,
+    MULTI_ACTOR_COORDINATION_CASES,
     USER_COORDINATION_CASES,
     case_ids,
     write_case_result,
@@ -42,6 +44,15 @@ def _user_coordination_output_path() -> Path:
         os.getenv(
             "WSE_EVAL_USER_ACTION_COORDINATOR_OUTPUT",
             "tests/evaluation_test/output/user_action_coordination_results.json",
+        )
+    )
+
+
+def _multi_actor_coordination_output_path() -> Path:
+    return Path(
+        os.getenv(
+            "WSE_EVAL_MULTI_ACTOR_COORDINATION_OUTPUT",
+            "tests/evaluation_test/output/multi_actor_coordination_results.json",
         )
     )
 
@@ -658,6 +669,70 @@ async def test_evaluate_user_action_coordination_outputs_result(
             "case_id": case["case_id"],
             "actor_id": case["actor_id"],
             "actions": [action.model_dump(mode="json") for action in actions],
+            "coordination": coordination.model_dump(mode="json"),
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    ("mock_graph_world_setup", "case"),
+    MULTI_ACTOR_COORDINATION_CASES,
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(MULTI_ACTOR_COORDINATION_CASES),
+)
+async def test_evaluate_multi_actor_coordination_outputs_result(
+    case,
+    evaluation_seeded_database,
+    evaluation_chat_model_config,
+    mock_graph_world_setup,
+):
+    """Hand-authored genuine multi-actor conflicts (as opposed to every other coordination
+    category here, which only ever supplies one actor's actions at a time). Each case supplies
+    several actors' plans at once so the coordinator actually has to detect exclusive-resource
+    contention, interruption, or mutual incompatibility between *different* actors - the single-
+    actor categories above can never exercise that path, since SceneCoordinator's own conflict
+    detection is only meaningful across actors. `reaction_history` is optional per case and lets a
+    case seed a prior reaction count directly, to probe the repeated_reaction stopping criterion
+    without needing several real coordination round-trips first.
+    """
+    await _link_chat_components(
+        database=evaluation_seeded_database,
+        simulation_id=mock_graph_world_setup.simulation.id,
+        config_id=evaluation_chat_model_config.id,
+        components=[ComponentType.SCENE_COORDINATOR],
+    )
+    coordinator = SceneCoordinator(database=evaluation_seeded_database)
+    action_plans = [
+        _action_plan(
+            plan["actor_id"],
+            [ProposedAction.model_validate(action) for action in plan["actions"]],
+        )
+        for plan in case["actor_plans"]
+    ]
+    reaction_history = [
+        ReactionHistoryEntry.model_validate(entry)
+        for entry in case.get("reaction_history", [])
+    ]
+
+    coordination = await coordinator.coordinate_scene(
+        world_id=mock_graph_world_setup.world.id,
+        simulation_id=mock_graph_world_setup.simulation.id,
+        action_plans=action_plans,
+        reaction_history=reaction_history,
+    )
+
+    _assert_multi_actor_coordination_is_internally_consistent(coordination, action_plans)
+
+    _write_case_result(
+        output_path=_multi_actor_coordination_output_path(),
+        world_id=mock_graph_world_setup.world.id,
+        simulation_id=mock_graph_world_setup.simulation.id,
+        case_order=MULTI_ACTOR_COORDINATION_CASES,
+        case_result={
+            "case_id": case["case_id"],
+            "probes": case.get("probes"),
+            "action_plans": [plan.model_dump(mode="json") for plan in action_plans],
+            "reaction_history": [entry.model_dump(mode="json") for entry in reaction_history],
             "coordination": coordination.model_dump(mode="json"),
         },
     )

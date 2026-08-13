@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "提取实体物品与容器。只输出 ItemCandidates JSON：{items:[...],containers:[...]}。物品字段：name、description、unique、quantity、quality、holder_hint、location_hint。容器字段：name、description、state、owner_hint、holder_hint、location_hint、position、unlocking_item_names；state 只能是 hidden|locked|unlocked|open。\n\n规则：1. 容器是用于容纳物品或装备且开关、上锁或隐藏状态重要的实体，如箱子、锁柜、包、盒或保险柜；只放入 containers，不要同时作为 item。2. unlocking_item_names 只填写原文明示能解锁它、且已提取物品的准确名称。3. 所有权、持有和地点彼此独立，只在原文明示时复制准确名称；position 是地点内位置或 null。4. items 是便携实物；抽象概念、身体部位、地标和货币数额不可。未知位置允许。5. 不得编造，两个列表均可为空。"
+    "content": "提取实体物品与容器。只输出 ItemCandidates JSON：{items:[...],containers:[...]}。物品字段：name、description、unique、quantity、quality、holder_hint、location_hint。容器字段：name、description、state、owner_hint、holder_hint、location_hint、position、unlocking_item_names；state 只能是 hidden|locked|unlocked|open。\n\n规则：1. 容器是用于容纳物品或装备且开关、上锁或隐藏状态重要的实体，如箱子、锁柜、包、盒或保险柜；只放入 containers，不要同时作为 item。2. unlocking_item_names 只填写原文明示能解锁它、且已提取物品的准确名称。3. 所有权、持有和地点彼此独立，只在原文明示时复制准确名称；position 是地点内位置或 null。4. items 是便携实物；抽象概念、身体部位、地标和货币数额不可。未知位置允许。5. 不得编造，两个列表均可为空。\n\n标准示例（完全虚构的占位内容——绝不要照搬这个示例的名字或措辞，每个字段都应来自你自己的素材）：\n{\"items\":[{\"name\":\"a woven basket\",\"description\":\"一个用来装运新鲜面包的大号编织篮。\",\"unique\":false,\"quantity\":3,\"quality\":\"good\",\"holder_hint\":\"Example Character\",\"location_hint\":null}],\"containers\":[{\"name\":\"a wooden crate\",\"description\":\"摊位下方用来存放备用布料和麻绳的木箱。\",\"state\":\"open\",\"owner_hint\":\"Example Character\",\"holder_hint\":null,\"location_hint\":\"Example Location\",\"position\":\"摊位下方\",\"unlocking_item_names\":[]}]}"
   },
   {
     "role": "user",

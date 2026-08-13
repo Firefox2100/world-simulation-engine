@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.enums import ComponentType, SupportedLanguage
 
+from .background_character_extractor import BackgroundCharacterExtraction
 from .character_extractor import CharacterExtraction
 from .fan_out import build_fan_out_graph, run_fan_out
 from .narrative_extractor import ExtractedEvent, ExtractedMemory, NarrativeExtraction
@@ -71,12 +72,16 @@ class OpeningNarrativeExtractor(SillyTavernPipelineComponent):
         return turn_index, result
 
     async def extract(
-            self, opening: OpeningTurnExtraction, characters: CharacterExtraction, *,
+            self, opening: OpeningTurnExtraction, characters: CharacterExtraction,
+            background_characters: BackgroundCharacterExtraction | None = None, *,
             language: SupportedLanguage,
     ) -> NarrativeExtraction:
         if not opening.turns:
             return NarrativeExtraction()
-        known_names = [character.target_name for character in characters.characters]
+        background_characters = background_characters or BackgroundCharacterExtraction()
+        known_names = [character.target_name for character in characters.characters] + [
+            character.result.name for character in background_characters.characters
+        ]
         results = await run_fan_out(
             self._fan_out_graph,
             [
@@ -90,6 +95,9 @@ class OpeningNarrativeExtractor(SillyTavernPipelineComponent):
             run_name="opening_narrative_extractor.extract",
         )
         id_by_name = {character.target_name: character.id for character in characters.characters}
+        for character in background_characters.characters:
+            id_by_name.setdefault(character.target_name, character.id)
+            id_by_name.setdefault(character.result.name, character.id)
         events = []
         memories = []
         for turn_index, candidate in results:

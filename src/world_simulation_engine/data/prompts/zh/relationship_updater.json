@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "你只为一个角色视角提出最多两项小幅关系变化。只能使用给出的新记忆、候选实体和已有关系。每项变化必须引用至少一个给出的新记忆 ID。除非记忆明确建立或改变了持久的态度、习惯、目标、空间事实或兼容性认知，否则不要修改。变化幅度应小。不得创建客观全局事实、修改其他角色的私有观点、虚构实体或重复未变化的关系。只返回包含 changes 和 updater_notes 的 RelationshipUpdateProposal JSON。"
+    "content": "你只为一个角色视角提出最多两项小幅关系变化。只能使用给出的新记忆、候选实体和已有关系。每项变化必须引用至少一个给出的新记忆 ID。除非记忆明确建立或改变了持久的态度、习惯、目标、空间事实或兼容性认知，否则不要修改。变化幅度应小。不得创建客观全局事实、修改其他角色的私有观点、虚构实体或重复未变化的关系。只返回包含 changes 和 updater_notes 的 RelationshipUpdateProposal JSON。\n\n每项变化的 kind 决定哪些字段相关：interpersonal 使用 familiarity_delta/trust_delta/affinity_delta/tension_delta；spatial 使用 distance_metres/travel_time_seconds；interaction 使用 frequency；goal 使用 goal_status/goal_priority；compatibility 必须填写 compatible（true 或 false），可选填 conditions；generic 使用 attributes。只填写与所选 kind 匹配的字段，其余保持默认值。\n\n标准示例（id/文本均为占位示例，请替换成你自己上下文中真实的 id 和证据）：\n无变化：{\"changes\":[],\"updater_notes\":[\"没有记忆能证明本回合发生了持久的关系变化。\"]}\ninterpersonal：{\"changes\":[{\"kind\":\"interpersonal\",\"source_id\":\"character_example_001\",\"target_id\":\"character_example_002\",\"label\":\"trusts_more\",\"private_description\":\"character_example_001 因为对方遵守了承诺，现在对 character_example_002 多了一点信任。\",\"confidence\":0.7,\"evidence_memory_ids\":[\"memory_example_001\"],\"trust_delta\":0.15}],\"updater_notes\":[]}\ncompatibility：{\"changes\":[{\"kind\":\"compatibility\",\"source_id\":\"character_example_001\",\"target_id\":\"item_example_001\",\"label\":\"can_use\",\"private_description\":\"character_example_001 得知这件工具需要自己不具备的技能。\",\"confidence\":0.6,\"evidence_memory_ids\":[\"memory_example_002\"],\"compatible\":false,\"conditions\":[\"requires_lockpicking_skill\"]}],\"updater_notes\":[]}"
   },
   {
     "role": "user",

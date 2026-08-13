@@ -1,10 +1,11 @@
 from unittest.mock import AsyncMock, Mock, patch
 
 from world_simulation_engine.component.sillytavern_converter import world_reconstructor as wr_module
-from world_simulation_engine.component.sillytavern_converter import AssembledWorld, CharacterExtraction, \
-    ConversionReport, EquipmentExtraction, IntentExtraction, ItemExtraction, LocationExtraction, \
-    NarrativeExtraction, OpeningTurnExtraction, PreprocessedCard, PrivateKnowledgeExtraction, SpatialStateExtraction, \
-    VariableSchemaExtraction, WorldLoreExtraction
+from world_simulation_engine.component.sillytavern_converter import AssembledWorld, \
+    BackgroundCharacterExtraction, CharacterExtraction, ConversionReport, EquipmentExtraction, \
+    IntentExtraction, ItemExtraction, LocationExtraction, NarrativeExtraction, OpeningTurnExtraction, \
+    PreprocessedCard, PrivateKnowledgeExtraction, SpatialStateExtraction, VariableSchemaExtraction, \
+    WorldLoreExtraction
 from world_simulation_engine.component.sillytavern_converter.lorebook_classifier import LorebookClassification
 from world_simulation_engine.component.sillytavern_converter.world_reconstructor import WorldReconstructor
 from world_simulation_engine.misc.enums import SupportedLanguage
@@ -20,6 +21,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
     preprocessed = PreprocessedCard(name="Card", first_message="Hi")
     classification = LorebookClassification(items=[])
     characters = CharacterExtraction(characters=[])
+    background_characters = BackgroundCharacterExtraction(characters=[])
     locations = LocationExtraction(locations=[])
     world_lore = WorldLoreExtraction()
     narrative = NarrativeExtraction()
@@ -36,6 +38,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
     with patch.object(wr_module, "CardPreprocessor") as card_preprocessor_cls, \
             patch.object(wr_module, "LorebookClassifier") as classifier_cls, \
             patch.object(wr_module, "CharacterExtractor") as character_extractor_cls, \
+            patch.object(wr_module, "BackgroundCharacterExtractor") as background_character_extractor_cls, \
             patch.object(wr_module, "LocationExtractor") as location_extractor_cls, \
             patch.object(wr_module, "WorldLoreExtractor") as world_lore_extractor_cls, \
             patch.object(wr_module, "NarrativeExtractor") as narrative_extractor_cls, \
@@ -52,6 +55,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
         card_preprocessor_cls.preprocess.return_value = preprocessed
         classifier_cls.return_value.classify = AsyncMock(return_value=classification)
         character_extractor_cls.return_value.extract = AsyncMock(return_value=characters)
+        background_character_extractor_cls.return_value.extract = AsyncMock(return_value=background_characters)
         location_extractor_cls.return_value.extract = AsyncMock(return_value=locations)
         world_lore_extractor_cls.return_value.extract = AsyncMock(return_value=world_lore)
         narrative_extractor_cls.return_value.extract = AsyncMock(return_value=narrative)
@@ -76,6 +80,9 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
         character_extractor_cls.return_value.extract.assert_awaited_once_with(
             preprocessed, classification, language=SupportedLanguage.ENGLISH,
         )
+        background_character_extractor_cls.return_value.extract.assert_awaited_once_with(
+            preprocessed, classification, characters, language=SupportedLanguage.ENGLISH,
+        )
         location_extractor_cls.return_value.extract.assert_awaited_once_with(
             preprocessed, classification, language=SupportedLanguage.ENGLISH,
         )
@@ -83,7 +90,8 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             preprocessed, classification, language=SupportedLanguage.ENGLISH,
         )
         narrative_extractor_cls.return_value.extract.assert_awaited_once_with(
-            preprocessed, classification, characters, language=SupportedLanguage.ENGLISH,
+            preprocessed, classification, characters, background_characters,
+            language=SupportedLanguage.ENGLISH,
         )
         intent_extractor_cls.return_value.extract.assert_awaited_once_with(
             characters, narrative, language=SupportedLanguage.ENGLISH,
@@ -105,7 +113,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             language=SupportedLanguage.ENGLISH,
         )
         opening_narrative_extractor_cls.return_value.extract.assert_awaited_once_with(
-            opening_turns, characters, language=SupportedLanguage.ENGLISH,
+            opening_turns, characters, background_characters, language=SupportedLanguage.ENGLISH,
         )
         private_knowledge_extractor_cls.return_value.extract.assert_awaited_once_with(
             characters, locations, items, equipment, narrative,
@@ -115,6 +123,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             preprocessed,
             language=SupportedLanguage.ENGLISH,
             characters=characters,
+            background_characters=background_characters,
             locations=locations,
             world_lore=world_lore,
             narrative=narrative,

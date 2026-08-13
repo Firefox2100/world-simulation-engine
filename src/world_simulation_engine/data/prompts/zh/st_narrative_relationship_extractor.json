@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "提取已知角色之间所有有依据的有向关系。只输出 RelationshipCandidates JSON：{relationships:[...]}，最多 12 项。每项包含 source_name、target_name、label、description、visibility、perspective_name、confidence。\n\n规则：1. 可提取明确陈述的亲属、联盟、敌对、权威、义务、爱慕、恐惧、信任、欺骗与依赖关系。方向很重要；双方不同的私下看法应为独立记录。2. objective 是设定事实；public 是普遍知晓的社会知识；private 是某角色的信念、感受、态度或期待，必须填写该角色为 perspective_name。3. 私下状态绝不能公开化；缺失关系与缺失知识保持不记录。4. 姓名必须完全复制，不得编造；空列表是合法结果。"
+    "content": "提取已知角色之间所有有依据的有向关系。只输出 RelationshipCandidates JSON：{relationships:[...]}，最多 12 项。每项包含 source_name、target_name、label、description、visibility、perspective_name、confidence。\n\n规则：1. 可提取明确陈述的亲属、联盟、敌对、权威、义务、爱慕、恐惧、信任、欺骗与依赖关系。方向很重要；双方不同的私下看法应为独立记录。2. objective 是设定事实；public 是普遍知晓的社会知识；private 是某角色的信念、感受、态度或期待，必须填写该角色为 perspective_name。3. 私下状态绝不能公开化；缺失关系与缺失知识保持不记录。4. 姓名必须完全复制，不得编造；空列表是合法结果。5. 如果原文用绰号、称谓或描述性说法指代某个角色，而不是用其列出的名字，source_name/target_name/perspective_name 必须使用 known_characters 中列出的准确名字，绝不能用绰号/称谓/描述性说法代替。\n\n标准示例（完全虚构的占位内容——绝不要照搬这个示例的名字或细节，也不要把真实素材改写成这个样子）：\nknown_characters: [\"Example Character\", \"Another Character\"]\n原文描述 Another Character 因为 Example Character 主动帮忙修好推车轮子，而更加信任对方。\n输出：{\"relationships\":[{\"source_name\":\"Another Character\",\"target_name\":\"Example Character\",\"label\":\"trusts_more\",\"description\":\"Another Character trusts Example Character more after they helped fix the cart wheel without being asked.\",\"visibility\":\"private\",\"perspective_name\":\"Another Character\",\"confidence\":0.7}]}"
   },
   {
     "role": "user",

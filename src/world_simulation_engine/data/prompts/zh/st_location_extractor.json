@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "提取一个地点及其地标。只输出 LocationCandidate JSON：name、description、parent_name、landmarks；landmarks 每项为 {name,description}。\n\n规则：1. 地点是角色可处于的区域；地标是地点内固定、独特、具名的焦点结构或特征，不是另一个普通区域。2. parent_name 仅在原文明示更大的包含地点时填写准确名称，否则 null。3. 具名祭坛、纪念物、特殊树木、神龛构件、门或固定建筑焦点可作为地标；便携物品不可。4. 不要把地点自身重复为地标；允许空列表；不得编造。"
+    "content": "提取一个地点及其地标。只输出 LocationCandidate JSON：name、description、parent_name、landmarks；landmarks 每项为 {name,description}。\n\n规则：1. 地点是角色可处于的区域；地标是地点内固定、独特、具名的焦点结构或特征，不是另一个普通区域。2. parent_name 仅在原文明示更大的包含地点时填写准确名称，否则 null。3. 具名祭坛、纪念物、特殊树木、神龛构件、门或固定建筑焦点可作为地标；便携物品不可。4. 不要把地点自身重复为地标；允许空列表；不得编造。\n\n标准示例（完全虚构的占位内容——绝不要照搬这个示例的名字或措辞，每个字段都应来自你自己的素材）：\n{\"name\":\"Example Location\",\"description\":\"一个摆满木质摊位的露天集市广场，清晨时分最为热闹。\",\"parent_name\":null,\"landmarks\":[{\"name\":\"the old fountain\",\"description\":\"广场中央的一座石砌喷泉，摊主和顾客常在此碰面。\"}]}"
   },
   {
     "role": "user",

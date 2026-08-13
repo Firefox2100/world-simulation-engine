@@ -49,6 +49,7 @@ class ComponentType(StrEnum):
     NARRATOR_TTS = "narrator_tts"
     ST_LOREBOOK_CLASSIFIER = "st_lorebook_classifier"
     ST_CHARACTER_EXTRACTOR = "st_character_extractor"
+    ST_BACKGROUND_CHARACTER_EXTRACTOR = "st_background_character_extractor"
     ST_LOCATION_EXTRACTOR = "st_location_extractor"
     ST_WORLD_LORE_EXTRACTOR = "st_world_lore_extractor"
     ST_NARRATIVE_EXTRACTOR = "st_narrative_extractor"

@@ -30,6 +30,7 @@ from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.enums import SupportedLanguage
 from world_simulation_engine.model.silly_tavern import SillyTavernCardV3
 
+from .background_character_extractor import BackgroundCharacterExtraction, BackgroundCharacterExtractor
 from .card_preprocessor import CardPreprocessor, PreprocessedCard
 from .character_extractor import CharacterExtraction, CharacterExtractor
 from .data_extractor import DataExtractor
@@ -57,6 +58,7 @@ class _ReconstructionState(BaseModel):
     preprocessed: PreprocessedCard | None = None
     classification: LorebookClassification | None = None
     characters: CharacterExtraction | None = None
+    background_characters: BackgroundCharacterExtraction | None = None
     locations: LocationExtraction | None = None
     world_lore: WorldLoreExtraction | None = None
     narrative: NarrativeExtraction | None = None
@@ -81,6 +83,7 @@ class WorldReconstructor:
         graph.add_node("preprocess", self._preprocess)
         graph.add_node("classify", self._classify)
         graph.add_node("extract_characters", self._extract_characters)
+        graph.add_node("extract_background_characters", self._extract_background_characters)
         graph.add_node("extract_locations", self._extract_locations)
         graph.add_node("extract_world_lore", self._extract_world_lore)
         graph.add_node("extract_narrative", self._extract_narrative)
@@ -97,7 +100,8 @@ class WorldReconstructor:
         graph.add_edge(START, "preprocess")
         graph.add_edge("preprocess", "classify")
         graph.add_edge("classify", "extract_characters")
-        graph.add_edge("extract_characters", "extract_locations")
+        graph.add_edge("extract_characters", "extract_background_characters")
+        graph.add_edge("extract_background_characters", "extract_locations")
         graph.add_edge("extract_locations", "extract_world_lore")
         graph.add_edge("extract_world_lore", "extract_narrative")
         graph.add_edge("extract_narrative", "extract_intents")
@@ -128,6 +132,12 @@ class WorldReconstructor:
         )
         return {"characters": characters}
 
+    async def _extract_background_characters(self, state: _ReconstructionState) -> dict:
+        background_characters = await BackgroundCharacterExtractor(database=self._db).extract(
+            state.preprocessed, state.classification, state.characters, language=state.language,
+        )
+        return {"background_characters": background_characters}
+
     async def _extract_locations(self, state: _ReconstructionState) -> dict:
         locations = await LocationExtractor(database=self._db).extract(
             state.preprocessed, state.classification, language=state.language,
@@ -142,7 +152,8 @@ class WorldReconstructor:
 
     async def _extract_narrative(self, state: _ReconstructionState) -> dict:
         narrative = await NarrativeExtractor(database=self._db).extract(
-            state.preprocessed, state.classification, state.characters, language=state.language,
+            state.preprocessed, state.classification, state.characters,
+            state.background_characters, language=state.language,
         )
         return {"narrative": narrative}
 
@@ -193,7 +204,8 @@ class WorldReconstructor:
 
     async def _extract_opening_narrative(self, state: _ReconstructionState) -> dict:
         opening_narrative = await OpeningNarrativeExtractor(database=self._db).extract(
-            state.opening_turns, state.characters, language=state.language,
+            state.opening_turns, state.characters, state.background_characters,
+            language=state.language,
         )
         return {"opening_narrative": opening_narrative}
 
@@ -212,6 +224,7 @@ class WorldReconstructor:
             state.preprocessed,
             language=state.language,
             characters=state.characters,
+            background_characters=state.background_characters,
             locations=state.locations,
             world_lore=state.world_lore,
             narrative=state.narrative,

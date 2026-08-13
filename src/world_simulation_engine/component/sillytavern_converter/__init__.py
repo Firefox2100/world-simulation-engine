@@ -1,7 +1,10 @@
+from .background_character_extractor import BackgroundCharacterCluster, BackgroundCharacterExtraction, \
+    BackgroundCharacterExtractionResult, BackgroundCharacterExtractor, ExtractedBackgroundCharacter
 from .card_preprocessor import CardPreprocessor, PreprocessedCard, PreprocessedLorebookEntry, \
     VariableScriptCandidate
 from .character_extractor import CharacterCluster, CharacterExtraction, CharacterExtractionResult, \
     CharacterExtractor, ExtractedCharacter
+from .character_name_pool import character_related_names, merge_similar_names
 from .classifiable_items import ClassifiableItem, classifiable_items, content_by_item_id
 from .data_extractor import DataExtractor, ExtractedCharacterCard
 from .equipment_extractor import EquipmentCandidates, EquipmentExtraction, EquipmentExtractor, \

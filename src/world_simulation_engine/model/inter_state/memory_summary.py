@@ -55,6 +55,18 @@ class ProposedEventUpdate(BaseModel):
     involved_characters: list[EventInvolvementProposal] = Field(default_factory=list)
     reason: str
 
+    @model_validator(mode="after")
+    def _require_a_mutating_field(self) -> "ProposedEventUpdate":
+        # Same no-op shape as ProposedRelationshipChange's object/old_object bug: EventStore.update_event
+        # short-circuits to nothing when name, summary, and involved_characters are all
+        # unset/empty, regardless of how confidently `reason` describes a change.
+        if self.name is None and self.summary is None and not self.involved_characters:
+            raise ValueError(
+                "update_event needs at least one of name, summary, or involved_characters set - "
+                "with all unset this operation can never do anything when applied."
+            )
+        return self
+
 
 class ProposedMemoryCreation(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -121,6 +133,34 @@ class ProposedIntentUpdate(BaseModel):
     event_id: str | None = None
     event_relationship: Literal["contributes_to", "creates"] | None = None
     reason: str
+
+    @model_validator(mode="after")
+    def _require_a_mutating_field(self) -> "ProposedIntentUpdate":
+        # Same no-op shape as ProposedRelationshipChange's object/old_object bug:
+        # IntentStore.update_intent short-circuits to nothing when every mutating field is None,
+        # and the event_id/event_relationship side effect only fires when both are set together -
+        # regardless of how confidently `reason` describes a change.
+        has_property_change = any(
+            value is not None
+            for value in (
+                self.status,
+                self.priority,
+                self.urgency,
+                self.current_plan,
+                self.next_action_biases,
+                self.blockers,
+                self.open_threads,
+            )
+        )
+        has_event_link = self.event_id is not None and self.event_relationship is not None
+        if not has_property_change and not has_event_link:
+            raise ValueError(
+                "update_intent needs at least one mutating field set (status, priority, urgency, "
+                "current_plan, next_action_biases, blockers, open_threads) or both event_id and "
+                "event_relationship set together - with everything unset this operation can never "
+                "do anything when applied."
+            )
+        return self
 
 
 class ProposedNoAbstractChange(BaseModel):

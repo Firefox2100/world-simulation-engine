@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "Estimate one character's private emotional response to newly committed memories. Return EmotionUpdateProposal JSON only. Use change: null when the event is emotionally insignificant or evidence is weak. Immediate deltas are short-lived and should usually be small. Baseline deltas represent durable mood and should usually be zero. Positive valence is pleasant, positive arousal is activated, and positive dominance is in-control. Cite only supplied memory IDs. Do not infer another character's emotion, restate prose state, invent facts, or output actions."
+    "content": "Estimate one character's private emotional response to newly committed memories. Return EmotionUpdateProposal JSON only. Use change: null when the event is emotionally insignificant or evidence is weak. Immediate deltas are short-lived and should usually be small. Baseline deltas represent durable mood and should usually be zero. Positive valence is pleasant, positive arousal is activated, and positive dominance is in-control. Cite only supplied memory IDs. Do not infer another character's emotion, restate prose state, invent facts, or output actions.\n\nCanonical examples:\nNo-op: {\"change\":null,\"updater_notes\":[\"Memory is not emotionally significant enough to move the state.\"]}\nApplied (invented placeholder ids/text): {\"change\":{\"immediate_delta\":{\"valence\":-0.2,\"arousal\":0.3,\"dominance\":-0.1,\"dimensions\":{}},\"baseline_delta\":{\"valence\":0,\"arousal\":0,\"dominance\":0,\"dimensions\":{}},\"evidence_memory_ids\":[\"memory_example_001\"],\"reason\":\"The character just learned unsettling news about someone they trusted.\"},\"updater_notes\":[]}"
   },
   {
     "role": "user",

@@ -24,6 +24,7 @@ from world_simulation_engine.misc.config import CONFIG
 from world_simulation_engine.misc.enums import ComponentType, LorebookItemBucket, SupportedLanguage
 from world_simulation_engine.model import RelationshipVisibility
 
+from .background_character_extractor import BackgroundCharacterExtraction
 from .card_preprocessor import PreprocessedCard
 from .character_extractor import CharacterExtraction
 from .classifiable_items import content_by_item_id
@@ -123,14 +124,43 @@ class NarrativeExtraction(BaseModel):
     events: list[ExtractedEvent] = Field(default_factory=list)
     memories: list[ExtractedMemory] = Field(default_factory=list)
     relationships: list[ExtractedRelationship] = Field(default_factory=list)
+    dropped_event_source_ids: list[str] = Field(
+        default_factory=list,
+        description="history_event source item ids whose candidate had no resolvable participant "
+                    "and was therefore dropped entirely, never persisted.",
+    )
+    dropped_relationship_source_ids: list[str] = Field(
+        default_factory=list,
+        description="relationship source item ids that produced at least one candidate dropped "
+                    "for an unresolvable source/target name or a private claim missing its "
+                    "perspective character.",
+    )
 
 
-def _roster(characters: CharacterExtraction) -> tuple[list[dict], dict[str, str]]:
+def _roster(
+        characters: CharacterExtraction,
+        background_characters: BackgroundCharacterExtraction | None = None,
+) -> tuple[list[dict], dict[str, str]]:
+    """Main characters and background characters (a guard, a bartender - see
+    background_character_extractor.py) share one name pool here: an event or relationship can
+    involve either kind, and this extractor has no reason to treat them differently when all it
+    needs is a name to resolve. Background characters are listed by their extracted `result.name`
+    (the more polished identity), but `id_by_name` also keeps their raw cluster `target_name` as a
+    fallback key in case a candidate still uses the original mention phrasing - main characters
+    always win a name collision via setdefault, though the background reconciliation pass should
+    already prevent one from happening in practice."""
+    background_characters = background_characters or BackgroundCharacterExtraction()
     roster = [
         {"name": character.target_name}
         for character in characters.characters
+    ] + [
+        {"name": character.result.name}
+        for character in background_characters.characters
     ]
     id_by_name = {character.target_name: character.id for character in characters.characters}
+    for character in background_characters.characters:
+        id_by_name.setdefault(character.target_name, character.id)
+        id_by_name.setdefault(character.result.name, character.id)
     return roster, id_by_name
 
 
@@ -185,13 +215,18 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
             history_items: list[tuple[str, str]],
             history_results: list[HistoryEventCandidate],
             id_by_name: dict[str, str],
-    ) -> tuple[list[ExtractedEvent], list[ExtractedMemory]]:
+    ) -> tuple[list[ExtractedEvent], list[ExtractedMemory], list[str]]:
         events: list[ExtractedEvent] = []
         memories: list[ExtractedMemory] = []
+        dropped_source_ids: list[str] = []
         for (item_id, _), candidate in zip(history_items, history_results):
             involved_ids = _resolve_names(candidate.involved_names, id_by_name)
             if not involved_ids:
-                continue  # no resolvable participant - never persist a dangling/fabricated event
+                # no resolvable participant - never persist a dangling/fabricated event, but
+                # record the drop so WorldAssembler can surface it in the conversion report
+                # instead of the loss being invisible to the user reviewing the import.
+                dropped_source_ids.append(item_id)
+                continue
             event = ExtractedEvent(
                 name=candidate.event_name, summary=candidate.event_summary, outcome=candidate.outcome,
                 involved_character_ids=involved_ids, source_item_ids=[item_id],
@@ -211,25 +246,28 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
                     source_item_ids=[item_id],
                 ) for character_id in _resolve_names(candidate.knowing_names, id_by_name))
             events.append(event)
-        return events, memories
+        return events, memories, dropped_source_ids
 
     @staticmethod
     def _resolve_relationships(
             relationship_items: list[tuple[str, str]],
             relationship_results: list[RelationshipCandidates | RelationshipCandidate],
             id_by_name: dict[str, str],
-    ) -> list[ExtractedRelationship]:
+    ) -> tuple[list[ExtractedRelationship], list[str]]:
         relationships: list[ExtractedRelationship] = []
+        dropped_source_ids: list[str] = []
         for (item_id, _), batch in zip(relationship_items, relationship_results):
             candidates = batch.relationships if isinstance(batch, RelationshipCandidates) else [batch]
             for candidate in candidates:
                 source_id = _resolve_name(candidate.source_name, id_by_name)
                 target_id = _resolve_name(candidate.target_name, id_by_name)
                 if not source_id or not target_id or source_id == target_id:
+                    dropped_source_ids.append(item_id)
                     continue
                 perspective_id = _resolve_name(candidate.perspective_name, id_by_name) \
                     if candidate.perspective_name else None
                 if candidate.visibility == RelationshipVisibility.PRIVATE and not perspective_id:
+                    dropped_source_ids.append(item_id)
                     continue
                 relationships.append(ExtractedRelationship(
                     source_character_id=source_id, target_character_id=target_id,
@@ -237,13 +275,14 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
                     visibility=candidate.visibility, perspective_character_id=perspective_id,
                     confidence=candidate.confidence, source_item_ids=[item_id],
                 ))
-        return relationships
+        return relationships, dropped_source_ids
 
     async def extract(
             self,
             card: PreprocessedCard,
             classification: LorebookClassification,
             characters: CharacterExtraction,
+            background_characters: BackgroundCharacterExtraction | None = None,
             *,
             language: SupportedLanguage,
     ) -> NarrativeExtraction:
@@ -261,7 +300,7 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
         if not history_items and not relationship_items:
             return NarrativeExtraction()
 
-        roster, id_by_name = _roster(characters)
+        roster, id_by_name = _roster(characters, background_characters)
         calls = [
             functools.partial(
                 self._extract_history_event, content=content, roster=roster, language=language,
@@ -279,10 +318,16 @@ class NarrativeExtractor(SillyTavernPipelineComponent):
             run_name="narrative_extractor.extract",
         )
 
-        events, memories = self._resolve_events(
+        events, memories, dropped_event_source_ids = self._resolve_events(
             history_items, results[:len(history_items)], id_by_name,
         )
-        relationships = self._resolve_relationships(
+        relationships, dropped_relationship_source_ids = self._resolve_relationships(
             relationship_items, results[len(history_items):], id_by_name,
         )
-        return NarrativeExtraction(events=events, memories=memories, relationships=relationships)
+        return NarrativeExtraction(
+            events=events,
+            memories=memories,
+            relationships=relationships,
+            dropped_event_source_ids=dropped_event_source_ids,
+            dropped_relationship_source_ids=dropped_relationship_source_ids,
+        )

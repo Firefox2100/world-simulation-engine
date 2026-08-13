@@ -73,6 +73,7 @@ PROMPT_NAMES = [
     "variable_updater",
     "st_lorebook_classifier",
     "st_character_extractor",
+    "st_background_character_extractor",
     "st_location_extractor",
     "st_location_synthesizer",
     "st_world_lore_extractor",
