@@ -10,19 +10,17 @@ from world_simulation_engine.component.simulator.world_simulator import (
 )
 from world_simulation_engine.misc.enums import TurnType
 
+from workflow_helpers import WORLD_SIMULATOR_CASES, case_ids
+
 
 @pytest.mark.parametrize(
-    ("user_input", "expects_wait"),
-    [
-        ("I telephone Marcus Reed and ask what he found in the director's office.", True),
-        ("I go to the director's office to find Marcus Reed.", True),
-        ("I quietly inspect the Visitor's Room Ledger at the bar.", False),
-    ],
-    ids=["contact_off_scene_actor", "move_to_off_scene_actor", "unrelated_action"],
+    ("mock_graph_world_setup", "case"),
+    WORLD_SIMULATOR_CASES,
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(WORLD_SIMULATOR_CASES),
 )
 async def test_evaluate_world_simulator_off_scene_conflict_detection(
-        user_input,
-        expects_wait,
+        case,
         evaluation_seeded_database,
         mock_graph_world_setup,
 ):
@@ -34,16 +32,16 @@ async def test_evaluate_world_simulator_off_scene_conflict_detection(
         simulation_time=datetime.now(UTC),
         status="running",
         stage="proposing_actions",
-        actor_ids=["character_marcus_reed"],
+        actor_ids=case["off_scene_actor_ids"],
     )
     simulator._off_scene_generations[generation.id] = generation
     simulator.wait_for_off_scene_activity = AsyncMock()
     state = WorldSimulatorState(
         world=mock_graph_world_setup.world,
         simulation=mock_graph_world_setup.simulation,
-        user_input=user_input,
+        user_input=case["user_input"],
     )
 
     await simulator.interpret_user_input(state)
 
-    assert simulator.wait_for_off_scene_activity.await_count == int(expects_wait)
+    assert simulator.wait_for_off_scene_activity.await_count == int(case["expects_wait"])

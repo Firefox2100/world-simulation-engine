@@ -236,6 +236,100 @@ async def test_narrate_turn_includes_accepted_speech_when_model_returns_only_nar
     ]
 
 
+def make_no_speech_coordination() -> SceneCoordinationResult:
+    return SceneCoordinationResult(
+        status=SceneCoordinationStatus.COMPLETE,
+        accepted_actions=[
+            AcceptedSceneAction(
+                actor_id="character_1",
+                proposal_index=0,
+                action_index=0,
+                action=ProposedAction(
+                    type=ActionType.MOVE,
+                    label="step_toward_door",
+                    target_ids=[],
+                    intended_duration_seconds=3,
+                    interruptible=True,
+                ),
+                start_offset_seconds=0,
+                end_offset_seconds=3,
+                summary="Alex steps toward the door.",
+            )
+        ],
+    )
+
+
+async def test_narrate_turn_uses_model_narration_instead_of_raw_summary_when_no_speech():
+    # A purely physical turn (no dialogue) has no speech_anchors to weave insertions around, so
+    # the composer takes a different path than the speech case above. When the model does narrate
+    # something, that prose must be used *instead of* the coordinator's terse summary, not
+    # alongside it - using both double-narrates the same action once mechanically and once in
+    # prose (see arthur_reads_notice_board in a real evaluation run for exactly this happening).
+    world = make_world()
+    simulation = make_simulation()
+    character = make_character()
+    coordination = make_no_speech_coordination()
+
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=world)
+    database.simulation.get_simulation = AsyncMock(return_value=simulation)
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
+    database.character.get_character = AsyncMock(return_value=character)
+    database.location.get_location_by_character = AsyncMock(return_value=None)
+    narrator = Narrator(database=database)
+    narrator._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(
+        return_value=NarrationInsertionProposal(
+            insertions=[
+                {"position": 0, "text": "Alex crosses the room and reaches for the door."},
+            ],
+        )
+    )
+    narrator._prepare_llm_service.return_value = llm
+
+    result = await narrator.narrate_turn(
+        world_id=world.id,
+        simulation_id=simulation.id,
+        coordination_result=coordination,
+        user_input="I walk to the door.",
+    )
+
+    assert result.blocks == [
+        NarrationBlock(type="narration", text="Alex crosses the room and reaches for the door."),
+    ]
+
+
+async def test_narrate_turn_falls_back_to_summary_when_no_speech_and_no_narration():
+    world = make_world()
+    simulation = make_simulation()
+    character = make_character()
+    coordination = make_no_speech_coordination()
+
+    database = Mock()
+    database.world.get_world = AsyncMock(return_value=world)
+    database.simulation.get_simulation = AsyncMock(return_value=simulation)
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=character)
+    database.character.get_character = AsyncMock(return_value=character)
+    database.location.get_location_by_character = AsyncMock(return_value=None)
+    narrator = Narrator(database=database)
+    narrator._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(return_value=NarrationInsertionProposal(insertions=[]))
+    narrator._prepare_llm_service.return_value = llm
+
+    result = await narrator.narrate_turn(
+        world_id=world.id,
+        simulation_id=simulation.id,
+        coordination_result=coordination,
+        user_input="I walk to the door.",
+    )
+
+    assert result.blocks == [
+        NarrationBlock(type="narration", text="Alex steps toward the door."),
+    ]
+
+
 async def test_build_context_collects_sorted_unique_actor_ids_from_accepted_pending_and_problem():
     from world_simulation_engine.misc.enums import SceneCoordinationProblemType
     from world_simulation_engine.model import PendingSceneAction, SceneCoordinationProblem

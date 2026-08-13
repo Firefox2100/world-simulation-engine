@@ -249,6 +249,28 @@ async def test_off_scene_conflict_uses_character_name_as_small_model_repair():
     assert waited is True
 
 
+async def test_off_scene_conflict_uses_cjk_character_name_as_small_model_repair():
+    # Chinese/Japanese/Korean text has no spaces between words, so a name written directly
+    # adjacent to surrounding text (as it always is in these languages) must still be detected -
+    # unlike the space-delimited English case, there is no "first word" fallback to lean on here.
+    database = Mock()
+    database.character.get_character = AsyncMock(return_value=make_character().model_copy(update={
+        "id": "character_2",
+        "name": "康仁",
+    }))
+    simulator = WorldSimulator(database=database)
+    register_running_off_scene_generation(simulator, ["character_2"])
+    simulator.wait_for_off_scene_activity = AsyncMock()
+
+    waited = await simulator._wait_for_conflicting_off_scene_activity(
+        simulation_id="simulation_1",
+        actions=[make_action("go_find_kang_ren")],
+        action_text="我出发去找康仁。",
+    )
+
+    assert waited is True
+
+
 async def test_off_scene_conflict_does_not_wait_for_unrelated_action():
     database = Mock()
     database.character.get_character = AsyncMock(return_value=make_character().model_copy(update={
@@ -380,6 +402,7 @@ async def test_route_after_input_interpretation_routes_ooc_to_evaluation():
         InputInterpretation(
             items=[
                 OOCCommand(
+                    type="ooc",
                     command_text="summarize",
                     normalized_intent="Summarize the scene.",
                     source_text="[/OOC: summarize]",
@@ -403,6 +426,7 @@ async def test_route_after_ooc_evaluation_continues_to_validation_for_mixed_inpu
                     "source_text": "I look around.",
                 },
                 OOCCommand(
+                    type="ooc",
                     command_text="the door is unlocked",
                     normalized_intent="Unlock the door.",
                     source_text="[/OOC: the door is unlocked]",
@@ -420,6 +444,7 @@ async def test_route_after_ooc_evaluation_routes_forced_character_actions():
         InputInterpretation(
             items=[
                 OOCCommand(
+                    type="ooc",
                     command_text="Clara should tell Arthur about the mysterious guest",
                     normalized_intent="Direct Clara's next action.",
                     source_text="[/OOC: Clara should tell Arthur about the mysterious guest]",
@@ -438,6 +463,7 @@ async def test_route_after_ooc_evaluation_ends_when_only_mutation_applied():
         InputInterpretation(
             items=[
                 OOCCommand(
+                    type="ooc",
                     command_text="the door is unlocked",
                     normalized_intent="Unlock the door.",
                     source_text="[/OOC: the door is unlocked]",
@@ -452,6 +478,7 @@ async def test_route_after_ooc_evaluation_ends_when_only_mutation_applied():
 
 async def test_evaluate_ooc_commands_applies_consistent_world_state_mutation():
     command = OOCCommand(
+        type="ooc",
         command_text="the chest under the bar contains a ledger",
         normalized_intent="Place a ledger inside the chest.",
         source_text="[/OOC: the chest under the bar contains a ledger]",
@@ -464,6 +491,7 @@ async def test_evaluate_ooc_commands_applies_consistent_world_state_mutation():
     evaluation = OOCEvaluationResult(
         items=[
             OOCWorldStateMutation(
+                category="world_state_mutation",
                 command_index=0,
                 command_text=command.command_text,
                 operations=[
@@ -510,6 +538,7 @@ async def test_evaluate_ooc_commands_applies_consistent_world_state_mutation():
 
 async def test_evaluate_ooc_commands_skips_inconsistent_mutation():
     command = OOCCommand(
+        type="ooc",
         command_text="the dragon under the bar breathes fire",
         normalized_intent="Introduce a dragon.",
         source_text="[/OOC: the dragon under the bar breathes fire]",
@@ -522,6 +551,7 @@ async def test_evaluate_ooc_commands_skips_inconsistent_mutation():
     evaluation = OOCEvaluationResult(
         items=[
             OOCWorldStateMutation(
+                category="world_state_mutation",
                 command_index=0,
                 command_text=command.command_text,
                 operations=[],
@@ -543,6 +573,7 @@ async def test_evaluate_ooc_commands_skips_inconsistent_mutation():
 
 async def test_evaluate_ooc_commands_forces_character_action_without_committing_turn():
     command = OOCCommand(
+        type="ooc",
         command_text="Clara should tell Arthur about the mysterious guest",
         normalized_intent="Direct Clara's next action.",
         source_text="[/OOC: Clara should tell Arthur about the mysterious guest]",
@@ -570,6 +601,7 @@ async def test_evaluate_ooc_commands_forces_character_action_without_committing_
     evaluation = OOCEvaluationResult(
         items=[
             OOCCharacterActionGuide(
+                category="character_action_guide",
                 command_index=0,
                 command_text=command.command_text,
                 character_id="character_2",

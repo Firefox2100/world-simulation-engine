@@ -61,6 +61,7 @@ def test_input_interpretation_accepts_ooc_sequence_item():
     interpretation = InputInterpretation(
         items=[
             OOCCommand(
+                type="ooc",
                 command_text="Keep it short.",
                 normalized_intent="Keep future narration concise.",
                 source_text="[/OOC: Keep it short.]",

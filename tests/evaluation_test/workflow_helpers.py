@@ -6,7 +6,7 @@ from world_simulation_engine.component.simulator.action_validator import ActionV
 from world_simulation_engine.component.simulator.character_simulator import CharacterSimulator
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 from world_simulation_engine.component.simulator.scene_coordinator import SceneCoordinator
-from world_simulation_engine.misc.enums import ActionType, ComponentType
+from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import (
     ActionCandidateSet,
     CharacterActionPlan,
@@ -14,272 +14,48 @@ from world_simulation_engine.model import (
     SceneCoordinationResult,
 )
 
+from world_fixtures import discover_world_dirs
 
-SYNTHETIC_COORDINATION_CASES = [
-    {
-        "case_id": "arthur_asks_clara_room_7",
-        "source": "user",
-        "user_input": (
-            "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
-            "before Director Harlan vanished."
-        ),
-        "coordination": {
-            "status": "complete",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_arthur_moore",
-                    "proposal_index": 0,
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 4,
-                    "summary": "Arthur Moore asks Clara Whitlock whether Room 7 was occupied before Harlan vanished.",
-                    "action": {
-                        "type": ActionType.SPEAK,
-                        "label": "ask_clara_about_room_7",
-                        "target_ids": ["character_clara_whitlock"],
-                        "utterance": None,
-                        "intended_duration_seconds": 4,
-                        "interruptible": True,
-                        "interruption_triggers": ["clara_answers", "bar_interrupts"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                }
-            ],
-            "problem": None,
-            "pending_actions": [],
-        },
-    },
-    {
-        "case_id": "arthur_reads_notice_board",
-        "source": "user",
-        "user_input": (
-            "I step away from the bar for a moment and study the Notice Board, looking for older papers "
-            "hidden underneath the festival announcements."
-        ),
-        "coordination": {
-            "status": "complete",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_arthur_moore",
-                    "proposal_index": 0,
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 3,
-                    "summary": "Arthur Moore steps away from the bar toward the Notice Board.",
-                    "action": {
-                        "type": ActionType.MOVE,
-                        "label": "step_toward_notice_board",
-                        "target_ids": ["landmark_notice_board"],
-                        "utterance": None,
-                        "intended_duration_seconds": 3,
-                        "interruptible": True,
-                        "interruption_triggers": ["clara_calls_after_arthur"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                },
-                {
-                    "actor_id": "character_arthur_moore",
-                    "proposal_index": 0,
-                    "action_index": 1,
-                    "start_offset_seconds": 3,
-                    "end_offset_seconds": 15,
-                    "summary": "Arthur Moore studies the Notice Board for older papers under the festival notices.",
-                    "action": {
-                        "type": ActionType.OBSERVE,
-                        "label": "study_notice_board_for_older_papers",
-                        "target_ids": ["landmark_notice_board"],
-                        "utterance": None,
-                        "intended_duration_seconds": 12,
-                        "interruptible": True,
-                        "interruption_triggers": ["someone_blocks_notice_board"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                },
-            ],
-            "problem": None,
-            "pending_actions": [],
-        },
-    },
-    {
-        "case_id": "clara_answers_room_7",
-        "source": "character",
-        "user_input": (
-            "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
-            "before Director Harlan vanished."
-        ),
-        "coordination": {
-            "status": "complete",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_clara_whitlock",
-                    "proposal_index": 0,
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 6,
-                    "summary": "Clara Whitlock answers Arthur's question about Room 7 while staying behind the bar.",
-                    "action": {
-                        "type": ActionType.SPEAK,
-                        "label": "answer_room_7_question",
-                        "target_ids": ["character_arthur_moore"],
-                        "utterance": "Room 7 was occupied, Mr. Moore, but not by a name I trusted.",
-                        "intended_duration_seconds": 6,
-                        "interruptible": True,
-                        "interruption_triggers": ["customer_interrupts"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                }
-            ],
-            "problem": None,
-            "pending_actions": [],
-        },
-    },
-    {
-        "case_id": "clara_hands_receipt",
-        "source": "character",
-        "user_input": "Clara hands Arthur the Room 7 cash receipt.",
-        "coordination": {
-            "status": "complete",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_clara_whitlock",
-                    "proposal_index": 0,
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 4,
-                    "summary": "Clara Whitlock hands the Room 7 cash receipt to Arthur Moore.",
-                    "action": {
-                        "type": ActionType.GIVE,
-                        "label": "hand_room_7_receipt_to_arthur",
-                        "target_ids": ["item_room_7_cash_receipt", "character_arthur_moore"],
-                        "utterance": None,
-                        "intended_duration_seconds": 4,
-                        "interruptible": True,
-                        "interruption_triggers": ["arthur_refuses", "customer_interrupts"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                }
-            ],
-            "problem": None,
-            "pending_actions": [],
-        },
-    },
-    {
-        "case_id": "eleanor_intervenes_then_pending_clara",
-        "source": "character",
-        "user_input": (
-            "Arthur lowers his voice and says, \"I am not here to embarrass the town, Miss Whitlock, "
-            "but I do need the truth.\""
-        ),
-        "coordination": {
-            "status": "problem",
-            "accepted_actions": [
-                {
-                    "actor_id": "character_eleanor_graves",
-                    "proposal_index": 0,
-                    "action_index": 0,
-                    "start_offset_seconds": 0,
-                    "end_offset_seconds": 4,
-                    "summary": "Eleanor Graves cuts in before Clara can answer Arthur.",
-                    "action": {
-                        "type": ActionType.SPEAK,
-                        "label": "intervene_about_town_discretion",
-                        "target_ids": ["character_arthur_moore"],
-                        "utterance": "Discretion is also a kind of truth, Mr. Moore.",
-                        "intended_duration_seconds": 4,
-                        "interruptible": True,
-                        "interruption_triggers": ["arthur_addresses_clara_directly"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                }
-            ],
-            "problem": {
-                "type": "interruption",
-                "time_offset_seconds": 4,
-                "involved_actor_ids": ["character_clara_whitlock", "character_eleanor_graves"],
-                "involved_actions": [
-                    {
-                        "actor_id": "character_clara_whitlock",
-                        "proposal_index": 0,
-                        "action_index": 0,
-                    },
-                    {
-                        "actor_id": "character_eleanor_graves",
-                        "proposal_index": 0,
-                        "action_index": 0,
-                    },
-                ],
-                "description": "Eleanor's public interruption delays Clara's private answer to Arthur.",
-                "needs_user_decision": False,
-                "actors_to_react": ["character_clara_whitlock"],
-                "resolver_required": False,
-            },
-            "pending_actions": [
-                {
-                    "actor_id": "character_clara_whitlock",
-                    "proposal_index": 0,
-                    "action_index": 0,
-                    "reason": "Clara must decide whether to answer after Eleanor interrupts.",
-                    "action": {
-                        "type": ActionType.SPEAK,
-                        "label": "answer_arthur_truth_request",
-                        "target_ids": ["character_arthur_moore"],
-                        "utterance": None,
-                        "intended_duration_seconds": 8,
-                        "interruptible": True,
-                        "interruption_triggers": ["eleanor_continues_interruption"],
-                        "required_preconditions": [],
-                        "expected_effects": [],
-                    },
-                }
-            ],
-        },
-    },
-]
+# "Intended input" test scenarios, read at import time (not via a fixture) so
+# @pytest.mark.parametrize - which needs its case list at collection time, before any fixture runs
+# - can consume them directly, the same way the SillyTavern eval tests parametrize over
+# CARDS_DIR.glob(...) rather than a fixture. Every discovered world bundle (see world_fixtures.py's
+# discover_world_dirs) contributes its own eval/scenarios.json cases, flattened into one list of
+# (world_dir, case) pairs per category - a world with none for a given category (the common case
+# for a freshly generated, not-yet-hand-authored bundle) simply contributes zero parametrized
+# cases for it, not an error. Case ids only need to be unique *within* one world's scenarios.json,
+# not globally - keep that in mind if you ever need to distinguish same-named cases from different
+# worlds in tests/evaluation_test/output/*.json.
+WORLD_DIRS = discover_world_dirs()
 
 
-INPUT_PIPELINE_CASES = [
-    {
-        "case_id": "ask_clara_room_7",
-        "user_input": (
-            "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
-            "before Director Harlan vanished."
-        ),
-    },
-    {
-        "case_id": "inspect_ledger",
-        "user_input": (
-            "I ask Clara to let me see the Visitor's Room Ledger, then compare the Room 7 entry "
-            "against the dates around Harlan's disappearance."
-        ),
-    },
-    {
-        "case_id": "mixed_speech_and_ooc",
-        "user_input": (
-            "Arthur lowers his voice and says, \"I am not here to embarrass the town, Miss Whitlock, "
-            "but I do need the truth.\" [/OOC: Keep the interpretation focused on the attempted action.]"
-        ),
-    },
-    {
-        "case_id": "read_notice_board",
-        "user_input": (
-            "I step away from the bar for a moment and study the Notice Board, looking for older papers "
-            "hidden underneath the festival announcements."
-        ),
-    },
-    {
-        "case_id": "reveal_letter_conditionally",
-        "user_input": (
-            "If Clara seems willing to speak privately, Arthur shows her only the signature line of the "
-            "anonymous letter and asks whether she recognizes the handwriting."
-        ),
-    },
-]
+def _load_scenarios(world_dir: Path) -> dict:
+    path = world_dir / "eval" / "scenarios.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _cases_for(key: str) -> list[tuple[Path, dict]]:
+    return [
+        (world_dir, case)
+        for world_dir in WORLD_DIRS
+        for case in _load_scenarios(world_dir).get(key, [])
+    ]
+
+
+def case_ids(pairs: list[tuple[Path, dict]]) -> list[str]:
+    return [f"{world_dir.name}:{case['case_id']}" for world_dir, case in pairs]
+
+
+SYNTHETIC_COORDINATION_CASES = _cases_for("synthetic_coordination_cases")
+INPUT_PIPELINE_CASES = _cases_for("input_pipeline_cases")
+ACTION_VALIDATOR_EVALUATION_CASES = _cases_for("action_validator_evaluation_cases")
+USER_COORDINATION_CASES = _cases_for("user_coordination_cases")
+CHARACTER_SIMULATOR_CASES = _cases_for("character_simulator_cases")
+EMOTION_UPDATER_CASES = _cases_for("emotion_updater_cases")
+SUBJECTIVE_MODEL_UPDATER_CASES = _cases_for("subjective_model_updater_cases")
+RELATIONSHIP_UPDATER_CASES = _cases_for("relationship_updater_cases")
+OBJECTIVE_RELATIONSHIP_VALIDATION_CASES = _cases_for("objective_relationship_validation_cases")
+WORLD_SIMULATOR_CASES = _cases_for("world_simulator_cases")
 
 
 async def link_chat_components(
@@ -297,12 +73,20 @@ async def link_chat_components(
         )
 
 
+def _case_id_of(entry: dict | tuple[Path, dict]) -> str:
+    """`case_order` historically held plain case dicts; it now also accepts the (world_dir, case)
+    pairs `_cases_for` produces, so callers can pass e.g. SYNTHETIC_COORDINATION_CASES directly
+    without unpacking it first."""
+    case = entry[1] if isinstance(entry, tuple) else entry
+    return case["case_id"]
+
+
 def write_case_result(
     *,
     output_path: Path,
     world_id: str,
     simulation_id: str,
-    case_order: list[dict],
+    case_order: list[dict] | list[tuple[Path, dict]],
     case_result: dict,
 ):
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -328,9 +112,9 @@ def write_case_result(
             "world_id": world_id,
             "simulation_id": simulation_id,
             "cases": [
-                cases_by_id[case["case_id"]]
-                for case in case_order
-                if case["case_id"] in cases_by_id
+                cases_by_id[case_id]
+                for case_id in (_case_id_of(entry) for entry in case_order)
+                if case_id in cases_by_id
             ],
         }
     )

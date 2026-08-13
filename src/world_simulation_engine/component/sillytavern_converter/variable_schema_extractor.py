@@ -29,9 +29,23 @@ marker check so cards without any such block never spend an LLM call on it - ove
 `owner_hint` off the block's real top-level names. Ordered after the schema sources in `extract`, so
 if a schema source's `owner_hint` *does* happen to resolve to the same (owner, name) pair, its
 richer `description`/bounds win over the plainer first-message-derived candidate.
+
+A single schema/rules source can define far more than `_MAX_VARIABLES_PER_SOURCE` variables (a
+real "world state" schema on one evaluated card defined 100+ fields in one lorebook entry) - asking
+one call to enumerate all of them is exactly the large, dynamically-sized output local models
+struggle with, and simply raising the cap doesn't fix that, it just makes each call less reliable.
+`_chunk_content` instead splits an oversized source into several smaller calls *before* any LLM is
+involved, so no single call is ever asked to do more than a bounded amount of work. It chunks along
+blank-line-separated blocks (a schema's `const X = z.object({...})` groups, or a rules doc's
+top-level sections, are reliably blank-line-delimited in practice) so a chunk boundary never lands
+mid-field, packing whole blocks together up to a target line budget rather than counting actual
+variables (that would require understanding the content, which is exactly what chunking must avoid
+needing to do). Small sources - the common case - end up as a single unchanged chunk, so nothing
+changes for them.
 """
 
 import functools
+import re
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,8 +60,20 @@ from .initial_value_block import has_initial_value_block
 from .lorebook_classifier import LorebookClassification
 from .pipeline_component import SillyTavernPipelineComponent
 
-_MAX_VARIABLES_PER_SOURCE = 60
+# Upper bound on one call's output - keeps a single structured-output call small and bounded for
+# local models (§ LLM usage conventions). Chunking (see _chunk_content) keeps most real calls well
+# under this; it exists as a hard backstop, not the primary defense against truncation.
+_MAX_VARIABLES_PER_SOURCE = 30
 _MAX_ALLOWED_VALUES = 10
+
+# Target non-blank-line budget per chunk. Calibrated against real card content rather than picked
+# arbitrarily: across several evaluated sources (a JSON-pointer path index, a YAML-style rules doc,
+# and a Zod TS schema), non-blank lines per variable ranged ~2-8 depending on notation. A 50-line
+# budget keeps even the densest observed notation (~2 lines/variable) with headroom under the
+# _MAX_VARIABLES_PER_SOURCE cap, while landing sparser notations in the ~15-25 variable range - this
+# system's target, reached without ever needing to actually count variables (see module docstring).
+_CHUNK_TARGET_LINES = 50
+_BLANK_LINE_SPLIT = re.compile(r"\n\s*\n+")
 
 
 class VariableFieldCandidate(BaseModel):
@@ -97,6 +123,14 @@ class ExtractedVariable(BaseModel):
 
 class VariableSchemaExtraction(BaseModel):
     variables: list[ExtractedVariable] = Field(default_factory=list)
+    capped_source_ids: list[str] = Field(
+        default_factory=list,
+        description=f"Source ids whose call returned exactly {_MAX_VARIABLES_PER_SOURCE} variables "
+                    "(the per-call cap) - that source likely defines more than were extracted, "
+                    "since a single structured-output call is capped to keep output bounded for "
+                    "local models. Surfaced to the conversion report (stage 3) as a low-confidence "
+                    "note rather than silently dropped.",
+    )
 
 
 class VariableSchemaExtractor(SillyTavernPipelineComponent):
@@ -148,6 +182,40 @@ class VariableSchemaExtractor(SillyTavernPipelineComponent):
         )
 
     @staticmethod
+    def _chunk_content(content: str, *, target_lines: int = _CHUNK_TARGET_LINES) -> list[str]:
+        """Split a source's content into smaller pieces without ever calling an LLM to do it.
+
+        Blank lines are treated as the only reliable, notation-agnostic semantic boundary (a Zod
+        schema's `const X = z.object({...})` groups and a rules doc's top-level sections are both
+        blank-line-delimited in practice), so whole blocks are packed together up to `target_lines`
+        non-blank lines rather than ever splitting a block's interior. A single block that alone
+        exceeds `target_lines` is kept whole rather than cut mid-field - the per-call output cap
+        (`_MAX_VARIABLES_PER_SOURCE`) and `capped_source_ids` reporting are the backstop for that
+        rare case, not this function.
+        """
+        blocks = [block for block in _BLANK_LINE_SPLIT.split(content) if block.strip()]
+        if not blocks:
+            return [content] if content.strip() else []
+
+        total_lines = sum(len([line for line in block.splitlines() if line.strip()]) for block in blocks)
+        if total_lines <= target_lines:
+            return [content]
+
+        chunks: list[str] = []
+        current_blocks: list[str] = []
+        current_lines = 0
+        for block in blocks:
+            block_lines = len([line for line in block.splitlines() if line.strip()])
+            if current_blocks and current_lines + block_lines > target_lines:
+                chunks.append("\n\n".join(current_blocks))
+                current_blocks, current_lines = [], 0
+            current_blocks.append(block)
+            current_lines += block_lines
+        if current_blocks:
+            chunks.append("\n\n".join(current_blocks))
+        return chunks
+
+    @staticmethod
     def _collect_sources(
             card: PreprocessedCard, classification: LorebookClassification,
     ) -> list[tuple[str, str, str]]:
@@ -175,13 +243,28 @@ class VariableSchemaExtractor(SillyTavernPipelineComponent):
         if not sources and not has_initial_values:
             return VariableSchemaExtraction()
 
+        # Chunk each source before any LLM involvement (see module docstring/_chunk_content) - a
+        # source that fits in one chunk (the common case) is untouched; every chunk of a larger
+        # source still reports the original item_id, since downstream provenance/report notes key
+        # off the source the user can actually go look at, not a synthetic per-chunk id.
+        work_units: list[tuple[str, str, str]] = []
+        for item_id, label, content in sources:
+            chunks = self._chunk_content(content)
+            if len(chunks) <= 1:
+                work_units.extend((item_id, label, chunk) for chunk in chunks)
+            else:
+                work_units.extend(
+                    (item_id, f"{label} (part {index} of {len(chunks)})", chunk)
+                    for index, chunk in enumerate(chunks, start=1)
+                )
+
         calls = [
             functools.partial(
                 self._extract_source, label=label, content=content, language=language,
             )
-            for _, label, content in sources
+            for _, label, content in work_units
         ]
-        source_ids = [item_id for item_id, _, _ in sources]
+        source_ids = [item_id for item_id, _, _ in work_units]
         if has_initial_values:
             calls.append(
                 functools.partial(
@@ -203,4 +286,10 @@ class VariableSchemaExtractor(SillyTavernPipelineComponent):
             for item_id, batch in zip(source_ids, results)
             for candidate in batch.variables
         ]
-        return VariableSchemaExtraction(variables=variables)
+        # A single source can now produce several chunks/calls - dedupe so one source that hit the
+        # cap on any of its chunks is reported once, not once per capped chunk.
+        capped_source_ids = list(dict.fromkeys(
+            item_id for item_id, batch in zip(source_ids, results)
+            if len(batch.variables) >= _MAX_VARIABLES_PER_SOURCE
+        ))
+        return VariableSchemaExtraction(variables=variables, capped_source_ids=capped_source_ids)

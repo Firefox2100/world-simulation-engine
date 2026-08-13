@@ -125,7 +125,10 @@ class IntentExtractor(SillyTavernPipelineComponent):
             repair_instruction=(
                 "Return a single IntentCandidates JSON object only, with at most "
                 f"{_MAX_INTENTS_PER_CHARACTER} entries. An empty intents list is correct when "
-                "nothing goal-driving is implied for this character - do not fabricate one."
+                "nothing goal-driving is implied for this character - do not fabricate one. "
+                "priority and urgency are decimals between 0 and 1 (e.g. 0.7) - never a 1-10 or "
+                "percentage scale; rescale any value outside that range instead of clamping it to "
+                "0 or 1."
             ),
             run_name="intent_extractor.extract_one",
         )

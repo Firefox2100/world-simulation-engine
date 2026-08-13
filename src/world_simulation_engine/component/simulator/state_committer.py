@@ -8,6 +8,36 @@ from world_simulation_engine.model import BackgroundCharacter, Character, Contai
 from .simulator_component import SimulatorComponent
 
 
+def _require_every_accepted_action_accounted_for(
+        proposal: StateCommitProposal,
+        coordination_result: SceneCoordinationResult,
+) -> None:
+    """Every accepted:N index must appear in some operation's source_action_refs or in
+    unchanged_action_refs - mirrors the evaluation suite's own completeness check (see
+    tests/evaluation_test/test_state_committer.py) as a production-time repair-loop check, not
+    just a test assertion. Observed in practice: a model explaining in committer_notes prose that
+    an action "is subsumed by" another without tagging it in either list - that bookkeeping gap
+    would silently drop the action from the committed turn in real gameplay too, not just in
+    evaluation. Raising here feeds invoke_structured_with_repair's retry loop.
+    """
+    if not coordination_result.accepted_actions:
+        return
+
+    accepted_refs = {f"accepted:{index}" for index in range(len(coordination_result.accepted_actions))}
+    referenced_refs = set(proposal.unchanged_action_refs)
+    for operation in proposal.operations:
+        referenced_refs.update(operation.source_action_refs)
+
+    missing = accepted_refs - referenced_refs
+    if missing:
+        raise ValueError(
+            f"Accepted action(s) {sorted(missing)} were not accounted for by any operation's "
+            "source_action_refs or by unchanged_action_refs. Every accepted:N index listed under "
+            "Accepted actions must appear in one of those two places, even if you already "
+            "explained it in committer_notes - a prose explanation alone does not count."
+        )
+
+
 class LocatedCharacter(BaseModel):
     character: Character
     location: Location
@@ -220,10 +250,18 @@ class StateCommitter(SimulatorComponent):
                 "Return one valid StateCommitProposal JSON object only. Keep it small: 0-6 operations, no repeats. "
                 "Allowed operation types: state_change, relationship_change, create, promote, no_physical_change. "
                 "Use relationship_change for relationships; never put relationship names in field_changes.field_path. "
+                "A state_change must have at least one entry in field_changes - never leave it empty; use "
+                "no_physical_change instead if nothing physical changed, or relationship_change if this is really "
+                "a relationship update such as an item/equipment changing hands. "
+                "A relationship_change must set object (the other entity) or old_object (the prior one, to end or "
+                "replace it) - never leave both null, that operation would do nothing. "
                 "Every operation needs reason. Do not include abstract events, memories, intents, narration, "
                 "database instructions, wrappers, prose, or markdown."
             ),
             run_name=run_name,
+            validate_result=lambda proposal: _require_every_accepted_action_accounted_for(
+                proposal, coordination_result,
+            ),
         )
 
     async def commit_user_actions(self,

@@ -14,12 +14,12 @@ OUTPUT_DIR = Path("tests/evaluation_test/output")
 
 CARD_PATHS = sorted(CARDS_DIR.glob("*.png")) if CARDS_DIR.is_dir() else []
 
-_LANGUAGE_BY_CARD = {
-    "01": SupportedLanguage.ENGLISH,
-    "02": SupportedLanguage.CHINESE,
-    "03": SupportedLanguage.CHINESE,
-    "04": SupportedLanguage.CHINESE,
-}
+def _language_from_card_path(card_path: Path) -> SupportedLanguage:
+    """Card filenames encode the extraction language as their final dot-segment (e.g.
+    "01.en.png") - the same language the SillyTavern import UI's language selector picks for this
+    card, so each card's evaluation output is generated with the prompt set it would actually use
+    in production."""
+    return SupportedLanguage(card_path.stem.rsplit(".", 1)[-1])
 
 
 @pytest.fixture
@@ -47,7 +47,7 @@ async def test_extract_locations_from_real_sillytavern_card(card_path: Path, glo
     --collect-only`)."""
     extracted = DataExtractor().extract(card_path.read_bytes())
     preprocessed = CardPreprocessor.preprocess(extracted.card)
-    language = _LANGUAGE_BY_CARD.get(card_path.stem, SupportedLanguage.ENGLISH)
+    language = _language_from_card_path(card_path)
 
     classification = await LorebookClassifier(database=global_scope_chat_config).classify(
         preprocessed, language=language,

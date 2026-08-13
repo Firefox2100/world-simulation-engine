@@ -202,7 +202,18 @@ class Narrator(SimulatorComponent):
                 )
 
             blocks.extend(insertions_by_position.pop(max_position, []))
+        elif insertion_proposal.insertions:
+            # No speech to anchor against, but the model narrated something itself - use only
+            # that. Every insertion collapses to position 0 here (max_position is 0 with no
+            # speech_anchors), so it is already in model-emitted order.
+            for insertion_blocks in insertions_by_position.values():
+                blocks.extend(insertion_blocks)
         else:
+            # The model returned no narration at all (e.g. it judged accepted_actions.summary
+            # sufficient - the prompt explicitly allows "[]" for that). Fall back to the
+            # coordinator's own terse summaries so a purely-physical turn is never rendered empty.
+            # Only a fallback: using both this and the model's insertions would double-narrate the
+            # same actions once mechanically and once in prose.
             blocks = [
                 NarrationBlock(
                     type="narration",
@@ -211,7 +222,5 @@ class Narrator(SimulatorComponent):
                 for action in context.coordination_result.accepted_actions
                 if action.summary
             ]
-            for insertion_blocks in insertions_by_position.values():
-                blocks.extend(insertion_blocks)
 
         return NarrationProposal(blocks=blocks)

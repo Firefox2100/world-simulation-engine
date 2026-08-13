@@ -27,7 +27,7 @@ class EventInvolvementProposal(BaseModel):
 class ProposedEventCreation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["create_event"] = "create_event"
+    type: Literal["create_event"]
     proposed_id: str | None = None
     name: str
     summary: str
@@ -39,7 +39,7 @@ class ProposedEventCreation(BaseModel):
 class ProposedTurnEventLink(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["link_turn_to_event"] = "link_turn_to_event"
+    type: Literal["link_turn_to_event"]
     event_id: str
     turn_id: str
     reason: str
@@ -48,7 +48,7 @@ class ProposedTurnEventLink(BaseModel):
 class ProposedEventUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["update_event"] = "update_event"
+    type: Literal["update_event"]
     event_id: str
     name: str | None = None
     summary: str | None = None
@@ -59,7 +59,7 @@ class ProposedEventUpdate(BaseModel):
 class ProposedMemoryCreation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["create_memory"] = "create_memory"
+    type: Literal["create_memory"]
     proposed_id: str | None = None
     event_id: str
     summary: str
@@ -72,7 +72,7 @@ class ProposedMemoryCreation(BaseModel):
 class ProposedExistingMemoryLink(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["link_existing_memory"] = "link_existing_memory"
+    type: Literal["link_existing_memory"]
     memory_id: str
     character_link: MemoryCharacterLinkProposal
     reason: str
@@ -81,7 +81,7 @@ class ProposedExistingMemoryLink(BaseModel):
 class ProposedIntentCreation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["create_intent"] = "create_intent"
+    type: Literal["create_intent"]
     proposed_id: str | None = None
     character_id: str
     intent_type: IntentType
@@ -109,7 +109,7 @@ class ProposedIntentCreation(BaseModel):
 class ProposedIntentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["update_intent"] = "update_intent"
+    type: Literal["update_intent"]
     intent_id: str
     status: IntentStatus | None = None
     priority: float | None = Field(default=None, ge=0, le=1)
@@ -126,7 +126,7 @@ class ProposedIntentUpdate(BaseModel):
 class ProposedNoAbstractChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["no_abstract_change"] = "no_abstract_change"
+    type: Literal["no_abstract_change"]
     reason: str
 
 

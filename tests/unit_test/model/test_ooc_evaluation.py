@@ -78,6 +78,7 @@ def test_ooc_world_state_mutation_unwraps_relationship_only_promotion_container(
     # "promote" guess creating a spurious duplicate entity.
     mutation = OOCWorldStateMutation.model_validate(
         {
+            "category": "world_state_mutation",
             "command_index": 0,
             "command_text": "force Arthur to confront Clara",
             "consistent": True,
@@ -91,6 +92,7 @@ def test_ooc_world_state_mutation_unwraps_relationship_only_promotion_container(
                             "relationship_type": "interacting_with",
                             "subject": {"type": "character", "id": "character_arthur"},
                             "object": {"type": "character", "id": "character_clara"},
+                            "old_object": None,
                             "reason": "OOC-forced confrontation.",
                         }
                     ],

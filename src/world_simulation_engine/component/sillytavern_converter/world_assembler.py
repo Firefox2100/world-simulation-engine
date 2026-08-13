@@ -604,6 +604,14 @@ class WorldAssembler:
             user_id: str, world_id: str,
             report: ConversionReport,
     ) -> list[dict]:
+        for source_id in variables.capped_source_ids:
+            report.note(
+                f"Variable source {source_id!r} hit the per-call extraction cap - it likely "
+                "defines more tracked variables than were imported; review the source directly "
+                "for anything missing.",
+                low_confidence=True,
+            )
+
         grouped: dict[tuple[str, str], dict[str, dict]] = {}
 
         for variable in variables.variables:

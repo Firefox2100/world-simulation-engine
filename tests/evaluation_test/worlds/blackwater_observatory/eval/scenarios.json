@@ -1,0 +1,829 @@
+{
+  "synthetic_coordination_cases": [
+    {
+      "case_id": "arthur_asks_clara_room_7",
+      "source": "user",
+      "user_input": "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied before Director Harlan vanished.",
+      "coordination": {
+        "status": "complete",
+        "accepted_actions": [
+          {
+            "actor_id": "character_arthur_moore",
+            "proposal_index": 0,
+            "action_index": 0,
+            "start_offset_seconds": 0,
+            "end_offset_seconds": 4,
+            "summary": "Arthur Moore asks Clara Whitlock whether Room 7 was occupied before Harlan vanished.",
+            "action": {
+              "type": "speak",
+              "label": "ask_clara_about_room_7",
+              "target_ids": [
+                "character_clara_whitlock"
+              ],
+              "utterance": null,
+              "intended_duration_seconds": 4,
+              "interruptible": true,
+              "interruption_triggers": [
+                "clara_answers",
+                "bar_interrupts"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          }
+        ],
+        "problem": null,
+        "pending_actions": []
+      }
+    },
+    {
+      "case_id": "arthur_reads_notice_board",
+      "source": "user",
+      "user_input": "I step away from the bar for a moment and study the Notice Board, looking for older papers hidden underneath the festival announcements.",
+      "coordination": {
+        "status": "complete",
+        "accepted_actions": [
+          {
+            "actor_id": "character_arthur_moore",
+            "proposal_index": 0,
+            "action_index": 0,
+            "start_offset_seconds": 0,
+            "end_offset_seconds": 3,
+            "summary": "Arthur Moore steps away from the bar toward the Notice Board.",
+            "action": {
+              "type": "move",
+              "label": "step_toward_notice_board",
+              "target_ids": [
+                "landmark_notice_board"
+              ],
+              "utterance": null,
+              "intended_duration_seconds": 3,
+              "interruptible": true,
+              "interruption_triggers": [
+                "clara_calls_after_arthur"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          },
+          {
+            "actor_id": "character_arthur_moore",
+            "proposal_index": 0,
+            "action_index": 1,
+            "start_offset_seconds": 3,
+            "end_offset_seconds": 15,
+            "summary": "Arthur Moore studies the Notice Board for older papers under the festival notices.",
+            "action": {
+              "type": "observe",
+              "label": "study_notice_board_for_older_papers",
+              "target_ids": [
+                "landmark_notice_board"
+              ],
+              "utterance": null,
+              "intended_duration_seconds": 12,
+              "interruptible": true,
+              "interruption_triggers": [
+                "someone_blocks_notice_board"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          }
+        ],
+        "problem": null,
+        "pending_actions": []
+      }
+    },
+    {
+      "case_id": "clara_answers_room_7",
+      "source": "character",
+      "user_input": "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied before Director Harlan vanished.",
+      "coordination": {
+        "status": "complete",
+        "accepted_actions": [
+          {
+            "actor_id": "character_clara_whitlock",
+            "proposal_index": 0,
+            "action_index": 0,
+            "start_offset_seconds": 0,
+            "end_offset_seconds": 6,
+            "summary": "Clara Whitlock answers Arthur's question about Room 7 while staying behind the bar.",
+            "action": {
+              "type": "speak",
+              "label": "answer_room_7_question",
+              "target_ids": [
+                "character_arthur_moore"
+              ],
+              "utterance": "Room 7 was occupied, Mr. Moore, but not by a name I trusted.",
+              "intended_duration_seconds": 6,
+              "interruptible": true,
+              "interruption_triggers": [
+                "customer_interrupts"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          }
+        ],
+        "problem": null,
+        "pending_actions": []
+      }
+    },
+    {
+      "case_id": "clara_hands_receipt",
+      "source": "character",
+      "user_input": "Clara hands Arthur the Room 7 cash receipt.",
+      "coordination": {
+        "status": "complete",
+        "accepted_actions": [
+          {
+            "actor_id": "character_clara_whitlock",
+            "proposal_index": 0,
+            "action_index": 0,
+            "start_offset_seconds": 0,
+            "end_offset_seconds": 4,
+            "summary": "Clara Whitlock hands the Room 7 cash receipt to Arthur Moore.",
+            "action": {
+              "type": "give",
+              "label": "hand_room_7_receipt_to_arthur",
+              "target_ids": [
+                "item_room_7_cash_receipt",
+                "character_arthur_moore"
+              ],
+              "utterance": null,
+              "intended_duration_seconds": 4,
+              "interruptible": true,
+              "interruption_triggers": [
+                "arthur_refuses",
+                "customer_interrupts"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          }
+        ],
+        "problem": null,
+        "pending_actions": []
+      }
+    },
+    {
+      "case_id": "eleanor_intervenes_then_pending_clara",
+      "source": "character",
+      "user_input": "Arthur lowers his voice and says, \"I am not here to embarrass the town, Miss Whitlock, but I do need the truth.\"",
+      "coordination": {
+        "status": "problem",
+        "accepted_actions": [
+          {
+            "actor_id": "character_eleanor_graves",
+            "proposal_index": 0,
+            "action_index": 0,
+            "start_offset_seconds": 0,
+            "end_offset_seconds": 4,
+            "summary": "Eleanor Graves cuts in before Clara can answer Arthur.",
+            "action": {
+              "type": "speak",
+              "label": "intervene_about_town_discretion",
+              "target_ids": [
+                "character_arthur_moore"
+              ],
+              "utterance": "Discretion is also a kind of truth, Mr. Moore.",
+              "intended_duration_seconds": 4,
+              "interruptible": true,
+              "interruption_triggers": [
+                "arthur_addresses_clara_directly"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          }
+        ],
+        "problem": {
+          "type": "interruption",
+          "time_offset_seconds": 4,
+          "involved_actor_ids": [
+            "character_clara_whitlock",
+            "character_eleanor_graves"
+          ],
+          "involved_actions": [
+            {
+              "actor_id": "character_clara_whitlock",
+              "proposal_index": 0,
+              "action_index": 0
+            },
+            {
+              "actor_id": "character_eleanor_graves",
+              "proposal_index": 0,
+              "action_index": 0
+            }
+          ],
+          "description": "Eleanor's public interruption delays Clara's private answer to Arthur.",
+          "needs_user_decision": false,
+          "actors_to_react": [
+            "character_clara_whitlock"
+          ],
+          "resolver_required": false
+        },
+        "pending_actions": [
+          {
+            "actor_id": "character_clara_whitlock",
+            "proposal_index": 0,
+            "action_index": 0,
+            "reason": "Clara must decide whether to answer after Eleanor interrupts.",
+            "action": {
+              "type": "speak",
+              "label": "answer_arthur_truth_request",
+              "target_ids": [
+                "character_arthur_moore"
+              ],
+              "utterance": null,
+              "intended_duration_seconds": 8,
+              "interruptible": true,
+              "interruption_triggers": [
+                "eleanor_continues_interruption"
+              ],
+              "required_preconditions": [],
+              "expected_effects": []
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "input_pipeline_cases": [
+    {
+      "case_id": "ask_clara_room_7",
+      "user_input": "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied before Director Harlan vanished.",
+      "user_character_id": "character_arthur_moore"
+    },
+    {
+      "case_id": "inspect_ledger",
+      "user_input": "I ask Clara to let me see the Visitor's Room Ledger, then compare the Room 7 entry against the dates around Harlan's disappearance.",
+      "user_character_id": "character_arthur_moore"
+    },
+    {
+      "case_id": "mixed_speech_and_ooc",
+      "user_input": "Arthur lowers his voice and says, \"I am not here to embarrass the town, Miss Whitlock, but I do need the truth.\" [/OOC: Keep the interpretation focused on the attempted action.]",
+      "user_character_id": "character_arthur_moore"
+    },
+    {
+      "case_id": "read_notice_board",
+      "user_input": "I step away from the bar for a moment and study the Notice Board, looking for older papers hidden underneath the festival announcements.",
+      "user_character_id": "character_arthur_moore"
+    },
+    {
+      "case_id": "reveal_letter_conditionally",
+      "user_input": "If Clara seems willing to speak privately, Arthur shows her only the signature line of the anonymous letter and asks whether she recognizes the handwriting.",
+      "user_character_id": "character_arthur_moore"
+    }
+  ],
+  "action_validator_evaluation_cases": [
+    {
+      "case_id": "user_ask_clara_about_room_7",
+      "origin": "user",
+      "actor_id": "character_arthur_moore",
+      "expected_allowed": true,
+      "actions": [
+        {
+          "type": "speak",
+          "label": "ask_clara_about_room_7",
+          "target_ids": [
+            "character_clara_whitlock"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 4,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_starts_answering",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ],
+      "note": "Clara is at the same location as Arthur (location_iron_stag_bar); plain speech addressed to someone present has no plausible blocker."
+    },
+    {
+      "case_id": "user_compare_visitor_ledger",
+      "origin": "user",
+      "actor_id": "character_arthur_moore",
+      "expected_allowed": true,
+      "actions": [
+        {
+          "type": "observe",
+          "label": "compare_room_7_ledger_entry",
+          "target_ids": [
+            "landmark_visitors_room_ledger"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 15,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_intervenes",
+            "external_distraction"
+          ],
+          "required_preconditions": [
+            "Arthur can get close enough to read the ledger."
+          ],
+          "expected_effects": []
+        }
+      ],
+      "note": "landmark_visitors_room_ledger is seeded at location_iron_stag_bar, Arthur's current location, so the 'can get close enough' precondition is satisfiable."
+    },
+    {
+      "case_id": "user_show_letter_signature_conditionally",
+      "origin": "user",
+      "actor_id": "character_arthur_moore",
+      "expected_allowed": false,
+      "actions": [
+        {
+          "type": "manipulate",
+          "label": "show_letter_signature_to_clara",
+          "target_ids": [
+            "item_anonymous_letter",
+            "character_clara_whitlock"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 5,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_refuses",
+            "external_distraction"
+          ],
+          "required_preconditions": [
+            "Clara seems willing to speak privately."
+          ],
+          "expected_effects": []
+        }
+      ],
+      "note": "Nothing in the seeded state establishes that Clara has agreed to speak privately, so this required_precondition is unmet and must gate the action."
+    },
+    {
+      "case_id": "user_open_distant_filing_cabinet",
+      "origin": "user",
+      "actor_id": "character_arthur_moore",
+      "expected_allowed": false,
+      "actions": [
+        {
+          "type": "manipulate",
+          "label": "open_observatory_filing_cabinet",
+          "target_ids": [
+            "container_locked_filing_cabinet"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 8,
+          "interruptible": true,
+          "interruption_triggers": [
+            "someone_intervenes",
+            "lock_resists"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ],
+      "note": "container_locked_filing_cabinet is seeded at location_observatory_directors_office, not Arthur's location (location_iron_stag_bar) - it is not reachable from context."
+    },
+    {
+      "case_id": "user_fire_laser_pistol",
+      "origin": "user",
+      "actor_id": "character_arthur_moore",
+      "expected_allowed": false,
+      "actions": [
+        {
+          "type": "attack",
+          "label": "fire_laser_pistol_at_ceiling",
+          "target_ids": [],
+          "utterance": null,
+          "intended_duration_seconds": 2,
+          "interruptible": true,
+          "interruption_triggers": [
+            "weapon_misfires",
+            "someone_intervenes"
+          ],
+          "required_preconditions": [
+            "Arthur has a working laser pistol."
+          ],
+          "expected_effects": []
+        }
+      ],
+      "note": "The world is a 1912 mystery setting and Arthur's only seeded weapon is a pocket revolver (equipment_pocket_revolver) - no laser pistol exists to satisfy this precondition."
+    },
+    {
+      "case_id": "character_clara_greet_arthur",
+      "origin": "character",
+      "actor_id": "character_clara_whitlock",
+      "expected_allowed": true,
+      "actions": [
+        {
+          "type": "speak",
+          "label": "greet_arthur_carefully",
+          "target_ids": [
+            "character_arthur_moore"
+          ],
+          "utterance": "Evening, Mr. Moore. What brings you to Blackwater Ridge tonight?",
+          "intended_duration_seconds": 5,
+          "interruptible": true,
+          "interruption_triggers": [
+            "arthur_answers",
+            "customer_interrupts"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    },
+    {
+      "case_id": "character_clara_hand_receipt_to_arthur",
+      "origin": "character",
+      "actor_id": "character_clara_whitlock",
+      "expected_allowed": true,
+      "actions": [
+        {
+          "type": "give",
+          "label": "hand_room_7_receipt_to_arthur",
+          "target_ids": [
+            "item_room_7_cash_receipt",
+            "character_arthur_moore"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 4,
+          "interruptible": true,
+          "interruption_triggers": [
+            "arthur_refuses",
+            "customer_interrupts"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ],
+      "note": "item_room_7_cash_receipt is seeded as held/owned by Clara, and Arthur is present."
+    },
+    {
+      "case_id": "character_clara_check_gossip_notebook",
+      "origin": "character",
+      "actor_id": "character_clara_whitlock",
+      "expected_allowed": true,
+      "actions": [
+        {
+          "type": "observe",
+          "label": "check_gossip_notebook",
+          "target_ids": [
+            "item_claras_gossip_notebook"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 10,
+          "interruptible": true,
+          "interruption_triggers": [
+            "customer_interrupts",
+            "arthur_asks_question"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ],
+      "note": "item_claras_gossip_notebook is seeded as held/owned by Clara."
+    },
+    {
+      "case_id": "character_clara_walk_to_observatory",
+      "origin": "character",
+      "actor_id": "character_clara_whitlock",
+      "expected_allowed": true,
+      "actions": [
+        {
+          "type": "move",
+          "label": "walk_to_observatory_office",
+          "target_ids": [
+            "location_observatory_directors_office"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 900,
+          "interruptible": true,
+          "interruption_triggers": [
+            "festival_customer_needs_service",
+            "arthur_follows"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    },
+    {
+      "case_id": "character_clara_cast_truth_spell",
+      "origin": "character",
+      "actor_id": "character_clara_whitlock",
+      "expected_allowed": false,
+      "actions": [
+        {
+          "type": "other",
+          "label": "cast_truth_spell_on_arthur",
+          "target_ids": [
+            "character_arthur_moore"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 6,
+          "interruptible": true,
+          "interruption_triggers": [
+            "spell_fails",
+            "arthur_objects"
+          ],
+          "required_preconditions": [
+            "Clara can use magic."
+          ],
+          "expected_effects": []
+        }
+      ],
+      "note": "The world is explicitly non-magical (1912 mystery setting) and Clara has no seeded magic capability, so this precondition can never be established."
+    }
+  ],
+  "user_coordination_cases": [
+    {
+      "case_id": "ask_clara_room_7",
+      "actor_id": "character_arthur_moore",
+      "actions": [
+        {
+          "type": "speak",
+          "label": "ask_clara_about_room_7",
+          "target_ids": [
+            "character_clara_whitlock"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 4,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_starts_answering",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    },
+    {
+      "case_id": "inspect_ledger",
+      "actor_id": "character_arthur_moore",
+      "actions": [
+        {
+          "type": "speak",
+          "label": "ask_clara_to_see_visitor_ledger",
+          "target_ids": [
+            "character_clara_whitlock"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 4,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_starts_answering",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        },
+        {
+          "type": "observe",
+          "label": "compare_room_7_ledger_entry",
+          "target_ids": [
+            "landmark_visitors_room_ledger"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 15,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_intervenes",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    },
+    {
+      "case_id": "mixed_speech_and_ooc",
+      "actor_id": "character_arthur_moore",
+      "actions": [
+        {
+          "type": "speak",
+          "label": "quietly_ask_clara_for_truth",
+          "target_ids": [
+            "character_clara_whitlock"
+          ],
+          "utterance": "I am not here to embarrass the town, Miss Whitlock, but I do need the truth.",
+          "intended_duration_seconds": 5,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_starts_answering",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    },
+    {
+      "case_id": "read_notice_board",
+      "actor_id": "character_arthur_moore",
+      "actions": [
+        {
+          "type": "move",
+          "label": "step_away_from_bar",
+          "target_ids": [
+            "landmark_notice_board"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 3,
+          "interruptible": true,
+          "interruption_triggers": [
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        },
+        {
+          "type": "observe",
+          "label": "study_notice_board_for_hidden_papers",
+          "target_ids": [
+            "landmark_notice_board"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 12,
+          "interruptible": true,
+          "interruption_triggers": [
+            "someone_interrupts",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    },
+    {
+      "case_id": "reveal_letter_conditionally",
+      "actor_id": "character_arthur_moore",
+      "actions": [
+        {
+          "type": "manipulate",
+          "label": "show_letter_signature_to_clara",
+          "target_ids": [
+            "item_anonymous_letter",
+            "character_clara_whitlock"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 4,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_refuses",
+            "external_distraction"
+          ],
+          "required_preconditions": [
+            "Clara seems willing to speak privately."
+          ],
+          "expected_effects": []
+        },
+        {
+          "type": "speak",
+          "label": "ask_if_clara_recognizes_handwriting",
+          "target_ids": [
+            "character_clara_whitlock"
+          ],
+          "utterance": null,
+          "intended_duration_seconds": 4,
+          "interruptible": true,
+          "interruption_triggers": [
+            "clara_starts_answering",
+            "external_distraction"
+          ],
+          "required_preconditions": [],
+          "expected_effects": []
+        }
+      ]
+    }
+  ],
+  "character_simulator_cases": [
+    {
+      "case_id": "clara_hears_room_7_question",
+      "character_id": "character_clara_whitlock",
+      "user_input": "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied before Director Harlan vanished."
+    },
+    {
+      "case_id": "clara_asked_for_ledger_access",
+      "character_id": "character_clara_whitlock",
+      "user_input": "Arthur asks Clara to let him see the Visitor's Room Ledger and starts comparing the Room 7 entry against the dates around Harlan's disappearance."
+    },
+    {
+      "case_id": "eleanor_notices_arthur_questioning",
+      "character_id": "character_eleanor_graves",
+      "user_input": "Arthur lowers his voice while speaking to Clara and makes it clear he needs the truth about Harlan's disappearance."
+    },
+    {
+      "case_id": "clara_sees_notice_board_search",
+      "character_id": "character_clara_whitlock",
+      "user_input": "Arthur steps away from the bar and studies the Notice Board, looking under festival announcements for older papers."
+    },
+    {
+      "case_id": "eleanor_sees_letter_signature",
+      "character_id": "character_eleanor_graves",
+      "user_input": "If Clara seems willing to speak privately, Arthur shows her only the signature line of the anonymous letter and asks whether she recognizes the handwriting."
+    }
+  ],
+  "emotion_updater_cases": [
+    {
+      "case_id": "arthur_reflects_on_disappearance_threads",
+      "character_id": "character_arthur_moore",
+      "memory_ids": [
+        "memory_disappearance_threads"
+      ]
+    }
+  ],
+  "subjective_model_updater_cases": [
+    {
+      "case_id": "arthur_forms_beliefs_from_disappearance_threads",
+      "character_id": "character_arthur_moore",
+      "memory_ids": [
+        "memory_disappearance_threads"
+      ],
+      "candidate_entity_ids": [
+        "location_observatory_directors_office",
+        "location_old_mine_entrance"
+      ]
+    }
+  ],
+  "relationship_updater_cases": [
+    {
+      "case_id": "arthur_updates_relationships_from_disappearance_threads",
+      "character_id": "character_arthur_moore",
+      "memory_ids": [
+        "memory_disappearance_threads"
+      ],
+      "candidate_entity_ids": [
+        "character_clara_whitlock",
+        "location_old_mine_entrance"
+      ]
+    }
+  ],
+  "objective_relationship_validation_cases": [
+    {
+      "case_id": "revolver_not_compatible_with_letter",
+      "actor_id": "character_arthur_moore",
+      "relationship": {
+        "source": {
+          "type": "equipment",
+          "id": "equipment_pocket_revolver",
+          "name": "Pocket Revolver"
+        },
+        "target": {
+          "type": "item",
+          "id": "item_anonymous_letter",
+          "name": "Anonymous Letter"
+        },
+        "label": "not compatible with",
+        "public_description": "The revolver cannot safely be used as a letter opener.",
+        "visibility": "objective",
+        "details": {
+          "kind": "compatibility",
+          "compatible": false,
+          "conditions": [
+            "Using the revolver this way risks discharge and cannot open the letter safely."
+          ]
+        }
+      },
+      "action": {
+        "type": "use",
+        "label": "use_revolver_to_open_letter",
+        "target_ids": [
+          "equipment_pocket_revolver",
+          "item_anonymous_letter"
+        ],
+        "intended_duration_seconds": 5,
+        "interruptible": true,
+        "required_preconditions": [
+          "The revolver is compatible with safely opening the letter."
+        ]
+      },
+      "expected_allowed": false
+    }
+  ],
+  "world_simulator_cases": [
+    {
+      "case_id": "contact_off_scene_actor",
+      "user_input": "I telephone Marcus Reed and ask what he found in the director's office.",
+      "expects_wait": true,
+      "off_scene_actor_ids": [
+        "character_marcus_reed"
+      ]
+    },
+    {
+      "case_id": "move_to_off_scene_actor",
+      "user_input": "I go to the director's office to find Marcus Reed.",
+      "expects_wait": true,
+      "off_scene_actor_ids": [
+        "character_marcus_reed"
+      ]
+    },
+    {
+      "case_id": "unrelated_action",
+      "user_input": "I quietly inspect the Visitor's Room Ledger at the bar.",
+      "expects_wait": false,
+      "off_scene_actor_ids": [
+        "character_marcus_reed"
+      ]
+    }
+  ]
+}

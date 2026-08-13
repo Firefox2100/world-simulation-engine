@@ -1,6 +1,4 @@
-import json
 import os
-from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,87 +10,12 @@ from world_simulation_engine.component.simulator.scene_coordinator import SceneC
 from world_simulation_engine.misc.enums import ComponentType
 from world_simulation_engine.model import ActionCandidateSet, CharacterActionPlan, ProposedAction
 
-
-SYNTHETIC_CHARACTER_INPUT_CASES = [
-    {
-        "case_id": "clara_hears_room_7_question",
-        "character_id": "character_clara_whitlock",
-        "user_input": (
-            "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
-            "before Director Harlan vanished."
-        ),
-    },
-    {
-        "case_id": "clara_asked_for_ledger_access",
-        "character_id": "character_clara_whitlock",
-        "user_input": (
-            "Arthur asks Clara to let him see the Visitor's Room Ledger and starts comparing "
-            "the Room 7 entry against the dates around Harlan's disappearance."
-        ),
-    },
-    {
-        "case_id": "eleanor_notices_arthur_questioning",
-        "character_id": "character_eleanor_graves",
-        "user_input": (
-            "Arthur lowers his voice while speaking to Clara and makes it clear he needs the truth "
-            "about Harlan's disappearance."
-        ),
-    },
-    {
-        "case_id": "clara_sees_notice_board_search",
-        "character_id": "character_clara_whitlock",
-        "user_input": (
-            "Arthur steps away from the bar and studies the Notice Board, looking under festival "
-            "announcements for older papers."
-        ),
-    },
-    {
-        "case_id": "eleanor_sees_letter_signature",
-        "character_id": "character_eleanor_graves",
-        "user_input": (
-            "If Clara seems willing to speak privately, Arthur shows her only the signature line "
-            "of the anonymous letter and asks whether she recognizes the handwriting."
-        ),
-    },
-]
-
-INPUT_PIPELINE_CASES = [
-    {
-        "case_id": "ask_clara_room_7",
-        "user_input": (
-            "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
-            "before Director Harlan vanished."
-        ),
-    },
-    {
-        "case_id": "inspect_ledger",
-        "user_input": (
-            "I ask Clara to let me see the Visitor's Room Ledger, then compare the Room 7 entry "
-            "against the dates around Harlan's disappearance."
-        ),
-    },
-    {
-        "case_id": "mixed_speech_and_ooc",
-        "user_input": (
-            "Arthur lowers his voice and says, \"I am not here to embarrass the town, Miss Whitlock, "
-            "but I do need the truth.\" [/OOC: Keep the interpretation focused on the attempted action.]"
-        ),
-    },
-    {
-        "case_id": "read_notice_board",
-        "user_input": (
-            "I step away from the bar for a moment and study the Notice Board, looking for older papers "
-            "hidden underneath the festival announcements."
-        ),
-    },
-    {
-        "case_id": "reveal_letter_conditionally",
-        "user_input": (
-            "If Clara seems willing to speak privately, Arthur shows her only the signature line of the "
-            "anonymous letter and asks whether she recognizes the handwriting."
-        ),
-    },
-]
+from workflow_helpers import (
+    CHARACTER_SIMULATOR_CASES as SYNTHETIC_CHARACTER_INPUT_CASES,
+    INPUT_PIPELINE_CASES,
+    case_ids,
+    write_case_result as _write_case_result,
+)
 
 
 def _synthetic_output_path() -> Path:
@@ -110,49 +33,6 @@ def _pipeline_output_path() -> Path:
             "WSE_EVAL_INPUT_TO_CHARACTER_SIMULATOR_OUTPUT",
             "tests/evaluation_test/output/input_to_character_simulator_results.json",
         )
-    )
-
-
-def _write_case_result(
-    *,
-    output_path: Path,
-    world_id: str,
-    simulation_id: str,
-    case_order: list[dict],
-    case_result: dict,
-):
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if output_path.exists():
-        output = json.loads(output_path.read_text(encoding="utf-8"))
-    else:
-        output = {
-            "world_id": world_id,
-            "simulation_id": simulation_id,
-            "cases": [],
-        }
-
-    cases_by_id = {
-        case["case_id"]: case
-        for case in output.get("cases", [])
-    }
-    cases_by_id[case_result["case_id"]] = case_result
-
-    output.update(
-        {
-            "generated_at": datetime.now(UTC).isoformat(),
-            "world_id": world_id,
-            "simulation_id": simulation_id,
-            "cases": [
-                cases_by_id[case["case_id"]]
-                for case in case_order
-                if case["case_id"] in cases_by_id
-            ],
-        }
-    )
-    output_path.write_text(
-        json.dumps(output, indent=2, ensure_ascii=False),
-        encoding="utf-8",
     )
 
 
@@ -218,9 +98,10 @@ async def _nearby_non_user_character_ids(database, simulation_id: str) -> list[s
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("mock_graph_world_setup", "case"),
     SYNTHETIC_CHARACTER_INPUT_CASES,
-    ids=[case["case_id"] for case in SYNTHETIC_CHARACTER_INPUT_CASES],
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(SYNTHETIC_CHARACTER_INPUT_CASES),
 )
 async def test_evaluate_character_simulator_outputs_action_proposal(
     case,
@@ -268,9 +149,10 @@ async def test_evaluate_character_simulator_outputs_action_proposal(
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("mock_graph_world_setup", "case"),
     INPUT_PIPELINE_CASES,
-    ids=[case["case_id"] for case in INPUT_PIPELINE_CASES],
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(INPUT_PIPELINE_CASES),
 )
 async def test_evaluate_input_to_character_simulator_fanout_outputs_action_proposals(
     case,
@@ -289,7 +171,7 @@ async def test_evaluate_input_to_character_simulator_fanout_outputs_action_propo
             ComponentType.PERSPECTIVE_RESOLVER,
         ],
     )
-    character_id = "character_arthur_moore"
+    character_id = case["user_character_id"]
     interpreter = InputInterpreter(database=evaluation_seeded_database)
     validator = ActionValidator(database=evaluation_seeded_database)
     coordinator = SceneCoordinator(database=evaluation_seeded_database)

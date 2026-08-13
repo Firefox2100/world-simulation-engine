@@ -4,6 +4,21 @@ from pydantic import ValidationError
 from world_simulation_engine.model import StateCommitProposal
 
 
+def test_state_commit_schema_requires_operation_discriminators_and_state_change_payload():
+    schema_defs = StateCommitProposal.model_json_schema()["$defs"]
+
+    for operation_name in (
+        "ProposedEntityCreation",
+        "ProposedEntityStateChange",
+        "ProposedEntityPromotion",
+        "ProposedRelationshipChange",
+        "ProposedNoPhysicalChange",
+    ):
+        assert "type" in schema_defs[operation_name]["required"]
+
+    assert "field_changes" in schema_defs["ProposedEntityStateChange"]["required"]
+
+
 def test_state_commit_proposal_accepts_physical_operation_mix():
     proposal = StateCommitProposal.model_validate(
         {
@@ -66,6 +81,7 @@ def test_state_commit_proposal_accepts_physical_operation_mix():
                         "type": "character",
                         "id": "character_1",
                     },
+                    "old_object": None,
                     "properties": {
                         "equipped_position": "head",
                     },

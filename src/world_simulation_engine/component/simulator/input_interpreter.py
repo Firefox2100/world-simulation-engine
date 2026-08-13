@@ -220,6 +220,7 @@ class InputInterpreter(SimulatorComponent):
         return InputInterpretation(
             items=[
                 OOCCommand(
+                    type="ooc",
                     command_text=segment.command_text or "",
                     normalized_intent=segment.command_text or "",
                     source_text=segment.source_text,
@@ -409,6 +410,7 @@ class InputInterpreter(SimulatorComponent):
             if match_index is None:
                 updated_items.append(
                     UserActionSequenceItem(
+                        type="action",
                         action=ProposedAction(
                             type=ActionType.SPEAK,
                             label="speak_quoted_input",

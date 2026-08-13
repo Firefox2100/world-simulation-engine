@@ -10,7 +10,7 @@ from world_simulation_engine.model.silly_tavern import SillyTavernCardV3
 
 
 CARDS_DIR = Path("tests/evaluation_test/assets/st-cards")
-OUTPUT_DIR = Path("tests/evaluation_test/assets/card-data")
+OUTPUT_DIR = Path("tests/evaluation_test/output/card-data")
 
 CARD_PATHS = sorted(CARDS_DIR.glob("*.png")) if CARDS_DIR.is_dir() else []
 

@@ -1,8 +1,19 @@
+import pytest
+
 from world_simulation_engine.component.simulator.emotion_updater import EmotionUpdater
 from world_simulation_engine.misc.enums import ComponentType
 
+from workflow_helpers import EMOTION_UPDATER_CASES, case_ids
 
+
+@pytest.mark.parametrize(
+    ("mock_graph_world_setup", "case"),
+    EMOTION_UPDATER_CASES,
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(EMOTION_UPDATER_CASES),
+)
 async def test_evaluate_emotion_updater_returns_bounded_audited_response(
+        case,
         evaluation_seeded_database,
         evaluation_chat_model_config,
         mock_graph_world_setup,
@@ -17,9 +28,9 @@ async def test_evaluate_emotion_updater_returns_bounded_audited_response(
 
     result = await EmotionUpdater(database=evaluation_seeded_database).update_from_memories(
         simulation_id=simulation_id,
-        character_id="character_arthur_moore",
+        character_id=case["character_id"],
         turn_id=mock_graph_world_setup.initial_turn.id,
-        memory_ids=["memory_disappearance_threads"],
+        memory_ids=case["memory_ids"],
     )
 
     # The seeded memory ("unresolved investigation threads") is not unambiguously emotionally
@@ -28,7 +39,7 @@ async def test_evaluate_emotion_updater_returns_bounded_audited_response(
     # by silently skipping whichever one didn't happen to occur this run.
     state = await evaluation_seeded_database.emotion.get_state(
         simulation_id=simulation_id,
-        character_id="character_arthur_moore",
+        character_id=case["character_id"],
     )
     if result.applied:
         assert result.emotion_state_id is not None

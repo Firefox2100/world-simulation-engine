@@ -1,7 +1,7 @@
 import json
 import re
 from copy import deepcopy
-from typing import Any, TypeVar, Type, TYPE_CHECKING, cast
+from typing import Any, Callable, TypeVar, Type, TYPE_CHECKING, cast
 from langchain.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import BaseModel
@@ -739,7 +739,17 @@ class LlmService:
                                             repair_instruction: str,
                                             run_name: str,
                                             max_attempts: int = 3,
+                                            validate_result: Callable[[T], None] | None = None,
                                             ) -> T:
+        """`validate_result`, if given, is called on every successfully-parsed candidate before it
+        is returned. It should raise on a result that is schema-valid but still wrong in a way
+        Pydantic cannot express on its own (e.g. cross-referencing the result against `data`,
+        such as checking every accepted-action index the caller supplied is accounted for
+        somewhere in the result). A raise feeds the same repair-and-retry loop as a parsing/
+        validation failure, rather than silently returning a result the caller would have to
+        re-check itself - the LLM gets a chance to fix it, and the caller gets a full failure
+        (RuntimeError after max_attempts) instead of a silently incomplete result.
+        """
         last_error: Exception | None = None
         last_raw: Any = None
 
@@ -778,19 +788,26 @@ class LlmService:
                 if parsing_error is not None:
                     fallback_parsed = self._parse_raw_with_output_model(output_model, raw)
                     if fallback_parsed is not None:
+                        if validate_result:
+                            validate_result(fallback_parsed)
                         return fallback_parsed
                     raise parsing_error
 
                 if parsed is None:
                     fallback_parsed = self._parse_raw_with_output_model(output_model, raw)
                     if fallback_parsed is not None:
+                        if validate_result:
+                            validate_result(fallback_parsed)
                         return fallback_parsed
                     raw_content = getattr(raw, "content", None)
                     raise ValueError(
                         f"Structured output parsed=None. Raw content: {raw_content!r}"
                     )
 
-                return cast(output_model, parsed)
+                result = cast(output_model, parsed)
+                if validate_result:
+                    validate_result(result)
+                return result
 
             except Exception as exc:
                 last_error = exc

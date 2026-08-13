@@ -1,6 +1,7 @@
 import json
 from unittest.mock import Mock
 
+import pytest
 from langchain.messages import AIMessage
 
 from world_simulation_engine.misc.enums import MessageRole
@@ -232,6 +233,91 @@ async def test_invoke_structured_with_repair_includes_schema_guidance_in_compose
     assert fake_model.calls[0]["include_raw"] is True
     sent_messages = fake_model.structured_model.received_messages
     assert "Output schema field guide for ActionValidationResult" in sent_messages[-1].content
+
+
+async def test_invoke_structured_with_repair_retries_when_validate_result_rejects_output():
+    # validate_result lets a caller reject a schema-valid-but-cross-referentially-wrong result
+    # (e.g. state_committer checking every accepted action index is accounted for) and feed the
+    # same repair-and-retry loop a parsing/validation failure would - it must not be treated as
+    # success just because the shape parsed fine.
+    class FakeStructuredModel:
+        def __init__(self, parsed_sequence):
+            self.parsed_sequence = list(parsed_sequence)
+            self.call_count = 0
+
+        async def ainvoke(self, messages, config=None):
+            parsed = self.parsed_sequence[self.call_count]
+            self.call_count += 1
+            return {"raw": AIMessage(content="{}"), "parsed": parsed, "parsing_error": None}
+
+    class FakeChatModel:
+        def __init__(self, structured_model):
+            self.structured_model = structured_model
+
+        def with_structured_output(self, output_model, method=None, include_raw=False):
+            return self.structured_model
+
+    incomplete = ActionValidationResult(validations=[], validator_notes=["missing"])
+    complete = ActionValidationResult(validations=[], validator_notes=["ok"])
+    structured_model = FakeStructuredModel([incomplete, complete])
+    fake_model = FakeChatModel(structured_model)
+    service = LlmService(model_config=Mock(), connection_config=Mock())
+    service._model = fake_model
+
+    def validate_result(result: ActionValidationResult) -> None:
+        if result.validator_notes != ["ok"]:
+            raise ValueError("not ok yet")
+
+    result = await service.invoke_structured_with_repair(
+        output_model=ActionValidationResult,
+        messages=[PromptMessage(role=MessageRole.USER, content="Validate this.")],
+        data={},
+        repair_instruction="Return valid JSON.",
+        run_name="test_run",
+        validate_result=validate_result,
+    )
+
+    assert result is complete
+    assert structured_model.call_count == 2
+
+
+async def test_invoke_structured_with_repair_raises_after_max_attempts_when_validate_result_never_passes():
+    class FakeStructuredModel:
+        def __init__(self, parsed):
+            self.parsed = parsed
+            self.call_count = 0
+
+        async def ainvoke(self, messages, config=None):
+            self.call_count += 1
+            return {"raw": AIMessage(content="{}"), "parsed": self.parsed, "parsing_error": None}
+
+    class FakeChatModel:
+        def __init__(self, structured_model):
+            self.structured_model = structured_model
+
+        def with_structured_output(self, output_model, method=None, include_raw=False):
+            return self.structured_model
+
+    always_incomplete = ActionValidationResult(validations=[], validator_notes=["missing"])
+    structured_model = FakeStructuredModel(always_incomplete)
+    fake_model = FakeChatModel(structured_model)
+    service = LlmService(model_config=Mock(), connection_config=Mock())
+    service._model = fake_model
+
+    def validate_result(result: ActionValidationResult) -> None:
+        raise ValueError("never satisfied")
+
+    with pytest.raises(RuntimeError, match="test_run failed after 3 attempts"):
+        await service.invoke_structured_with_repair(
+            output_model=ActionValidationResult,
+            messages=[PromptMessage(role=MessageRole.USER, content="Validate this.")],
+            data={},
+            repair_instruction="Return valid JSON.",
+            run_name="test_run",
+            validate_result=validate_result,
+        )
+
+    assert structured_model.call_count == 3
 
 
 def test_parse_raw_with_output_model_repairs_scene_coordination_final_action_bracket_slip():

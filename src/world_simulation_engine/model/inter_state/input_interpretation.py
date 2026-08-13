@@ -44,7 +44,7 @@ class UserActionSequenceItem(BaseModel):
         normalized["action"] = normalized_action
         return normalized
 
-    type: Literal["action"] = "action"
+    type: Literal["action"]
     action: ProposedAction
     source_text: str = Field(
         description="The exact source span corresponding to this proposed action.",
@@ -68,7 +68,7 @@ class OOCCommand(BaseModel):
 
         return self
 
-    type: Literal["ooc"] = "ooc"
+    type: Literal["ooc"]
     command_text: str = Field(
         description="Text inside the OOC marker, excluding the [/OOC: and closing ].",
     )

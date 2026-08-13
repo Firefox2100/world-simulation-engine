@@ -409,6 +409,34 @@ def test_assemble_attaches_non_clock_global_state_to_world_variable_set():
     assert variable_set["variables"][0]["name"] == "weather"
 
 
+def test_assemble_notes_a_variable_source_that_hit_the_extraction_cap():
+    # Real finding (evaluation run on a content-rich card): a single variable source can define
+    # more tracked variables than one bounded structured-output call is allowed to return, and the
+    # extractor stage has no way to tell the assembler apart from "the source only had this many" -
+    # it just flags the source id. WorldAssembler must turn that into a visible report note rather
+    # than silently treating a capped result as complete.
+    variables = VariableSchemaExtraction(
+        variables=[ExtractedVariable(
+            owner_hint="world", name="weather", value_type=VariableValueType.STRING,
+            default_value="stormy", description="The world's current weather condition.",
+            source_item_ids=["script:0"],
+        )],
+        capped_source_ids=["script:0"],
+    )
+
+    assembled = WorldAssembler().assemble(
+        make_card(), language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(),
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=variables,
+        items=ItemExtraction(), equipment=EquipmentExtraction(),
+    )
+
+    assert any(
+        "script:0" in entry.message and "cap" in entry.message and entry.low_confidence
+        for entry in assembled.report.entries
+    )
+
+
 def test_assemble_drops_time_tracking_variables_regardless_of_owner():
     # Real finding: the simulation manages its own clock (World.starting_time) - a per-owner
     # "time_passed"/"current_date" style tracked variable would drift from it, so these are dropped

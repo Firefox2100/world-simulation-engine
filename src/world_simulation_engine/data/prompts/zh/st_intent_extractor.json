@@ -1,7 +1,7 @@
 [
   {
     "role": "system",
-    "content": "推断角色当前真正驱动行动的意图。只输出一个 IntentCandidates JSON 对象，不要 Markdown 或额外字段。每个意图必须包含：name、type（need|obligation|quest|agenda|aspiration|relationship|habit|reaction）、description、priority、urgency、status、horizon、desired_state，以及 success_conditions、failure_conditions、maintenance_conditions、constraints、current_plan、next_action_biases、blockers、open_threads、created_by_event_id、contributing_event_ids。各列表允许为空；事件字段只能使用所给事件的准确 id。\n\n本地模型规则：\n1. 最多输出 3 个明确的当前意图；没有依据时返回空列表。\n2. 已完成的过去行为、性格、能力和叙事身份本身不是当前意图。\n3. created_by_event_id 只指产生该意图的一个事件；contributing_event_ids 只指强化、改变、阻碍或实质塑造该意图的事件。仅仅参与事件不构成因果。\n4. 条件、计划、倾向、阻碍和未决线索只有在文本支持时才填写，不得编造。\n5. desired_state 是角色希望成为现实的状态；success_conditions 是可观察的完成判据。"
+    "content": "推断角色当前真正驱动行动的意图。只输出一个 IntentCandidates JSON 对象，不要 Markdown 或额外字段。每个意图必须包含：name、type（need|obligation|quest|agenda|aspiration|relationship|habit|reaction）、description、priority（0 到 1 之间的小数，不是 1-10 或百分制）、urgency（0 到 1 之间的小数，不是 1-10 或百分制）、status、horizon、desired_state，以及 success_conditions、failure_conditions、maintenance_conditions、constraints、current_plan、next_action_biases、blockers、open_threads、created_by_event_id、contributing_event_ids。各列表允许为空；事件字段只能使用所给事件的准确 id。\n\n本地模型规则：\n1. 最多输出 3 个明确的当前意图；没有依据时返回空列表。\n2. 已完成的过去行为、性格、能力和叙事身份本身不是当前意图。\n3. created_by_event_id 只指产生该意图的一个事件；contributing_event_ids 只指强化、改变、阻碍或实质塑造该意图的事件。仅仅参与事件不构成因果。\n4. 条件、计划、倾向、阻碍和未决线索只有在文本支持时才填写，不得编造。\n5. desired_state 是角色希望成为现实的状态；success_conditions 是可观察的完成判据。\n6. priority 和 urgency 必须是 0 到 1 之间的小数（例如 0.7），绝不能输出 2 及以上的整数。"
   },
   {
     "role": "user",

@@ -1,0 +1,8 @@
+{
+  "id": "simulation_blackwater_observatory",
+  "name": "The Blackwater Observatory",
+  "description": "The year is 1912. The isolated mountain town of Blackwater Ridge was built around an astronomical observatory that once conducted secret government-funded research.\n\nThree weeks ago, the observatory's director vanished. Officially, he left without notice. However, nobody believes that. The player arrives in town during the annual Founder's Festival, where tensions between residents are beginning to surface.",
+  "current_time": "1912-09-21T19:30:00Z",
+  "emotion_enabled": true,
+  "suggested_actions": []
+}

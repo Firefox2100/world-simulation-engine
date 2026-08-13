@@ -10,6 +10,7 @@ from workflow_helpers import (
     INPUT_PIPELINE_CASES,
     SYNTHETIC_COORDINATION_CASES,
     build_character_coordination_from_input,
+    case_ids,
     link_chat_components,
     synthetic_coordination,
     write_case_result,
@@ -53,9 +54,10 @@ def _pipeline_output_path() -> Path:
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("mock_graph_world_setup", "case"),
     SYNTHETIC_COORDINATION_CASES,
-    ids=[case["case_id"] for case in SYNTHETIC_COORDINATION_CASES],
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(SYNTHETIC_COORDINATION_CASES),
 )
 async def test_evaluate_state_committer_outputs_proposal(
     case,
@@ -87,20 +89,10 @@ async def test_evaluate_state_committer_outputs_proposal(
             user_input=case["user_input"],
         )
 
-    if coordination.accepted_actions:
-        _assert_every_accepted_action_is_accounted_for(proposal, coordination)
-
-    if case["case_id"] == "clara_hands_receipt":
-        # An unambiguous physical possession transfer: Clara gives Arthur a specific item she
-        # holds. The committer must record a relationship change moving that item, not just
-        # emit notes or leave it as "unchanged".
-        assert any(
-            operation.type == "relationship_change"
-            and operation.relationship_type in ("held_by", "owned_by")
-            and "item_room_7_cash_receipt" in (operation.subject.id, (operation.object or operation.subject).id)
-            for operation in proposal.operations
-        ), "Expected a held_by/owned_by relationship_change moving item_room_7_cash_receipt to Arthur"
-
+    # Persist the raw model output before asserting on it - an assertion failure below must not
+    # cost us the only record of what the model actually produced (this is the evaluation suite's
+    # entire point: a failure's raw output is what someone reviews to tell a prompt regression
+    # apart from one-off model noise).
     _write_state_commit_result(
         output_path=_synthetic_output_path(),
         world_id=mock_graph_world_setup.world.id,
@@ -115,11 +107,26 @@ async def test_evaluate_state_committer_outputs_proposal(
         },
     )
 
+    if coordination.accepted_actions:
+        _assert_every_accepted_action_is_accounted_for(proposal, coordination)
+
+    if case["case_id"] == "clara_hands_receipt":
+        # An unambiguous physical possession transfer: Clara gives Arthur a specific item she
+        # holds. The committer must record a relationship change moving that item, not just
+        # emit notes or leave it as "unchanged".
+        assert any(
+            operation.type == "relationship_change"
+            and operation.relationship_type in ("held_by", "owned_by")
+            and "item_room_7_cash_receipt" in (operation.subject.id, (operation.object or operation.subject).id)
+            for operation in proposal.operations
+        ), "Expected a held_by/owned_by relationship_change moving item_room_7_cash_receipt to Arthur"
+
 
 @pytest.mark.parametrize(
-    "case",
+    ("mock_graph_world_setup", "case"),
     INPUT_PIPELINE_CASES,
-    ids=[case["case_id"] for case in INPUT_PIPELINE_CASES],
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(INPUT_PIPELINE_CASES),
 )
 async def test_evaluate_input_to_state_committer_outputs_proposal(
     case,
@@ -139,7 +146,7 @@ async def test_evaluate_input_to_state_committer_outputs_proposal(
             ComponentType.STATE_COMMITTER,
         ],
     )
-    character_id = "character_arthur_moore"
+    character_id = case["user_character_id"]
     pipeline = await build_character_coordination_from_input(
         database=evaluation_seeded_database,
         world_id=mock_graph_world_setup.world.id,
@@ -156,9 +163,8 @@ async def test_evaluate_input_to_state_committer_outputs_proposal(
         user_input=case["user_input"],
     )
 
-    if pipeline["character_coordination"].accepted_actions:
-        _assert_every_accepted_action_is_accounted_for(proposal, pipeline["character_coordination"])
-
+    # See the synthetic-coordination test above: persist before asserting, so a failed assertion
+    # still leaves the full pipeline's raw output on disk for review.
     _write_state_commit_result(
         output_path=_pipeline_output_path(),
         world_id=mock_graph_world_setup.world.id,
@@ -196,6 +202,9 @@ async def test_evaluate_input_to_state_committer_outputs_proposal(
             "state_commit": proposal.model_dump(mode="json"),
         },
     )
+
+    if pipeline["character_coordination"].accepted_actions:
+        _assert_every_accepted_action_is_accounted_for(proposal, pipeline["character_coordination"])
 
 
 def _write_state_commit_result(

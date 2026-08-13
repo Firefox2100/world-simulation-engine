@@ -46,6 +46,7 @@ def make_character() -> Character:
 
 def make_command(index: int = 0) -> OOCCommand:
     return OOCCommand(
+        type="ooc",
         command_text="the chest under the bar contains a ledger",
         normalized_intent="Place a ledger inside the chest.",
         source_text="[/OOC: the chest under the bar contains a ledger]",
@@ -122,6 +123,7 @@ async def test_evaluate_commands_invokes_structured_llm_and_restores_command_tex
     raw_result = OOCEvaluationResult(
         items=[
             OOCWorldStateMutation(
+                category="world_state_mutation",
                 command_index=0,
                 command_text="a hallucinated different command text",
                 operations=[],

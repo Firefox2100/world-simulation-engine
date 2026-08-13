@@ -116,3 +116,8 @@ version = {attr = "world_simulation_engine.__version__"}
 asyncio_mode = "auto"
 log_file = "audit.log"
 log_file_level = "DEBUG"
+log_file_mode = "a"
+markers = [
+    "evaluation_sillytavern: SillyTavern import pipeline evaluation tests",
+    "evaluation_simulation: world simulation pipeline evaluation tests",
+]

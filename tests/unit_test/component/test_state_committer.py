@@ -134,6 +134,7 @@ async def test_commit_character_actions_invokes_structured_llm():
                     "type": "character",
                     "id": "character_1",
                 },
+                "old_object": None,
                 "source_action_refs": ["accepted:0"],
                 "reason": "Alex took the glass.",
             }
@@ -153,6 +154,41 @@ async def test_commit_character_actions_invokes_structured_llm():
     assert result == expected
     llm.invoke_structured_with_repair.assert_awaited_once()
     assert llm.invoke_structured_with_repair.await_args.kwargs["output_model"] is StateCommitProposal
+
+
+async def test_commit_character_actions_validate_result_rejects_unaccounted_accepted_action():
+    # make_coordination() has exactly one accepted action (accepted:0). validate_result must
+    # reject a proposal that neither references it in an operation's source_action_refs nor lists
+    # it in unchanged_action_refs - even if committer_notes explains it in prose (see
+    # _require_every_accepted_action_accounted_for's docstring for the real case this guards).
+    database = make_database()
+    committer = StateCommitter(database=database)
+    committer._prepare_llm_service = AsyncMock()
+    llm = Mock()
+    llm.invoke_structured_with_repair = AsyncMock(return_value=StateCommitProposal(operations=[]))
+    committer._prepare_llm_service.return_value = llm
+
+    await committer.commit_character_actions(
+        world_id="world_1",
+        simulation_id="simulation_1",
+        coordination_result=make_coordination(),
+        user_input="Continue.",
+    )
+
+    validate_result = llm.invoke_structured_with_repair.await_args.kwargs["validate_result"]
+
+    unaccounted = StateCommitProposal(
+        operations=[],
+        committer_notes=["accepted:0 is subsumed by ambient activity, no change needed."],
+    )
+    try:
+        validate_result(unaccounted)
+        raise AssertionError("expected validate_result to reject an unaccounted accepted action")
+    except ValueError as exc:
+        assert "accepted:0" in str(exc)
+
+    accounted = StateCommitProposal(operations=[], unchanged_action_refs=["accepted:0"])
+    validate_result(accounted)  # must not raise
 
 
 async def test_build_context_skips_missing_actor_or_location_and_collects_problem_actor_ids():

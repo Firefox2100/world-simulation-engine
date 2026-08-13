@@ -7,44 +7,7 @@ import pytest
 
 from world_simulation_engine.component.simulator.input_interpreter import InputInterpreter
 
-
-EVALUATION_INPUTS = [
-    {
-        "case_id": "ask_clara_room_7",
-        "user_input": (
-            "Arthur remains at the bar and casually asks Clara whether Room 7 was occupied "
-            "before Director Harlan vanished."
-        ),
-    },
-    {
-        "case_id": "inspect_ledger",
-        "user_input": (
-            "I ask Clara to let me see the Visitor's Room Ledger, then compare the Room 7 entry "
-            "against the dates around Harlan's disappearance."
-        ),
-    },
-    {
-        "case_id": "mixed_speech_and_ooc",
-        "user_input": (
-            "Arthur lowers his voice and says, \"I am not here to embarrass the town, Miss Whitlock, "
-            "but I do need the truth.\" [/OOC: Keep the interpretation focused on the attempted action.]"
-        ),
-    },
-    {
-        "case_id": "read_notice_board",
-        "user_input": (
-            "I step away from the bar for a moment and study the Notice Board, looking for older papers "
-            "hidden underneath the festival announcements."
-        ),
-    },
-    {
-        "case_id": "reveal_letter_conditionally",
-        "user_input": (
-            "If Clara seems willing to speak privately, Arthur shows her only the signature line of the "
-            "anonymous letter and asks whether she recognizes the handwriting."
-        ),
-    },
-]
+from workflow_helpers import INPUT_PIPELINE_CASES as EVALUATION_INPUTS, case_ids
 
 
 def _output_path() -> Path:
@@ -90,7 +53,7 @@ def _write_case_result(
             "character_id": character_id,
             "cases": [
                 cases_by_id[case["case_id"]]
-                for case in EVALUATION_INPUTS
+                for _, case in EVALUATION_INPUTS
                 if case["case_id"] in cases_by_id
             ],
         }
@@ -102,9 +65,10 @@ def _write_case_result(
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("mock_graph_world_setup", "case"),
     EVALUATION_INPUTS,
-    ids=[case["case_id"] for case in EVALUATION_INPUTS],
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(EVALUATION_INPUTS),
 )
 async def test_evaluate_input_interpreter_outputs_result(
     case,
@@ -112,7 +76,7 @@ async def test_evaluate_input_interpreter_outputs_result(
     mock_graph_world_setup,
 ):
     interpreter = InputInterpreter(database=evaluation_seeded_database)
-    character_id = "character_arthur_moore"
+    character_id = case["user_character_id"]
 
     interpretation = await interpreter.interpret(
         world_id=mock_graph_world_setup.world.id,

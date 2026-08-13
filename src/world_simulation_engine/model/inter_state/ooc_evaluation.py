@@ -22,7 +22,7 @@ class OOCWorldStateMutation(BaseModel):
 
         return {**value, "operations": repair_state_commit_operations(value["operations"])}
 
-    category: Literal["world_state_mutation"] = "world_state_mutation"
+    category: Literal["world_state_mutation"]
     command_index: int = Field(
         ge=0,
         description="Zero-based index of the OOC command this evaluation responds to.",
@@ -54,7 +54,7 @@ class OOCCharacterActionGuide(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    category: Literal["character_action_guide"] = "character_action_guide"
+    category: Literal["character_action_guide"]
     command_index: int = Field(
         ge=0,
         description="Zero-based index of the OOC command this evaluation responds to.",

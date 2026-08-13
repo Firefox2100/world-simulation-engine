@@ -633,8 +633,35 @@ class WorldSimulator:
                 return True
         return False
 
-    @staticmethod
-    def _text_contains_name(text: str, name: str) -> bool:
+    # CJK Unified Ideographs, Hiragana/Katakana, and Hangul syllables - scripts written without
+    # spaces between words, where the word-boundary padding below can never match (see
+    # _text_contains_name).
+    _CJK_RANGES = (
+        (0x4E00, 0x9FFF),
+        (0x3040, 0x30FF),
+        (0xAC00, 0xD7A3),
+    )
+
+    @classmethod
+    def _contains_cjk(cls, value: str) -> bool:
+        return any(
+            any(start <= ord(character) <= end for start, end in cls._CJK_RANGES)
+            for character in value
+        )
+
+    @classmethod
+    def _text_contains_name(cls, text: str, name: str) -> bool:
+        if cls._contains_cjk(name):
+            # Chinese/Japanese/Korean text has no spaces between words, so a name is written
+            # directly adjacent to surrounding text (e.g. "...去找康仁。") - the word-boundary
+            # padding below would require a space immediately before/after the name and would
+            # never match a real sentence in these languages. Plain substring containment (after
+            # stripping whitespace, since callers join several fields with spaces) is the correct
+            # equivalent here.
+            stripped_name = "".join(name.split())
+            stripped_text = "".join(text.split())
+            return bool(stripped_name) and stripped_name in stripped_text
+
         padded_text = f" {text} "
         normalized_name = "".join(
             character if character.isalnum() else " "

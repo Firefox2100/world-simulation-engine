@@ -1,0 +1,9 @@
+# Every world bundle under this directory is excluded from git by default - a bundle generated
+# from a SillyTavern card (or anything else authored locally) may contain licensed content that
+# must never be committed (see CLAUDE.md hard rule 2). To check a specific bundle in anyway,
+# explicitly allow-list it with a pair of rules like the ones below (both are required: the first
+# un-ignores the directory entry itself, the second un-ignores everything inside it).
+*
+!.gitignore
+!blackwater_observatory/
+!blackwater_observatory/**

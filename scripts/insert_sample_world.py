@@ -1,12 +1,23 @@
 """
-Insert the evaluation sample world through the backend HTTP API.
+Insert an evaluation sample world through the backend HTTP API.
+
+Reads a "world bundle" directory - the same format tests/evaluation_test/world_fixtures.py loads
+directly into a DatabaseService for the evaluation test suite (see that module's docstring) - and
+replays it through the real REST API instead: create the world-level template, POST
+/worlds/{id}/simulations to instantiate a live simulation from it (exactly what a user does after
+importing/creating a world), then map the copied simulation-scoped entities back by name to attach
+simulation-scoped data (intents, events, memories, emotions) to them. This exercises the same
+"template world -> instantiated simulation" path a real user goes through, unlike
+world_fixtures.py's loader (which writes simulation-scoped rows directly, since evaluation tests
+want an already-ready-to-run simulation, not a template to instantiate from).
 
 Environment variables:
     WSE_API_BASE_URL, WORLD_SIMULATION_ENGINE_API_URL, or API_BASE_URL
-        Base URL for the running backend. Defaults to http://localhost:8000.
+        Base URL for the running backend. Defaults to http://localhost:9797.
 
 Example:
-    WSE_API_BASE_URL=http://localhost:8000 python scripts/insert_sample_world.py --replace
+    WSE_API_BASE_URL=http://localhost:9797 python scripts/insert_sample_world.py --replace
+    python scripts/insert_sample_world.py --bundle tests/evaluation_test/assets/worlds/some-card --replace
 """
 
 from __future__ import annotations
@@ -15,6 +26,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,63 +37,263 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tests.evaluation_test import conftest as evaluation_fixtures  # noqa: E402
+from world_simulation_engine.model import (  # noqa: E402
+    Author,
+    BackgroundCharacter,
+    Character,
+    Container,
+    Equipment,
+    EmotionVector,
+    Event,
+    Intent,
+    Item,
+    ItemStack,
+    Landmark,
+    Location,
+    MemoryAtom,
+    Turn,
+    World,
+)
+from world_simulation_engine.service.database.memory_store import CharacterMemoryLink  # noqa: E402
+
+DEFAULT_BUNDLE_DIR = ROOT / "tests" / "evaluation_test" / "worlds" / "blackwater_observatory"
 
 
-def _fixture(name: str, *args):
-    fixture = getattr(evaluation_fixtures, name)
-    return fixture.__wrapped__(*args)
+@dataclass(frozen=True)
+class CharacterPlacement:
+    character_id: str
+    location_id: str | None
+    position: str | None
+    landmark_id: str | None
 
 
-def build_sample_setup():
-    author = _fixture("mock_author")
-    world = _fixture("mock_world")
-    simulation = _fixture("mock_simulation", world)
-    initial_turn = _fixture("mock_initial_turn")
-    locations = _fixture("mock_locations")
-    location_parents = _fixture("mock_location_parents")
-    landmarks_by_location = _fixture("mock_landmarks_by_location")
-    containers = _fixture("mock_containers")
-    container_placements = _fixture("mock_container_placements")
-    characters = _fixture("mock_characters")
-    background_characters = _fixture("mock_background_characters")
-    character_placements = _fixture("mock_character_placements")
-    background_character_placements = _fixture("mock_background_character_placements")
-    items = _fixture("mock_items")
-    item_stack_placements = _fixture("mock_item_stack_placements")
-    equipment = _fixture("mock_equipment")
-    equipment_placements = _fixture("mock_equipment_placements")
-    events = _fixture("mock_events")
-    event_involvements = _fixture("mock_event_involvements")
-    memories = _fixture("mock_memories")
-    intents = _fixture("mock_intents")
-    intent_character_ids = _fixture("mock_intent_character_ids")
-    character_emotions = _fixture("mock_character_emotions")
-    return _fixture(
-        "mock_graph_world_setup",
-        author,
-        world,
-        simulation,
-        initial_turn,
-        locations,
-        location_parents,
-        landmarks_by_location,
-        containers,
-        container_placements,
-        characters,
-        background_characters,
-        character_placements,
-        background_character_placements,
-        items,
-        item_stack_placements,
-        equipment,
-        equipment_placements,
-        events,
-        event_involvements,
-        memories,
-        intents,
-        intent_character_ids,
-        character_emotions,
+@dataclass(frozen=True)
+class ContainerPlacement:
+    container_id: str
+    location_id: str | None
+    position: str | None
+    unlocking_item_ids: list[str]
+
+
+@dataclass(frozen=True)
+class ItemStackPlacement:
+    item_id: str
+    stack: ItemStack
+    location_id: str | None
+    position: str | None
+    holder_id: str | None
+    owner_id: str | None
+
+
+@dataclass(frozen=True)
+class EquipmentPlacement:
+    equipment_id: str
+    location_id: str | None
+    position: str | None
+    owner_id: str | None
+    holder_id: str | None
+    equipped: bool
+    equipped_position: str | None
+
+
+@dataclass(frozen=True)
+class EventInvolvementSeed:
+    event_id: str
+    character_id: str
+    involvement: str
+
+
+@dataclass(frozen=True)
+class MemorySeed:
+    memory: MemoryAtom
+    event_id: str
+    support_type: str
+    character_links: list[CharacterMemoryLink]
+
+
+@dataclass(frozen=True)
+class CharacterEmotionSeed:
+    character_id: str
+    baseline: EmotionVector
+
+
+@dataclass(frozen=True)
+class SampleWorldSetup:
+    author: Author
+    world: World
+    initial_turn: Turn
+    locations: list[Location]
+    location_parents: dict[str, str | None]
+    landmarks_by_location: dict[str, list[Landmark]]
+    containers: list[Container]
+    container_placements: list[ContainerPlacement]
+    characters: list[Character]
+    background_characters: list[BackgroundCharacter]
+    character_placements: list[CharacterPlacement]
+    background_character_placements: list[CharacterPlacement]
+    items: list[Item]
+    item_stack_placements: list[ItemStackPlacement]
+    equipment: list[Equipment]
+    equipment_placements: list[EquipmentPlacement]
+    events: list[Event]
+    event_involvements: list[EventInvolvementSeed]
+    memories: list[MemorySeed]
+    intents: list[Intent]
+    intent_character_ids: dict[str, str]
+    character_emotions: list[CharacterEmotionSeed]
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def load_bundle_as_setup(bundle_dir: Path) -> SampleWorldSetup:
+    """Read a world bundle directory (see world_fixtures.py) into the placement-list shape the
+    rest of this script's REST-API-posting functions expect - a thin re-projection of each
+    self-contained bundle row into the (entity, placement) pairs a template-world POST needs."""
+    manifest = _read_json(bundle_dir / "manifest.json")
+    if manifest.get("format_version") != 1:
+        raise ValueError(f"Unsupported world bundle format version in {bundle_dir}: {manifest.get('format_version')!r}")
+
+    author = Author.model_validate(_read_json(bundle_dir / "author.json"))
+    world = World.model_validate(_read_json(bundle_dir / "world.json"))
+    data = bundle_dir / "data"
+
+    turn_rows = sorted(_read_jsonl(data / "turns.jsonl"), key=lambda row: row["sequence"])
+    if not turn_rows:
+        raise ValueError(f"World bundle {bundle_dir} has no turns - at least an opening turn is required")
+    initial_turn = Turn.model_validate(turn_rows[0])
+
+    location_rows = _read_jsonl(data / "locations.jsonl")
+    locations = [Location.model_validate(row) for row in location_rows]
+    location_parents = {row["id"]: row.get("parent_location_id") for row in location_rows}
+
+    landmarks_by_location: dict[str, list[Landmark]] = {}
+    for row in _read_jsonl(data / "landmarks.jsonl"):
+        landmarks_by_location.setdefault(row["location_id"], []).append(Landmark.model_validate(row))
+
+    container_rows = _read_jsonl(data / "containers.jsonl")
+    containers = [Container.model_validate(row) for row in container_rows]
+    container_placements = [
+        ContainerPlacement(
+            container_id=row["id"],
+            location_id=row.get("location_id"),
+            position=row.get("position"),
+            unlocking_item_ids=row.get("unlocking_item_ids", []),
+        )
+        for row in container_rows
+    ]
+
+    character_rows = _read_jsonl(data / "characters.jsonl")
+    characters = [Character.model_validate(row) for row in character_rows]
+    character_placements = [
+        CharacterPlacement(
+            character_id=row["id"],
+            location_id=row.get("location_id"),
+            position=row.get("position"),
+            landmark_id=row.get("landmark_id"),
+        )
+        for row in character_rows
+    ]
+
+    background_character_rows = _read_jsonl(data / "background_characters.jsonl")
+    background_characters = [BackgroundCharacter.model_validate(row) for row in background_character_rows]
+    background_character_placements = [
+        CharacterPlacement(
+            character_id=row["id"],
+            location_id=row.get("location_id"),
+            position=row.get("position"),
+            landmark_id=row.get("landmark_id"),
+        )
+        for row in background_character_rows
+    ]
+
+    items = [Item.model_validate(row) for row in _read_jsonl(data / "items.jsonl")]
+
+    item_stack_placements = []
+    for row in _read_jsonl(data / "item_stacks.jsonl"):
+        stack_row = {k: v for k, v in row.items() if k != "item_id"}
+        item_stack_placements.append(ItemStackPlacement(
+            item_id=row["item_id"],
+            stack=ItemStack.model_validate(stack_row),
+            location_id=row.get("location_id"),
+            position=row.get("position"),
+            holder_id=row.get("holder_id"),
+            owner_id=row.get("owner_id"),
+        ))
+
+    equipment_rows = _read_jsonl(data / "equipment.jsonl")
+    equipment = [Equipment.model_validate(row) for row in equipment_rows]
+    equipment_placements = [
+        EquipmentPlacement(
+            equipment_id=row["id"],
+            location_id=row.get("location_id"),
+            position=row.get("position"),
+            owner_id=row.get("owner_id"),
+            holder_id=row.get("holder_id"),
+            equipped=row.get("equipped", False),
+            equipped_position=row.get("equipped_position"),
+        )
+        for row in equipment_rows
+    ]
+
+    events = [Event.model_validate(row) for row in _read_jsonl(data / "events.jsonl")]
+    event_involvements = [
+        EventInvolvementSeed(
+            event_id=event_row["id"], character_id=involved["character_id"], involvement=involved["involvement"],
+        )
+        for event_row in _read_jsonl(data / "events.jsonl")
+        for involved in event_row.get("involved_characters", [])
+    ]
+
+    memories = []
+    for row in _read_jsonl(data / "memories.jsonl"):
+        memory_row = {k: v for k, v in row.items() if k not in ("event_id", "support_type", "character_links")}
+        memories.append(MemorySeed(
+            memory=MemoryAtom.model_validate(memory_row),
+            event_id=row["event_id"],
+            support_type=row["support_type"],
+            character_links=[CharacterMemoryLink.model_validate(link) for link in row.get("character_links", [])],
+        ))
+
+    intent_rows = _read_jsonl(data / "intents.jsonl")
+    intents = [Intent.model_validate({k: v for k, v in row.items() if k != "character_id"}) for row in intent_rows]
+    intent_character_ids = {row["id"]: row["character_id"] for row in intent_rows}
+
+    character_emotions = [
+        CharacterEmotionSeed(character_id=row["character_id"], baseline=EmotionVector.model_validate(row["baseline"]))
+        for row in _read_jsonl(bundle_dir / "eval" / "character_emotions.jsonl")
+    ]
+
+    return SampleWorldSetup(
+        author=author,
+        world=world,
+        initial_turn=initial_turn,
+        locations=locations,
+        location_parents=location_parents,
+        landmarks_by_location=landmarks_by_location,
+        containers=containers,
+        container_placements=container_placements,
+        characters=characters,
+        background_characters=background_characters,
+        character_placements=character_placements,
+        background_character_placements=background_character_placements,
+        items=items,
+        item_stack_placements=item_stack_placements,
+        equipment=equipment,
+        equipment_placements=equipment_placements,
+        events=events,
+        event_involvements=event_involvements,
+        memories=memories,
+        intents=intents,
+        intent_character_ids=intent_character_ids,
+        character_emotions=character_emotions,
     )
 
 
@@ -508,8 +720,8 @@ def create_memories(
     return memory_ids
 
 
-def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
-    setup = build_sample_setup()
+def insert_sample_world(base_url: str, replace: bool, bundle_dir: Path) -> dict[str, Any]:
+    setup = load_bundle_as_setup(bundle_dir)
     api = Api(base_url)
     skipped = {
         "turn_sequence": "The evaluation fixture starts at sequence 0; the API sample insert remaps it to sequence 1.",
@@ -674,12 +886,18 @@ def insert_sample_world(base_url: str, replace: bool) -> dict[str, Any]:
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Insert the evaluation sample world through a running backend API.",
+        description="Insert an evaluation sample world bundle through a running backend API.",
     )
     parser.add_argument(
         "--replace",
         action="store_true",
         help="Delete existing worlds with the same sample world name before inserting.",
+    )
+    parser.add_argument(
+        "--bundle",
+        type=Path,
+        default=DEFAULT_BUNDLE_DIR,
+        help=f"Path to a world bundle directory (see world_fixtures.py). Defaults to {DEFAULT_BUNDLE_DIR}.",
     )
     return parser.parse_args()
 
@@ -692,7 +910,7 @@ def main():
         or os.getenv("API_BASE_URL")
         or "http://localhost:9797"
     )
-    result = insert_sample_world(base_url, replace=args.replace)
+    result = insert_sample_world(base_url, replace=args.replace, bundle_dir=args.bundle)
     print(json.dumps(result, indent=2))
 
 

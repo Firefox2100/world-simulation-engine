@@ -1,8 +1,19 @@
+import pytest
+
 from world_simulation_engine.component.simulator.subjective_model_updater import SubjectiveModelUpdater
 from world_simulation_engine.misc.enums import ComponentType
 
+from workflow_helpers import SUBJECTIVE_MODEL_UPDATER_CASES, case_ids
 
+
+@pytest.mark.parametrize(
+    ("mock_graph_world_setup", "case"),
+    SUBJECTIVE_MODEL_UPDATER_CASES,
+    indirect=["mock_graph_world_setup"],
+    ids=case_ids(SUBJECTIVE_MODEL_UPDATER_CASES),
+)
 async def test_evaluate_subjective_model_updater_uses_bounded_grounded_schema(
+        case,
         evaluation_seeded_database,
         evaluation_chat_model_config,
         mock_graph_world_setup,
@@ -14,7 +25,7 @@ async def test_evaluate_subjective_model_updater_uses_bounded_grounded_schema(
         config_id=evaluation_chat_model_config.id,
         component=ComponentType.MEMORY_SUMMARIZER,
     )
-    candidate_entity_ids = ["location_observatory_directors_office", "location_old_mine_entrance"]
+    candidate_entity_ids = case["candidate_entity_ids"]
     # Confirms the test's own fixture references are real seeded entities (update_from_memories
     # silently returns an empty result if none resolve), so an empty result below can be trusted
     # to reflect the model's decision rather than a broken test setup.
@@ -26,9 +37,9 @@ async def test_evaluate_subjective_model_updater_uses_bounded_grounded_schema(
 
     result = await SubjectiveModelUpdater(database=evaluation_seeded_database).update_from_memories(
         simulation_id=simulation_id,
-        character_id="character_arthur_moore",
+        character_id=case["character_id"],
         turn_id=mock_graph_world_setup.initial_turn.id,
-        memory_ids=["memory_disappearance_threads"],
+        memory_ids=case["memory_ids"],
         candidate_entity_ids=candidate_entity_ids,
     )
 
@@ -39,7 +50,5 @@ async def test_evaluate_subjective_model_updater_uses_bounded_grounded_schema(
     for claim_id in result.applied_claim_ids:
         claim = await evaluation_seeded_database.subjective_entity_claim.get_claim(claim_id)
         assert claim is not None
-        assert claim.observer_character_id == "character_arthur_moore"
-        assert set(claim.supporting_memory_ids + claim.contradicting_memory_ids) <= {
-            "memory_disappearance_threads"
-        }
+        assert claim.observer_character_id == case["character_id"]
+        assert set(claim.supporting_memory_ids + claim.contradicting_memory_ids) <= set(case["memory_ids"])
