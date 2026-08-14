@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-export function SillyTavernDropzone({ onFileSelected, disabled }) {
+export function SillyTavernDropzone({ onFileSelected, onUrlRequested, disabled }) {
     const { t } = useTranslation();
     const [dragging, setDragging] = useState(false);
     const inputRef = useRef(null);
@@ -48,6 +48,17 @@ export function SillyTavernDropzone({ onFileSelected, disabled }) {
         >
             <p className="st-import-dropzone-prompt">{t("sillyTavernImport.dropzone.prompt")}</p>
             <p className="st-import-dropzone-hint">{t("sillyTavernImport.dropzone.hint")}</p>
+            <button
+                type="button"
+                className="secondary-button st-import-url-button"
+                disabled={disabled}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    onUrlRequested();
+                }}
+            >
+                {t("sillyTavernImport.dropzone.fromUrl")}
+            </button>
             <input
                 ref={inputRef}
                 type="file"

@@ -10,6 +10,14 @@ export async function parseSillyTavernCard(file) {
     });
 }
 
+export async function parseSillyTavernCardUrl(url) {
+    return apiRequest("/worlds/import/sillytavern/parse-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+    });
+}
+
 export async function getSillyTavernImportStatus() {
     return apiRequest("/worlds/import/sillytavern/status");
 }

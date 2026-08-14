@@ -172,6 +172,66 @@ class MediaDownloadService:
                     chunks.append(chunk)
                 return "ok", b"".join(chunks)
 
+    async def _fetch_raw_hop(self, url: str) -> tuple[str, bytes | str | None]:
+        """Fetch one bounded HTTP hop without transforming the response body.
+
+        SillyTavern PNG cards store their JSON in PNG text chunks, so the normal image download
+        path cannot be used for them: its security normalisation intentionally strips metadata.
+        """
+        timeout = httpx.Timeout(
+            connect=CONFIG.sillytavern_image_download_connect_timeout,
+            read=CONFIG.sillytavern_image_download_read_timeout,
+            write=CONFIG.sillytavern_image_download_read_timeout,
+            pool=CONFIG.sillytavern_image_download_connect_timeout,
+        )
+        max_bytes = CONFIG.sillytavern_image_download_max_bytes
+
+        async with httpx.AsyncClient(
+                follow_redirects=False, timeout=timeout, transport=self._transport,
+        ) as client:
+            async with client.stream("GET", url) as response:
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("location")
+                    if not location:
+                        return "reject", None
+                    return "redirect", str(response.url.join(location))
+                if response.status_code >= 300:
+                    return "reject", None
+
+                content_length = response.headers.get("content-length")
+                if content_length is not None:
+                    try:
+                        if int(content_length) > max_bytes:
+                            return "reject", None
+                    except ValueError:
+                        pass
+
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > max_bytes:
+                        return "reject", None
+                    chunks.append(chunk)
+                return "ok", b"".join(chunks)
+
+    async def download_raw(self, url: str) -> bytes | None:
+        """Download untrusted bytes with the same SSRF, redirect, size, and timeout guards."""
+        async with self._download_semaphore:
+            current_url = url
+            for _ in range(CONFIG.sillytavern_image_download_max_redirects + 1):
+                if not await self.is_safe_url(current_url):
+                    return None
+                try:
+                    outcome, payload = await self._fetch_raw_hop(current_url)
+                except httpx.HTTPError:
+                    return None
+                if outcome == "redirect":
+                    current_url = payload
+                    continue
+                return payload if outcome == "ok" else None
+        return None
+
     async def download(self, url: str) -> bytes | None:
         """Download and normalize an image, but do not publish it to permanent storage."""
         async with self._download_semaphore:

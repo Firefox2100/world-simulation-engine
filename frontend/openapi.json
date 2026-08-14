@@ -16279,13 +16279,55 @@
           "SillyTavern Import"
         ],
         "summary": "Parse Sillytavern Card",
-        "description": "Parses a card and returns its raw fields for the import review UI, without running any\nextraction stage or touching the database - the user reviews/edits this first (left side),\nthen `/extract` (right side) feeds the edited result into the real pipeline.",
+        "description": "Parse an uploaded card for review without running extraction or persisting it.",
         "operationId": "parse_sillytavern_card_worlds_import_sillytavern_parse_post",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_parse_sillytavern_card_worlds_import_sillytavern_parse_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParsedSillyTavernCard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/import/sillytavern/parse-url": {
+      "post": {
+        "tags": [
+          "SillyTavern Import"
+        ],
+        "summary": "Parse Sillytavern Card Url",
+        "description": "Fetch an untrusted card URL server-side, verify its bytes, and parse it like an upload.",
+        "operationId": "parse_sillytavern_card_url_worlds_import_sillytavern_parse_url_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SillyTavernUrlImportRequest"
               }
             }
           },
@@ -16359,11 +16401,7 @@
           "200": {
             "description": "Successful Response",
             "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SillyTavernExtractResponse"
-                }
-              }
+              "text/event-stream": {}
             }
           },
           "422": {
@@ -22430,6 +22468,7 @@
           "narrator_tts",
           "st_lorebook_classifier",
           "st_character_extractor",
+          "st_background_character_extractor",
           "st_location_extractor",
           "st_world_lore_extractor",
           "st_narrative_extractor",
@@ -22997,37 +23036,6 @@
         "type": "object",
         "title": "ContainerUpdate",
         "description": "DTO model for updating a container"
-      },
-      "ConversionReport": {
-        "properties": {
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/ConversionReportEntry"
-            },
-            "type": "array",
-            "title": "Entries"
-          }
-        },
-        "type": "object",
-        "title": "ConversionReport"
-      },
-      "ConversionReportEntry": {
-        "properties": {
-          "message": {
-            "type": "string",
-            "title": "Message"
-          },
-          "low_confidence": {
-            "type": "boolean",
-            "title": "Low Confidence",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "message"
-        ],
-        "title": "ConversionReportEntry"
       },
       "CoverImageUpdate": {
         "properties": {
@@ -23825,6 +23833,7 @@
           "owner_type": {
             "type": "string",
             "enum": [
+              "world",
               "character",
               "background_character",
               "item",
@@ -23882,6 +23891,7 @@
           "owner_type": {
             "type": "string",
             "enum": [
+              "world",
               "character",
               "background_character",
               "item",
@@ -24321,8 +24331,12 @@
           },
           "outcome": {
             "anyOf": [
-              {"type": "string"},
-              {"type": "null"}
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
             "title": "Outcome",
             "description": "What changed or resulted when this event concluded"
@@ -30438,6 +30452,16 @@
             "type": "object",
             "title": "Extensions",
             "description": "Round-tripped verbatim, not user-editable - carried through to /extract so the image-link scan can see script/extension content."
+          },
+          "image_candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ImageCandidateRow"
+            },
+            "type": "array",
+            "title": "Image Candidates"
+          },
+          "image_scan": {
+            "$ref": "#/components/schemas/ImageScanSummary"
           }
         },
         "type": "object",
@@ -31491,6 +31515,7 @@
           "type": {
             "type": "string",
             "enum": [
+              "world",
               "character",
               "background_character",
               "item",
@@ -31720,6 +31745,13 @@
           "card": {
             "$ref": "#/components/schemas/SillyTavernExtractCard"
           },
+          "selected_image_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Image Urls"
+          },
           "language": {
             "$ref": "#/components/schemas/SupportedLanguage",
             "description": "Same meaning as every other stage's language parameter."
@@ -31731,45 +31763,6 @@
           "language"
         ],
         "title": "SillyTavernExtractRequest"
-      },
-      "SillyTavernExtractResponse": {
-        "properties": {
-          "world": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "World"
-          },
-          "sections": {
-            "additionalProperties": {
-              "items": {},
-              "type": "array"
-            },
-            "type": "object",
-            "title": "Sections"
-          },
-          "report": {
-            "$ref": "#/components/schemas/ConversionReport"
-          },
-          "image_candidates": {
-            "items": {
-              "$ref": "#/components/schemas/ImageCandidateRow"
-            },
-            "type": "array",
-            "title": "Image Candidates"
-          },
-          "image_scan": {
-            "$ref": "#/components/schemas/ImageScanSummary",
-            "description": "Always present, even when every count is zero, so the review UI can show what the image-link scan actually found rather than going silent."
-          }
-        },
-        "type": "object",
-        "required": [
-          "world",
-          "sections",
-          "report"
-        ],
-        "title": "SillyTavernExtractResponse",
-        "description": "Superset of `AssembledWorld` - the LLM extraction pipeline's result plus the image-link\npipeline's result, merged once both finish (they run concurrently, see `extract_sillytavern_card`).\n`sections[\"media\"]` already contains the auto-downloaded (whitelisted) images, ready to import\nas-is; `image_candidates` are the ones that need the user to opt in via `/images/fetch`."
       },
       "SillyTavernImageFetchRequest": {
         "properties": {
@@ -31826,6 +31819,21 @@
           "configured"
         ],
         "title": "SillyTavernImportStatus"
+      },
+      "SillyTavernUrlImportRequest": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "SillyTavernUrlImportRequest"
       },
       "Simulation": {
         "properties": {
@@ -32400,8 +32408,26 @@
             "title": "Id"
           },
           "simulation_id": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Simulation Id"
+          },
+          "world_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "World Id"
           },
           "observer_character_id": {
             "type": "string",
@@ -32473,7 +32499,6 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "simulation_id",
           "observer_character_id",
           "subject",
           "category",

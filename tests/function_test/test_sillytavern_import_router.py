@@ -7,6 +7,7 @@ import json
 from uuid import uuid4
 
 import pytest
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from neo4j import AsyncGraphDatabase
@@ -454,3 +455,50 @@ def test_parse_sillytavern_card_returns_400_for_json_missing_a_supported_spec():
         )
 
     assert response.status_code == 400
+
+
+def test_parse_sillytavern_card_url_fetches_json_and_uses_the_upload_parser():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://cards.example.com/example.json"
+        return httpx.Response(200, content=_synthetic_card_json())
+
+    async def public_resolver(hostname, port):
+        return ["93.184.216.34"]
+
+    app = FastAPI()
+    app.state.media_download_service = MediaDownloadService(
+        resolver=public_resolver, transport=httpx.MockTransport(handler),
+    )
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse-url",
+            json={"url": "https://cards.example.com/example.json"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Example Character"
+
+
+def test_parse_sillytavern_card_url_rejects_non_png_non_json_bytes():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=b"not a card")
+
+    async def public_resolver(hostname, port):
+        return ["93.184.216.34"]
+
+    app = FastAPI()
+    app.state.media_download_service = MediaDownloadService(
+        resolver=public_resolver, transport=httpx.MockTransport(handler),
+    )
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse-url",
+            json={"url": "https://cards.example.com/not-really.png"},
+        )
+
+    assert response.status_code == 400
+    assert "not a PNG or JSON" in response.json()["detail"]

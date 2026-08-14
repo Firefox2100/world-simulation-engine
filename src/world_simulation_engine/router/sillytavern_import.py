@@ -100,6 +100,10 @@ class SillyTavernImportStatus(BaseModel):
     missing_components: list[ComponentType] = Field(default_factory=list)
 
 
+class SillyTavernUrlImportRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+
+
 class SillyTavernExtractLorebookEntry(BaseModel):
     """One world book entry the user chose to keep enabled - already filtered client-side, so
     every entry present here is meant to be processed."""
@@ -217,18 +221,7 @@ def _build_synthetic_card(card: SillyTavernExtractCard) -> SillyTavernCardV3:
     )
 
 
-@sillytavern_import_router.post(
-    "/worlds/import/sillytavern/parse", response_model=ParsedSillyTavernCard,
-)
-async def parse_sillytavern_card(
-        request: Request, file: UploadFile = File(...),
-):
-    """Parses a card and returns its raw fields for the import review UI, without running any
-    extraction stage or touching the database - the user reviews/edits this first (left side),
-    then `/extract` (right side) feeds the edited result into the real pipeline."""
-    content = await file.read()
-    await file.close()
-
+async def _parse_sillytavern_content(request: Request, content: bytes) -> ParsedSillyTavernCard:
     try:
         extracted = DataExtractor().extract(content)
     except (ValueError, ValidationError) as exc:
@@ -285,6 +278,49 @@ async def parse_sillytavern_card(
         image_candidates=image_scan.candidates,
         image_scan=image_scan.summary,
     )
+
+
+@sillytavern_import_router.post(
+    "/worlds/import/sillytavern/parse", response_model=ParsedSillyTavernCard,
+)
+async def parse_sillytavern_card(
+        request: Request, file: UploadFile = File(...),
+):
+    """Parse an uploaded card for review without running extraction or persisting it."""
+    content = await file.read()
+    await file.close()
+    return await _parse_sillytavern_content(request, content)
+
+
+@sillytavern_import_router.post(
+    "/worlds/import/sillytavern/parse-url", response_model=ParsedSillyTavernCard,
+)
+async def parse_sillytavern_card_url(
+        request: Request, payload: SillyTavernUrlImportRequest,
+        media_download_service: media_download_dep,
+):
+    """Fetch an untrusted card URL server-side, verify its bytes, and parse it like an upload."""
+    content = await media_download_service.download_raw(payload.url)
+    if content is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The URL could not be downloaded safely.",
+        )
+
+    is_png = content.startswith(b"\x89PNG\r\n\x1a\n")
+    is_json = False
+    if not is_png:
+        try:
+            json.loads(content)
+            is_json = True
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+    if not is_png and not is_json:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The downloaded file is not a PNG or JSON file.",
+        )
+    return await _parse_sillytavern_content(request, content)
 
 
 @sillytavern_import_router.get(

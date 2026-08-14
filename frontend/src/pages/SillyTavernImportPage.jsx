@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import {
     commitSillyTavernWorld, extractSillyTavernCard,
-    getSillyTavernImportStatus, parseSillyTavernCard,
+    getSillyTavernImportStatus, parseSillyTavernCard, parseSillyTavernCardUrl,
 } from "@/api/sillytavernImport";
 import { getDefaultAuthorId, uploadWorldCoverImage } from "@/api/worlds";
 import { SillyTavernDropzone } from "@/components/SillyTavernDropzone";
@@ -24,6 +24,16 @@ function buildGreetings(parsedCard) {
     return greetings;
 }
 
+function coverFileFromDataUri(dataUri) {
+    if (!dataUri) return null;
+    const [header, encoded] = dataUri.split(",", 2);
+    const mimeType = header.match(/^data:([^;]+);base64$/)?.[1];
+    if (!mimeType || !encoded) return null;
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return new File([bytes], "card-cover.png", { type: mimeType });
+}
+
 export function SillyTavernImportPage() {
     const { t, i18n } = useTranslation();
     const navigate = useNavigate();
@@ -33,6 +43,8 @@ export function SillyTavernImportPage() {
     const [fileName, setFileName] = useState(null);
     const [originalFile, setOriginalFile] = useState(null);
     const [coverImage, setCoverImage] = useState(null);
+    const [urlModalOpen, setUrlModalOpen] = useState(false);
+    const [cardUrl, setCardUrl] = useState("");
 
     const [fields, setFields] = useState(null);
     const [greetings, setGreetings] = useState([]);
@@ -81,40 +93,65 @@ export function SillyTavernImportPage() {
         };
     }, []);
 
-    async function handleFileSelected(file) {
+    function applyParsedCard(parsedCard) {
+        setFields({
+            name: parsedCard.name ?? "",
+            description: parsedCard.description ?? "",
+            personality: parsedCard.personality ?? "",
+            scenario: parsedCard.scenario ?? "",
+            creator_notes: parsedCard.creator_notes ?? "",
+            system_prompt: parsedCard.system_prompt ?? "",
+            post_history_instructions: parsedCard.post_history_instructions ?? "",
+            mes_example: parsedCard.mes_example ?? "",
+            tags: (parsedCard.tags ?? []).join(", "),
+        });
+        setGreetings(buildGreetings(parsedCard));
+        setSelectedGreetingKey(FIRST_MES_KEY);
+        setLorebookEntries(parsedCard.lorebook_entries ?? []);
+        setCoverImage(parsedCard.cover_image_data_uri ?? null);
+        setCardAssets(parsedCard.assets ?? []);
+        setCardExtensions(parsedCard.extensions ?? {});
+        setImageCandidates(parsedCard.image_candidates ?? []);
+        setImageScan(parsedCard.image_scan ?? null);
+        setSelectedImageUrls([]);
+    }
+
+    function prepareForParse(sourceName, file = null) {
         setError(null);
         setLoading(true);
-        setFileName(file.name);
+        setFileName(sourceName);
         setOriginalFile(file);
         setAssembled(null);
         setExtractError(null);
         setStreamProgress(null);
         setCommittedWorld(null);
         setCommitError(null);
+    }
+
+    async function handleFileSelected(file) {
+        prepareForParse(file.name, file);
 
         try {
             const parsedCard = await parseSillyTavernCard(file);
+            applyParsedCard(parsedCard);
+        } catch (err) {
+            setError(err.message);
+            setFields(null);
+        } finally {
+            setLoading(false);
+        }
+    }
 
-            setFields({
-                name: parsedCard.name ?? "",
-                description: parsedCard.description ?? "",
-                personality: parsedCard.personality ?? "",
-                scenario: parsedCard.scenario ?? "",
-                creator_notes: parsedCard.creator_notes ?? "",
-                system_prompt: parsedCard.system_prompt ?? "",
-                post_history_instructions: parsedCard.post_history_instructions ?? "",
-                mes_example: parsedCard.mes_example ?? "",
-                tags: (parsedCard.tags ?? []).join(", "),
-            });
-            setGreetings(buildGreetings(parsedCard));
-            setSelectedGreetingKey(FIRST_MES_KEY);
-            setLorebookEntries(parsedCard.lorebook_entries ?? []);
-            setCoverImage(parsedCard.cover_image_data_uri ?? null);
-            setCardAssets(parsedCard.assets ?? []);
-            setCardExtensions(parsedCard.extensions ?? {});
-            setImageCandidates(parsedCard.image_candidates ?? []);
-            setImageScan(parsedCard.image_scan ?? null);
-            setSelectedImageUrls([]);
+    async function handleUrlSubmit(event) {
+        event.preventDefault();
+        const url = cardUrl.trim();
+        if (!url) return;
+        setUrlModalOpen(false);
+        prepareForParse(url);
+        try {
+            const parsedCard = await parseSillyTavernCardUrl(url);
+            applyParsedCard(parsedCard);
+            setOriginalFile(coverFileFromDataUri(parsedCard.cover_image_data_uri));
         } catch (err) {
             setError(err.message);
             setFields(null);
@@ -251,7 +288,11 @@ export function SillyTavernImportPage() {
                                 <p className="status-text">{t("sillyTavernImport.parsing")}</p>
                             ) : (
                                 <div className="st-import-dropzone-wrapper">
-                                    <SillyTavernDropzone onFileSelected={handleFileSelected} disabled={false} />
+                                    <SillyTavernDropzone
+                                        onFileSelected={handleFileSelected}
+                                        onUrlRequested={() => setUrlModalOpen(true)}
+                                        disabled={false}
+                                    />
                                     {error ? (
                                         <p className="form-error">{t("sillyTavernImport.parseError", { error })}</p>
                                     ) : null}
@@ -557,6 +598,47 @@ export function SillyTavernImportPage() {
                     )}
                 </section>
             </div>
+
+            {urlModalOpen ? (
+                <div className="modal-backdrop" role="presentation" onMouseDown={() => setUrlModalOpen(false)}>
+                    <div
+                        className="modal-panel compact-modal-panel"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="st-url-modal-title"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <form className="connection-create-form" onSubmit={handleUrlSubmit}>
+                            <div className="modal-header">
+                                <h2 id="st-url-modal-title">{t("sillyTavernImport.urlModal.title")}</h2>
+                            </div>
+                            <div className="connection-create-form-content">
+                                <label className="form-field inline-field modal-form-field" htmlFor="st-card-url">
+                                    <span>{t("sillyTavernImport.urlModal.label")}</span>
+                                    <input
+                                        id="st-card-url"
+                                        className="single-line-input"
+                                        type="url"
+                                        required
+                                        autoFocus
+                                        placeholder="https://example.com/card.png"
+                                        value={cardUrl}
+                                        onChange={(event) => setCardUrl(event.target.value)}
+                                    />
+                                </label>
+                            </div>
+                            <div className="modal-actions">
+                                <button type="button" className="secondary-button" onClick={() => setUrlModalOpen(false)}>
+                                    {t("sillyTavernImport.urlModal.cancel")}
+                                </button>
+                                <button type="submit" className="primary-button" disabled={!cardUrl.trim()}>
+                                    {t("sillyTavernImport.urlModal.submit")}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }

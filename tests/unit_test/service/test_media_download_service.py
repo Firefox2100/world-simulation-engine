@@ -157,6 +157,30 @@ async def test_fetch_and_store_rejects_a_non_image_content_type():
     assert storage.saved == []
 
 
+async def test_download_raw_preserves_png_metadata_bytes():
+    raw = b"\x89PNG\r\n\x1a\nmetadata-that-must-not-be-normalised"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=raw)
+
+    service = MediaDownloadService(
+        resolver=_resolver(_PUBLIC_IP), transport=httpx.MockTransport(handler),
+    )
+
+    assert await service.download_raw("https://cards.example.com/card.png") == raw
+
+
+async def test_download_raw_rejects_private_urls_before_fetching():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("must never fetch a private URL")
+
+    service = MediaDownloadService(
+        resolver=_resolver(_PRIVATE_IP), transport=httpx.MockTransport(handler),
+    )
+
+    assert await service.download_raw("http://internal.example.com/card.json") is None
+
+
 async def test_fetch_and_store_rejects_a_body_over_the_content_length_cap():
     original_max = CONFIG.sillytavern_image_download_max_bytes
     CONFIG.sillytavern_image_download_max_bytes = 10

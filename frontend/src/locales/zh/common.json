@@ -360,7 +360,14 @@
     "chooseAnother": "选择其他文件",
     "dropzone": {
       "prompt": "将文件拖到此处，或点击选择文件",
-      "hint": "SillyTavern 角色卡（.png 或 .json）"
+      "hint": "SillyTavern 角色卡（.png 或 .json）",
+      "fromUrl": "从 URL 导入"
+    },
+    "urlModal": {
+      "title": "从 URL 导入",
+      "label": "PNG 或 JSON URL",
+      "cancel": "取消",
+      "submit": "导入"
     },
     "fields": {
       "name": "角色名称",

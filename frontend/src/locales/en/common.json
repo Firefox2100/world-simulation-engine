@@ -360,7 +360,14 @@
     "chooseAnother": "Choose another file",
     "dropzone": {
       "prompt": "Drop the file here or click to select the file",
-      "hint": "SillyTavern character card (.png or .json)"
+      "hint": "SillyTavern character card (.png or .json)",
+      "fromUrl": "Import from URL"
+    },
+    "urlModal": {
+      "title": "Import from URL",
+      "label": "PNG or JSON URL",
+      "cancel": "Cancel",
+      "submit": "Import"
     },
     "fields": {
       "name": "Character name",

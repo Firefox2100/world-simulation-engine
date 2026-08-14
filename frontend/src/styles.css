@@ -2961,6 +2961,10 @@ body {
     display: none;
 }
 
+.st-import-url-button {
+    margin-top: 8px;
+}
+
 .st-import-card-editor {
     display: flex;
     flex-direction: column;
