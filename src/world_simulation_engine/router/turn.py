@@ -33,6 +33,16 @@ class TurnCreate(BaseModel):
     start_time: datetime = Field(..., description="The start time of the turn")
 
 
+class TurnUpdate(BaseModel):
+    """DTO model for updating a turn. `sequence` is deliberately not editable here - it drives
+    NEXT-chain ordering established at creation time, per create_world_turn's own strict
+    previous-sequence-plus-one check."""
+
+    type: Optional[TurnType] = Field(None, description="The type of the turn")
+    content: Optional[str] = Field(None, min_length=1, description="The final, visible content of this turn")
+    start_time: Optional[datetime] = Field(None, description="The start time of the turn")
+
+
 class PresentationBlockWrite(BaseModel):
     sequence: int = Field(ge=0)
     type: PresentationBlockType
@@ -339,6 +349,45 @@ async def create_world_turn(world_id: str, turn_data: TurnCreate, db: db_dep):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+
+
+@turn_router.patch("/worlds/{world_id}/turns/{turn_id}", response_model=Turn)
+async def update_world_turn(world_id: str, turn_id: str, turn_data: TurnUpdate, db: db_dep):
+    """Edit a world-authored turn (opening/history turns set up before any simulation exists -
+    see the SillyTavern import pipeline and `create_world_turn` below). Deliberately does not
+    exist for `/turns/{turn_id}` in general - a simulation's own turns are its immutable
+    historical record (see `test_turn_router_is_read_only`)."""
+    turn = await db.turn.update_world_turn(
+        world_id,
+        turn_id,
+        turn_data.model_dump(exclude_unset=True),
+    )
+    if not turn:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Turn {turn_id} not found in world {world_id}",
+        )
+
+    return turn
+
+
+@turn_router.delete("/worlds/{world_id}/turns/{turn_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_world_turn(world_id: str, turn_id: str, db: db_dep):
+    """Delete a world-authored turn - only the most recently added one (no later turn chained
+    after it) with no event referencing it; see `TurnStore.delete_world_turn` for why deletion
+    can't safely apply to a turn in the middle of the chain. Never exists for `/turns/{turn_id}`
+    in general, same reasoning as `update_world_turn`."""
+    deletable = await db.turn.delete_world_turn(world_id, turn_id)
+    if deletable is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Turn {turn_id} not found in world {world_id}",
+        )
+    if not deletable:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only the most recently added turn, with no event referencing it, can be deleted",
+        )
 
 
 @turn_router.get("/turns/{turn_id}", response_model=Turn)

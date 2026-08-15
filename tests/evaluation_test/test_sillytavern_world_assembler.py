@@ -134,7 +134,9 @@ async def test_assemble_world_from_real_sillytavern_card(card_path: Path, global
     # private_knowledge needs the combined (history + opening) narrative. Previously this eval
     # test only ran the first 8 extractors, leaving item_stacks/equipment spatial placement and
     # subjective_entity_claims structurally untested by every real eval run.
-    opening_turns = await OpeningTurnExtractor(database=db).extract(preprocessed, characters, language=language)
+    opening_turns = await OpeningTurnExtractor(database=db).extract(
+        preprocessed, characters, background_characters, language=language,
+    )
     spatial_state = await SpatialStateExtractor(database=db).extract(
         preprocessed, characters, locations, items, equipment, language=language,
     )

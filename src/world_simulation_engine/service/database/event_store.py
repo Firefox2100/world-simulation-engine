@@ -279,7 +279,8 @@ class EventStore:
         result = await self._driver.execute_query(
             """
             MATCH (event:Event {id: $event_id})
-            MATCH (character:Character {id: $character_id})
+            MATCH (character {id: $character_id})
+            WHERE character:Character OR character:BackgroundCharacter
             MERGE (event)-[relationship:INVOLVES]->(character)
             SET relationship.involvement = $involvement
             RETURN event
@@ -303,13 +304,14 @@ class EventStore:
         result = await self._driver.execute_query(
             """
             MATCH (event:Event {id: $event_id})
-            OPTIONAL MATCH (event)-[existing:INVOLVES]->(:Character)
+            OPTIONAL MATCH (event)-[existing:INVOLVES]->()
             DELETE existing
             WITH event
             CALL {
                 WITH event
                 UNWIND $involvements AS involvement
-                MATCH (character:Character {id: involvement.character_id})
+                MATCH (character {id: involvement.character_id})
+                WHERE character:Character OR character:BackgroundCharacter
                 MERGE (event)-[relationship:INVOLVES]->(character)
                 SET relationship.involvement = involvement.involvement
                 RETURN count(*) AS linked_count

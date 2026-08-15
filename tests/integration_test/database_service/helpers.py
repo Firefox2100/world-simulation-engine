@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from world_simulation_engine.misc.enums import SupportedLanguage
-from world_simulation_engine.model import Author, Character, CurrentActivity, World
+from world_simulation_engine.model import Author, BackgroundCharacter, Character, CurrentActivity, World
 from world_simulation_engine.service.database.character_store import CharacterStore
 from world_simulation_engine.service.database.world_store import WorldStore
 
@@ -53,4 +53,20 @@ async def create_world(clean_neo4j) -> World:
 async def create_character(clean_neo4j, source_id: str, name: str = "Test Character") -> Character:
     character = make_character(name)
     await CharacterStore(clean_neo4j).create_character(character, source_id)
+    return character
+
+
+def make_background_character(name: str = "Test Background Character") -> BackgroundCharacter:
+    return BackgroundCharacter(
+        id=str(uuid4()),
+        name=name,
+        description="A test background character",
+    )
+
+
+async def create_background_character(
+        clean_neo4j, source_id: str, name: str = "Test Background Character",
+) -> BackgroundCharacter:
+    character = make_background_character(name)
+    await CharacterStore(clean_neo4j).create_background_character(character, source_id)
     return character

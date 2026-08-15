@@ -17727,6 +17727,111 @@
         }
       }
     },
+    "/worlds/{world_id}/turns/{turn_id}": {
+      "patch": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "Update World Turn",
+        "description": "Edit a world-authored turn (opening/history turns set up before any simulation exists -\nsee the SillyTavern import pipeline and `create_world_turn` below). Deliberately does not\nexist for `/turns/{turn_id}` in general - a simulation's own turns are its immutable\nhistorical record (see `test_turn_router_is_read_only`).",
+        "operationId": "update_world_turn_worlds__world_id__turns__turn_id__patch",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turn Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Turn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "Delete World Turn",
+        "description": "Delete a world-authored turn - only the most recently added one (no later turn chained\nafter it) with no event referencing it; see `TurnStore.delete_world_turn` for why deletion\ncan't safely apply to a turn in the middle of the chain. Never exists for `/turns/{turn_id}`\nin general, same reasoning as `update_world_turn`.",
+        "operationId": "delete_world_turn_worlds__world_id__turns__turn_id__delete",
+        "parameters": [
+          {
+            "name": "world_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "World Id"
+            }
+          },
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turn Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/turns/{turn_id}": {
       "get": {
         "tags": [
@@ -33066,6 +33171,50 @@
           "system_continue"
         ],
         "title": "TurnType"
+      },
+      "TurnUpdate": {
+        "properties": {
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The type of the turn"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "The final, visible content of this turn"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time",
+            "description": "The start time of the turn"
+          }
+        },
+        "type": "object",
+        "title": "TurnUpdate",
+        "description": "DTO model for updating a turn. `sequence` is deliberately not editable here - it drives\nNEXT-chain ordering established at creation time, per create_world_turn's own strict\nprevious-sequence-plus-one check."
       },
       "UnlockingItemRelationshipUpdate": {
         "properties": {

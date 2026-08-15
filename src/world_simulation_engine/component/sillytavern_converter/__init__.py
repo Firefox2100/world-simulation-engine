@@ -22,8 +22,9 @@ from .lorebook_classifier import ClassifiedItem, LorebookClassification, Loreboo
 from .narrative_extractor import ExtractedEvent, ExtractedMemory, ExtractedRelationship, \
     HistoricalMemoryCandidate, HistoryEventCandidate, NarrativeExtraction, NarrativeExtractor, \
     RelationshipCandidate, RelationshipCandidates
-from .opening_turn_extractor import ExtractedOpeningTurn, OpeningTurnCandidate, OpeningTurnCandidates, \
-    OpeningTurnExtraction, OpeningTurnExtractor
+from .opening_turn_extractor import ExtractedOpeningTurn, ExtractedOpeningTurnBlock, \
+    OpeningTurnBlockCandidate, OpeningTurnCandidate, OpeningTurnCandidates, OpeningTurnExtraction, \
+    OpeningTurnExtractor
 from .opening_narrative_extractor import OpeningEventCandidate, OpeningMemoryCandidate, \
     OpeningNarrativeExtractor
 from .pipeline_component import SillyTavernPipelineComponent

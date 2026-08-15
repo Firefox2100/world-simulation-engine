@@ -467,7 +467,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
             },
             "speech_style": "playful",
         }],
-        "background_characters": [{"id": "stub-1", "name": "User", "description": "The user's persona."}],
+        "background_characters": [{"id": "bg-1", "name": "The Guard", "description": "Stands watch at the gate."}],
         "items": [], "item_stacks": [], "equipment": [], "containers": [],
         "turns": [{
             "id": "turn-1", "sequence": 0, "type": "system_response", "content": "Hi!", "start_time": now,
@@ -497,7 +497,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
             "visibility": "objective", "perspective_character_id": None, "confidence": 1.0,
             "details": {"kind": "generic", "attributes": {}}, "evidence_memory_ids": [],
             "source": {"type": "character", "id": "char-1", "name": None},
-            "target": {"type": "background_character", "id": "stub-1", "name": None},
+            "target": {"type": "background_character", "id": "bg-1", "name": None},
             "created_at": now, "last_changed_at": now, "version": 1, "active": True,
         }],
         "entity_variable_sets": [{
@@ -531,8 +531,8 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
     example = characters[0]
 
     background_characters = await db.character.list_background_characters(world_id=world.id)
-    assert [character.name for character in background_characters] == ["User"]
-    user_stub = background_characters[0]
+    assert [character.name for character in background_characters] == ["The Guard"]
+    guard = background_characters[0]
 
     events = await db.event.list_events(character_id=example.id)
     assert [event.name for event in events] == ["The Project"]
@@ -546,7 +546,7 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
     relationships = await db.entity_relationship.list_relationships(scope_id=world.id, active_only=False)
     assert len(relationships) == 1
     assert relationships[0].source.id == example.id
-    assert relationships[0].target.id == user_stub.id
+    assert relationships[0].target.id == guard.id
 
     variable_set = await db.variable.get_variable_set(example.id)
     assert variable_set is not None

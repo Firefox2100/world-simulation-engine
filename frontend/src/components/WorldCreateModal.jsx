@@ -44,6 +44,7 @@ import {
     deleteLandmark,
     deleteLocation,
     deleteMemory,
+    deleteWorldTurn,
     fetchWorldAuthor,
     fetchWorldBackgroundCharacters,
     fetchWorldCharacters,
@@ -63,9 +64,11 @@ import {
     updateLandmark,
     updateLocation,
     updateWorldAuthor,
+    updateWorldTurn,
 } from "@/api/worldEntities";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
+import { TurnContentEditor } from "@/components/TurnContentEditor";
 
 const sections = [
     "world",
@@ -325,6 +328,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const [worldEvents, setWorldEvents] = useState([]);
     const [worldMemories, setWorldMemories] = useState([]);
     const [turnForm, setTurnForm] = useState(() => ({ ...emptyTurnForm }));
+    const [editingTurn, setEditingTurn] = useState(null);
     const [eventForm, setEventForm] = useState(() => ({ ...emptyEventForm }));
     const [memoryForm, setMemoryForm] = useState(() => ({ ...emptyMemoryForm }));
 
@@ -525,7 +529,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
         const loadTimer = window.setTimeout(() => {
             loadNarrativeSection(activeSection);
-            if (activeSection === "events" || activeSection === "memories") {
+            if (activeSection === "events" || activeSection === "memories" || activeSection === "turns") {
                 loadEntitySection("characters", worldId, { includeDependencies: false });
             }
             if (activeSection === "events") {
@@ -894,7 +898,30 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     }
 
     function updateTurnForm(field, value) {
-        setTurnForm((current) => ({ ...current, [field]: value }));
+        setTurnForm((current) => {
+            // content's shape depends on which side of the user/system boundary type is on
+            // (plain text vs NarrationProposal blocks JSON - see TurnContentEditor) - crossing
+            // that boundary mid-edit must reset content, or the wrong editor would render the
+            // other shape's raw value.
+            if (field === "type" && (current.type === "user_input") !== (value === "user_input")) {
+                return { ...current, type: value, content: "" };
+            }
+            return { ...current, [field]: value };
+        });
+    }
+
+    function startEditTurn(turn) {
+        setEditingTurn(turn);
+        setTurnForm({
+            type: turn.type,
+            content: turn.content,
+            start_time: (turn.start_time ?? "").slice(0, 16),
+        });
+    }
+
+    function cancelEditTurn() {
+        setEditingTurn(null);
+        setTurnForm({ ...emptyTurnForm });
     }
 
     async function saveTurn() {
@@ -903,9 +930,33 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
         try {
             setSaving(true);
             const id = await ensureWorldSaved();
-            await createWorldTurn(id, { ...turnForm, sequence: nextTurnSequence });
+            if (editingTurn) {
+                await updateWorldTurn(id, editingTurn.id, turnForm);
+            } else {
+                await createWorldTurn(id, { ...turnForm, sequence: nextTurnSequence });
+            }
             await loadNarrativeSection("turns", id, { force: true });
             setTurnForm({ ...emptyTurnForm });
+            setEditingTurn(null);
+            setSaving(false);
+        } catch (err) {
+            setError(err.message);
+            setSaving(false);
+        }
+    }
+
+    async function deleteTurn(turn) {
+        if (!window.confirm(t("worldCreate.newEditor.confirmDelete", { name: t("worldCreate.newEditor.turnTitle", { number: turn.sequence }) }))) {
+            return;
+        }
+
+        try {
+            setSaving(true);
+            await deleteWorldTurn(worldId, turn.id);
+            await loadNarrativeSection("turns", worldId, { force: true });
+            if (editingTurn?.id === turn.id) {
+                cancelEditTurn();
+            }
             setSaving(false);
         } catch (err) {
             setError(err.message);
@@ -1296,12 +1347,18 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                         {activeSection === "turns" ? (
                             <TurnSection
                                 turns={worldTurns}
+                                characters={characters}
                                 form={turnForm}
+                                editing={editingTurn}
                                 nextSequence={nextTurnSequence}
                                 saving={saving}
                                 worldReady={Boolean(worldId) || worldFormValid}
                                 onChange={updateTurnForm}
                                 onSave={saveTurn}
+                                onEdit={startEditTurn}
+                                onCreate={cancelEditTurn}
+                                onCancelEdit={cancelEditTurn}
+                                onDelete={deleteTurn}
                             />
                         ) : null}
 
@@ -1418,19 +1475,62 @@ function enumOptions(t, prefix, values) {
     return values.map((value) => ({ id: value, name: t(`${prefix}.${value}`) }));
 }
 
-function TurnSection({ turns, form, nextSequence, saving, worldReady, onChange, onSave }) {
+function turnContentHasText(type, content) {
+    if (type === "user_input") {
+        return content.trim().length > 0;
+    }
+    try {
+        const parsed = JSON.parse(content);
+        return Array.isArray(parsed?.blocks) && parsed.blocks.some((block) => (block.text ?? "").trim().length > 0);
+    } catch {
+        return content.trim().length > 0;
+    }
+}
+
+function turnContentPreview(type, content) {
+    if (type === "user_input") {
+        return content;
+    }
+    try {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed?.blocks)) {
+            return parsed.blocks
+                .map((block) => (block.type === "speech" ? `${block.character_name ?? "?"}: "${block.text}"` : block.text))
+                .join(" ");
+        }
+    } catch {
+        // Legacy plain-text content - show as-is below.
+    }
+    return content;
+}
+
+function TurnSection({ turns, characters, form, editing, nextSequence, saving, worldReady, onChange, onSave, onEdit, onCreate, onCancelEdit, onDelete }) {
     const { t } = useTranslation();
-    const formValid = Boolean(form.type) && form.content.trim().length > 0 && Boolean(form.start_time);
+    const formValid = Boolean(form.type) && turnContentHasText(form.type, form.content) && Boolean(form.start_time);
     const orderedTurns = [...turns].sort((a, b) => a.sequence - b.sequence);
 
     return (
         <section>
+            <div className="simulation-detail-subtabs world-editor-entity-list">
+                <button
+                    type="button"
+                    className={`simulation-detail-subtab world-editor-create-tab${editing ? "" : " active"}`}
+                    onClick={onCreate}
+                >
+                    {t("worldCreate.newEditor.createNew")}
+                </button>
+            </div>
             <div className="data-preset-list">
                 {orderedTurns.length === 0 ? (
                     <p className="simulation-details-empty-line">{t("worldCreate.newEditor.empty.turns")}</p>
                 ) : (
                     orderedTurns.map((turn) => (
-                        <div className="data-preset-item" key={turn.id}>
+                        <button
+                            key={turn.id}
+                            type="button"
+                            className={`data-preset-item data-preset-item-button${editing?.id === turn.id ? " active" : ""}`}
+                            onClick={() => onEdit(turn)}
+                        >
                             <div className="prompt-message-header">
                                 <span className="data-preset-item-title">
                                     {t("worldCreate.newEditor.turnTitle", { number: turn.sequence })}
@@ -1439,17 +1539,26 @@ function TurnSection({ turns, form, nextSequence, saving, worldReady, onChange, 
                                     {t(`worldCreate.newEditor.turnTypes.${turn.type}`)}
                                 </span>
                             </div>
-                            <p>{turn.content}</p>
-                        </div>
+                            <p>{turnContentPreview(turn.type, turn.content)}</p>
+                        </button>
                     ))
                 )}
             </div>
 
             <div className="world-editor-form">
-                <h3>{t("worldCreate.newEditor.create.turns")}</h3>
+                <h3>
+                    {editing
+                        ? t("worldCreate.newEditor.turnTitle", { number: editing.sequence })
+                        : t("worldCreate.newEditor.create.turns")}
+                </h3>
                 <label className="form-field inline-field">
                     <FieldLabel label={t("worldCreate.newEditor.fields.sequence")} required />
-                    <input className="single-line-input" value={nextSequence} disabled readOnly />
+                    <input
+                        className="single-line-input"
+                        value={editing ? editing.sequence : nextSequence}
+                        disabled
+                        readOnly
+                    />
                 </label>
                 <SelectField
                     label={t("worldCreate.newEditor.fields.turn_type")}
@@ -1458,12 +1567,15 @@ function TurnSection({ turns, form, nextSequence, saving, worldReady, onChange, 
                     options={enumOptions(t, "worldCreate.newEditor.turnTypes", TURN_TYPES)}
                     required
                 />
-                <TextArea
-                    label={t("worldCreate.newEditor.fields.content")}
-                    value={form.content}
-                    onChange={(value) => onChange("content", value)}
-                    required
-                />
+                <label className="form-field inline-field">
+                    <FieldLabel label={t("worldCreate.newEditor.fields.content")} required />
+                    <TurnContentEditor
+                        content={form.content}
+                        characters={characters}
+                        type={form.type}
+                        onChange={(value) => onChange("content", value)}
+                    />
+                </label>
                 <TextField
                     label={t("worldCreate.newEditor.fields.start_time")}
                     type="datetime-local"
@@ -1478,8 +1590,18 @@ function TurnSection({ turns, form, nextSequence, saving, worldReady, onChange, 
                         disabled={saving || !worldReady || !formValid}
                         onClick={onSave}
                     >
-                        {t("worldCreate.newEditor.saveEntity")}
+                        {editing ? t("worldCreate.newEditor.updateEntity") : t("worldCreate.newEditor.saveEntity")}
                     </button>
+                    {editing ? (
+                        <>
+                            <button type="button" className="secondary-button" onClick={onCancelEdit}>
+                                {t("worldCreate.cancel")}
+                            </button>
+                            <button type="button" className="secondary-button danger-button" onClick={() => onDelete(editing)}>
+                                {t("worldCreate.newEditor.deleteEntity")}
+                            </button>
+                        </>
+                    ) : null}
                 </div>
             </div>
         </section>

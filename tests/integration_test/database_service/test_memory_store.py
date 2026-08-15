@@ -7,7 +7,8 @@ from world_simulation_engine.service.database.event_store import EventStore
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink, MemoryStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_background_character, create_character, \
+    create_world
 
 
 async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):
@@ -89,6 +90,66 @@ async def test_create_memory_atom_attaches_to_event_and_character(clean_neo4j):
     assert record["behavioural_relevance"] == "May greet this person again."
     assert record["stance"] == MemoryStance.REMEMBER
     assert await memory_store.delete_memory(memory.id) is True
+
+
+async def test_create_memory_atom_accepts_a_background_character_link(clean_neo4j):
+    # Regression test: create_memory_atom used to MATCH (character:Character) WHERE character.id
+    # IN $character_ids, then require size(characters) == size(character_ids) - so a single
+    # BackgroundCharacter id in the link list (possible since narrative_extractor.py's roster can
+    # resolve a memory's observer to either kind) silently failed the whole memory creation, not
+    # just that one link.
+    world = await create_world(clean_neo4j)
+    character = await create_character(clean_neo4j, world.id, name="Alex")
+    background_character = await create_background_character(clean_neo4j, world.id, name="The Bartender")
+    turn_store = TurnStore(clean_neo4j)
+    event_store = EventStore(clean_neo4j)
+    memory_store = MemoryStore(clean_neo4j)
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="Hello",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    event = Event(
+        id=str(uuid4()),
+        name="Greeting",
+        summary="A greeting exchange",
+    )
+    memory = MemoryAtom(
+        id=str(uuid4()),
+        summary="The bartender remembers Alex's greeting.",
+        keywords=["Alex", "greeting"],
+        embedding=[0.1, 0.2, 0.3],
+    )
+
+    await turn_store.create_turn(turn, source_id=world.id)
+    await event_store.create_event(event, turn_ids=[turn.id])
+    assert await memory_store.create_memory_atom(
+        memory,
+        event_id=event.id,
+        support_type=MemorySupportType.DIRECT,
+        character_links=[
+            CharacterMemoryLink(
+                character_id=character.id, confidence=0.9, salience=Salience.MEDIUM,
+                behavioural_relevance=None, stance=MemoryStance.REMEMBER,
+            ),
+            CharacterMemoryLink(
+                character_id=background_character.id, confidence=0.7, salience=Salience.LOW,
+                behavioural_relevance=None, stance=MemoryStance.REMEMBER,
+            ),
+        ],
+    ) == memory
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:BackgroundCharacter {id: $character_id})-[remembers:REMEMBERS]->(:MemoryAtom {id: $memory_id})
+        RETURN remembers.confidence AS confidence
+        """,
+        parameters_={"character_id": background_character.id, "memory_id": memory.id},
+    )
+    assert result.records[0]["confidence"] == 0.7
+    assert await memory_store.list_memories(character_id=background_character.id) == [memory]
 
 
 async def test_list_memories_can_filter_by_simulation(clean_neo4j):

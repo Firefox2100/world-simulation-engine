@@ -11,10 +11,11 @@ from neo4j import AsyncGraphDatabase
 from world_simulation_engine.misc.enums import ContainerState, EventInvolvement, IntentHorizon, IntentStatus, \
     IntentType, SimulationGenerationRequestType, SupportedLanguage, TurnType
 from world_simulation_engine.model import Author, BackgroundCharacter, Character, Container, CurrentActivity, \
-    Equipment, Event, GenerationJob, Intent, Item, ItemStack, Landmark, Location, Turn, World
+    Equipment, Event, GenerationJob, Intent, Item, ItemStack, Landmark, Location, NarrationBlock, \
+    NarrationProposal, SpeechBlock, Turn, World
 from world_simulation_engine.router import background_character_router, character_router, config_router, \
     container_router, equipment_router, event_router, intent_router, item_router, location_router, media_router, \
-    simulation_router
+    simulation_router, turn_router
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
 
@@ -92,6 +93,7 @@ class SimulationRouterTestClient:
     city: Location
     market: Location
     landmark: Landmark
+    turn: Turn
     simulator: FakeWorldSimulator
 
 
@@ -173,8 +175,14 @@ def simulation_api(neo4j_container, tmp_path):
     turn = Turn(
         id=str(uuid4()),
         sequence=0,
-        type=TurnType.USER_INPUT,
-        content="Alex greets the shopkeeper",
+        type=TurnType.SYSTEM_RESPONSE,
+        content=NarrationProposal(
+            blocks=[
+                SpeechBlock(type="speech", character_id=world_character.id, character_name=world_character.name,
+                            text="Welcome to the market."),
+                NarrationBlock(type="narration", text="The shopkeeper waves Alex over."),
+            ],
+        ).model_dump_json(),
         start_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
     )
     event = Event(
@@ -313,6 +321,7 @@ def simulation_api(neo4j_container, tmp_path):
     app.include_router(item_router)
     app.include_router(location_router)
     app.include_router(media_router)
+    app.include_router(turn_router)
 
     with TestClient(app) as client:
         yield SimulationRouterTestClient(
@@ -333,6 +342,7 @@ def simulation_api(neo4j_container, tmp_path):
             city=city,
             market=market,
             landmark=landmark,
+            turn=turn,
             simulator=app.state.world_simulator,
         )
 
@@ -693,6 +703,36 @@ def test_create_simulation_links_configs_and_copies_cover_images(simulation_api)
     # The backend TTS model config is shared config, not per-character data - the copy must
     # point at the exact same backend config, not a duplicate.
     assert copied_voice_config["backend"]["id"] == tts_config["id"]
+
+
+def test_create_simulation_remaps_speaker_ids_in_copied_turn_content(simulation_api):
+    client = simulation_api.client
+
+    create_response = client.post(f"/worlds/{simulation_api.world.id}/simulations")
+    simulation = create_response.json()
+    assert create_response.status_code == 200
+
+    copied_character = client.get(
+        "/characters",
+        params={"simulation_id": simulation["id"]},
+    ).json()[0]
+    # The copy must get its own id, distinct from the world's character - otherwise there
+    # would be nothing to remap and this test wouldn't be exercising the fix.
+    assert copied_character["id"] != simulation_api.world_character.id
+
+    copied_turns = client.get(
+        "/turns",
+        params={"simulation_id": simulation["id"]},
+    ).json()
+    assert len(copied_turns) == 1
+    proposal = NarrationProposal.model_validate_json(copied_turns[0]["content"])
+    speech_block = next(block for block in proposal.blocks if block.type == "speech")
+
+    # The turn's content was copied from the world verbatim, but the character id embedded
+    # in it must be rewritten to the simulation's copy - not left pointing at the world's
+    # now-foreign character id.
+    assert speech_block.character_id == copied_character["id"]
+    assert speech_block.character_id != simulation_api.world_character.id
 
 
 def test_simulation_endpoints_return_404_for_missing_resources(simulation_api):

@@ -2609,6 +2609,64 @@ body {
     font-weight: 800;
 }
 
+.data-preset-item-button {
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.data-preset-item-button:hover {
+    border-color: #9ca3af;
+}
+
+.data-preset-item-button.active {
+    border-color: #111827;
+    background: #eef2ff;
+}
+
+.turn-block-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.turn-block-editor-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+}
+
+.turn-block-editor-row-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.turn-block-editor-row-type {
+    font-weight: 700;
+    color: #374151;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+}
+
+.turn-block-editor-row-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.turn-block-editor-row-actions .icon-button {
+    width: 28px;
+    height: 28px;
+    font-size: 1rem;
+}
+
 .data-values-editor {
     padding: 12px;
     display: flex;

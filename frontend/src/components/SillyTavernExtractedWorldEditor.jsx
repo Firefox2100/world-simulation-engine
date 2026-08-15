@@ -1,9 +1,33 @@
 import { useTranslation } from "react-i18next";
 
+import { TurnContentEditor } from "@/components/TurnContentEditor";
+
 const INTENT_TYPES = ["need", "obligation", "quest", "agenda", "aspiration", "relationship", "habit", "reaction"];
 const INTENT_STATUSES = ["active", "paused", "completed", "failed", "abandoned"];
 const INTENT_HORIZONS = ["immediate", "short", "day", "long", "open_ended"];
 const MEMORY_SUPPORT_TYPES = ["direct", "inferred", "reported", "contradicts"];
+const TURN_TYPES = ["user_input", "system_response", "system_continue"];
+const CONTAINER_STATES = ["hidden", "locked", "unlocked", "open"];
+const RELATIONSHIP_VISIBILITIES = ["objective", "public", "private"];
+const SUBJECTIVE_CLAIM_CATEGORIES = [
+    "appearance", "personality", "preference", "aversion", "capability", "habit", "value",
+    "relationship_expectation", "identity", "state", "safety", "access", "contents", "purpose",
+    "condition", "ownership", "risk", "history", "other",
+];
+const SUBJECTIVE_CLAIM_STANCES = ["believes", "suspects", "uncertain", "doubts", "denies"];
+
+const INTENT_LIST_FIELDS = [
+    "success_conditions", "failure_conditions", "maintenance_conditions", "constraints",
+    "current_plan", "next_action_biases", "blockers", "open_threads",
+];
+
+function joinLines(values) {
+    return (values ?? []).join("\n");
+}
+
+function splitLines(text) {
+    return text.split("\n").map((line) => line.trim()).filter(Boolean);
+}
 
 function newId() {
     return typeof crypto !== "undefined" && crypto.randomUUID
@@ -63,17 +87,17 @@ function EntityCard({ title, onRemove, removeLabel, children }) {
     );
 }
 
-function CharacterMultiSelect({ characters, selectedIds, onToggle }) {
+function EntityMultiSelect({ entities, selectedIds, onToggle }) {
     return (
         <div className="st-import-chip-list">
-            {characters.map((character) => (
-                <label key={character.id} className="st-import-chip">
+            {entities.map((entity) => (
+                <label key={entity.id} className="st-import-chip">
                     <input
                         type="checkbox"
-                        checked={selectedIds.includes(character.id)}
-                        onChange={(event) => onToggle(character.id, event.target.checked)}
+                        checked={selectedIds.includes(entity.id)}
+                        onChange={(event) => onToggle(entity.id, event.target.checked)}
                     />
-                    {character.name}
+                    {entity.name}
                 </label>
             ))}
         </div>
@@ -86,20 +110,31 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
 
     const characters = sections.characters ?? [];
     const locations = sections.locations ?? [];
+    const landmarks = sections.landmarks ?? [];
     const backgroundCharacters = sections.background_characters ?? [];
     const items = sections.items ?? [];
     const itemStacks = sections.item_stacks ?? [];
     const equipment = sections.equipment ?? [];
+    const containers = sections.containers ?? [];
+    const turns = sections.turns ?? [];
     const events = sections.events ?? [];
     const memories = sections.memories ?? [];
     const intents = sections.intents ?? [];
     const relationships = sections.entity_relationships ?? [];
+    const subjectiveClaims = sections.subjective_entity_claims ?? [];
     const variableSets = sections.entity_variable_sets ?? [];
     const media = sections.media ?? [];
 
     const allPeople = [
         ...characters.map((character) => ({ id: character.id, name: character.name, type: "character" })),
         ...backgroundCharacters.map((character) => ({ id: character.id, name: character.name, type: "background_character" })),
+    ];
+
+    const allEntities = [
+        ...allPeople,
+        ...locations.map((location) => ({ id: location.id, name: location.name, type: "location" })),
+        ...items.map((item) => ({ id: item.id, name: item.name, type: "item" })),
+        ...equipment.map((item) => ({ id: item.id, name: item.name, type: "equipment" })),
     ];
 
     function updateWorld(field, value) {
@@ -372,8 +407,62 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
             </EntitySection>
 
             <EntitySection
+                title={t("sillyTavernImport.review.landmarks.title")}
+                onAdd={() => addItem("landmarks", { id: newId(), name: "", description: "", location_id: null })}
+                addLabel={t("sillyTavernImport.review.landmarks.add")}
+            >
+                {landmarks.map((landmark, index) => (
+                    <EntityCard
+                        key={landmark.id}
+                        title={landmark.name || t("sillyTavernImport.review.landmarks.untitled")}
+                        onRemove={() => removeItem("landmarks", index)}
+                        removeLabel={t("sillyTavernImport.review.landmarks.remove")}
+                    >
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.name")}</label>
+                            <input
+                                className="single-line-input"
+                                type="text"
+                                value={landmark.name ?? ""}
+                                onChange={(event) => updateItem("landmarks", index, { name: event.target.value })}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.description")}</label>
+                            <textarea
+                                className="multi-line-input"
+                                value={landmark.description ?? ""}
+                                onChange={(event) => updateItem("landmarks", index, { description: event.target.value })}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.location_id")}</label>
+                            <select
+                                className="single-line-input"
+                                value={landmark.location_id ?? ""}
+                                onChange={(event) =>
+                                    updateItem("landmarks", index, { location_id: event.target.value || null })
+                                }
+                            >
+                                <option value="">{t("sillyTavernImport.review.landmarks.none")}</option>
+                                {locations.map((location) => (
+                                    <option key={location.id} value={location.id}>
+                                        {location.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </EntityCard>
+                ))}
+            </EntitySection>
+
+            <EntitySection
                 title={t("sillyTavernImport.review.backgroundCharacters.title")}
-                onAdd={() => addItem("background_characters", { id: newId(), name: "", description: "" })}
+                onAdd={() =>
+                    addItem("background_characters", {
+                        id: newId(), name: "", description: "", location_id: null, position: null, landmark_id: null,
+                    })
+                }
                 addLabel={t("sillyTavernImport.review.backgroundCharacters.add")}
             >
                 {backgroundCharacters.map((character, index) => (
@@ -399,6 +488,53 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                                 value={character.description ?? ""}
                                 onChange={(event) => updateItem("background_characters", index, { description: event.target.value })}
                             />
+                        </div>
+                        <div className="st-import-field-pair">
+                            <div className="form-field">
+                                <label>{t("simulationDetails.genericFields.location_id")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={character.location_id ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("background_characters", index, { location_id: event.target.value || null })
+                                    }
+                                >
+                                    <option value="">{t("sillyTavernImport.review.backgroundCharacters.none")}</option>
+                                    {locations.map((location) => (
+                                        <option key={location.id} value={location.id}>
+                                            {location.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-field">
+                                <label>{t("simulationDetails.genericFields.position")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={character.position ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("background_characters", index, { position: event.target.value || null })
+                                    }
+                                />
+                            </div>
+                        </div>
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.backgroundCharacters.landmark")}</label>
+                            <select
+                                className="single-line-input"
+                                value={character.landmark_id ?? ""}
+                                onChange={(event) =>
+                                    updateItem("background_characters", index, { landmark_id: event.target.value || null })
+                                }
+                            >
+                                <option value="">{t("sillyTavernImport.review.backgroundCharacters.none")}</option>
+                                {landmarks.map((landmark) => (
+                                    <option key={landmark.id} value={landmark.id}>
+                                        {landmark.name}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
                     </EntityCard>
                 ))}
@@ -594,6 +730,191 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                 ))}
             </EntitySection>
 
+            <EntitySection
+                title={t("sillyTavernImport.review.containers.title")}
+                onAdd={() =>
+                    addItem("containers", {
+                        id: newId(), name: "", description: "", state: "unlocked", owner_id: null,
+                        holder_id: null, location_id: null, position: null, unlocking_item_ids: [],
+                    })
+                }
+                addLabel={t("sillyTavernImport.review.containers.add")}
+            >
+                {containers.map((container, index) => (
+                    <EntityCard
+                        key={container.id}
+                        title={container.name || t("sillyTavernImport.review.containers.untitled")}
+                        onRemove={() => removeItem("containers", index)}
+                        removeLabel={t("sillyTavernImport.review.containers.remove")}
+                    >
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.name")}</label>
+                            <input
+                                className="single-line-input"
+                                type="text"
+                                value={container.name ?? ""}
+                                onChange={(event) => updateItem("containers", index, { name: event.target.value })}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.description")}</label>
+                            <textarea
+                                className="multi-line-input"
+                                value={container.description ?? ""}
+                                onChange={(event) => updateItem("containers", index, { description: event.target.value })}
+                            />
+                        </div>
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.state")}</label>
+                            <select
+                                className="single-line-input"
+                                value={container.state ?? "unlocked"}
+                                onChange={(event) => updateItem("containers", index, { state: event.target.value })}
+                            >
+                                {CONTAINER_STATES.map((option) => (
+                                    <option key={option} value={option}>
+                                        {t(`sillyTavernImport.review.containers.states.${option}`)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="st-import-field-pair">
+                            <div className="form-field">
+                                <label>{t("simulationDetails.genericFields.holder_id")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={container.holder_id ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("containers", index, {
+                                            holder_id: event.target.value || null,
+                                            location_id: event.target.value ? null : container.location_id ?? null,
+                                        })
+                                    }
+                                >
+                                    <option value="">{t("sillyTavernImport.review.containers.none")}</option>
+                                    {allPeople.map((person) => (
+                                        <option key={person.id} value={person.id}>
+                                            {person.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-field">
+                                <label>{t("simulationDetails.genericFields.location_id")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={container.location_id ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("containers", index, {
+                                            location_id: event.target.value || null,
+                                            holder_id: event.target.value ? null : container.holder_id ?? null,
+                                        })
+                                    }
+                                >
+                                    <option value="">{t("sillyTavernImport.review.containers.none")}</option>
+                                    {locations.map((location) => (
+                                        <option key={location.id} value={location.id}>
+                                            {location.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="st-import-field-pair">
+                            <div className="form-field">
+                                <label>{t("simulationDetails.genericFields.owner_id")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={container.owner_id ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("containers", index, { owner_id: event.target.value || null })
+                                    }
+                                >
+                                    <option value="">{t("sillyTavernImport.review.containers.none")}</option>
+                                    {allPeople.map((person) => (
+                                        <option key={person.id} value={person.id}>
+                                            {person.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-field">
+                                <label>{t("simulationDetails.genericFields.position")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={container.position ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("containers", index, { position: event.target.value || null })
+                                    }
+                                />
+                            </div>
+                        </div>
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.containers.unlockingItems")}</label>
+                            <EntityMultiSelect
+                                entities={items}
+                                selectedIds={container.unlocking_item_ids ?? []}
+                                onToggle={(itemId, checked) => {
+                                    const current = container.unlocking_item_ids ?? [];
+                                    const next = checked
+                                        ? [...current, itemId]
+                                        : current.filter((id) => id !== itemId);
+                                    updateItem("containers", index, { unlocking_item_ids: next });
+                                }}
+                            />
+                        </div>
+                    </EntityCard>
+                ))}
+            </EntitySection>
+
+            <EntitySection
+                title={t("sillyTavernImport.review.turns.title")}
+                onAdd={() =>
+                    addItem("turns", {
+                        id: newId(),
+                        sequence: turns.length,
+                        type: "system_response",
+                        content: "",
+                        start_time: new Date().toISOString(),
+                    })
+                }
+                addLabel={t("sillyTavernImport.review.turns.add")}
+            >
+                {turns.map((turn, index) => (
+                    <EntityCard
+                        key={turn.id}
+                        title={t("sillyTavernImport.review.turns.untitled", { index: index + 1 })}
+                        onRemove={() => removeItem("turns", index)}
+                        removeLabel={t("sillyTavernImport.review.turns.remove")}
+                    >
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.type")}</label>
+                            <select
+                                className="single-line-input"
+                                value={turn.type ?? "system_response"}
+                                onChange={(event) => updateItem("turns", index, { type: event.target.value })}
+                            >
+                                {TURN_TYPES.map((option) => (
+                                    <option key={option} value={option}>
+                                        {t(`sillyTavernImport.review.turns.types.${option}`)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-field">
+                            <label>{t("simulationDetails.genericFields.content")}</label>
+                            <TurnContentEditor
+                                content={turn.content ?? ""}
+                                characters={allPeople}
+                                type={turn.type ?? "system_response"}
+                                onChange={(value) => updateItem("turns", index, { content: value })}
+                            />
+                        </div>
+                    </EntityCard>
+                ))}
+            </EntitySection>
+
             <EntitySection title={t("sillyTavernImport.review.events.title")}>
                 {events.map((eventItem, index) => {
                     const involvedIds = (eventItem.involved_characters ?? []).map((entry) => entry.character_id);
@@ -622,9 +943,17 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                                 />
                             </div>
                             <div className="form-field">
+                                <label>{t("sillyTavernImport.review.events.outcome")}</label>
+                                <textarea
+                                    className="multi-line-input"
+                                    value={eventItem.outcome ?? ""}
+                                    onChange={(event) => updateItem("events", index, { outcome: event.target.value || null })}
+                                />
+                            </div>
+                            <div className="form-field">
                                 <label>{t("sillyTavernImport.review.events.involved")}</label>
-                                <CharacterMultiSelect
-                                    characters={characters}
+                                <EntityMultiSelect
+                                    entities={allPeople}
                                     selectedIds={involvedIds}
                                     onToggle={(characterId, checked) => {
                                         const next = checked
@@ -673,6 +1002,20 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                                 />
                             </div>
                             <div className="form-field">
+                                <label>{t("sillyTavernImport.review.memories.supportType")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={memory.support_type ?? "direct"}
+                                    onChange={(event) => updateItem("memories", index, { support_type: event.target.value })}
+                                >
+                                    {MEMORY_SUPPORT_TYPES.map((option) => (
+                                        <option key={option} value={option}>
+                                            {t(`sillyTavernImport.review.memories.supportTypes.${option}`)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-field">
                                 <label>{t("sillyTavernImport.review.memories.event")}</label>
                                 <select
                                     className="single-line-input"
@@ -688,8 +1031,8 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                             </div>
                             <div className="form-field">
                                 <label>{t("sillyTavernImport.review.memories.characters")}</label>
-                                <CharacterMultiSelect
-                                    characters={characters}
+                                <EntityMultiSelect
+                                    entities={characters}
                                     selectedIds={linkedIds}
                                     onToggle={(characterId, checked) => {
                                         const next = checked
@@ -824,6 +1167,19 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                                 onChange={(event) => updateItem("intents", index, { desired_state: event.target.value })}
                             />
                         </div>
+                        {INTENT_LIST_FIELDS.map((field) => (
+                            <div className="form-field" key={field}>
+                                <label>{t(`simulationDetails.genericFields.${field}`)}</label>
+                                <textarea
+                                    className="multi-line-input"
+                                    placeholder={t("sillyTavernImport.review.intents.oneItemPerLine")}
+                                    value={joinLines(intent[field])}
+                                    onChange={(event) =>
+                                        updateItem("intents", index, { [field]: splitLines(event.target.value) })
+                                    }
+                                />
+                            </div>
+                        ))}
                     </EntityCard>
                 ))}
             </EntitySection>
@@ -846,15 +1202,72 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                             />
                         </div>
                         <div className="form-field">
+                            <label>{t("sillyTavernImport.review.relationships.visibility")}</label>
+                            <select
+                                className="single-line-input"
+                                value={relationship.visibility ?? "objective"}
+                                onChange={(event) => {
+                                    const visibility = event.target.value;
+                                    const isPrivate = visibility === "private";
+                                    const description = isPrivate
+                                        ? relationship.public_description ?? relationship.private_description ?? ""
+                                        : relationship.private_description ?? relationship.public_description ?? "";
+                                    updateItem("entity_relationships", index, {
+                                        visibility,
+                                        public_description: isPrivate ? null : description,
+                                        private_description: isPrivate ? description : null,
+                                        perspective_character_id: isPrivate ? relationship.perspective_character_id : null,
+                                    });
+                                }}
+                            >
+                                {RELATIONSHIP_VISIBILITIES.map((option) => (
+                                    <option key={option} value={option}>
+                                        {t(`sillyTavernImport.review.relationships.visibilities.${option}`)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-field">
                             <label>{t("sillyTavernImport.review.relationships.description")}</label>
                             <textarea
                                 className="multi-line-input"
-                                value={relationship.public_description ?? ""}
+                                value={
+                                    relationship.visibility === "private"
+                                        ? relationship.private_description ?? ""
+                                        : relationship.public_description ?? ""
+                                }
                                 onChange={(event) =>
-                                    updateItem("entity_relationships", index, { public_description: event.target.value })
+                                    updateItem(
+                                        "entity_relationships",
+                                        index,
+                                        relationship.visibility === "private"
+                                            ? { private_description: event.target.value }
+                                            : { public_description: event.target.value },
+                                    )
                                 }
                             />
                         </div>
+                        {relationship.visibility === "private" ? (
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.relationships.perspective")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={relationship.perspective_character_id ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("entity_relationships", index, {
+                                            perspective_character_id: event.target.value || null,
+                                        })
+                                    }
+                                >
+                                    <option value="">{t("sillyTavernImport.review.relationships.none")}</option>
+                                    {characters.map((character) => (
+                                        <option key={character.id} value={character.id}>
+                                            {character.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : null}
                         <div className="st-import-field-pair">
                             <div className="form-field">
                                 <label>{t("sillyTavernImport.review.relationships.source")}</label>
@@ -893,6 +1306,118 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                                         </option>
                                     ))}
                                 </select>
+                            </div>
+                        </div>
+                    </EntityCard>
+                ))}
+            </EntitySection>
+
+            <EntitySection title={t("sillyTavernImport.review.subjectiveClaims.title")}>
+                {subjectiveClaims.map((claim, index) => (
+                    <EntityCard
+                        key={claim.id}
+                        title={
+                            personName(characters, claim.observer_character_id) ||
+                            t("sillyTavernImport.review.subjectiveClaims.untitled")
+                        }
+                        onRemove={() => removeItem("subjective_entity_claims", index)}
+                        removeLabel={t("sillyTavernImport.review.subjectiveClaims.remove")}
+                    >
+                        <div className="st-import-field-pair">
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.subjectiveClaims.observer")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={claim.observer_character_id ?? ""}
+                                    onChange={(event) =>
+                                        updateItem("subjective_entity_claims", index, {
+                                            observer_character_id: event.target.value,
+                                        })
+                                    }
+                                >
+                                    {characters.map((character) => (
+                                        <option key={character.id} value={character.id}>
+                                            {character.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.subjectiveClaims.subject")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={claim.subject?.id ?? ""}
+                                    onChange={(event) => {
+                                        const entity = allEntities.find((candidate) => candidate.id === event.target.value);
+                                        if (!entity) return;
+                                        updateItem("subjective_entity_claims", index, {
+                                            subject: { type: entity.type, id: entity.id, name: null },
+                                        });
+                                    }}
+                                >
+                                    {allEntities.map((entity) => (
+                                        <option key={entity.id} value={entity.id}>
+                                            {entity.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.subjectiveClaims.category")}</label>
+                            <select
+                                className="single-line-input"
+                                value={claim.category ?? ""}
+                                onChange={(event) => updateItem("subjective_entity_claims", index, { category: event.target.value })}
+                            >
+                                {SUBJECTIVE_CLAIM_CATEGORIES.map((option) => (
+                                    <option key={option} value={option}>
+                                        {t(`sillyTavernImport.review.subjectiveClaims.categories.${option}`)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-field">
+                            <label>{t("sillyTavernImport.review.subjectiveClaims.statement")}</label>
+                            <textarea
+                                className="multi-line-input"
+                                value={claim.statement ?? ""}
+                                onChange={(event) =>
+                                    updateItem("subjective_entity_claims", index, {
+                                        statement: event.target.value,
+                                        normalized_statement: event.target.value.toLowerCase().trim(),
+                                    })
+                                }
+                            />
+                        </div>
+                        <div className="st-import-field-pair">
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.subjectiveClaims.stance")}</label>
+                                <select
+                                    className="single-line-input"
+                                    value={claim.stance ?? ""}
+                                    onChange={(event) => updateItem("subjective_entity_claims", index, { stance: event.target.value })}
+                                >
+                                    {SUBJECTIVE_CLAIM_STANCES.map((option) => (
+                                        <option key={option} value={option}>
+                                            {t(`sillyTavernImport.review.subjectiveClaims.stances.${option}`)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.review.subjectiveClaims.confidence")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="number"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    value={claim.confidence ?? 0}
+                                    onChange={(event) =>
+                                        updateItem("subjective_entity_claims", index, { confidence: Number(event.target.value) })
+                                    }
+                                />
                             </div>
                         </div>
                     </EntityCard>

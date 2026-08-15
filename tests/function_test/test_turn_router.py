@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from neo4j import AsyncGraphDatabase
+from neo4j import AsyncGraphDatabase, GraphDatabase
 
 from world_simulation_engine.misc.enums import SupportedLanguage, TurnType
 from world_simulation_engine.model import Author, Simulation, Turn, World
@@ -20,6 +20,7 @@ class TurnRouterTestClient:
     world: World
     simulation: Simulation
     turns: list[Turn]
+    connection_url: str
 
 
 @pytest.fixture
@@ -88,6 +89,7 @@ def turn_api(neo4j_container):
             world=world,
             simulation=simulation,
             turns=turns,
+            connection_url=neo4j_container.get_connection_url(),
         )
 
 
@@ -218,6 +220,102 @@ def test_create_world_turn_validates_sequence(turn_api):
     assert bad_sequence_response.json()["detail"] == "Turn sequence must be 2"
     assert second_response.status_code == 200
     assert second_response.json()["sequence"] == 2
+
+
+def test_update_world_turn_edits_a_world_authored_turn(turn_api):
+    client = turn_api.client
+
+    created = client.post(
+        f"/worlds/{turn_api.world.id}/turns",
+        json={
+            "sequence": 1,
+            "type": TurnType.SYSTEM_RESPONSE,
+            "content": "Opening world turn",
+            "start_time": "2026-01-01T12:00:00Z",
+        },
+    )
+    assert created.status_code == 200
+    turn_id = created.json()["id"]
+
+    updated = client.patch(
+        f"/worlds/{turn_api.world.id}/turns/{turn_id}",
+        json={"content": "Revised opening turn", "type": TurnType.USER_INPUT},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["content"] == "Revised opening turn"
+    assert updated.json()["type"] == TurnType.USER_INPUT
+    # sequence/start_time were not in the patch payload, so they must be unchanged.
+    assert updated.json()["sequence"] == 1
+    assert updated.json()["start_time"] == created.json()["start_time"]
+
+    # A turn belonging to a *simulation* (not this world) must not be editable through the
+    # world-scoped endpoint, even with a real turn id - this is not the same invariant as
+    # test_turn_router_is_read_only's flat /turns/{turn_id}, but the same underlying guarantee
+    # that a simulation's own turn history stays immutable.
+    wrong_scope_response = client.patch(
+        f"/worlds/{turn_api.world.id}/turns/{turn_api.turns[0].id}",
+        json={"content": "Should not apply"},
+    )
+    assert wrong_scope_response.status_code == 404
+
+    missing_world_response = client.patch(
+        f"/worlds/{uuid4()}/turns/{turn_id}",
+        json={"content": "Should not apply"},
+    )
+    assert missing_world_response.status_code == 404
+
+
+def test_delete_world_turn_only_allows_removing_the_last_unreferenced_turn(turn_api):
+    client = turn_api.client
+    world_id = turn_api.world.id
+
+    first = client.post(
+        f"/worlds/{world_id}/turns",
+        json={
+            "sequence": 1, "type": TurnType.SYSTEM_RESPONSE, "content": "First",
+            "start_time": "2026-01-01T12:00:00Z",
+        },
+    ).json()
+    second = client.post(
+        f"/worlds/{world_id}/turns",
+        json={
+            "sequence": 2, "type": TurnType.USER_INPUT, "content": "Second",
+            "start_time": "2026-01-01T12:01:00Z",
+        },
+    ).json()
+
+    # Not the last turn in the chain - must be rejected rather than leaving a gap or requiring
+    # relinking (see TurnStore.delete_world_turn).
+    not_last_response = client.delete(f"/worlds/{world_id}/turns/{first['id']}")
+    assert not_last_response.status_code == 400
+    assert client.get(f"/turns/{first['id']}").status_code == 200
+
+    # The tail, with nothing referencing it, deletes cleanly.
+    deleted_response = client.delete(f"/worlds/{world_id}/turns/{second['id']}")
+    assert deleted_response.status_code == 204
+    assert client.get(f"/turns/{second['id']}").status_code == 404
+
+    # A missing turn id (or one that isn't in this world) 404s rather than 400ing.
+    missing_response = client.delete(f"/worlds/{world_id}/turns/{uuid4()}")
+    assert missing_response.status_code == 404
+
+    # first is now the tail again, but an event referencing it must still block deletion. Attached
+    # via a plain sync driver rather than the app's own async DatabaseService, which is bound to
+    # the event loop TestClient already started - a second one (e.g. via asyncio.run) can't share it.
+    with GraphDatabase.driver(turn_api.connection_url, auth=("neo4j", "testpassword")) as sync_driver:
+        sync_driver.execute_query(
+            """
+            MATCH (turn:Turn {id: $turn_id})
+            CREATE (event:Event {id: $event_id, name: "Referenced", summary: "Refers to the first turn."})
+            MERGE (turn)-[:PART_OF]->(event)
+            """,
+            parameters_={"turn_id": first["id"], "event_id": str(uuid4())},
+        )
+
+    referenced_response = client.delete(f"/worlds/{world_id}/turns/{first['id']}")
+    assert referenced_response.status_code == 400
+    assert client.get(f"/turns/{first['id']}").status_code == 200
 
 
 def test_list_turns_can_filter_by_world_id(turn_api):

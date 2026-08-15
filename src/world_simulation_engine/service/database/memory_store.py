@@ -101,8 +101,8 @@ class MemoryStore:
         result = await self._driver.execute_query(
             """
             MATCH (event:Event {id: $event_id})
-            MATCH (character:Character)
-            WHERE character.id IN $character_ids
+            MATCH (character)
+            WHERE character.id IN $character_ids AND (character:Character OR character:BackgroundCharacter)
             WITH event, collect(character) AS characters
             WHERE size(characters) = size($character_ids)
             CREATE (memory:MemoryAtom {
@@ -157,7 +157,8 @@ class MemoryStore:
             """
             MATCH (memory:MemoryAtom)
             WHERE ($character_id IS NULL OR EXISTS {
-                    MATCH (:Character {id: $character_id})-[:REMEMBERS]->(memory)
+                    MATCH (holder {id: $character_id})-[:REMEMBERS]->(memory)
+                    WHERE holder:Character OR holder:BackgroundCharacter
                 })
                 AND ($event_id IS NULL OR EXISTS {
                     MATCH (:Event {id: $event_id})-[:SUPPORTS]->(memory)

@@ -448,6 +448,10 @@ async def create_simulation(world_id: str, db: db_dep):
         entity_pairs=[*character_pairs, *background_character_pairs],
         copied_at=simulation.current_time,
     )
+    await db.turn.remap_copied_turn_speaker_ids(
+        turn_pairs=turn_pairs,
+        entity_pairs=[*character_pairs, *background_character_pairs],
+    )
     _, item_pairs = await db.item.copy_items(
         world_id,
         created_simulation.id,

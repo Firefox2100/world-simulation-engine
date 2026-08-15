@@ -480,13 +480,22 @@
         "none": "None",
         "remove": "Remove location"
       },
+      "landmarks": {
+        "title": "Landmarks",
+        "add": "Add landmark",
+        "untitled": "Unnamed landmark",
+        "none": "None",
+        "remove": "Remove landmark"
+      },
       "backgroundCharacters": {
         "title": "Background characters",
         "add": "Add background character",
         "untitled": "Unnamed background character",
         "name": "Name",
         "description": "Description",
-        "remove": "Remove background character"
+        "remove": "Remove background character",
+        "none": "None",
+        "landmark": "Landmark"
       },
       "items": {
         "title": "Items",
@@ -514,6 +523,31 @@
         "none": "None",
         "remove": "Remove equipment"
       },
+      "containers": {
+        "title": "Containers",
+        "add": "Add container",
+        "untitled": "Unnamed container",
+        "none": "None",
+        "remove": "Remove container",
+        "unlockingItems": "Unlocked by",
+        "states": {
+          "hidden": "Hidden",
+          "locked": "Locked",
+          "unlocked": "Unlocked",
+          "open": "Open"
+        }
+      },
+      "turns": {
+        "title": "Turns",
+        "add": "Add turn",
+        "untitled": "Turn {{index}}",
+        "remove": "Remove turn",
+        "types": {
+          "user_input": "User input",
+          "system_response": "System response",
+          "system_continue": "System continue"
+        }
+      },
       "media": {
         "title": "Downloaded images",
         "hint": "Images downloaded from the card. Remove any you don't want imported.",
@@ -525,7 +559,8 @@
         "name": "Name",
         "summary": "Summary",
         "involved": "Involved characters",
-        "remove": "Remove event"
+        "remove": "Remove event",
+        "outcome": "Outcome"
       },
       "memories": {
         "title": "Memories",
@@ -534,7 +569,14 @@
         "keywords": "Keywords (comma-separated)",
         "event": "Related event",
         "characters": "Characters who hold this memory",
-        "remove": "Remove memory"
+        "remove": "Remove memory",
+        "supportType": "Support type",
+        "supportTypes": {
+          "direct": "Direct",
+          "inferred": "Inferred",
+          "reported": "Reported",
+          "contradicts": "Contradicts"
+        }
       },
       "intents": {
         "title": "Intents",
@@ -572,7 +614,8 @@
           "day": "Within a day",
           "long": "Long-term",
           "open_ended": "Open-ended"
-        }
+        },
+        "oneItemPerLine": "One item per line"
       },
       "relationships": {
         "title": "Relationships",
@@ -581,7 +624,54 @@
         "description": "Description",
         "source": "From",
         "target": "To",
-        "remove": "Remove relationship"
+        "remove": "Remove relationship",
+        "visibility": "Visibility",
+        "visibilities": {
+          "objective": "Objective",
+          "public": "Public",
+          "private": "Private"
+        },
+        "perspective": "Perspective character",
+        "none": "None"
+      },
+      "subjectiveClaims": {
+        "title": "Private knowledge",
+        "untitled": "Unnamed claim",
+        "remove": "Remove claim",
+        "observer": "Observer",
+        "subject": "About",
+        "category": "Category",
+        "statement": "Statement",
+        "stance": "Stance",
+        "confidence": "Confidence",
+        "categories": {
+          "appearance": "Appearance",
+          "personality": "Personality",
+          "preference": "Preference",
+          "aversion": "Aversion",
+          "capability": "Capability",
+          "habit": "Habit",
+          "value": "Value",
+          "relationship_expectation": "Relationship expectation",
+          "identity": "Identity",
+          "state": "State",
+          "safety": "Safety",
+          "access": "Access",
+          "contents": "Contents",
+          "purpose": "Purpose",
+          "condition": "Condition",
+          "ownership": "Ownership",
+          "risk": "Risk",
+          "history": "History",
+          "other": "Other"
+        },
+        "stances": {
+          "believes": "Believes",
+          "suspects": "Suspects",
+          "uncertain": "Uncertain",
+          "doubts": "Doubts",
+          "denies": "Denies"
+        }
       },
       "variableSets": {
         "title": "Variable sets",
@@ -1114,6 +1204,17 @@
         "user_input": "User input",
         "system_response": "System response",
         "system_continue": "System continue"
+      },
+      "turnBlocks": {
+        "addNarration": "Add narration",
+        "addSpeech": "Add speech",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "remove": "Remove block",
+        "types": {
+          "narration": "Narration",
+          "speech": "Speech"
+        }
       },
       "eventInvolvements": {
         "witness": "Witness",

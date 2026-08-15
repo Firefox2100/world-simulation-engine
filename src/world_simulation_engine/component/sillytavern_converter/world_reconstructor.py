@@ -183,7 +183,8 @@ class WorldReconstructor:
 
     async def _extract_opening_turns(self, state: _ReconstructionState) -> dict:
         opening_turns = await OpeningTurnExtractor(database=self._db).extract(
-            state.preprocessed, state.characters, language=state.language,
+            state.preprocessed, state.characters, state.background_characters,
+            language=state.language,
         )
         return {"opening_turns": opening_turns}
 

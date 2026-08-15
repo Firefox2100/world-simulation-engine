@@ -1,6 +1,7 @@
 from neo4j import AsyncDriver
+from pydantic import ValidationError
 
-from world_simulation_engine.model import Turn
+from world_simulation_engine.model import NarrationProposal, SpeechBlock, Turn
 
 
 class TurnStore:
@@ -124,6 +125,70 @@ class TurnStore:
             return None
 
         return self.turn_from_node(record["turn"])
+
+    async def update_world_turn(self, world_id: str, turn_id: str, properties: dict) -> Turn | None:
+        """Update a turn that belongs directly to a `World` (pre-simulation authored history/
+        opening turns - the same scope `create_turn`'s world-source path and the SillyTavern
+        import pipeline write to), never a `Simulation`'s turns.
+
+        Deliberately scoped and containment-checked (`World-[:CONTAINS]->Turn`) rather than a
+        blanket `update_turn(turn_id, ...)` - a running simulation's turns are its authoritative,
+        immutable historical record (audit trail, TTS/image generation, memory/event provenance
+        all key off exact turn content) and must never be rewritten after the fact. See
+        `test_turn_router_is_read_only` for the invariant this preserves at the router level.
+        """
+        properties = {
+            key: value
+            for key, value in properties.items()
+            if value is not None
+        }
+
+        result = await self._driver.execute_query(
+            """
+            MATCH (world:World {id: $world_id})-[:CONTAINS]->(turn:Turn {id: $turn_id})
+            SET turn += $properties
+            RETURN turn LIMIT 1
+            """,
+            parameters_={
+                "world_id": world_id,
+                "turn_id": turn_id,
+                "properties": properties,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return self.turn_from_node(record["turn"])
+
+    async def delete_world_turn(self, world_id: str, turn_id: str) -> bool | None:
+        """Delete a turn that belongs directly to a `World`, same scope as `update_world_turn`.
+
+        Returns `None` if no such turn exists in this world (404 at the router), `False` if it
+        exists but cannot be safely deleted (400), `True` once actually deleted. Only the tail of
+        the turn chain (no outgoing `NEXT`) with no `Event` referencing it (`PART_OF`) qualifies -
+        turns are a `NEXT`-linked chain and `Event.turn_ids` can point at one, so deleting a
+        turn from the middle would either orphan that reference or require relinking the chain;
+        restricting deletion to "undo the most recent, unused addition" avoids both by construction.
+        """
+        result = await self._driver.execute_query(
+            """
+            MATCH (world:World {id: $world_id})-[:CONTAINS]->(turn:Turn {id: $turn_id})
+            WITH turn,
+                 NOT EXISTS { (turn)-[:NEXT]->(:Turn) }
+                 AND NOT EXISTS { (turn)-[:PART_OF]->(:Event) } AS deletable
+            FOREACH (_ IN CASE WHEN deletable THEN [1] ELSE [] END | DETACH DELETE turn)
+            RETURN deletable
+            """,
+            parameters_={"world_id": world_id, "turn_id": turn_id},
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+
+        return bool(record["deletable"])
 
     async def get_simulation_id_for_turn(self, turn_id: str) -> str | None:
         result = await self._driver.execute_query(
@@ -256,3 +321,64 @@ class TurnStore:
         ]
 
         return turns, turn_pairs
+
+    async def remap_copied_turn_speaker_ids(self,
+                                            turn_pairs: list[dict],
+                                            entity_pairs: list[dict],
+                                            ) -> int:
+        """After `copy_turns` plus character/background-character copying, rewrite the
+        `SpeechBlock.character_id` values embedded inside each copied turn's serialized
+        `NarrationProposal` content so they point at the copies' new ids instead of the
+        source's stale ones. `Turn.content` is an opaque JSON string to `copy_turns` -
+        it is copied verbatim - so nothing else in the copy pipeline touches ids embedded
+        inside it, unlike `TurnPresentationBlock.speaker_id`, which
+        `TurnPresentationStore.copy_presentations` already remaps via the same
+        `entity_pairs` shape.
+        """
+        if not turn_pairs or not entity_pairs:
+            return 0
+
+        id_map = {pair["source_id"]: pair["copy_id"] for pair in entity_pairs}
+        copy_ids = [pair["copy_id"] for pair in turn_pairs]
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $copy_ids AS turn_id
+            MATCH (turn:Turn {id: turn_id})
+            RETURN turn.id AS id, turn.content AS content
+            """,
+            parameters_={"copy_ids": copy_ids},
+        )
+
+        updates = [
+            {"id": record["id"], "content": remapped}
+            for record in result.records
+            if (remapped := self._remap_narration_content(record["content"], id_map)) is not None
+        ]
+        if not updates:
+            return 0
+
+        await self._driver.execute_query(
+            """
+            UNWIND $updates AS update
+            MATCH (turn:Turn {id: update.id})
+            SET turn.content = update.content
+            """,
+            parameters_={"updates": updates},
+        )
+        return len(updates)
+
+    @staticmethod
+    def _remap_narration_content(content: str, id_map: dict) -> str | None:
+        try:
+            proposal = NarrationProposal.model_validate_json(content)
+        except (ValidationError, ValueError):
+            return None
+
+        changed = False
+        for block in proposal.blocks:
+            if isinstance(block, SpeechBlock) and block.character_id in id_map:
+                block.character_id = id_map[block.character_id]
+                changed = True
+
+        return proposal.model_dump_json() if changed else None

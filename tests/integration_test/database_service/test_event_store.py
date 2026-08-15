@@ -6,7 +6,8 @@ from world_simulation_engine.model import Event, Simulation, Turn
 from world_simulation_engine.service.database.event_store import EventStore
 from world_simulation_engine.service.database.simulation_store import SimulationStore
 from world_simulation_engine.service.database.turn_store import TurnStore
-from integration_test.database_service.helpers import create_character, create_world
+from integration_test.database_service.helpers import create_background_character, create_character, \
+    create_world
 
 
 async def test_create_event_attaches_to_turns(clean_neo4j):
@@ -221,6 +222,66 @@ async def test_add_character_involvement(clean_neo4j):
     assert await event_store.remove_character_involvements(event.id, [character.id]) is True
     assert await event_store.list_events(character_id=character.id) == []
     assert await event_store.remove_character_involvements(str(uuid4()), [character.id]) is False
+
+
+async def test_add_character_involvement_accepts_a_background_character(clean_neo4j):
+    # Regression test: add_character_involvement/replace_character_involvements used to hardcode
+    # MATCH (character:Character {id: ...}), which silently created nothing when the id actually
+    # belonged to a BackgroundCharacter node (possible since narrative_extractor.py's roster can
+    # resolve event participants to either kind - see character_name_pool.py).
+    world = await create_world(clean_neo4j)
+    character = await create_character(clean_neo4j, world.id, name="Alex")
+    background_character = await create_background_character(clean_neo4j, world.id, name="The Guard")
+    turn_store = TurnStore(clean_neo4j)
+    event_store = EventStore(clean_neo4j)
+    turn = Turn(
+        id=str(uuid4()),
+        sequence=1,
+        type=TurnType.USER_INPUT,
+        content="Hello",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+    )
+    event = Event(
+        id=str(uuid4()),
+        name="Guard lets Alex through",
+        summary="A background character participates in an event alongside a main character",
+    )
+
+    await turn_store.create_turn(turn, source_id=world.id)
+    await event_store.create_event(event, turn_ids=[turn.id])
+    await event_store.add_character_involvement(
+        event.id, background_character.id, EventInvolvement.PARTICIPATE,
+    )
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:Event {id: $event_id})-[relationship:INVOLVES]->(:BackgroundCharacter {id: $character_id})
+        RETURN relationship.involvement AS involvement
+        """,
+        parameters_={"event_id": event.id, "character_id": background_character.id},
+    )
+    assert result.records[0]["involvement"] == EventInvolvement.PARTICIPATE
+
+    assert await event_store.replace_character_involvements(
+        event.id,
+        [
+            {"character_id": character.id, "involvement": EventInvolvement.WITNESS},
+            {"character_id": background_character.id, "involvement": EventInvolvement.PARTICIPATE},
+        ],
+    ) == event
+
+    result = await clean_neo4j.execute_query(
+        """
+        MATCH (:Event {id: $event_id})-[relationship:INVOLVES]->(participant)
+        RETURN participant.id AS participant_id, relationship.involvement AS involvement
+        """,
+        parameters_={"event_id": event.id},
+    )
+    involvement_by_id = {record["participant_id"]: record["involvement"] for record in result.records}
+    assert involvement_by_id == {
+        character.id: EventInvolvement.WITNESS,
+        background_character.id: EventInvolvement.PARTICIPATE,
+    }
 
 
 async def test_copy_events_preserves_turn_and_character_relationships(clean_neo4j):

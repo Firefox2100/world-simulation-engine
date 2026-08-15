@@ -36,6 +36,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import SupportedLanguage, TurnType
+from world_simulation_engine.model import NarrationBlock, NarrationProposal, SpeechBlock
 from world_simulation_engine.model.variable import VariableDefinition
 
 from .background_character_extractor import BackgroundCharacterExtraction
@@ -47,7 +48,7 @@ from .item_extractor import ItemExtraction
 from .location_extractor import LocationExtraction
 from .name_resolution import resolve_name
 from .narrative_extractor import NarrativeExtraction
-from .opening_turn_extractor import OpeningTurnExtraction
+from .opening_turn_extractor import ExtractedOpeningTurn, OpeningTurnExtraction
 from .private_knowledge_extractor import PrivateKnowledgeExtraction
 from .spatial_state_extractor import SpatialEntityType, SpatialStateExtraction
 from .variable_schema_extractor import VariableSchemaExtraction
@@ -252,6 +253,8 @@ class WorldAssembler:
                     "retained without spatial placement for manual review.",
                     low_confidence=True,
                 )
+        if user_stub_row:
+            character_rows = character_rows + [user_stub_row]
         location_rows = [
             self._location_row(location, self_id=self_id, user_id=user_id)
             for location in locations.locations
@@ -286,8 +289,12 @@ class WorldAssembler:
             self._intent_row(intent, self_id=self_id, user_id=user_id)
             for intent in intents.intents
         ]
+        background_character_ids = {character.id for character in background_characters.characters}
         relationship_rows = [
-            self._relationship_row(relationship, self_id=self_id, user_id=user_id)
+            self._relationship_row(
+                relationship, self_id=self_id, user_id=user_id,
+                background_character_ids=background_character_ids,
+            )
             for relationship in combined_narrative.relationships
         ]
         knowledge_rows = [
@@ -353,9 +360,7 @@ class WorldAssembler:
             "locations": location_rows,
             "landmarks": landmark_rows,
             "characters": character_rows,
-            "background_characters": (
-                ([user_stub_row] if user_stub_row else []) + background_character_rows
-            ),
+            "background_characters": background_character_rows,
             "items": item_rows,
             "item_stacks": item_stack_rows,
             "equipment": equipment_rows,
@@ -422,13 +427,37 @@ class WorldAssembler:
 
     @staticmethod
     def _resolve_user(characters: CharacterExtraction) -> tuple[str | None, dict | None]:
-        """Resolve `{{user}}` to a user-controlled character or a minimal background stub."""
+        """Resolve `{{user}}` to a user-controlled character or a minimal stub character.
+
+        The stub must be a first-class `Character` (`user_controlled=True`), never a
+        `BackgroundCharacter` - the user's own persona drives full simulation turns (input
+        interpretation, action validation, memory/intent tracking) exactly like any other main
+        character, which a `BackgroundCharacter` structurally cannot do (see its docstring:
+        reactive only, no agent of its own).
+        """
         for character in characters.characters:
             if character.result.user_controlled:
                 return character.id, None
 
         stub_id = str(uuid4())
-        stub_row = {"id": stub_id, "name": _USER_STUB_NAME, "description": _USER_STUB_DESCRIPTION}
+        stub_row = {
+            "id": stub_id,
+            "user_controlled": True,
+            "name": _USER_STUB_NAME,
+            "age": 0,
+            "gender": "unspecified",
+            "appearance": _USER_STUB_DESCRIPTION,
+            "description": _USER_STUB_DESCRIPTION,
+            "public_state": "idle",
+            "private_state": "idle",
+            "current_activity": {
+                "name": "idle", "started_at": None, "expected_end": None,
+                "interruptible": True, "constraints": [],
+            },
+            "speech_style": "",
+            "location_id": None,
+            "position": None,
+        }
         return stub_id, stub_row
 
     @staticmethod
@@ -495,21 +524,49 @@ class WorldAssembler:
             content = card.first_message.strip() or (
                 "(imported world - no opening message on the source card)"
             )
-            extracted = [{"type": TurnType.SYSTEM_RESPONSE, "content": content}]
+            extracted = [ExtractedOpeningTurn(type=TurnType.SYSTEM_RESPONSE, content=content)]
         now = datetime.now(timezone.utc).isoformat()
-        return [
-            {
-                "id": str(uuid4()),
-                "sequence": sequence,
-                "type": turn.type if hasattr(turn, "type") else turn["type"],
-                "content": _rewrite_placeholders(
-                    turn.content if hasattr(turn, "content") else turn["content"],
-                    self_id=self_id, user_id=user_id,
-                ),
-                "start_time": now,
-            }
-            for sequence, turn in enumerate(extracted)
+        rows = []
+        for sequence, turn in enumerate(extracted):
+            if turn.type == TurnType.USER_INPUT:
+                content = _rewrite_placeholders(turn.content, self_id=self_id, user_id=user_id)
+            else:
+                content = WorldAssembler._narration_content(
+                    turn.content, turn.blocks, self_id=self_id, user_id=user_id,
+                )
+            rows.append({
+                "id": str(uuid4()), "sequence": sequence, "type": turn.type,
+                "content": content, "start_time": now,
+            })
+        return rows
+
+    @staticmethod
+    def _narration_content(
+            content: str, blocks: list | None, *, self_id: str | None, user_id: str | None,
+    ) -> str:
+        """Serialize a system turn's content into the exact `NarrationProposal` JSON shape
+        `Narrator.serialize_content` produces for a live turn (see `narration.py`) - so an
+        imported world's system turns present through the same `TurnPresentationBlock` machinery
+        as a live simulation's, instead of degrading to one opaque narration blob (see
+        `router/turn.py`'s `_legacy_presentation`). `blocks` (from `OpeningTurnExtractor` or a
+        historical event) may be empty - a plain `content` string then becomes a single narration
+        block, never left as unstructured prose.
+        """
+        def rewrite(text: str) -> str:
+            return _rewrite_placeholders(text, self_id=self_id, user_id=user_id)
+
+        narration_blocks = [
+            SpeechBlock(
+                type="speech", character_id=block.character_id,
+                character_name=block.character_name, text=rewrite(block.text),
+            )
+            if block.type == "speech"
+            else NarrationBlock(type="narration", text=rewrite(block.text))
+            for block in (blocks or [])
         ]
+        if not narration_blocks:
+            narration_blocks = [NarrationBlock(type="narration", text=rewrite(content))]
+        return NarrationProposal(blocks=narration_blocks).model_dump_json()
 
     @staticmethod
     def _history_turn_rows(
@@ -529,7 +586,9 @@ class WorldAssembler:
                 content = f"{content}\n\nOutcome: {event.outcome}"
             rows.append({
                 "id": turn_id, "sequence": sequence, "type": TurnType.SYSTEM_RESPONSE,
-                "content": _rewrite_placeholders(content, self_id=self_id, user_id=user_id),
+                "content": WorldAssembler._narration_content(
+                    content, None, self_id=self_id, user_id=user_id,
+                ),
                 "start_time": now,
             })
         return rows, turn_id_by_event
@@ -621,7 +680,18 @@ class WorldAssembler:
         }
 
     @staticmethod
-    def _relationship_row(relationship, *, self_id: str | None, user_id: str | None) -> dict:
+    def _relationship_row(
+            relationship, *, self_id: str | None, user_id: str | None,
+            background_character_ids: set[str],
+    ) -> dict:
+        # NarrativeExtractor's roster covers both main and background characters (see
+        # narrative_extractor.py's _roster), so source_character_id/target_character_id can each
+        # independently be either kind - the endpoint's real node label must be tagged correctly
+        # here, or EntityRelationshipStore.create_relationship's type-aware MATCH (it requires
+        # source_type/target_type to actually match the node's label) silently creates nothing.
+        def endpoint_type(character_id: str) -> str:
+            return "background_character" if character_id in background_character_ids else "character"
+
         is_private = relationship.visibility == "private"
         description = _rewrite_placeholders(
             relationship.description, self_id=self_id, user_id=user_id,
@@ -635,8 +705,14 @@ class WorldAssembler:
             "confidence": relationship.confidence,
             "details": {"kind": "generic", "attributes": {}},
             "evidence_memory_ids": [],
-            "source": {"type": "character", "id": relationship.source_character_id, "name": None},
-            "target": {"type": "character", "id": relationship.target_character_id, "name": None},
+            "source": {
+                "type": endpoint_type(relationship.source_character_id),
+                "id": relationship.source_character_id, "name": None,
+            },
+            "target": {
+                "type": endpoint_type(relationship.target_character_id),
+                "id": relationship.target_character_id, "name": None,
+            },
             "created_at": datetime.now(timezone.utc).isoformat(),
             "last_changed_at": datetime.now(timezone.utc).isoformat(),
             "version": 1,

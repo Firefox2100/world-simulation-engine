@@ -479,13 +479,22 @@
         "none": "无",
         "remove": "移除地点"
       },
+      "landmarks": {
+        "title": "地标",
+        "add": "添加地标",
+        "untitled": "未命名地标",
+        "none": "无",
+        "remove": "移除地标"
+      },
       "backgroundCharacters": {
         "title": "背景角色",
         "add": "添加背景角色",
         "untitled": "未命名背景角色",
         "name": "名称",
         "description": "描述",
-        "remove": "移除背景角色"
+        "remove": "移除背景角色",
+        "none": "无",
+        "landmark": "地标"
       },
       "items": {
         "title": "物品",
@@ -513,6 +522,31 @@
         "none": "无",
         "remove": "移除装备"
       },
+      "containers": {
+        "title": "容器",
+        "add": "添加容器",
+        "untitled": "未命名容器",
+        "none": "无",
+        "remove": "移除容器",
+        "unlockingItems": "可解锁物品",
+        "states": {
+          "hidden": "隐藏",
+          "locked": "已锁",
+          "unlocked": "未锁",
+          "open": "打开"
+        }
+      },
+      "turns": {
+        "title": "回合",
+        "add": "添加回合",
+        "untitled": "回合 {{index}}",
+        "remove": "移除回合",
+        "types": {
+          "user_input": "用户输入",
+          "system_response": "系统回应",
+          "system_continue": "系统续写"
+        }
+      },
       "media": {
         "title": "已下载的图片",
         "hint": "从卡片中下载的图片。移除任何不想导入的图片。",
@@ -524,7 +558,8 @@
         "name": "名称",
         "summary": "概述",
         "involved": "相关角色",
-        "remove": "移除事件"
+        "remove": "移除事件",
+        "outcome": "结果"
       },
       "memories": {
         "title": "记忆",
@@ -533,7 +568,14 @@
         "keywords": "关键词（逗号分隔）",
         "event": "相关事件",
         "characters": "持有此记忆的角色",
-        "remove": "移除记忆"
+        "remove": "移除记忆",
+        "supportType": "支持类型",
+        "supportTypes": {
+          "direct": "直接",
+          "inferred": "推断",
+          "reported": "转述",
+          "contradicts": "矛盾"
+        }
       },
       "intents": {
         "title": "意图",
@@ -571,7 +613,8 @@
           "day": "一天内",
           "long": "长期",
           "open_ended": "无限期"
-        }
+        },
+        "oneItemPerLine": "每行一项"
       },
       "relationships": {
         "title": "关系",
@@ -580,7 +623,54 @@
         "description": "描述",
         "source": "起点",
         "target": "终点",
-        "remove": "移除关系"
+        "remove": "移除关系",
+        "visibility": "可见性",
+        "visibilities": {
+          "objective": "客观",
+          "public": "公开",
+          "private": "私密"
+        },
+        "perspective": "视角角色",
+        "none": "无"
+      },
+      "subjectiveClaims": {
+        "title": "私人认知",
+        "untitled": "未命名认知",
+        "remove": "移除认知",
+        "observer": "观察者",
+        "subject": "关于",
+        "category": "类别",
+        "statement": "陈述",
+        "stance": "态度",
+        "confidence": "置信度",
+        "categories": {
+          "appearance": "外貌",
+          "personality": "性格",
+          "preference": "偏好",
+          "aversion": "厌恶",
+          "capability": "能力",
+          "habit": "习惯",
+          "value": "价值观",
+          "relationship_expectation": "关系期待",
+          "identity": "身份",
+          "state": "状态",
+          "safety": "安全",
+          "access": "访问权限",
+          "contents": "内容物",
+          "purpose": "用途",
+          "condition": "状况",
+          "ownership": "所有权",
+          "risk": "风险",
+          "history": "历史",
+          "other": "其他"
+        },
+        "stances": {
+          "believes": "相信",
+          "suspects": "怀疑",
+          "uncertain": "不确定",
+          "doubts": "质疑",
+          "denies": "否认"
+        }
       },
       "variableSets": {
         "title": "变量集",
@@ -1113,6 +1203,17 @@
         "user_input": "用户输入",
         "system_response": "系统回应",
         "system_continue": "系统继续"
+      },
+      "turnBlocks": {
+        "addNarration": "添加旁白",
+        "addSpeech": "添加台词",
+        "moveUp": "上移",
+        "moveDown": "下移",
+        "remove": "移除片段",
+        "types": {
+          "narration": "旁白",
+          "speech": "台词"
+        }
       },
       "eventInvolvements": {
         "witness": "目击",

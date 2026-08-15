@@ -7,12 +7,12 @@ from world_simulation_engine.component.sillytavern_converter import CharacterExt
     ExtractedRelationship, ExtractedVariable, IntentExtraction, ItemExtraction, LocationExtraction, \
     NarrativeExtraction, PreprocessedCard, VariableSchemaExtraction, WorldAssembler, WorldLoreExtraction
 from world_simulation_engine.component.sillytavern_converter import ExtractedOpeningTurn, \
-    ExtractedPrivateKnowledgeClaim, ExtractedSpatialPlacement, OpeningTurnExtraction, \
-    PrivateKnowledgeExtraction, SpatialEntityType, SpatialStateExtraction
+    ExtractedOpeningTurnBlock, ExtractedPrivateKnowledgeClaim, ExtractedSpatialPlacement, \
+    OpeningTurnExtraction, PrivateKnowledgeExtraction, SpatialEntityType, SpatialStateExtraction
 from world_simulation_engine.misc.enums import IntentHorizon, IntentStatus, IntentType, SupportedLanguage
 from world_simulation_engine.model import BackgroundCharacter, Character, EntityRelationship, \
     EntityVariableSet, Equipment, Event, Intent, Item, ItemStack, Location, MemoryAtom, \
-    SubjectiveEntityClaim, Turn, World
+    NarrationProposal, SubjectiveEntityClaim, Turn, World
 from world_simulation_engine.model.variable import VariableValueType
 
 
@@ -57,8 +57,14 @@ def test_assemble_resolves_self_via_card_name_and_rewrites_placeholders():
     assert any("No explicit starting-time variable" in message for message in messages)
 
     turn_row = assembled.sections["turns"][0]
-    stub_id = assembled.sections["background_characters"][0]["id"]
-    assert turn_row["content"] == f"Hi, character['{stub_id}']!"
+    assert assembled.sections["background_characters"] == []
+    stub_row = next(row for row in assembled.sections["characters"] if row["user_controlled"])
+    # A system_response turn's content is always NarrationProposal JSON (matching a live turn's
+    # Narrator.serialize_content output), never plain prose - see world_assembler.py's
+    # _narration_content.
+    narration = NarrationProposal.model_validate_json(turn_row["content"])
+    assert len(narration.blocks) == 1
+    assert narration.blocks[0].text == f"Hi, character['{stub_row['id']}']!"
 
 
 def test_assemble_notes_unresolved_self_when_card_name_matches_no_character():
@@ -118,10 +124,48 @@ def test_assemble_uses_extracted_opening_turn_sequence_and_keeps_user_action_sep
         ]),
     )
 
-    assert [(row["sequence"], row["type"], row["content"]) for row in assembled.sections["turns"]] == [
-        (0, "user_input", "I open the door."),
-        (1, "system_response", "The host looks up."),
-    ]
+    user_row, system_row = assembled.sections["turns"]
+    assert (user_row["sequence"], user_row["type"], user_row["content"]) == (
+        0, "user_input", "I open the door.",
+    )
+    # user_input content is always plain text (matches world_simulator.py's commit_user_actions,
+    # which stores state.user_input verbatim - no NarrationProposal wrapping).
+    assert (system_row["sequence"], system_row["type"]) == (1, "system_response")
+    narration = NarrationProposal.model_validate_json(system_row["content"])
+    assert [block.text for block in narration.blocks] == ["The host looks up."]
+
+
+def test_assemble_preserves_narration_and_speech_blocks_in_a_system_turn():
+    card = make_card(name="Example Character", first_message="unused")
+    characters = CharacterExtraction(characters=[make_character("Example Character", "id-example")])
+
+    assembled = WorldAssembler().assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=characters,
+        locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(),
+        variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
+        opening_turns=OpeningTurnExtraction(turns=[
+            ExtractedOpeningTurn(
+                type="system_response",
+                content='Example Character steps forward. "Welcome," they say.',
+                blocks=[
+                    ExtractedOpeningTurnBlock(type="narration", text="Example Character steps forward."),
+                    ExtractedOpeningTurnBlock(
+                        type="speech", text="Welcome.", character_id="id-example",
+                        character_name="Example Character",
+                    ),
+                ],
+            ),
+        ]),
+    )
+
+    turn_row = assembled.sections["turns"][0]
+    narration = NarrationProposal.model_validate_json(turn_row["content"])
+    assert [block.type for block in narration.blocks] == ["narration", "speech"]
+    assert narration.blocks[0].text == "Example Character steps forward."
+    assert narration.blocks[1].character_id == "id-example"
+    assert narration.blocks[1].character_name == "Example Character"
+    assert narration.blocks[1].text == "Welcome."
 
 
 def test_assemble_attaches_opening_event_and_memory_to_existing_opening_turn():
@@ -259,8 +303,12 @@ def test_assemble_events_memories_and_relationships_reference_the_same_turn_and_
     history_turn = assembled.sections["turns"][0]
     opening_turn = assembled.sections["turns"][1]
     turn_id = history_turn["id"]
-    assert history_turn["content"] == "They collaborated.\n\nOutcome: The prototype worked."
-    assert opening_turn["content"] == card.first_message
+    history_narration = NarrationProposal.model_validate_json(history_turn["content"])
+    assert [block.text for block in history_narration.blocks] == [
+        "They collaborated.\n\nOutcome: The prototype worked.",
+    ]
+    opening_narration = NarrationProposal.model_validate_json(opening_turn["content"])
+    assert [block.text for block in opening_narration.blocks] == [card.first_message]
     event_row = assembled.sections["events"][0]
     assert event_row["turn_ids"] == [turn_id]
     assert event_row["outcome"] == "The prototype worked."
@@ -520,10 +568,11 @@ def test_assemble_self_hinted_variable_maps_to_synthesized_user_stub_when_no_per
         variables=variables, items=ItemExtraction(), equipment=EquipmentExtraction(),
     )
 
-    stub_id = assembled.sections["background_characters"][0]["id"]
+    stub_row = next(row for row in assembled.sections["characters"] if row["user_controlled"])
+    assert assembled.sections["background_characters"] == []
     variable_sets = assembled.sections["entity_variable_sets"]
     assert len(variable_sets) == 1
-    assert variable_sets[0]["owner_id"] == stub_id
+    assert variable_sets[0]["owner_id"] == stub_row["id"]
 
 
 def test_assemble_drops_variable_with_unresolvable_owner_hint():

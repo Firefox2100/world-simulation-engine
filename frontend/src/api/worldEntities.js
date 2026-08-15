@@ -176,6 +176,18 @@ export async function createWorldTurn(worldId, turn) {
     return jsonRequest(`/worlds/${worldId}/turns`, "POST", turnPayload(turn));
 }
 
+export async function updateWorldTurn(worldId, turnId, turn) {
+    return jsonRequest(`/worlds/${worldId}/turns/${turnId}`, "PATCH", {
+        type: turn.type,
+        content: turn.content,
+        start_time: turn.start_time ? new Date(turn.start_time).toISOString() : undefined,
+    });
+}
+
+export async function deleteWorldTurn(worldId, turnId) {
+    await apiRequest(`/worlds/${worldId}/turns/${turnId}`, { method: "DELETE" });
+}
+
 function turnPayload(turn) {
     return {
         sequence: toNumber(turn.sequence, 1),

@@ -106,7 +106,7 @@ async def test_reconstruct_from_card_wires_every_stage_in_order_and_returns_the_
             preprocessed, classification, language=SupportedLanguage.ENGLISH,
         )
         opening_turn_extractor_cls.return_value.extract.assert_awaited_once_with(
-            preprocessed, characters, language=SupportedLanguage.ENGLISH,
+            preprocessed, characters, background_characters, language=SupportedLanguage.ENGLISH,
         )
         spatial_state_extractor_cls.return_value.extract.assert_awaited_once_with(
             preprocessed, characters, locations, items, equipment,
