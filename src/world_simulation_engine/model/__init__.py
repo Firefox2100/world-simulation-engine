@@ -57,4 +57,4 @@ from .turn_presentation import PresentedTurn, PresentationBlockType, Presentatio
     TurnPresentationBlock, TurnPresentationRendering
 from .variable import EntityVariableSet, ProposedVariableChange, VariableChangeAudit, VariableDefinition, \
     VariableUpdateProposal, VariableValueType
-from .world import Author, World
+from .world import Author, World, WorldMetadata

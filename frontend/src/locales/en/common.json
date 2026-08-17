@@ -1305,8 +1305,15 @@
         "stance": "Stance",
         "behavioural_relevance": "Behavioural relevance",
         "ttsConfig": "TTS backend",
-        "voice": "TTS voice"
-      }
+        "voice": "TTS voice",
+        "metadataAuthor": "Content author",
+        "metadataAuthorUrl": "Content author URL",
+        "metadataResourceUrl": "Resource URL",
+        "metadataComment": "Notes (for humans, not the LLM)",
+        "metadataVersion": "Content version",
+        "creationTime": "Created at"
+      },
+      "metadataSectionTitle": "Metadata"
     },
     "fields": {
       "name": {

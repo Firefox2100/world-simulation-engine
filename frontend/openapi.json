@@ -31947,6 +31947,12 @@
             "title": "Id",
             "description": "Unique identifier for the simulation"
           },
+          "creation_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Creation Time",
+            "description": "When this simulation was created. Always set automatically, never by user input."
+          },
           "name": {
             "type": "string",
             "title": "Name",
@@ -33760,6 +33766,16 @@
           "language": {
             "$ref": "#/components/schemas/SupportedLanguage",
             "description": "The language of the world"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/WorldMetadata",
+            "description": "Human-facing provenance/notes metadata for the world, all optional"
+          },
+          "creation_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Creation Time",
+            "description": "When this world record was created. Always set automatically, never by user input."
           }
         },
         "type": "object",
@@ -33836,6 +33852,17 @@
           "language": {
             "$ref": "#/components/schemas/SupportedLanguage",
             "description": "The language of the world"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorldMetadataInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional human-facing provenance/notes metadata for the world"
           }
         },
         "type": "object",
@@ -33846,6 +33873,140 @@
           "language"
         ],
         "title": "WorldCreate"
+      },
+      "WorldMetadata": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author",
+            "description": "The original author/creator of the world's content (e.g. of the card it was imported from)"
+          },
+          "author_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Url",
+            "description": "A URL for the original author, e.g. their profile page"
+          },
+          "resource_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Url",
+            "description": "Where the world's content was originally downloaded from"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "Freeform human-readable notes about the world (usage tips, expectations, caveats). Never included in LLM prompts."
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "The content's own version string, as set by its original author"
+          }
+        },
+        "type": "object",
+        "title": "WorldMetadata",
+        "description": "Human-facing provenance and notes for a world. Never passed to an LLM, purely for the\nbenefit of whoever is browsing/managing worlds in the admin UI."
+      },
+      "WorldMetadataInput": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author",
+            "description": "The original author/creator of the world's content"
+          },
+          "author_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Url",
+            "description": "A URL for the original author, e.g. their profile page"
+          },
+          "resource_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Url",
+            "description": "Where the world's content was originally downloaded from"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "Freeform human-readable notes about the world. Never included in LLM prompts."
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "The content's own version string, as set by its original author"
+          }
+        },
+        "type": "object",
+        "title": "WorldMetadataInput",
+        "description": "DTO model for the human-facing provenance/notes metadata of a world. All fields are optional -\nnone are auto-filled, missing fields simply mean the information wasn't provided."
       },
       "WorldUpdate": {
         "properties": {
@@ -33920,6 +34081,17 @@
               }
             ],
             "description": "The language of the world"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorldMetadataInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional human-facing provenance/notes metadata for the world. Replaces the world's whole metadata object when provided."
           }
         },
         "type": "object",

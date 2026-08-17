@@ -107,6 +107,13 @@ def test_create_list_get_update_and_delete_world(world_api):
             "version": 2,
             "url": "https://example.com/worlds/created",
             "language": "en",
+            "metadata": {
+                "author": "Original Author",
+                "author_url": "https://example.com/authors/original",
+                "resource_url": "https://example.com/resources/created",
+                "comment": "Internal note for humans only",
+                "version": "1.0",
+            },
         },
     )
 
@@ -119,6 +126,14 @@ def test_create_list_get_update_and_delete_world(world_api):
     assert created_world["version"] == 2
     assert created_world["url"] == "https://example.com/worlds/created"
     assert created_world["language"] == "en"
+    assert created_world["metadata"] == {
+        "author": "Original Author",
+        "author_url": "https://example.com/authors/original",
+        "resource_url": "https://example.com/resources/created",
+        "comment": "Internal note for humans only",
+        "version": "1.0",
+    }
+    assert created_world["creation_time"]
 
     list_response = client.get("/worlds")
 
@@ -176,6 +191,10 @@ def test_create_list_get_update_and_delete_world(world_api):
             "version": 3,
             "url": "https://example.com/worlds/updated",
             "language": "zh",
+            "metadata": {
+                "author": "Updated Author",
+                "comment": "Replaced note",
+            },
         },
     )
 
@@ -188,6 +207,14 @@ def test_create_list_get_update_and_delete_world(world_api):
         "version": 3,
         "url": "https://example.com/worlds/updated",
         "language": "zh",
+        "metadata": {
+            "author": "Updated Author",
+            "author_url": None,
+            "resource_url": None,
+            "comment": "Replaced note",
+            "version": None,
+        },
+        "creation_time": created_world["creation_time"],
     }
 
     delete_response = client.delete(f"/worlds/{created_world['id']}")

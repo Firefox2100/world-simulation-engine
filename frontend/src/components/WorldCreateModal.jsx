@@ -234,6 +234,11 @@ function worldFormFromWorld(world) {
         version: world?.version == null ? "1" : String(world.version),
         url: world?.url ?? "",
         author_id: world?.author_id ?? "",
+        metadata_author: world?.metadata?.author ?? "",
+        metadata_author_url: world?.metadata?.author_url ?? "",
+        metadata_resource_url: world?.metadata?.resource_url ?? "",
+        metadata_comment: world?.metadata?.comment ?? "",
+        metadata_version: world?.metadata?.version ?? "",
     };
 }
 
@@ -246,6 +251,13 @@ function worldPayload(form) {
         version: Number.parseInt(form.version, 10) || 1,
         url: cleanText(form.url),
         author_id: form.author_id,
+        metadata: {
+            author: cleanText(form.metadata_author),
+            author_url: cleanText(form.metadata_author_url),
+            resource_url: cleanText(form.metadata_resource_url),
+            comment: cleanText(form.metadata_comment),
+            version: cleanText(form.metadata_version),
+        },
     };
 }
 
@@ -1217,6 +1229,20 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                                 <TextField label={t("worldCreate.newEditor.fields.startingTime")} value={worldForm.starting_time} onChange={(value) => updateWorldField("starting_time", value)} type="datetime-local" required />
                                 <TextField label={t("worldCreate.newEditor.fields.version")} value={worldForm.version} onChange={(value) => updateWorldField("version", value)} type="number" />
                                 <TextField label={t("worldCreate.newEditor.fields.url")} value={worldForm.url} onChange={(value) => updateWorldField("url", value)} />
+
+                                <h3>{t("worldCreate.newEditor.metadataSectionTitle")}</h3>
+                                <TextField label={t("worldCreate.newEditor.fields.metadataAuthor")} value={worldForm.metadata_author} onChange={(value) => updateWorldField("metadata_author", value)} />
+                                <TextField label={t("worldCreate.newEditor.fields.metadataAuthorUrl")} value={worldForm.metadata_author_url} onChange={(value) => updateWorldField("metadata_author_url", value)} />
+                                <TextField label={t("worldCreate.newEditor.fields.metadataResourceUrl")} value={worldForm.metadata_resource_url} onChange={(value) => updateWorldField("metadata_resource_url", value)} />
+                                <TextField label={t("worldCreate.newEditor.fields.metadataVersion")} value={worldForm.metadata_version} onChange={(value) => updateWorldField("metadata_version", value)} />
+                                <TextArea label={t("worldCreate.newEditor.fields.metadataComment")} value={worldForm.metadata_comment} onChange={(value) => updateWorldField("metadata_comment", value)} />
+                                {(world?.creation_time ?? initialWorld?.creation_time) ? (
+                                    <ReadOnlyField
+                                        label={t("worldCreate.newEditor.fields.creationTime")}
+                                        value={new Date(world?.creation_time ?? initialWorld?.creation_time).toLocaleString()}
+                                    />
+                                ) : null}
+
                                 <CoverImageField
                                     kind="world"
                                     sourceId={worldId}
@@ -2109,6 +2135,15 @@ function TextField({ label, value, onChange, type = "text", required = false }) 
         <label className="form-field inline-field">
             <FieldLabel label={label} required={required} />
             <input className="single-line-input" value={value} type={type} required={required} onChange={(event) => onChange(event.target.value)} />
+        </label>
+    );
+}
+
+function ReadOnlyField({ label, value }) {
+    return (
+        <label className="form-field inline-field">
+            <FieldLabel label={label} required={false} />
+            <input className="single-line-input" value={value} disabled readOnly />
         </label>
     );
 }

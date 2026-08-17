@@ -126,6 +126,7 @@ function normalizeWorld(world) {
         description: world.description ?? "",
         language: world.language ?? DEFAULT_LANGUAGE,
         starting_time: world.starting_time ?? DEFAULT_STARTING_TIME,
+        metadata: world.metadata ?? {},
     };
 }
 
@@ -146,6 +147,17 @@ function buildWorldUpdatePayload(world) {
         version: world.version ?? 1,
         url: world.url ?? null,
         language: normalizeLanguage(world.language),
+        metadata: buildWorldMetadataPayload(world.metadata),
+    };
+}
+
+function buildWorldMetadataPayload(metadata) {
+    return {
+        author: metadata?.author ?? null,
+        author_url: metadata?.author_url ?? null,
+        resource_url: metadata?.resource_url ?? null,
+        comment: metadata?.comment ?? null,
+        version: metadata?.version ?? null,
     };
 }
 

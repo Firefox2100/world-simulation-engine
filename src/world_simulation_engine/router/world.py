@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Response, Uploa
 from pydantic import BaseModel, Field
 
 from world_simulation_engine.misc.enums import SupportedLanguage
-from world_simulation_engine.model import World
+from world_simulation_engine.model import World, WorldMetadata
 from world_simulation_engine.service import AuthorNotFoundError, WorldExportService, WorldImportError, \
     WorldImportService
 from .utils import db_dep, storage_dep
@@ -19,6 +19,33 @@ def _export_filename(world_name: str) -> str:
 world_router = APIRouter(
     tags=["World"],
 )
+
+
+class WorldMetadataInput(BaseModel):
+    """
+    DTO model for the human-facing provenance/notes metadata of a world. All fields are optional -
+    none are auto-filled, missing fields simply mean the information wasn't provided.
+    """
+    author: Optional[str] = Field(
+        None,
+        description="The original author/creator of the world's content",
+    )
+    author_url: Optional[str] = Field(
+        None,
+        description="A URL for the original author, e.g. their profile page",
+    )
+    resource_url: Optional[str] = Field(
+        None,
+        description="Where the world's content was originally downloaded from",
+    )
+    comment: Optional[str] = Field(
+        None,
+        description="Freeform human-readable notes about the world. Never included in LLM prompts.",
+    )
+    version: Optional[str] = Field(
+        None,
+        description="The content's own version string, as set by its original author",
+    )
 
 
 class WorldCreate(BaseModel):
@@ -51,6 +78,10 @@ class WorldCreate(BaseModel):
         ...,
         description="The language of the world",
     )
+    metadata: Optional[WorldMetadataInput] = Field(
+        None,
+        description="Optional human-facing provenance/notes metadata for the world",
+    )
 
 
 class WorldUpdate(BaseModel):
@@ -82,6 +113,11 @@ class WorldUpdate(BaseModel):
         None,
         description="The language of the world",
     )
+    metadata: Optional[WorldMetadataInput] = Field(
+        None,
+        description="Optional human-facing provenance/notes metadata for the world. Replaces the "
+                    "world's whole metadata object when provided.",
+    )
 
 
 @world_router.get("/worlds", response_model=list[World])
@@ -106,6 +142,7 @@ async def create_world(world_create: WorldCreate, db: db_dep):
         version=world_create.version,
         url=world_create.url,
         language=world_create.language,
+        metadata=WorldMetadata(**world_create.metadata.model_dump()) if world_create.metadata else WorldMetadata(),
     )
     created_world = await db.world.create_world(world, world_create.author_id)
     if not created_world:

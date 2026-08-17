@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -8,6 +8,10 @@ class Simulation(BaseModel):
     id: str = Field(
         default_factory=lambda: str(uuid4()),
         description="Unique identifier for the simulation",
+    )
+    creation_time: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="When this simulation was created. Always set automatically, never by user input.",
     )
     name: str = Field(
         ...,

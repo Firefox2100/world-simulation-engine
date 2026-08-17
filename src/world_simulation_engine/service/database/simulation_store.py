@@ -8,6 +8,10 @@ def _simulation_from_node(simulation_node) -> Simulation:
     if hasattr(current_time, "to_native"):
         current_time = current_time.to_native()
 
+    creation_time = simulation_node.get("creation_time")
+    if hasattr(creation_time, "to_native"):
+        creation_time = creation_time.to_native()
+
     return Simulation(
         id=simulation_node["id"],
         name=simulation_node["name"],
@@ -15,6 +19,7 @@ def _simulation_from_node(simulation_node) -> Simulation:
         current_time=current_time,
         emotion_enabled=simulation_node.get("emotion_enabled", True),
         suggested_actions=simulation_node.get("suggested_actions") or [],
+        **({"creation_time": creation_time} if creation_time else {}),
     )
 
 
@@ -37,7 +42,8 @@ class SimulationStore:
                 description: $world_description,
                 current_time: $current_time,
                 emotion_enabled: $emotion_enabled,
-                suggested_actions: $suggested_actions
+                suggested_actions: $suggested_actions,
+                creation_time: $creation_time
             })
             CREATE (s)-[:BASED_ON]->(w)
             RETURN s
@@ -50,6 +56,7 @@ class SimulationStore:
                 "current_time": simulation.current_time,
                 "emotion_enabled": simulation.emotion_enabled,
                 "suggested_actions": simulation.suggested_actions,
+                "creation_time": simulation.creation_time,
             },
         )
 

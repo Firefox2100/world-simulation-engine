@@ -358,6 +358,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
     assert created_simulation["name"] == simulation_api.world.name
     assert created_simulation["description"] == simulation_api.world.description
     assert created_simulation["current_time"] == "2026-01-01T12:00:00Z"
+    assert created_simulation["creation_time"]
 
     copied_characters_response = client.get(
         "/characters",
@@ -603,6 +604,7 @@ def test_create_list_get_update_and_delete_simulation(simulation_api):
         "current_time": "2026-03-01T12:00:00Z",
         "emotion_enabled": False,
         "suggested_actions": [],
+        "creation_time": created_simulation["creation_time"],
     }
 
     delete_response = client.delete(f"/simulations/{created_simulation['id']}")

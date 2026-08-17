@@ -1304,8 +1304,15 @@
         "stance": "态度",
         "behavioural_relevance": "行为相关性",
         "ttsConfig": "语音后端",
-        "voice": "TTS 音色"
-      }
+        "voice": "TTS 音色",
+        "metadataAuthor": "内容作者",
+        "metadataAuthorUrl": "内容作者链接",
+        "metadataResourceUrl": "资源链接",
+        "metadataComment": "备注（仅供人阅读，不会提供给 LLM）",
+        "metadataVersion": "内容版本",
+        "creationTime": "创建时间"
+      },
+      "metadataSectionTitle": "元数据"
     },
     "fields": {
       "name": {

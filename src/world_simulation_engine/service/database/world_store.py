@@ -1,6 +1,6 @@
 from neo4j import AsyncDriver
 
-from world_simulation_engine.model import Author, World
+from world_simulation_engine.model import Author, World, WorldMetadata
 
 
 def _author_from_node(author_node) -> Author:
@@ -16,6 +16,13 @@ def _world_from_node(world_node) -> World:
     if hasattr(starting_time, "to_native"):
         starting_time = starting_time.to_native()
 
+    creation_time = world_node.get("creation_time")
+    if hasattr(creation_time, "to_native"):
+        creation_time = creation_time.to_native()
+
+    metadata_json = world_node.get("metadata_json")
+    metadata = WorldMetadata.model_validate_json(metadata_json) if metadata_json else WorldMetadata()
+
     return World(
         id=world_node["id"],
         name=world_node["name"],
@@ -24,6 +31,8 @@ def _world_from_node(world_node) -> World:
         version=world_node["version"],
         url=world_node.get("url"),
         language=world_node["language"],
+        metadata=metadata,
+        **({"creation_time": creation_time} if creation_time else {}),
     )
 
 
@@ -216,7 +225,9 @@ class WorldStore:
                 starting_time: $world_starting_time,
                 url: $world_url,
                 version: $world_version,
-                language: $world_language
+                language: $world_language,
+                metadata_json: $metadata_json,
+                creation_time: $creation_time
             })
             MERGE (a)-[:CREATED]->(w)
             WITH w
@@ -239,6 +250,8 @@ class WorldStore:
                 "world_url": world.url,
                 "world_version": world.version,
                 "world_language": world.language,
+                "metadata_json": world.metadata.model_dump_json(),
+                "creation_time": world.creation_time,
                 "previous_version": previous_version,
             },
         )
@@ -285,6 +298,11 @@ class WorldStore:
             for key, value in properties.items()
             if value is not None
         }
+        metadata = properties.pop("metadata", None)
+        if metadata is not None:
+            if not isinstance(metadata, WorldMetadata):
+                metadata = WorldMetadata.model_validate(metadata)
+            properties["metadata_json"] = metadata.model_dump_json()
 
         result = await self._driver.execute_query(
             """

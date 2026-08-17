@@ -48,6 +48,14 @@ class AuthorNotFoundError(Exception):
     """The author_id supplied for the import does not exist."""
 
 
+def _new_world_from_row(world_row: dict) -> World:
+    """A fresh World record: new id, and a fresh creation_time (an imported world is a new
+    database record even though its content is carried over) - human-facing provenance
+    metadata (author/comment/etc.) is content and is preserved as-is."""
+    row_without_creation_time = {key: value for key, value in world_row.items() if key != "creation_time"}
+    return World.model_validate({**row_without_creation_time, "id": str(uuid4())})
+
+
 def _media_model_from_row(row: dict) -> MediaFile:
     if row.get("prompt_name") is not None:
         return PromptMediaFile.model_validate(row)
@@ -127,7 +135,7 @@ class WorldImportService:
         }
 
         try:
-            world = World.model_validate({**world_row, "id": str(uuid4())})
+            world = _new_world_from_row(world_row)
         except ValidationError as exc:
             raise WorldImportError(f"Invalid world data in archive: {exc}") from exc
 
@@ -154,7 +162,7 @@ class WorldImportService:
         never carries media for this caller, so `archive=None` is safe (`_import_media` never
         touches it when `sections["media"]` is empty)."""
         try:
-            world = World.model_validate({**world_row, "id": str(uuid4())})
+            world = _new_world_from_row(world_row)
         except ValidationError as exc:
             raise WorldImportError(f"Invalid world data: {exc}") from exc
 
