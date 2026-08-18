@@ -834,6 +834,50 @@ def test_assemble_world_row_uses_card_name_and_world_lore_description():
     assert assembled.world["description"] == "A coastal town."
 
 
+def test_assemble_world_row_fills_metadata_from_card():
+    card = PreprocessedCard(
+        name="Example Character",
+        first_message="Hi there.",
+        creator_notes="Works best with a warm, gentle tone.",
+        tags=["fantasy", "slice-of-life"],
+        creator="Example Creator",
+        character_version="1.2",
+        source=["https://example.com/cards/example-character"],
+    )
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
+    )
+
+    assert assembled.world["metadata"] == {
+        "author": "Example Creator",
+        "resource_url": "https://example.com/cards/example-character",
+        "comment": "Works best with a warm, gentle tone.",
+        "version": "1.2",
+        "tags": ["fantasy", "slice-of-life"],
+    }
+
+
+def test_assemble_world_row_leaves_metadata_unfilled_when_card_has_none():
+    card = make_card()
+    assembler = WorldAssembler()
+
+    assembled = assembler.assemble(
+        card, language=SupportedLanguage.ENGLISH, characters=CharacterExtraction(), locations=LocationExtraction(), world_lore=WorldLoreExtraction(),
+        narrative=NarrativeExtraction(), intents=IntentExtraction(), variables=VariableSchemaExtraction(), items=ItemExtraction(), equipment=EquipmentExtraction(),
+    )
+
+    assert assembled.world["metadata"] == {
+        "author": None,
+        "resource_url": None,
+        "comment": None,
+        "version": None,
+        "tags": [],
+    }
+
+
 def test_assemble_world_row_has_no_description_when_no_world_lore():
     card = make_card()
     assembler = WorldAssembler()

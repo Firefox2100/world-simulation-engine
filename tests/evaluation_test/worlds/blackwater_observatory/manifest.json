@@ -1,5 +1,6 @@
 {
-  "format_version": 1,
+  "spec": "wse_world",
+  "spec_version": "1.0",
   "world_name": "The Blackwater Observatory",
   "note": "Synthetic development/evaluation world - same shape as a WorldExportService export, unzipped, plus eval/-only extras for the evaluation_test suite."
 }

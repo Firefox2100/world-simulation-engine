@@ -192,3 +192,25 @@ def test_text_without_macros_is_unaffected():
     preprocessed = CardPreprocessor.preprocess(card)
 
     assert preprocessed.description == "A plain description with no macros at all."
+
+
+def test_creator_version_and_source_pass_through_unchanged():
+    card = make_card({
+        "creator": "Example Creator",
+        "character_version": "1.2",
+        "source": ["https://example.com/cards/example-character"],
+    })
+    preprocessed = CardPreprocessor.preprocess(card)
+
+    assert preprocessed.creator == "Example Creator"
+    assert preprocessed.character_version == "1.2"
+    assert preprocessed.source == ["https://example.com/cards/example-character"]
+
+
+def test_creator_version_and_source_default_empty():
+    card = make_card()
+    preprocessed = CardPreprocessor.preprocess(card)
+
+    assert preprocessed.creator == ""
+    assert preprocessed.character_version == ""
+    assert preprocessed.source == []

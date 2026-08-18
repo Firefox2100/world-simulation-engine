@@ -239,6 +239,7 @@ function worldFormFromWorld(world) {
         metadata_resource_url: world?.metadata?.resource_url ?? "",
         metadata_comment: world?.metadata?.comment ?? "",
         metadata_version: world?.metadata?.version ?? "",
+        metadata_tags: (world?.metadata?.tags ?? []).join(", "),
     };
 }
 
@@ -257,6 +258,7 @@ function worldPayload(form) {
             resource_url: cleanText(form.metadata_resource_url),
             comment: cleanText(form.metadata_comment),
             version: cleanText(form.metadata_version),
+            tags: form.metadata_tags.split(",").map((tag) => tag.trim()).filter(Boolean),
         },
     };
 }
@@ -1235,6 +1237,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                                 <TextField label={t("worldCreate.newEditor.fields.metadataAuthorUrl")} value={worldForm.metadata_author_url} onChange={(value) => updateWorldField("metadata_author_url", value)} />
                                 <TextField label={t("worldCreate.newEditor.fields.metadataResourceUrl")} value={worldForm.metadata_resource_url} onChange={(value) => updateWorldField("metadata_resource_url", value)} />
                                 <TextField label={t("worldCreate.newEditor.fields.metadataVersion")} value={worldForm.metadata_version} onChange={(value) => updateWorldField("metadata_version", value)} />
+                                <TextField label={t("worldCreate.newEditor.fields.metadataTags")} value={worldForm.metadata_tags} onChange={(value) => updateWorldField("metadata_tags", value)} />
                                 <TextArea label={t("worldCreate.newEditor.fields.metadataComment")} value={worldForm.metadata_comment} onChange={(value) => updateWorldField("metadata_comment", value)} />
                                 {(world?.creation_time ?? initialWorld?.creation_time) ? (
                                     <ReadOnlyField

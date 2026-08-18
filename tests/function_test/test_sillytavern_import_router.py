@@ -67,7 +67,7 @@ def _synthetic_card_png() -> bytes:
     return output.getvalue()
 
 
-def _synthetic_card_json() -> bytes:
+def _synthetic_card_json(data_overrides: dict | None = None) -> bytes:
     payload = {
         "spec": "chara_card_v3",
         "spec_version": "3.0",
@@ -91,6 +91,7 @@ def _synthetic_card_json() -> bytes:
                     "priority": 10, "constant": False, "position": "before_char", "use_regex": False,
                 }],
             },
+            **(data_overrides or {}),
         },
     }
     return json.dumps(payload).encode()
@@ -220,6 +221,39 @@ def test_extract_sillytavern_card_returns_the_assembled_world_without_persisting
     assert extract_calls[0]["card"].data.name == "Example Character"
     assert extract_calls[0]["card"].data.first_mes == "Hello!"
     assert extract_calls[0]["card"].data.character_book.entries[0].content == "The seal breaks."
+
+
+def test_extract_sillytavern_card_forwards_creator_and_tag_fields_to_the_synthetic_card(sillytavern_import_api):
+    """`reconstruct_from_card` is mocked by this fixture (see `_canned_assembled_world`), so this
+    can't observe `WorldAssembler`'s metadata output end-to-end (covered directly in
+    test_world_assembler.py) - it only proves the router builds the synthetic `SillyTavernCardV3`
+    (what `WorldAssembler` actually runs against) with these fields intact."""
+    client, _author, extract_calls = sillytavern_import_api
+
+    response = client.post(
+        "/worlds/import/sillytavern/extract",
+        json={
+            "card": {
+                **_EXTRACT_CARD_PAYLOAD,
+                "creator_notes": "Best used with a gentle tone.",
+                "tags": ["fantasy", "slice-of-life"],
+                "creator": "Example Creator",
+                "character_version": "1.2",
+                "source": ["https://example.com/cards/example-character"],
+            },
+            "language": SupportedLanguage.ENGLISH.value,
+        },
+    )
+
+    assert response.status_code == 200
+    _assembled_from_sse(response)
+    assert len(extract_calls) == 1
+    card_data = extract_calls[0]["card"].data
+    assert card_data.creator_notes == "Best used with a gentle tone."
+    assert card_data.tags == ["fantasy", "slice-of-life"]
+    assert card_data.creator == "Example Creator"
+    assert card_data.character_version == "1.2"
+    assert card_data.source == ["https://example.com/cards/example-character"]
 
 
 def test_extract_sillytavern_card_returns_empty_image_candidates_when_no_links_are_present(sillytavern_import_api):
@@ -479,6 +513,74 @@ def test_parse_sillytavern_card_url_fetches_json_and_uses_the_upload_parser():
 
     assert response.status_code == 200
     assert response.json()["name"] == "Example Character"
+
+
+def test_parse_sillytavern_card_url_falls_back_to_the_fetch_url_when_card_declares_no_source():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_synthetic_card_json())
+
+    async def public_resolver(hostname, port):
+        return ["93.184.216.34"]
+
+    app = FastAPI()
+    app.state.media_download_service = MediaDownloadService(
+        resolver=public_resolver, transport=httpx.MockTransport(handler),
+    )
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse-url",
+            json={"url": "https://cards.example.com/example.json"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == ["https://cards.example.com/example.json"]
+
+
+def test_parse_sillytavern_card_url_keeps_the_cards_own_declared_source():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_synthetic_card_json({"source": ["https://original.example.com/card"]}))
+
+    async def public_resolver(hostname, port):
+        return ["93.184.216.34"]
+
+    app = FastAPI()
+    app.state.media_download_service = MediaDownloadService(
+        resolver=public_resolver, transport=httpx.MockTransport(handler),
+    )
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse-url",
+            json={"url": "https://cards.example.com/example.json"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == ["https://original.example.com/card"]
+
+
+def test_parse_sillytavern_card_returns_creator_and_tag_metadata():
+    app = FastAPI()
+    app.include_router(sillytavern_import_router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/worlds/import/sillytavern/parse",
+            files={"file": (
+                "example.json",
+                _synthetic_card_json({"creator": "Example Creator", "character_version": "1.2"}),
+                "application/json",
+            )},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tags"] == ["test"]
+    assert body["creator"] == "Example Creator"
+    assert body["character_version"] == "1.2"
+    assert body["source"] == []
 
 
 def test_parse_sillytavern_card_url_rejects_non_png_non_json_bytes():

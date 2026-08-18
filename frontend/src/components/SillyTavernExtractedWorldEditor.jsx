@@ -141,6 +141,13 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
         onChange({ ...assembled, world: { ...world, [field]: value } });
     }
 
+    function updateWorldMetadata(field, value) {
+        onChange({
+            ...assembled,
+            world: { ...world, metadata: { ...(world.metadata ?? {}), [field]: value } },
+        });
+    }
+
     function updateSection(section, rows) {
         onChange({ ...assembled, sections: { ...sections, [section]: rows } });
     }
@@ -237,6 +244,64 @@ export function SillyTavernExtractedWorldEditor({ assembled, onChange }) {
                         type="datetime-local"
                         value={(world.starting_time ?? "").slice(0, 16)}
                         onChange={(event) => updateWorld("starting_time", `${event.target.value}:00Z`)}
+                    />
+                </div>
+                <div className="form-field">
+                    <label>{t("sillyTavernImport.review.world.metadataAuthor")}</label>
+                    <input
+                        className="single-line-input"
+                        type="text"
+                        value={world.metadata?.author ?? ""}
+                        onChange={(event) => updateWorldMetadata("author", event.target.value)}
+                    />
+                </div>
+                <div className="form-field">
+                    <label>{t("sillyTavernImport.review.world.metadataAuthorUrl")}</label>
+                    <input
+                        className="single-line-input"
+                        type="text"
+                        value={world.metadata?.author_url ?? ""}
+                        onChange={(event) => updateWorldMetadata("author_url", event.target.value)}
+                    />
+                </div>
+                <div className="form-field">
+                    <label>{t("sillyTavernImport.review.world.metadataResourceUrl")}</label>
+                    <input
+                        className="single-line-input"
+                        type="text"
+                        value={world.metadata?.resource_url ?? ""}
+                        onChange={(event) => updateWorldMetadata("resource_url", event.target.value)}
+                    />
+                </div>
+                <div className="form-field">
+                    <label>{t("sillyTavernImport.review.world.metadataVersion")}</label>
+                    <input
+                        className="single-line-input"
+                        type="text"
+                        value={world.metadata?.version ?? ""}
+                        onChange={(event) => updateWorldMetadata("version", event.target.value)}
+                    />
+                </div>
+                <div className="form-field">
+                    <label>{t("sillyTavernImport.review.world.metadataTags")}</label>
+                    <input
+                        className="single-line-input"
+                        type="text"
+                        value={(world.metadata?.tags ?? []).join(", ")}
+                        onChange={(event) =>
+                            updateWorldMetadata(
+                                "tags",
+                                event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean),
+                            )
+                        }
+                    />
+                </div>
+                <div className="form-field">
+                    <label>{t("sillyTavernImport.review.world.metadataComment")}</label>
+                    <textarea
+                        className="multi-line-input"
+                        value={world.metadata?.comment ?? ""}
+                        onChange={(event) => updateWorldMetadata("comment", event.target.value)}
                     />
                 </div>
             </section>

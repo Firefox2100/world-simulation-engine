@@ -188,6 +188,8 @@ async def test_export_world_produces_complete_and_credential_free_archive(clean_
         assert "manifest.json" in names
         manifest = read_json("manifest.json")
         assert manifest["world_id"] == world.id
+        assert manifest["spec"] == "wse_world"
+        assert manifest["spec_version"] == "1.0"
 
         world_data = read_json("world.json")
         assert world_data["id"] == world.id

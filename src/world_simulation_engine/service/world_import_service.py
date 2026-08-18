@@ -31,8 +31,7 @@ from world_simulation_engine.model import BackgroundCharacter, Character, Charac
 from world_simulation_engine.service.database import DatabaseService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 from world_simulation_engine.service.storage_service import StorageService
-
-_SUPPORTED_FORMAT_VERSION = 1
+from world_simulation_engine.service.world_bundle_spec import is_supported_world_bundle_manifest
 
 _ChatConfigAdapter = TypeAdapter(ChatModelConfigUnion)
 _EmbedConfigAdapter = TypeAdapter(EmbedModelConfigUnion)
@@ -95,10 +94,10 @@ class WorldImportService:
         archive = self._open_archive(archive_bytes)
 
         manifest = self._read_json(archive, "manifest.json")
-        if not isinstance(manifest, dict) or manifest.get("format_version") != _SUPPORTED_FORMAT_VERSION:
-            raise WorldImportError(
-                f"Unsupported export format version: {manifest.get('format_version') if isinstance(manifest, dict) else manifest!r}"
-            )
+        if not is_supported_world_bundle_manifest(manifest):
+            spec = manifest.get("spec") if isinstance(manifest, dict) else manifest
+            spec_version = manifest.get("spec_version") if isinstance(manifest, dict) else None
+            raise WorldImportError(f"Unsupported world bundle spec/version: {spec!r} {spec_version!r}")
 
         world_row = self._read_json(archive, "world.json")
         if not isinstance(world_row, dict):

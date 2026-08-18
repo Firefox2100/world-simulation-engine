@@ -30526,6 +30526,24 @@
             "type": "array",
             "title": "Tags"
           },
+          "creator": {
+            "type": "string",
+            "title": "Creator",
+            "default": ""
+          },
+          "character_version": {
+            "type": "string",
+            "title": "Character Version",
+            "default": ""
+          },
+          "source": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source",
+            "description": "The card's own declared source URL(s)/ID(s) (V3 'source' field). When the card declares none and it was fetched via /parse-url, this falls back to the URL it was fetched from."
+          },
           "lorebook_entries": {
             "items": {
               "$ref": "#/components/schemas/ParsedLorebookEntry"
@@ -31783,6 +31801,24 @@
             },
             "type": "array",
             "title": "Tags"
+          },
+          "creator": {
+            "type": "string",
+            "title": "Creator",
+            "default": ""
+          },
+          "character_version": {
+            "type": "string",
+            "title": "Character Version",
+            "default": ""
+          },
+          "source": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source",
+            "description": "Round-tripped verbatim from /parse - see ParsedSillyTavernCard.source."
           },
           "lorebook_entries": {
             "items": {
@@ -33935,6 +33971,14 @@
             ],
             "title": "Version",
             "description": "The content's own version string, as set by its original author"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Free-form tags describing the world's content, similar to a SillyTavern character card's tags"
           }
         },
         "type": "object",
@@ -34002,6 +34046,14 @@
             ],
             "title": "Version",
             "description": "The content's own version string, as set by its original author"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "description": "Free-form tags describing the world's content, similar to a SillyTavern character card's tags"
           }
         },
         "type": "object",

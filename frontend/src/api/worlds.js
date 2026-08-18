@@ -158,6 +158,7 @@ function buildWorldMetadataPayload(metadata) {
         resource_url: metadata?.resource_url ?? null,
         comment: metadata?.comment ?? null,
         version: metadata?.version ?? null,
+        tags: metadata?.tags ?? [],
     };
 }
 

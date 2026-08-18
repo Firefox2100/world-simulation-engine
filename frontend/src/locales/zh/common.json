@@ -378,7 +378,10 @@
       "creatorNotes": "作者备注",
       "systemPrompt": "系统提示词",
       "postHistoryInstructions": "历史后指令",
-      "tags": "标签"
+      "tags": "标签",
+      "creator": "作者",
+      "characterVersion": "卡片版本",
+      "source": "来源链接"
     },
     "greetings": {
       "title": "开场白",
@@ -451,7 +454,13 @@
         "title": "世界",
         "name": "世界名称",
         "description": "描述",
-        "startingTime": "起始时间"
+        "startingTime": "起始时间",
+        "metadataAuthor": "内容作者",
+        "metadataAuthorUrl": "内容作者链接",
+        "metadataResourceUrl": "资源链接",
+        "metadataVersion": "内容版本",
+        "metadataTags": "标签",
+        "metadataComment": "备注（仅供人阅读，不会提供给 LLM）"
       },
       "characters": {
         "title": "角色",
@@ -1310,7 +1319,8 @@
         "metadataResourceUrl": "资源链接",
         "metadataComment": "备注（仅供人阅读，不会提供给 LLM）",
         "metadataVersion": "内容版本",
-        "creationTime": "创建时间"
+        "creationTime": "创建时间",
+        "metadataTags": "标签"
       },
       "metadataSectionTitle": "元数据"
     },

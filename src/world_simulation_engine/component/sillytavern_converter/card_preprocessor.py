@@ -98,6 +98,12 @@ class PreprocessedCard(BaseModel):
     post_history_instructions: str = ""
     creator_notes: str = ""
     tags: list[str] = Field(default_factory=list)
+    creator: str = ""
+    character_version: str = ""
+    source: list[str] = Field(
+        default_factory=list,
+        description="The card's own declared source URL(s)/ID(s) (V3 'source' field), if any.",
+    )
 
     lorebook_entries: list[PreprocessedLorebookEntry] = Field(default_factory=list)
     variable_schema_candidates: list[VariableScriptCandidate] = Field(default_factory=list)
@@ -227,6 +233,9 @@ class CardPreprocessor:
             post_history_instructions=cls._normalize_macros(data.post_history_instructions),
             creator_notes=cls._normalize_macros(data.creator_notes),
             tags=list(data.tags),
+            creator=data.creator,
+            character_version=data.character_version,
+            source=list(data.source or []),
             lorebook_entries=cls._preprocess_lorebook_entries(card),
             variable_schema_candidates=variable_schema_candidates,
             discarded=discarded,

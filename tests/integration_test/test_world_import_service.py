@@ -413,7 +413,7 @@ async def test_import_rejects_wrong_format_version(clean_neo4j, tmp_path):
 
     buffer = BytesIO()
     with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps({"format_version": 999}))
+        archive.writestr("manifest.json", json.dumps({"spec": "wse_world", "spec_version": "999.0"}))
 
     service = WorldImportService(database=db, storage=storage)
 

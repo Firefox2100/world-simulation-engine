@@ -62,12 +62,12 @@ from world_simulation_engine.component.sillytavern_converter import (  # noqa: E
 )
 from world_simulation_engine.misc.enums import SupportedLanguage  # noqa: E402
 from world_simulation_engine.model import Author  # noqa: E402
+from world_simulation_engine.service.world_bundle_spec import WORLD_BUNDLE_SPEC, WORLD_BUNDLE_SPEC_VERSION  # noqa: E402
 
 from eval_llm_config import build_evaluation_chat_model_config, build_evaluation_connection_config  # noqa: E402
 
 DEFAULT_WORLDS_DIR = ROOT / "tests" / "evaluation_test" / "worlds"
 DEFAULT_CARDS_DIR = ROOT / "tests" / "evaluation_test" / "assets" / "st-cards"
-_FORMAT_VERSION = 1
 
 _SCENARIO_CATEGORIES = (
     "synthetic_coordination_cases",
@@ -163,7 +163,8 @@ def _write_bundle(assembled: AssembledWorld, *, author: Author, output_dir: Path
         _write_jsonl(output_dir / "data" / f"{section_name}.jsonl", rows)
 
     manifest = {
-        "format_version": _FORMAT_VERSION,
+        "spec": WORLD_BUNDLE_SPEC,
+        "spec_version": WORLD_BUNDLE_SPEC_VERSION,
         "generated_by": "scripts/build_card_world_bundle.py",
     }
     (output_dir / "manifest.json").write_text(

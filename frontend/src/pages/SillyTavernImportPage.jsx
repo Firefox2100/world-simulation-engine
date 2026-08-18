@@ -104,6 +104,9 @@ export function SillyTavernImportPage() {
             post_history_instructions: parsedCard.post_history_instructions ?? "",
             mes_example: parsedCard.mes_example ?? "",
             tags: (parsedCard.tags ?? []).join(", "),
+            creator: parsedCard.creator ?? "",
+            character_version: parsedCard.character_version ?? "",
+            source: (parsedCard.source ?? []).join(", "),
         });
         setGreetings(buildGreetings(parsedCard));
         setSelectedGreetingKey(FIRST_MES_KEY);
@@ -210,6 +213,9 @@ export function SillyTavernImportPage() {
                 system_prompt: fields.system_prompt,
                 post_history_instructions: fields.post_history_instructions,
                 tags: fields.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+                creator: fields.creator,
+                character_version: fields.character_version,
+                source: fields.source.split(",").map((entry) => entry.trim()).filter(Boolean),
                 lorebook_entries: lorebookEntries
                     .filter((entry) => entry.enabled)
                     .map((entry) => ({ name: entry.name, keys: entry.keys, content: entry.content })),
@@ -395,6 +401,36 @@ export function SillyTavernImportPage() {
                                     type="text"
                                     value={fields.tags}
                                     onChange={(event) => updateField("tags", event.target.value)}
+                                />
+                            </div>
+
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.fields.creator")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={fields.creator}
+                                    onChange={(event) => updateField("creator", event.target.value)}
+                                />
+                            </div>
+
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.fields.characterVersion")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={fields.character_version}
+                                    onChange={(event) => updateField("character_version", event.target.value)}
+                                />
+                            </div>
+
+                            <div className="form-field">
+                                <label>{t("sillyTavernImport.fields.source")}</label>
+                                <input
+                                    className="single-line-input"
+                                    type="text"
+                                    value={fields.source}
+                                    onChange={(event) => updateField("source", event.target.value)}
                                 />
                             </div>
 

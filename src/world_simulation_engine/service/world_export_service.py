@@ -16,8 +16,8 @@ from world_simulation_engine.misc.enums import MediaType
 from world_simulation_engine.model import MediaFile
 from world_simulation_engine.service.database import DatabaseService
 from world_simulation_engine.service.storage_service import StorageService
+from world_simulation_engine.service.world_bundle_spec import WORLD_BUNDLE_SPEC, WORLD_BUNDLE_SPEC_VERSION
 
-_EXPORT_FORMAT_VERSION = 1
 _ALL_TURNS_LIMIT = 1_000_000
 _ALL_RELATIONSHIPS_LIMIT = 100_000
 
@@ -120,7 +120,8 @@ class WorldExportService:
         buffer = BytesIO()
         with ZipFile(buffer, mode="w", compression=ZIP_DEFLATED) as archive:
             archive.writestr("manifest.json", json.dumps({
-                "format_version": _EXPORT_FORMAT_VERSION,
+                "spec": WORLD_BUNDLE_SPEC,
+                "spec_version": WORLD_BUNDLE_SPEC_VERSION,
                 "exported_at": datetime.now(timezone.utc).isoformat(),
                 "world_id": world_id,
                 "world_name": world.name,

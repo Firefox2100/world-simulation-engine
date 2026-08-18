@@ -50,6 +50,11 @@ class WorldMetadata(BaseModel):
         None,
         description="The content's own version string, as set by its original author",
     )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Free-form tags describing the world's content, similar to a SillyTavern "
+                    "character card's tags",
+    )
 
 
 class World(BaseModel):

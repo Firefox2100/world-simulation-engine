@@ -76,6 +76,14 @@ class ParsedSillyTavernCard(BaseModel):
     system_prompt: str = ""
     post_history_instructions: str = ""
     tags: list[str] = Field(default_factory=list)
+    creator: str = ""
+    character_version: str = ""
+    source: list[str] = Field(
+        default_factory=list,
+        description="The card's own declared source URL(s)/ID(s) (V3 'source' field). When the "
+                    "card declares none and it was fetched via /parse-url, this falls back to the "
+                    "URL it was fetched from.",
+    )
     lorebook_entries: list[ParsedLorebookEntry] = Field(default_factory=list)
     cover_image_data_uri: str | None = None
     assets: list[SillyTavernCardV3Asset] = Field(
@@ -129,6 +137,12 @@ class SillyTavernExtractCard(BaseModel):
     system_prompt: str = ""
     post_history_instructions: str = ""
     tags: list[str] = Field(default_factory=list)
+    creator: str = ""
+    character_version: str = ""
+    source: list[str] = Field(
+        default_factory=list,
+        description="Round-tripped verbatim from /parse - see ParsedSillyTavernCard.source.",
+    )
     lorebook_entries: list[SillyTavernExtractLorebookEntry] = Field(default_factory=list)
     assets: list[SillyTavernCardV3Asset] = Field(
         default_factory=list,
@@ -214,6 +228,9 @@ def _build_synthetic_card(card: SillyTavernExtractCard) -> SillyTavernCardV3:
             system_prompt=card.system_prompt,
             post_history_instructions=card.post_history_instructions,
             tags=card.tags,
+            creator=card.creator,
+            character_version=card.character_version,
+            source=card.source or None,
             character_book=SillyTavernCardV3LoreBook(entries=entries),
             assets=card.assets or None,
             extensions=card.extensions,
@@ -255,6 +272,9 @@ async def _parse_sillytavern_content(request: Request, content: bytes) -> Parsed
         system_prompt=data.system_prompt,
         post_history_instructions=data.post_history_instructions,
         tags=data.tags,
+        creator=data.creator,
+        character_version=data.character_version,
+        source=data.source or [],
         lorebook_entries=[
             ParsedLorebookEntry(
                 id=entry.id,
@@ -320,7 +340,12 @@ async def parse_sillytavern_card_url(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The downloaded file is not a PNG or JSON file.",
         )
-    return await _parse_sillytavern_content(request, content)
+    parsed = await _parse_sillytavern_content(request, content)
+    if not parsed.source:
+        # The card declares no source of its own - fall back to the URL it was actually fetched
+        # from, so `metadata.resource_url` has something to fill in on commit.
+        parsed = parsed.model_copy(update={"source": [payload.url]})
+    return parsed
 
 
 @sillytavern_import_router.get(

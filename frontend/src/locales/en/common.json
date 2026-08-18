@@ -378,7 +378,10 @@
       "creatorNotes": "Creator notes",
       "systemPrompt": "System prompt",
       "postHistoryInstructions": "Post-history instructions",
-      "tags": "Tags"
+      "tags": "Tags",
+      "creator": "Creator",
+      "characterVersion": "Card version",
+      "source": "Source URL(s)"
     },
     "greetings": {
       "title": "Opening message",
@@ -452,7 +455,13 @@
         "title": "World",
         "name": "World name",
         "description": "Description",
-        "startingTime": "Starting time"
+        "startingTime": "Starting time",
+        "metadataAuthor": "Content author",
+        "metadataAuthorUrl": "Content author URL",
+        "metadataResourceUrl": "Resource URL",
+        "metadataVersion": "Content version",
+        "metadataTags": "Tags",
+        "metadataComment": "Notes (for humans, not the LLM)"
       },
       "characters": {
         "title": "Characters",
@@ -1311,7 +1320,8 @@
         "metadataResourceUrl": "Resource URL",
         "metadataComment": "Notes (for humans, not the LLM)",
         "metadataVersion": "Content version",
-        "creationTime": "Created at"
+        "creationTime": "Created at",
+        "metadataTags": "Tags"
       },
       "metadataSectionTitle": "Metadata"
     },

@@ -52,8 +52,7 @@ from world_simulation_engine.model import (
 )
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
-
-_SUPPORTED_FORMAT_VERSION = 1
+from world_simulation_engine.service.world_bundle_spec import is_supported_world_bundle_manifest
 
 # Every evaluation world bundle - both the checked-in default (blackwater_observatory) and any
 # SillyTavern-card-derived ones generated locally via scripts/build_card_world_bundle.py - lives
@@ -99,9 +98,10 @@ def _read_jsonl(path: Path) -> list[dict]:
 
 async def load_world_bundle(database: DatabaseService, folder: Path) -> WorldBundle:
     manifest = _read_json(folder / "manifest.json")
-    if manifest.get("format_version") != _SUPPORTED_FORMAT_VERSION:
+    if not is_supported_world_bundle_manifest(manifest):
         raise ValueError(
-            f"Unsupported world bundle format version in {folder}: {manifest.get('format_version')!r}"
+            f"Unsupported world bundle spec/version in {folder}: "
+            f"{manifest.get('spec')!r} {manifest.get('spec_version')!r}"
         )
 
     author = Author.model_validate(_read_json(folder / "author.json"))

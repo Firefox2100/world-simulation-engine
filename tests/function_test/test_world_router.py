@@ -113,6 +113,7 @@ def test_create_list_get_update_and_delete_world(world_api):
                 "resource_url": "https://example.com/resources/created",
                 "comment": "Internal note for humans only",
                 "version": "1.0",
+                "tags": ["fantasy", "slice-of-life"],
             },
         },
     )
@@ -132,6 +133,7 @@ def test_create_list_get_update_and_delete_world(world_api):
         "resource_url": "https://example.com/resources/created",
         "comment": "Internal note for humans only",
         "version": "1.0",
+        "tags": ["fantasy", "slice-of-life"],
     }
     assert created_world["creation_time"]
 
@@ -213,6 +215,7 @@ def test_create_list_get_update_and_delete_world(world_api):
             "resource_url": None,
             "comment": "Replaced note",
             "version": None,
+            "tags": [],
         },
         "creation_time": created_world["creation_time"],
     }

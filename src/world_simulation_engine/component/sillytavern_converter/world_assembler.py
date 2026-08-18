@@ -354,6 +354,13 @@ class WorldAssembler:
             "description": world_description,
             "starting_time": starting_time.isoformat(),
             "language": language,
+            "metadata": {
+                "author": card.creator or None,
+                "resource_url": card.source[0] if card.source else None,
+                "comment": card.creator_notes or None,
+                "version": card.character_version or None,
+                "tags": list(card.tags),
+            },
         }
 
         sections: dict[str, list] = {

@@ -55,6 +55,7 @@ from world_simulation_engine.model import (  # noqa: E402
     World,
 )
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink  # noqa: E402
+from world_simulation_engine.service.world_bundle_spec import is_supported_world_bundle_manifest  # noqa: E402
 
 DEFAULT_BUNDLE_DIR = ROOT / "tests" / "evaluation_test" / "worlds" / "blackwater_observatory"
 
@@ -158,8 +159,11 @@ def load_bundle_as_setup(bundle_dir: Path) -> SampleWorldSetup:
     rest of this script's REST-API-posting functions expect - a thin re-projection of each
     self-contained bundle row into the (entity, placement) pairs a template-world POST needs."""
     manifest = _read_json(bundle_dir / "manifest.json")
-    if manifest.get("format_version") != 1:
-        raise ValueError(f"Unsupported world bundle format version in {bundle_dir}: {manifest.get('format_version')!r}")
+    if not is_supported_world_bundle_manifest(manifest):
+        raise ValueError(
+            f"Unsupported world bundle spec/version in {bundle_dir}: "
+            f"{manifest.get('spec')!r} {manifest.get('spec_version')!r}"
+        )
 
     author = Author.model_validate(_read_json(bundle_dir / "author.json"))
     world = World.model_validate(_read_json(bundle_dir / "world.json"))
