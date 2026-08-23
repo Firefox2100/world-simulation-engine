@@ -31,6 +31,7 @@ from world_simulation_engine.model import BackgroundCharacter, Character, Charac
 from world_simulation_engine.service.database import DatabaseService
 from world_simulation_engine.service.database.memory_store import CharacterMemoryLink
 from world_simulation_engine.service.storage_service import StorageService
+from world_simulation_engine.service.turn_content_remap import remap_narration_character_ids
 from world_simulation_engine.service.world_bundle_spec import is_supported_world_bundle_manifest
 
 _ChatConfigAdapter = TypeAdapter(ChatModelConfigUnion)
@@ -198,7 +199,7 @@ class WorldImportService:
         await self._import_equipment(world.id, sections["equipment"], id_map, media_id_map)
         await self._import_item_stacks(world.id, sections["item_stacks"], id_map)
 
-        turn_id_map = await self._import_turns(world.id, sections["turns"])
+        turn_id_map = await self._import_turns(world.id, sections["turns"], id_map)
         event_id_map = await self._import_events(sections["events"], turn_id_map, id_map)
         memory_id_map = await self._import_memories(sections["memories"], event_id_map, id_map)
         await self._import_intents(sections["intents"], id_map, event_id_map)
@@ -493,12 +494,18 @@ class WorldImportService:
 
     # -- narrative ----------------------------------------------------------------------------
 
-    async def _import_turns(self, world_id: str, rows: list[dict]) -> dict[str, str]:
+    async def _import_turns(self, world_id: str, rows: list[dict], id_map: dict[str, str]) -> dict[str, str]:
+        """`content` embeds `SpeechBlock.character_id` references (see `narration.py`) that were
+        assigned by the SillyTavern extraction pipeline before any `Character`/`BackgroundCharacter`
+        row existed - those pre-import ids must be rewritten to the ids `_import_characters`/
+        `_import_background_characters` just minted, or a turn's speaker never resolves to any
+        real character again (see `remap_narration_character_ids`)."""
         turn_id_map: dict[str, str] = {}
         previous_new_id: str | None = None
 
         for row in sorted(rows, key=lambda item: item["sequence"]):
-            turn = Turn.model_validate(row).model_copy(update={"id": str(uuid4())})
+            content = remap_narration_character_ids(row["content"], id_map) or row["content"]
+            turn = Turn.model_validate({**row, "content": content}).model_copy(update={"id": str(uuid4())})
             created = await self._db.turn.create_turn(turn, world_id, previous_turn_id=previous_new_id)
             turn_id_map[row["id"]] = created.id
             previous_new_id = created.id

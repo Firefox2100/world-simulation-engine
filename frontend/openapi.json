@@ -17196,6 +17196,294 @@
         }
       }
     },
+    "/triggers": {
+      "get": {
+        "tags": [
+          "Trigger"
+        ],
+        "summary": "List Triggers",
+        "operationId": "list_triggers_triggers_get",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by owning World/Simulation",
+              "title": "Source Id"
+            },
+            "description": "Optionally filter by owning World/Simulation"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TriggerStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optionally filter by status",
+              "title": "Status"
+            },
+            "description": "Optionally filter by status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Trigger"
+                  },
+                  "title": "Response List Triggers Triggers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Trigger"
+        ],
+        "summary": "Create Trigger",
+        "operationId": "create_trigger_triggers_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/triggers/{trigger_id}": {
+      "get": {
+        "tags": [
+          "Trigger"
+        ],
+        "summary": "Get Trigger",
+        "operationId": "get_trigger_triggers__trigger_id__get",
+        "parameters": [
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trigger Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Trigger"
+        ],
+        "summary": "Update Trigger",
+        "operationId": "update_trigger_triggers__trigger_id__put",
+        "parameters": [
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trigger Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggerUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Trigger"
+        ],
+        "summary": "Delete Trigger",
+        "operationId": "delete_trigger_triggers__trigger_id__delete",
+        "parameters": [
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trigger Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/triggers/{trigger_id}/status": {
+      "patch": {
+        "tags": [
+          "Trigger"
+        ],
+        "summary": "Set Trigger Status",
+        "description": "Manually arm/disable a trigger without touching its definition or condition history.",
+        "operationId": "set_trigger_status_triggers__trigger_id__status_patch",
+        "parameters": [
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trigger Id"
+            }
+          },
+          {
+            "name": "trigger_status",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/TriggerStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trigger"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/turns": {
       "get": {
         "tags": [
@@ -18912,6 +19200,114 @@
   },
   "components": {
     "schemas": {
+      "AllOfCondition-Input": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "all_of",
+            "title": "Type",
+            "default": "all_of"
+          },
+          "conditions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TimeCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/LocationCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/VariableCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/AllOfCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/AnyOfCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/NotCondition-Input"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "all_of": "#/components/schemas/AllOfCondition-Input",
+                  "any_of": "#/components/schemas/AnyOfCondition-Input",
+                  "location": "#/components/schemas/LocationCondition",
+                  "not": "#/components/schemas/NotCondition-Input",
+                  "time": "#/components/schemas/TimeCondition",
+                  "variable": "#/components/schemas/VariableCondition"
+                }
+              }
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "AllOfCondition"
+      },
+      "AllOfCondition-Output": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "all_of",
+            "title": "Type",
+            "default": "all_of"
+          },
+          "conditions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TimeCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/LocationCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/VariableCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/AllOfCondition-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/AnyOfCondition-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/NotCondition-Output"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "all_of": "#/components/schemas/AllOfCondition-Output",
+                  "any_of": "#/components/schemas/AnyOfCondition-Output",
+                  "location": "#/components/schemas/LocationCondition",
+                  "not": "#/components/schemas/NotCondition-Output",
+                  "time": "#/components/schemas/TimeCondition",
+                  "variable": "#/components/schemas/VariableCondition"
+                }
+              }
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "AllOfCondition"
+      },
       "AllTalkF5ttsModelConfig": {
         "properties": {
           "id": {
@@ -20092,6 +20488,114 @@
         ],
         "title": "AnthropicChatModelConfig",
         "description": "The specialised configuration for using a chat model with Anthropic."
+      },
+      "AnyOfCondition-Input": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "any_of",
+            "title": "Type",
+            "default": "any_of"
+          },
+          "conditions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TimeCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/LocationCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/VariableCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/AllOfCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/AnyOfCondition-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/NotCondition-Input"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "all_of": "#/components/schemas/AllOfCondition-Input",
+                  "any_of": "#/components/schemas/AnyOfCondition-Input",
+                  "location": "#/components/schemas/LocationCondition",
+                  "not": "#/components/schemas/NotCondition-Input",
+                  "time": "#/components/schemas/TimeCondition",
+                  "variable": "#/components/schemas/VariableCondition"
+                }
+              }
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "AnyOfCondition"
+      },
+      "AnyOfCondition-Output": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "any_of",
+            "title": "Type",
+            "default": "any_of"
+          },
+          "conditions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TimeCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/LocationCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/VariableCondition"
+                },
+                {
+                  "$ref": "#/components/schemas/AllOfCondition-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/AnyOfCondition-Output"
+                },
+                {
+                  "$ref": "#/components/schemas/NotCondition-Output"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "all_of": "#/components/schemas/AllOfCondition-Output",
+                  "any_of": "#/components/schemas/AnyOfCondition-Output",
+                  "location": "#/components/schemas/LocationCondition",
+                  "not": "#/components/schemas/NotCondition-Output",
+                  "time": "#/components/schemas/TimeCondition",
+                  "variable": "#/components/schemas/VariableCondition"
+                }
+              }
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Conditions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "conditions"
+        ],
+        "title": "AnyOfCondition"
       },
       "Author": {
         "properties": {
@@ -22266,6 +22770,20 @@
         "title": "ComfyUiImageModelConfig",
         "description": "The specialised configuration for using an image generation model with ComfyUI."
       },
+      "ComparisonOperator": {
+        "type": "string",
+        "enum": [
+          "eq",
+          "ne",
+          "gt",
+          "gte",
+          "lt",
+          "lte",
+          "in",
+          "not_in"
+        ],
+        "title": "ComparisonOperator"
+      },
       "ComponentChatConfig": {
         "properties": {
           "component": {
@@ -22564,6 +23082,7 @@
           "perspective_resolver",
           "scene_coordinator",
           "state_committer",
+          "trigger_evaluator",
           "character_image_generator",
           "character_portrait_image_generator",
           "location_image_generator",
@@ -24634,6 +25153,50 @@
         "type": "object",
         "title": "EventUpdate",
         "description": "DTO model for updating an event"
+      },
+      "ForcedActionEffect": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "forced_action",
+            "title": "Type",
+            "default": "forced_action"
+          },
+          "character_id": {
+            "type": "string",
+            "title": "Character Id"
+          },
+          "directive": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Directive",
+            "description": "What the character is forced to do next."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "character_id",
+          "directive"
+        ],
+        "title": "ForcedActionEffect",
+        "description": "Queued as a forced next action for one specific non-user character, reusing the same\nforced-action pathway as an out-of-character character_action_guide command."
+      },
+      "GateEffect": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "description"
+        ],
+        "title": "GateEffect",
+        "description": "What becomes possible once a GATE-kind trigger opens. Deliberately not wired into any\nprompt, validator, or perception mechanism yet - stored only for a future planning/guidance\nfeature to consume."
       },
       "GenerateStateImageRequest": {
         "properties": {
@@ -27691,6 +28254,43 @@
         ],
         "title": "Location"
       },
+      "LocationCondition": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "location",
+            "title": "Type",
+            "default": "location"
+          },
+          "character_id": {
+            "type": "string",
+            "title": "Character Id"
+          },
+          "location_id": {
+            "type": "string",
+            "title": "Location Id"
+          },
+          "landmark_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landmark Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "character_id",
+          "location_id"
+        ],
+        "title": "LocationCondition",
+        "description": "True while `character_id` is currently present in `location_id` - or, if `landmark_id` is\nalso set, anchored to that specific landmark within the location."
+      },
       "LocationCreate": {
         "properties": {
           "name": {
@@ -28421,6 +29021,136 @@
         ],
         "title": "MistralAiEmbedModelConfig",
         "description": "The specialised configuration for using an embedding model with Mistral AI."
+      },
+      "NarrativeBeatEffect": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "narrative_beat",
+            "title": "Type",
+            "default": "narrative_beat"
+          },
+          "directive": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Directive",
+            "description": "What must be woven into the next narration."
+          },
+          "relevant_character_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relevant Character Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "directive"
+        ],
+        "title": "NarrativeBeatEffect",
+        "description": "Queued as a must-include beat for the next narration that involves a relevant character."
+      },
+      "NotCondition-Input": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "not",
+            "title": "Type",
+            "default": "not"
+          },
+          "condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimeCondition"
+              },
+              {
+                "$ref": "#/components/schemas/LocationCondition"
+              },
+              {
+                "$ref": "#/components/schemas/VariableCondition"
+              },
+              {
+                "$ref": "#/components/schemas/AllOfCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOfCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/NotCondition-Input"
+              }
+            ],
+            "title": "Condition",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "all_of": "#/components/schemas/AllOfCondition-Input",
+                "any_of": "#/components/schemas/AnyOfCondition-Input",
+                "location": "#/components/schemas/LocationCondition",
+                "not": "#/components/schemas/NotCondition-Input",
+                "time": "#/components/schemas/TimeCondition",
+                "variable": "#/components/schemas/VariableCondition"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "condition"
+        ],
+        "title": "NotCondition"
+      },
+      "NotCondition-Output": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "not",
+            "title": "Type",
+            "default": "not"
+          },
+          "condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimeCondition"
+              },
+              {
+                "$ref": "#/components/schemas/LocationCondition"
+              },
+              {
+                "$ref": "#/components/schemas/VariableCondition"
+              },
+              {
+                "$ref": "#/components/schemas/AllOfCondition-Output"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOfCondition-Output"
+              },
+              {
+                "$ref": "#/components/schemas/NotCondition-Output"
+              }
+            ],
+            "title": "Condition",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "all_of": "#/components/schemas/AllOfCondition-Output",
+                "any_of": "#/components/schemas/AnyOfCondition-Output",
+                "location": "#/components/schemas/LocationCondition",
+                "not": "#/components/schemas/NotCondition-Output",
+                "time": "#/components/schemas/TimeCondition",
+                "variable": "#/components/schemas/VariableCondition"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "condition"
+        ],
+        "title": "NotCondition"
       },
       "OllamaChatModelConfig": {
         "properties": {
@@ -30598,6 +31328,45 @@
         "title": "ParsedSillyTavernCard",
         "description": "Raw card fields for the import review UI - deliberately not run through\n`CardPreprocessor`/any extraction stage, since this is what the user reviews and edits before\nthe real pipeline (`WorldReconstructor`) ever runs on it."
       },
+      "PerceivedCueEffect": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "perceived_cue",
+            "title": "Type",
+            "default": "perceived_cue"
+          },
+          "character_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Character Ids"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Description",
+            "description": "The ambient detail a recipient might notice - phrased as something observable (a remark, a slip, an object out of place), not as narration or a conclusion the character is being told to reach."
+          },
+          "expires_after_turns": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expires After Turns",
+            "description": "How many committed turns this stays a pending candidate for PerspectiveResolver before it's given up on and retired unconsumed.",
+            "default": 20
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "character_ids",
+          "description"
+        ],
+        "title": "PerceivedCueEffect",
+        "description": "Queued as ambient, non-forcing information for one or more characters to possibly notice.\n\nNever narrated directly and never a command - delivery goes through PerspectiveResolver\nexactly like any other perceivable entity (an item, a person), which decides per-observer,\nper-turn whether it's salient enough to actually surface this pass. Until then it stays\npending (see TriggerActivation) rather than being consumed on the first attempt, and expires\non its own after `expires_after_turns` committed turns rather than lingering forever unread."
+      },
       "PerplexityChatModelConfig": {
         "properties": {
           "id": {
@@ -31633,6 +32402,308 @@
         ],
         "title": "PromptWrite"
       },
+      "ProposedEntityCreation": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "create",
+            "title": "Type"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "world",
+              "character",
+              "background_character",
+              "item",
+              "item_stack",
+              "equipment",
+              "container",
+              "location",
+              "landmark",
+              "body",
+              "unknown"
+            ],
+            "title": "Entity Type"
+          },
+          "proposed_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Id",
+            "description": "Optional stable id suggested by the model. The committer may replace it."
+          },
+          "properties": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Properties",
+            "description": "Initial physical/entity properties matching the target entity model as much as possible."
+          },
+          "initial_relationships": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedRelationshipChange"
+            },
+            "type": "array",
+            "title": "Initial Relationships"
+          },
+          "source_action_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Action Refs",
+            "description": "References to accepted actions or summaries that justify this creation."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "entity_type",
+          "reason"
+        ],
+        "title": "ProposedEntityCreation"
+      },
+      "ProposedEntityPromotion": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "promote",
+            "title": "Type"
+          },
+          "source_entity": {
+            "$ref": "#/components/schemas/StateCommitEntityRef"
+          },
+          "target_entity_type": {
+            "type": "string",
+            "enum": [
+              "world",
+              "character",
+              "background_character",
+              "item",
+              "item_stack",
+              "equipment",
+              "container",
+              "location",
+              "landmark",
+              "body",
+              "unknown"
+            ],
+            "title": "Target Entity Type"
+          },
+          "target_properties": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Target Properties",
+            "description": "Properties for the target entity form. Include carried-over physical state from the source when relevant."
+          },
+          "preserve_source_as_state": {
+            "type": "boolean",
+            "title": "Preserve Source As State",
+            "description": "Whether the source entry should remain as a physical state/history marker instead of being deleted.",
+            "default": true
+          },
+          "source_state_changes": {
+            "items": {
+              "$ref": "#/components/schemas/StateCommitFieldChange"
+            },
+            "type": "array",
+            "title": "Source State Changes",
+            "description": "Changes to apply to the source entity to represent the promotion without deleting it."
+          },
+          "relationship_changes": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedRelationshipChange"
+            },
+            "type": "array",
+            "title": "Relationship Changes"
+          },
+          "source_action_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Action Refs"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "source_entity",
+          "target_entity_type",
+          "reason"
+        ],
+        "title": "ProposedEntityPromotion"
+      },
+      "ProposedEntityStateChange": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "state_change",
+            "title": "Type"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/StateCommitEntityRef"
+          },
+          "field_changes": {
+            "items": {
+              "$ref": "#/components/schemas/StateCommitFieldChange"
+            },
+            "type": "array",
+            "title": "Field Changes"
+          },
+          "source_action_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Action Refs"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "entity",
+          "field_changes",
+          "reason"
+        ],
+        "title": "ProposedEntityStateChange"
+      },
+      "ProposedNoPhysicalChange": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "no_physical_change",
+            "title": "Type"
+          },
+          "source_action_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Action Refs"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why no physical state/entity change is needed for the referenced accepted action."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "reason"
+        ],
+        "title": "ProposedNoPhysicalChange"
+      },
+      "ProposedRelationshipChange": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "relationship_change",
+            "title": "Type"
+          },
+          "relationship_type": {
+            "type": "string",
+            "enum": [
+              "located_at",
+              "inside",
+              "held_by",
+              "owned_by",
+              "equipped_by",
+              "wearing",
+              "attached_to",
+              "near",
+              "part_of",
+              "derived_from",
+              "interacting_with",
+              "emotion_toward",
+              "state_toward",
+              "other"
+            ],
+            "title": "Relationship Type"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/StateCommitEntityRef"
+          },
+          "object": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StateCommitEntityRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Target entity for binary relationships. Null only when clearing or ending a relationship."
+          },
+          "old_object": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StateCommitEntityRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Previous related entity when known, such as the old location or holder."
+          },
+          "properties": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Properties",
+            "description": "Relationship properties, such as equipped_position, position, intensity, or visibility."
+          },
+          "ended": {
+            "type": "boolean",
+            "title": "Ended",
+            "description": "True when the relationship should be marked inactive/ended rather than deleted.",
+            "default": false
+          },
+          "source_action_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Action Refs"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "relationship_type",
+          "subject",
+          "object",
+          "old_object",
+          "reason"
+        ],
+        "title": "ProposedRelationshipChange"
+      },
       "RelationshipEntityRef": {
         "properties": {
           "type": {
@@ -31686,6 +32757,51 @@
           "critical"
         ],
         "title": "Salience"
+      },
+      "SemanticCondition": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "semantic",
+            "title": "Type",
+            "default": "semantic"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/SemanticConditionMode",
+            "description": "FACT: has this specific thing become objectively true right now - judged against this turn's narration/memories alone. PACING: given the recent story trend, would surfacing this feel natural right now - judged against a wider recent-summary window, for long-running script threads with no hard moment they become true, only better or worse moments to nudge them forward.",
+            "default": "fact"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Statement",
+            "description": "A single, concrete, checkable statement for FACT mode (e.g. 'Alice has realized Bob has been lying to her about the letter'), or a description of the narrative opening being watched for in PACING mode (e.g. 'a natural moment has appeared to hint that Bob was involved in the incident')."
+          },
+          "relevant_character_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relevant Character Ids",
+            "description": "Characters this condition concerns. Used to decide which turns this condition is even a candidate for - it is not re-checked against every unrelated turn - and is the only part of a SemanticCondition ever combined with other trigger data outside the evaluator prompt itself."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "statement"
+        ],
+        "title": "SemanticCondition",
+        "description": "Free-text condition judged each candidate turn by the trigger_evaluator LLM component\nagainst recent narration and newly committed memories. Always the sole condition on a\ntrigger (see the union types below) - never nested inside all_of/any_of/not, since batching an\nLLM re-check of a fuzzy statement on every turn a sibling deterministic condition merely\n*might* flip is expensive and unreliable on local models; keep semantic and deterministic\ntriggers separate instead."
+      },
+      "SemanticConditionMode": {
+        "type": "string",
+        "enum": [
+          "fact",
+          "pacing"
+        ],
+        "title": "SemanticConditionMode",
+        "description": "How the trigger_evaluator should judge a SemanticCondition.statement."
       },
       "SillyTavernCardV3Asset": {
         "properties": {
@@ -32045,7 +33161,8 @@
           "commit",
           "time",
           "background",
-          "error"
+          "error",
+          "trigger"
         ],
         "title": "SimulationAuditCategory"
       },
@@ -32394,6 +33511,151 @@
         ],
         "title": "StackRelationshipUpdate"
       },
+      "StateCommitEntityRef": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "world",
+              "character",
+              "background_character",
+              "item",
+              "item_stack",
+              "equipment",
+              "container",
+              "location",
+              "landmark",
+              "body",
+              "unknown"
+            ],
+            "title": "Type"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Existing entity id when known. Null only for proposed new entities."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Human-readable entity name for review and debugging."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "StateCommitEntityRef"
+      },
+      "StateCommitFieldChange": {
+        "properties": {
+          "field_path": {
+            "type": "string",
+            "title": "Field Path",
+            "description": "Dot-separated physical-state field path, such as public_state, state, quality, or current_activity.name."
+          },
+          "old_value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value",
+            "description": "Current value when known from context. Null when unknown or not supplied."
+          },
+          "new_value": {
+            "title": "New Value",
+            "description": "Proposed new value."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why this field should change based on what happened."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field_path",
+          "new_value",
+          "reason"
+        ],
+        "title": "StateCommitFieldChange"
+      },
+      "StateMutationEffect": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "state_mutation",
+            "title": "Type",
+            "default": "state_mutation"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ProposedEntityCreation"
+                },
+                {
+                  "$ref": "#/components/schemas/ProposedEntityStateChange"
+                },
+                {
+                  "$ref": "#/components/schemas/ProposedEntityPromotion"
+                },
+                {
+                  "$ref": "#/components/schemas/ProposedRelationshipChange"
+                },
+                {
+                  "$ref": "#/components/schemas/ProposedNoPhysicalChange"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "create": "#/components/schemas/ProposedEntityCreation",
+                  "no_physical_change": "#/components/schemas/ProposedNoPhysicalChange",
+                  "promote": "#/components/schemas/ProposedEntityPromotion",
+                  "relationship_change": "#/components/schemas/ProposedRelationshipChange",
+                  "state_change": "#/components/schemas/ProposedEntityStateChange"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Operations"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "Author-facing note, never shown to any LLM.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operations"
+        ],
+        "title": "StateMutationEffect",
+        "description": "Applied immediately as StateCommitOperations, the same apply path used for an\nout-of-character world_state_mutation command - no LLM call, no waiting for the next\nnarration."
+      },
       "SttConfigUpdate": {
         "properties": {
           "model": {
@@ -32666,6 +33928,523 @@
           "en"
         ],
         "title": "SupportedLanguage"
+      },
+      "TimeCondition": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "time",
+            "title": "Type",
+            "default": "time"
+          },
+          "operator": {
+            "$ref": "#/components/schemas/ComparisonOperator"
+          },
+          "value": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operator",
+          "value"
+        ],
+        "title": "TimeCondition",
+        "description": "True while the simulation's current time satisfies the comparison against `value` - time\nis a first-class constraint here (deadlines, scheduled world events, curfews) just like\nlocation/variable, evaluated the same way: in code, every turn, never touching a prompt."
+      },
+      "Trigger": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "The World or Simulation this trigger belongs to."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name",
+            "description": "Author-facing label, never shown to any LLM."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Author-facing notes, never shown to any LLM.",
+            "default": ""
+          },
+          "condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimeCondition"
+              },
+              {
+                "$ref": "#/components/schemas/LocationCondition"
+              },
+              {
+                "$ref": "#/components/schemas/VariableCondition"
+              },
+              {
+                "$ref": "#/components/schemas/AllOfCondition-Output"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOfCondition-Output"
+              },
+              {
+                "$ref": "#/components/schemas/NotCondition-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SemanticCondition"
+              }
+            ],
+            "title": "Condition",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "all_of": "#/components/schemas/AllOfCondition-Output",
+                "any_of": "#/components/schemas/AnyOfCondition-Output",
+                "location": "#/components/schemas/LocationCondition",
+                "not": "#/components/schemas/NotCondition-Output",
+                "semantic": "#/components/schemas/SemanticCondition",
+                "time": "#/components/schemas/TimeCondition",
+                "variable": "#/components/schemas/VariableCondition"
+              }
+            }
+          },
+          "effect_kind": {
+            "$ref": "#/components/schemas/TriggerEffectKind"
+          },
+          "effects": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NarrativeBeatEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/ForcedActionEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/StateMutationEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/PerceivedCueEffect"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "forced_action": "#/components/schemas/ForcedActionEffect",
+                  "narrative_beat": "#/components/schemas/NarrativeBeatEffect",
+                  "perceived_cue": "#/components/schemas/PerceivedCueEffect",
+                  "state_mutation": "#/components/schemas/StateMutationEffect"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Effects",
+            "description": "Used when effect_kind is EVENT. Empty for GATE."
+          },
+          "gate_effect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateEffect"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Used when effect_kind is GATE. Null for EVENT."
+          },
+          "chance": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chance",
+            "description": "EVENT only. When set, a fresh code-rolled check must also succeed on the condition's rising edge for the trigger to actually fire ('may happen'). Null means unconditional firing on the rising edge ('will happen')."
+          },
+          "repeatable": {
+            "type": "boolean",
+            "title": "Repeatable",
+            "description": "EVENT only: whether the trigger can fire again after firing once.",
+            "default": false
+          },
+          "cooldown_turns": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Turns",
+            "description": "EVENT + repeatable only: minimum committed turns between firings."
+          },
+          "reversible": {
+            "type": "boolean",
+            "title": "Reversible",
+            "description": "GATE only: whether the gate can close again if the condition later becomes false.",
+            "default": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/TriggerStatus",
+            "default": "dormant"
+          },
+          "last_condition_result": {
+            "type": "boolean",
+            "title": "Last Condition Result",
+            "description": "The condition tree's own last evaluated result, used to detect a rising edge on the next evaluation. Distinct from `status`.",
+            "default": false
+          },
+          "last_fired_turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fired Turn Id"
+          },
+          "last_evaluated_turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Evaluated Turn Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "name",
+          "condition",
+          "effect_kind"
+        ],
+        "title": "Trigger",
+        "description": "A hidden condition -> effect rule. Authored on a World, copied into each Simulation\ncreated from it (like Character/Intent), and evaluated independently per simulation copy."
+      },
+      "TriggerCreate": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "The World or Simulation this trigger belongs to"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name",
+            "description": "Author-facing label, never shown to any LLM"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Author-facing notes, never shown to any LLM",
+            "default": ""
+          },
+          "condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimeCondition"
+              },
+              {
+                "$ref": "#/components/schemas/LocationCondition"
+              },
+              {
+                "$ref": "#/components/schemas/VariableCondition"
+              },
+              {
+                "$ref": "#/components/schemas/AllOfCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOfCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/NotCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/SemanticCondition"
+              }
+            ],
+            "title": "Condition",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "all_of": "#/components/schemas/AllOfCondition-Input",
+                "any_of": "#/components/schemas/AnyOfCondition-Input",
+                "location": "#/components/schemas/LocationCondition",
+                "not": "#/components/schemas/NotCondition-Input",
+                "semantic": "#/components/schemas/SemanticCondition",
+                "time": "#/components/schemas/TimeCondition",
+                "variable": "#/components/schemas/VariableCondition"
+              }
+            }
+          },
+          "effect_kind": {
+            "$ref": "#/components/schemas/TriggerEffectKind"
+          },
+          "effects": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NarrativeBeatEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/ForcedActionEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/StateMutationEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/PerceivedCueEffect"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "forced_action": "#/components/schemas/ForcedActionEffect",
+                  "narrative_beat": "#/components/schemas/NarrativeBeatEffect",
+                  "perceived_cue": "#/components/schemas/PerceivedCueEffect",
+                  "state_mutation": "#/components/schemas/StateMutationEffect"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Effects"
+          },
+          "gate_effect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateEffect"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chance": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chance"
+          },
+          "repeatable": {
+            "type": "boolean",
+            "title": "Repeatable",
+            "default": false
+          },
+          "cooldown_turns": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Turns"
+          },
+          "reversible": {
+            "type": "boolean",
+            "title": "Reversible",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "name",
+          "condition",
+          "effect_kind"
+        ],
+        "title": "TriggerCreate",
+        "description": "DTO model for creating a trigger. Runtime-state fields (status, last_condition_result,\nlast_fired_turn_id, last_evaluated_turn_id) are server-managed and not accepted here."
+      },
+      "TriggerEffectKind": {
+        "type": "string",
+        "enum": [
+          "event",
+          "gate"
+        ],
+        "title": "TriggerEffectKind"
+      },
+      "TriggerStatus": {
+        "type": "string",
+        "enum": [
+          "dormant",
+          "active",
+          "consumed",
+          "disabled"
+        ],
+        "title": "TriggerStatus"
+      },
+      "TriggerUpdate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "condition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TimeCondition"
+              },
+              {
+                "$ref": "#/components/schemas/LocationCondition"
+              },
+              {
+                "$ref": "#/components/schemas/VariableCondition"
+              },
+              {
+                "$ref": "#/components/schemas/AllOfCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/AnyOfCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/NotCondition-Input"
+              },
+              {
+                "$ref": "#/components/schemas/SemanticCondition"
+              }
+            ],
+            "title": "Condition",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "all_of": "#/components/schemas/AllOfCondition-Input",
+                "any_of": "#/components/schemas/AnyOfCondition-Input",
+                "location": "#/components/schemas/LocationCondition",
+                "not": "#/components/schemas/NotCondition-Input",
+                "semantic": "#/components/schemas/SemanticCondition",
+                "time": "#/components/schemas/TimeCondition",
+                "variable": "#/components/schemas/VariableCondition"
+              }
+            }
+          },
+          "effect_kind": {
+            "$ref": "#/components/schemas/TriggerEffectKind"
+          },
+          "effects": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/NarrativeBeatEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/ForcedActionEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/StateMutationEffect"
+                },
+                {
+                  "$ref": "#/components/schemas/PerceivedCueEffect"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "forced_action": "#/components/schemas/ForcedActionEffect",
+                  "narrative_beat": "#/components/schemas/NarrativeBeatEffect",
+                  "perceived_cue": "#/components/schemas/PerceivedCueEffect",
+                  "state_mutation": "#/components/schemas/StateMutationEffect"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Effects"
+          },
+          "gate_effect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateEffect"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chance": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chance"
+          },
+          "repeatable": {
+            "type": "boolean",
+            "title": "Repeatable",
+            "default": false
+          },
+          "cooldown_turns": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Turns"
+          },
+          "reversible": {
+            "type": "boolean",
+            "title": "Reversible",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "condition",
+          "effect_kind"
+        ],
+        "title": "TriggerUpdate",
+        "description": "DTO model for replacing a trigger's authored definition. Runtime-state fields are left\nuntouched by this endpoint - use the (future) status-only endpoints for those."
       },
       "TtsConfigUpdate": {
         "properties": {
@@ -33314,6 +35093,60 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VariableCondition": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "variable",
+            "title": "Type",
+            "default": "variable"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "variable_name": {
+            "type": "string",
+            "title": "Variable Name"
+          },
+          "operator": {
+            "$ref": "#/components/schemas/ComparisonOperator"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "owner_id",
+          "variable_name",
+          "operator",
+          "value"
+        ],
+        "title": "VariableCondition",
+        "description": "True while `owner_id`'s tracked variable named `variable_name` satisfies the comparison."
       },
       "VariableDefinition": {
         "properties": {

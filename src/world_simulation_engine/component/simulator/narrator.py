@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType
+from world_simulation_engine.misc.enums import ComponentType, TriggerEffectType
 from world_simulation_engine.model import Character, EmotionVector, Location, NarrationBlock, NarrationInsertionProposal, \
     NarrationProposal, SceneCoordinationResult, Simulation, SpeechAnchor, SpeechBlock, World
 
@@ -124,12 +124,23 @@ class Narrator(SimulatorComponent):
                 actors=True,
                 actor_key="character",
             )
+
+        actor_ids = {actor.character.id for actor in context.actors}
+        relevant_activations = await self._relevant_trigger_beat_activations(
+            simulation_id=simulation_id,
+            actor_ids=actor_ids,
+        )
+        data = context.model_dump()
+        if relevant_activations:
+            prompt = self._with_trigger_context(prompt)
+            data["trigger_beats"] = [activation.effect.directive for activation in relevant_activations]
+
         llm = await self._prepare_llm_service(simulation_id=simulation_id)
 
         insertion_proposal = await llm.invoke_structured_with_repair(
             output_model=NarrationInsertionProposal,
             messages=prompt,
-            data=context.model_dump(),
+            data=data,
             run_name="narrator.narrate_turn",
             repair_instruction=(
                 "Return a NarrationInsertionProposal JSON object only. Top-level key: insertions. "
@@ -138,10 +149,28 @@ class Narrator(SimulatorComponent):
             ),
         )
 
+        if relevant_activations:
+            # Marked consumed only after the LLM call above succeeds, so a failed/retried
+            # generation doesn't silently drop the beat forever.
+            await self._mark_trigger_activations_consumed(
+                [activation.id for activation in relevant_activations],
+            )
+
         return self._compose_narration_blocks(
             insertion_proposal=insertion_proposal,
             context=context,
         )
+
+    async def _relevant_trigger_beat_activations(self, *, simulation_id: str, actor_ids: set[str]):
+        activations = await self._unconsumed_trigger_activations(
+            simulation_id=simulation_id,
+            effect_type=TriggerEffectType.NARRATIVE_BEAT,
+        )
+        return [
+            activation for activation in activations
+            if not activation.effect.relevant_character_ids
+            or actor_ids & set(activation.effect.relevant_character_ids)
+        ]
 
     @classmethod
     def render_text(cls, proposal: NarrationProposal | str | None) -> str:

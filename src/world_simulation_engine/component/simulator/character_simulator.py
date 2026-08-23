@@ -8,11 +8,13 @@ from pydantic import BaseModel, Field
 from world_simulation_engine.misc.enums import (
     ActionType,
     ComponentType,
+    IntentStatus,
     IntentType,
     MemoryStance,
     MemorySupportType,
     Salience,
     SupportedLanguage,
+    TriggerEffectType,
 )
 from world_simulation_engine.model import (
     Intent,
@@ -33,6 +35,7 @@ from world_simulation_engine.model import (
     PerceivedBackgroundCharacter,
     PerceivedCharacter,
     PerceivedContainer,
+    PerceivedCue,
     PerceivedEquipment,
     PerceivedItem,
     ProposedAction,
@@ -87,6 +90,11 @@ class CharacterPerspective(BaseModel):
     perceived_equipment: list[PerceivedEquipment] = Field(default_factory=list)
     perceived_containers: list[PerceivedContainer] = Field(default_factory=list)
     perceived_landmarks: list[PerceivedLandmark] = Field(default_factory=list)
+    perceived_cues: list[PerceivedCue] = Field(
+        default_factory=list,
+        description="Ambient details this actor has noticed this turn - ordinary perception "
+                    "context, weighed the same as anything else observed, never a directive.",
+    )
 
     relevant_memories: list[RecalledMemory] = Field(default_factory=list)
     memory_retrieval: MemoryRetrievalDiagnostics | None = None
@@ -296,6 +304,12 @@ class CharacterSimulator(SimulatorComponent):
                     self._cosine_similarity(query_embedding, intent.embedding or []),
                 )
                 for intent in await self._db.intent.get_character_intents(character.id)
+                # get_character_intents returns every intent regardless of status - unlike
+                # get_active_intent_candidates above, which already excludes anything not
+                # ACTIVE/PAUSED. Without this filter a COMPLETED/FAILED/ABANDONED intent with
+                # high embedding similarity to the current input would resurface into context
+                # even though it's resolved and meant to stay out of the character's reasoning.
+                if intent.status in (IntentStatus.ACTIVE, IntentStatus.PAUSED)
             ]
             scored_intents.sort(key=lambda item: item[1], reverse=True)
 
@@ -405,6 +419,7 @@ class CharacterSimulator(SimulatorComponent):
             perceived_equipment=perspective.perceived_equipment,
             perceived_containers=perspective.perceived_containers,
             perceived_landmarks=perspective.perceived_landmarks,
+            perceived_cues=perspective.perceived_cues,
             relevant_memories=relevant_memories,
             memory_retrieval=self._last_memory_retrieval_diagnostics_var.get(),
             relationships=relationships,
@@ -472,6 +487,15 @@ class CharacterSimulator(SimulatorComponent):
         if perspective.emotion is not None:
             prompt = self._with_emotion_context(prompt)
 
+        forced_activations = await self._relevant_forced_action_activations(
+            simulation_id=simulation_id,
+            character_id=character_id,
+        )
+        data = perspective.model_dump()
+        if forced_activations:
+            prompt = self._with_forced_action_context(prompt)
+            data["trigger_forced_directives"] = [activation.effect.directive for activation in forced_activations]
+
         llm = await self._prepare_llm_service(
             simulation_id=simulation_id,
         )
@@ -479,7 +503,7 @@ class CharacterSimulator(SimulatorComponent):
         result = await llm.invoke_structured_with_repair(
             output_model=ActionProposal,
             messages=prompt,
-            data=perspective.model_dump(),
+            data=data,
             repair_instruction=(
                 "Return a valid ActionProposal. If any action type is speak, "
                 "that action utterance must be the exact line the actor says and must not be null. "
@@ -487,6 +511,13 @@ class CharacterSimulator(SimulatorComponent):
             ),
             run_name="character.propose_actions",
         )
+
+        if forced_activations:
+            # Marked consumed only after the LLM call above succeeds, so a failed/retried
+            # generation doesn't silently drop the forced directive forever.
+            await self._mark_trigger_activations_consumed(
+                [activation.id for activation in forced_activations],
+            )
 
         return await self._ensure_speak_actions_have_utterance(
             proposal=result,
@@ -496,6 +527,16 @@ class CharacterSimulator(SimulatorComponent):
             llm=llm,
             run_name="character.repair_proposed_speech",
         )
+
+    async def _relevant_forced_action_activations(self, *, simulation_id: str, character_id: str):
+        activations = await self._unconsumed_trigger_activations(
+            simulation_id=simulation_id,
+            effect_type=TriggerEffectType.FORCED_ACTION,
+        )
+        return [
+            activation for activation in activations
+            if activation.effect.character_id == character_id
+        ]
 
     async def _repair_missing_speech(
             self,

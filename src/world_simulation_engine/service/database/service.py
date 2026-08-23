@@ -22,6 +22,7 @@ from .media_store import MediaStore
 from .simulation_store import SimulationStore
 from .simulation_audit_store import SimulationAuditStore
 from .state_commit_store import StateCommitStore
+from .trigger_store import TriggerStore
 from .turn_store import TurnStore
 from .turn_presentation_store import TurnPresentationStore
 from .variable_store import VariableStore
@@ -62,6 +63,7 @@ class DatabaseService:
         self._simulation = SimulationStore(self._driver)
         self._simulation_audit = SimulationAuditStore(self._driver)
         self._state_commit = StateCommitStore(self._driver)
+        self._trigger = TriggerStore(self._driver)
         self._turn = TurnStore(self._driver)
         self._turn_presentation = TurnPresentationStore(self._driver)
         self._variable = VariableStore(self._driver)
@@ -149,6 +151,10 @@ class DatabaseService:
     @property
     def state_commit(self) -> StateCommitStore:
         return self._state_commit
+
+    @property
+    def trigger(self) -> TriggerStore:
+        return self._trigger
 
     @property
     def turn(self) -> TurnStore:

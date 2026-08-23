@@ -1,7 +1,7 @@
 from neo4j import AsyncDriver
-from pydantic import ValidationError
 
-from world_simulation_engine.model import NarrationProposal, SpeechBlock, Turn
+from world_simulation_engine.model import Turn
+from world_simulation_engine.service.turn_content_remap import remap_narration_character_ids
 
 
 class TurnStore:
@@ -353,7 +353,7 @@ class TurnStore:
         updates = [
             {"id": record["id"], "content": remapped}
             for record in result.records
-            if (remapped := self._remap_narration_content(record["content"], id_map)) is not None
+            if (remapped := remap_narration_character_ids(record["content"], id_map)) is not None
         ]
         if not updates:
             return 0
@@ -367,18 +367,3 @@ class TurnStore:
             parameters_={"updates": updates},
         )
         return len(updates)
-
-    @staticmethod
-    def _remap_narration_content(content: str, id_map: dict) -> str | None:
-        try:
-            proposal = NarrationProposal.model_validate_json(content)
-        except (ValidationError, ValueError):
-            return None
-
-        changed = False
-        for block in proposal.blocks:
-            if isinstance(block, SpeechBlock) and block.character_id in id_map:
-                block.character_id = id_map[block.character_id]
-                changed = True
-
-        return proposal.model_dump_json() if changed else None

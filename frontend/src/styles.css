@@ -1043,6 +1043,109 @@ body {
     justify-content: flex-start;
 }
 
+.trigger-condition-node {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f9fafb;
+}
+
+.trigger-condition-nested {
+    background: #ffffff;
+}
+
+.trigger-condition-list,
+.trigger-effect-list,
+.trigger-operation-list {
+    display: grid;
+    gap: 10px;
+}
+
+.trigger-condition-list-item,
+.trigger-effect-item,
+.trigger-operation-item {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+}
+
+.trigger-entity-ref,
+.trigger-entity-ref-empty {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin: 0;
+}
+
+.trigger-entity-ref legend {
+    padding: 0 4px;
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.trigger-field-changes {
+    display: grid;
+    gap: 8px;
+}
+
+.trigger-field-change-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.trigger-json-input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    min-height: 120px;
+}
+
+.trigger-status-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #6b7280;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.trigger-status-badge.trigger-status-active {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.trigger-status-badge.trigger-status-dormant {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.trigger-status-badge.trigger-status-consumed {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.trigger-status-badge.trigger-status-disabled {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.trigger-status-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .world-editor-cover-field {
     display: grid;
     gap: 8px;

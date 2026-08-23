@@ -460,7 +460,8 @@
         "metadataResourceUrl": "资源链接",
         "metadataVersion": "内容版本",
         "metadataTags": "标签",
-        "metadataComment": "备注（仅供人阅读，不会提供给 LLM）"
+        "metadataComment": "备注（仅供人阅读，不会提供给 LLM）",
+        "metadataSectionTitle": "元数据"
       },
       "characters": {
         "title": "角色",
@@ -1179,7 +1180,8 @@
         "memories": "记忆",
         "imageGeneration": "图像生成",
         "ttsGeneration": "语音生成",
-        "landmarks": "地标"
+        "landmarks": "地标",
+        "triggers": "触发器"
       },
       "create": {
         "locations": "创建地点",
@@ -1338,6 +1340,160 @@
         "placeholder": "zh-CN",
         "tooltip": "世界的语言，使用区域设置字符串。"
       }
+    }
+  },
+  "triggers": {
+    "saveSourceFirst": "请先保存世界或模拟，然后再管理触发器。",
+    "empty": "暂无触发器。",
+    "createNew": "创建触发器",
+    "confirmDelete": "删除触发器“{{name}}”？",
+    "conditionSectionTitle": "条件",
+    "effectSectionTitle": "效果",
+    "addCondition": "添加条件",
+    "removeCondition": "移除条件",
+    "addEffect": "添加效果",
+    "removeEffect": "移除效果",
+    "addOperation": "添加操作",
+    "removeOperation": "移除操作",
+    "addFieldChange": "添加字段变更",
+    "removeFieldChange": "移除字段变更",
+    "setEntityRef": "设置",
+    "clearEntityRef": "清除",
+    "enable": "启用",
+    "disable": "禁用",
+    "invalidJson": "JSON 格式无效。",
+    "fields": {
+      "name": "名称",
+      "description": "描述",
+      "conditionType": "条件类型",
+      "characterId": "角色",
+      "locationId": "地点",
+      "landmarkIdOptional": "地标（可选）",
+      "ownerId": "所有者（角色/物品/装备等）",
+      "variableName": "变量名称",
+      "operator": "运算符",
+      "valueType": "值类型",
+      "value": "值",
+      "valueList": "值（逗号分隔）",
+      "statement": "陈述",
+      "relevantCharacterIds": "相关角色",
+      "effectKind": "效果类别",
+      "effectType": "效果类型",
+      "directive": "指令",
+      "chance": "触发概率（0-1，留空表示必定触发）",
+      "repeatable": "可重复触发",
+      "cooldownTurns": "冷却回合数",
+      "reversible": "可逆",
+      "gateDescription": "闸门描述",
+      "status": "状态",
+      "note": "备注",
+      "operations": "状态变更操作",
+      "operationType": "操作类型",
+      "entity": "实体",
+      "entityType": "实体类型",
+      "entityId": "实体 ID",
+      "entityName": "实体名称",
+      "fieldChanges": "字段变更",
+      "fieldPath": "字段路径",
+      "newValue": "新值",
+      "reason": "原因",
+      "relationshipType": "关系类型",
+      "subject": "主体",
+      "object": "对象",
+      "oldObject": "原对象",
+      "properties": "属性（JSON）",
+      "ended": "已结束",
+      "proposedId": "建议 ID（可选）",
+      "sourceEntity": "源实体",
+      "targetEntityType": "目标实体类型",
+      "targetProperties": "目标属性（JSON）",
+      "preserveSourceAsState": "保留源实体为状态记录",
+      "timeValue": "时间",
+      "semanticMode": "判定模式",
+      "characterIds": "接收者",
+      "cueDescription": "环境细节",
+      "expiresAfterTurns": "过期回合数"
+    },
+    "conditionTypes": {
+      "time": "时间",
+      "location": "地点",
+      "variable": "变量",
+      "semantic": "语义（由 LLM 判定）",
+      "all_of": "全部满足（AND）",
+      "any_of": "任一满足（OR）",
+      "not": "取反"
+    },
+    "operators": {
+      "eq": "等于",
+      "ne": "不等于",
+      "gt": "大于",
+      "gte": "大于等于",
+      "lt": "小于",
+      "lte": "小于等于",
+      "in": "属于",
+      "not_in": "不属于"
+    },
+    "valueTypes": {
+      "string": "字符串",
+      "number": "数字",
+      "boolean": "布尔值",
+      "list": "列表"
+    },
+    "effectKinds": {
+      "event": "事件（会/可能发生）",
+      "gate": "闸门（变为可能）"
+    },
+    "effectTypes": {
+      "narrative_beat": "叙事情节",
+      "forced_action": "强制行动",
+      "state_mutation": "状态变更",
+      "perceived_cue": "感知线索"
+    },
+    "operationTypes": {
+      "state_change": "状态变更",
+      "relationship_change": "关系变更",
+      "create": "创建实体",
+      "promote": "实体升级",
+      "no_physical_change": "无物理变化"
+    },
+    "entityTypes": {
+      "world": "世界",
+      "character": "角色",
+      "background_character": "背景角色",
+      "item": "物品",
+      "item_stack": "物品堆叠",
+      "equipment": "装备",
+      "container": "容器",
+      "location": "地点",
+      "landmark": "地标",
+      "body": "尸体",
+      "unknown": "未知"
+    },
+    "relationshipTypes": {
+      "located_at": "位于",
+      "inside": "在内部",
+      "held_by": "被持有",
+      "owned_by": "被拥有",
+      "equipped_by": "被装备",
+      "wearing": "穿戴",
+      "attached_to": "附着于",
+      "near": "靠近",
+      "part_of": "属于部分",
+      "derived_from": "衍生自",
+      "interacting_with": "正在互动",
+      "emotion_toward": "情感指向",
+      "state_toward": "状态指向",
+      "other": "其他"
+    },
+    "statuses": {
+      "dormant": "休眠",
+      "active": "激活",
+      "consumed": "已触发",
+      "disabled": "已禁用"
+    },
+    "semanticModes": {
+      "fact": "事实（此刻是否成立）",
+      "pacing": "节奏（此刻是否是时机）"
     }
   }
 }

@@ -21,7 +21,13 @@ import {
     simulatorComponents,
 } from "@/api/configurations";
 import { deleteCoverImage, getCoverImageUrl, setCoverImage } from "@/api/media";
-import { fetchCharacterTtsConfig, setCharacterTtsConfig } from "@/api/simulations";
+import {
+    fetchCharacterTtsConfig,
+    generateCharacterCoverImage,
+    generateItemCoverImage,
+    generateLocationCoverImage,
+    setCharacterTtsConfig,
+} from "@/api/simulations";
 import { createWorld, updateWorld } from "@/api/worlds";
 import {
     createEvent,
@@ -66,9 +72,21 @@ import {
     updateWorldAuthor,
     updateWorldTurn,
 } from "@/api/worldEntities";
+import { GenerateCoverImageButton } from "@/components/GenerateCoverImageButton";
+import {
+    CheckboxField,
+    FieldLabel,
+    MultiSelectField,
+    ReadOnlyField,
+    SelectField,
+    TextArea,
+    TextField,
+} from "@/components/FormFields";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
+import { TriggerManagerPanel } from "@/components/TriggerManagerPanel";
 import { TurnContentEditor } from "@/components/TurnContentEditor";
+import { labelFor } from "@/utils/entityLabel";
 
 const sections = [
     "world",
@@ -84,6 +102,7 @@ const sections = [
     "equipment",
     "containers",
     "stacks",
+    "triggers",
     "turns",
     "events",
     "memories",
@@ -122,6 +141,15 @@ const entityDependencies = {
     equipment: ["locations", "characters", "containers"],
     containers: ["locations", "characters", "items", "equipment", "containers"],
     stacks: ["locations", "characters", "items", "containers"],
+};
+
+// Only these entity kinds have a backend image generator (component/image_generator/*) - the
+// rest (landmarks, background characters, equipment, containers, stacks) have no generator to
+// call, so they only ever get the choose/remove cover actions, never a generate button.
+const IMAGE_GENERATOR_COMPONENT_BY_KIND = {
+    characters: "character_image_generator",
+    locations: "location_image_generator",
+    items: "item_image_generator",
 };
 
 const requiredFields = {
@@ -195,10 +223,6 @@ const emptyForms = {
 function cleanText(value) {
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
-}
-
-function labelFor(entity, fallback) {
-    return entity?.name || entity?.model || entity?.id || fallback;
 }
 
 function makeEntityForm(kind, entity) {
@@ -316,6 +340,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     const [embeddingConfigsByComponent, setEmbeddingConfigsByComponent] = useState(() => emptyComponentConfigMap(simulatorComponents));
     const [imageLlmConfigsByComponent, setImageLlmConfigsByComponent] = useState(() => emptyComponentConfigMap(imageChatComponents));
     const [imageConfigsByComponent, setImageConfigsByComponent] = useState(() => emptyComponentConfigMap(imageComponents));
+    const [imageCapabilities, setImageCapabilities] = useState({});
     const [ttsConfigId, setTtsConfigId] = useState("");
     const [locations, setLocations] = useState([]);
     const [landmarks, setLandmarks] = useState([]);
@@ -493,6 +518,24 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
             .then((author) => setWorldForm((current) => ({ ...current, author_id: current.author_id || author?.id || "" })))
             .catch(() => {});
     }, [worldId]);
+
+    const refreshImageCapabilities = useCallback((id) => {
+        fetchWorldImageConfigs(id)
+            .then((assignments) => {
+                setImageCapabilities(
+                    Object.fromEntries(assignments.map((assignment) => [assignment.component, Boolean(assignment.config)])),
+                );
+            })
+            .catch(() => setImageCapabilities({}));
+    }, []);
+
+    useEffect(() => {
+        if (!worldId) {
+            return;
+        }
+
+        refreshImageCapabilities(worldId);
+    }, [worldId, refreshImageCapabilities]);
 
     useEffect(() => {
         if (!entitySections.includes(activeSection)) {
@@ -796,6 +839,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                 ],
             );
             setImageConnectionsLoaded(true);
+            refreshImageCapabilities(id);
             setConfigNotice(t("worldCreate.newEditor.configSaved"));
             setSaving(false);
         } catch (err) {
@@ -1156,6 +1200,22 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
         }
     }
 
+    async function handleGenerateCover(kind, entity) {
+        if (!worldId || !entity?.id) {
+            return;
+        }
+
+        if (kind === "characters") {
+            await generateCharacterCoverImage({ sourceId: worldId, characterId: entity.id });
+        } else if (kind === "locations") {
+            await generateLocationCoverImage({ sourceId: worldId, locationId: entity.id });
+        } else if (kind === "items") {
+            await generateItemCoverImage({ sourceId: worldId, itemId: entity.id });
+        }
+
+        setCoverRefreshKey((current) => current + 1);
+    }
+
     function finish() {
         onSaved();
     }
@@ -1360,6 +1420,14 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
                                 onCreate={() => beginCreate(activeSection)}
                                 onChooseCover={(entity) => setMediaPickerTarget({ kind: activeSection, id: entity.id })}
                                 onRemoveCover={(entity) => handleRemoveCover(activeSection, entity.id)}
+                                onGenerateCover={
+                                    IMAGE_GENERATOR_COMPONENT_BY_KIND[activeSection]
+                                        ? (entity) => handleGenerateCover(activeSection, entity)
+                                        : null
+                                }
+                                canGenerateCover={Boolean(
+                                    imageCapabilities[IMAGE_GENERATOR_COMPONENT_BY_KIND[activeSection]],
+                                )}
                                 onCancelEdit={() => {
                                     setEditing((current) => ({ ...current, [activeSection]: null }));
                                     setForms((current) => ({ ...current, [activeSection]: { ...emptyForms[activeSection] } }));
@@ -1371,6 +1439,10 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
 
                         {activeSection === "characters" && editing.characters ? (
                             <WorldCharacterVoiceEditor worldId={worldId} characterId={editing.characters.id} />
+                        ) : null}
+
+                        {activeSection === "triggers" ? (
+                            <TriggerManagerPanel sourceType="world" sourceId={worldId} />
                         ) : null}
 
                         {activeSection === "turns" ? (
@@ -1439,7 +1511,7 @@ export function WorldCreateModal({ mode = "create", initialWorld = null, onClose
     );
 }
 
-function EntitySection({ kind, data, form, editing, lookups, saving, worldReady, onChange, onSave, onEdit, onCreate, onChooseCover, onRemoveCover, onCancelEdit, onDelete, coverRefreshKey }) {
+function EntitySection({ kind, data, form, editing, lookups, saving, worldReady, onChange, onSave, onEdit, onCreate, onChooseCover, onRemoveCover, onGenerateCover, canGenerateCover, onCancelEdit, onDelete, coverRefreshKey }) {
     const { t } = useTranslation();
     const formValid = isEntityFormValid(kind, form);
 
@@ -1478,6 +1550,8 @@ function EntitySection({ kind, data, form, editing, lookups, saving, worldReady,
                     disabled={!editing?.id || saving}
                     onChoose={() => onChooseCover(editing)}
                     onRemove={() => onRemoveCover(editing)}
+                    onGenerate={onGenerateCover ? () => onGenerateCover(editing) : null}
+                    canGenerate={canGenerateCover}
                 />
                 <EntityFields kind={kind} form={form} lookups={lookups} onChange={onChange} />
                 <div className="modal-actions inline-actions">
@@ -1951,7 +2025,7 @@ function MemorySection({
     );
 }
 
-function CoverImageField({ kind, sourceId, refreshKey, disabled, onChoose, onRemove }) {
+function CoverImageField({ kind, sourceId, refreshKey, disabled, onChoose, onRemove, onGenerate, canGenerate }) {
     const { t } = useTranslation();
     const [failedImageUrl, setFailedImageUrl] = useState(null);
     const imageUrl = sourceId ? `${getCoverImageUrl(kind, sourceId)}?v=${refreshKey}` : null;
@@ -1977,6 +2051,13 @@ function CoverImageField({ kind, sourceId, refreshKey, disabled, onChoose, onRem
                     )}
                 </div>
                 <div className="world-editor-cover-actions">
+                    {onGenerate && canGenerate ? (
+                        <GenerateCoverImageButton
+                            label={t("simulationDetails.generateCoverImage")}
+                            onGenerate={onGenerate}
+                            disabled={disabled}
+                        />
+                    ) : null}
                     <button type="button" className="secondary-button" disabled={disabled} onClick={onChoose}>
                         {t("worldCreate.newEditor.chooseCoverImage")}
                     </button>
@@ -2117,62 +2198,6 @@ function RelationshipFields({ form, lookups, onChange }) {
             <SelectField label={t("worldCreate.newEditor.fields.owner_id")} value={form.owner_id} onChange={(value) => onChange("owner_id", value)} options={lookups.characters} emptyLabel={t("worldCreate.newEditor.emptySelect")} />
             <SelectField label={t("worldCreate.newEditor.fields.holder_id")} value={form.holder_id} onChange={(value) => onChange("holder_id", value)} options={[...lookups.characters, ...lookups.containers]} emptyLabel={t("worldCreate.newEditor.emptySelect")} />
         </>
-    );
-}
-
-function FieldLabel({ label, required }) {
-    const { t } = useTranslation();
-
-    return (
-        <span className="world-editor-field-label">
-            <span>{label}</span>
-            <span className={`world-editor-required-badge${required ? " required" : ""}`}>
-                {required ? t("worldCreate.newEditor.required") : t("worldCreate.newEditor.optional")}
-            </span>
-        </span>
-    );
-}
-
-function TextField({ label, value, onChange, type = "text", required = false }) {
-    return (
-        <label className="form-field inline-field">
-            <FieldLabel label={label} required={required} />
-            <input className="single-line-input" value={value} type={type} required={required} onChange={(event) => onChange(event.target.value)} />
-        </label>
-    );
-}
-
-function ReadOnlyField({ label, value }) {
-    return (
-        <label className="form-field inline-field">
-            <FieldLabel label={label} required={false} />
-            <input className="single-line-input" value={value} disabled readOnly />
-        </label>
-    );
-}
-
-function TextArea({ label, value, onChange, required = false }) {
-    return (
-        <label className="form-field inline-field">
-            <FieldLabel label={label} required={required} />
-            <textarea className="multi-line-input" value={value} required={required} onChange={(event) => onChange(event.target.value)} />
-        </label>
-    );
-}
-
-function SelectField({ label, value, onChange, options, emptyLabel = null, required = false }) {
-    return (
-        <label className="form-field inline-field">
-            <FieldLabel label={label} required={required} />
-            <select className="single-line-input" value={value ?? ""} required={required} onChange={(event) => onChange(event.target.value)}>
-                {emptyLabel ? <option value="">{emptyLabel}</option> : null}
-                {options.map((option) => (
-                    <option key={option.id} value={option.id}>
-                        {labelFor(option, option.id)}
-                    </option>
-                ))}
-            </select>
-        </label>
     );
 }
 
@@ -2369,40 +2394,3 @@ function WorldCharacterVoiceEditor({ worldId, characterId }) {
     );
 }
 
-function MultiSelectField({ label, value, onChange, options, required = false }) {
-    const selectedValues = Array.isArray(value)
-        ? value
-        : typeof value === "string"
-          ? value.split(",").map((entry) => entry.trim()).filter(Boolean)
-          : [];
-
-    return (
-        <label className="form-field inline-field">
-            <FieldLabel label={label} required={required} />
-            <select
-                className="single-line-input"
-                multiple
-                value={selectedValues}
-                required={required}
-                onChange={(event) =>
-                    onChange(Array.from(event.target.selectedOptions).map((option) => option.value))
-                }
-            >
-                {options.map((option) => (
-                    <option key={option.id} value={option.id}>
-                        {labelFor(option, option.id)}
-                    </option>
-                ))}
-            </select>
-        </label>
-    );
-}
-
-function CheckboxField({ label, checked, onChange }) {
-    return (
-        <label className="checkbox-field world-editor-checkbox">
-            <FieldLabel label={label} required={false} />
-            <input type="checkbox" checked={Boolean(checked)} onChange={(event) => onChange(event.target.checked)} />
-        </label>
-    );
-}

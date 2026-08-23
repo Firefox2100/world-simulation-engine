@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "对照最近的叙事文本和新提交的记忆，逐一检查一小份候选陈述，判断每一条是否现在已经明确成立。每次运行都要为每一个提供的候选项给出一个判定——大多数回合中，大多数候选项正确的结果就是尚未成立，因为没有发生与它们相关的事，这是正常、预期的结果，不是“没找到该成立的东西”。只输出 SemanticConditionEvaluationResult 的结构化 JSON；不要解释、Markdown 或必需结构之外的额外字段。\n\n每个候选项的 statement 就是要检查的确切内容——只依据提供的叙事文本和记忆实际表明的内容来判断，而不是凭“看起来很可能很快发生”来判断。只有当叙事文本/记忆明确表明该陈述已经成立时，才将 satisfied 设为 true。如果含糊不清、只有部分体现，或仅仅是暗示，就判为 false。为每一个提供的候选项恰好返回一个判定，candidate_index 必须与该候选项在列表中的位置一致。\n\n本地模型规则：\n- 输出保持精简：每个候选项恰好一个判定，不多不少。\n- 证据不足时，宁可判为 satisfied=false。\n- 两个候选项均未成立时的精确形状：{\"verdicts\":[{\"candidate_index\":0,\"satisfied\":false,\"reason\":\"提供的叙事文本或记忆中没有任何内容能证明这一点。\"},{\"candidate_index\":1,\"satisfied\":false,\"reason\":\"提供的叙事文本或记忆中没有任何内容能证明这一点。\"}]}\n- 已成立的示例（内容为占位示例——请替换为你自己上下文中真实的候选项索引，以及基于你自己上下文的理由）：{\"verdicts\":[{\"candidate_index\":0,\"satisfied\":true,\"reason\":\"叙事文本直接展示了示例角色找到了那封藏起来的信。\"}]}"
+  },
+  {
+    "role": "user",
+    "content": "## 模拟时间\n\n{{ simulation_time }}\n\n## 最近的叙事文本\n\n{{ narration or \"无\" }}\n\n## 新记忆\n\n{% for memory in memories %}\n- {{ memory.id }}: {{ memory.summary }}\n{% else %}\n- 无\n{% endfor %}\n\n## 待检查的候选项\n\n{% for candidate in candidates %}\n- candidate_index {{ candidate.index }}: {{ candidate.statement }}\n{% else %}\n- 无\n{% endfor %}\n\n每项判定都需要 candidate_index（对应上方某个候选项）、satisfied（true/false）和 reason（一句基于上方叙事文本/记忆的简短说明）。"
+  }
+]

@@ -270,6 +270,33 @@ class LocationStore:
 
         return self.location_from_node(record["loc"])
 
+    async def get_location_ids_by_characters(self, character_ids: list[str]) -> dict[str, dict]:
+        """Batched character -> {location_id, landmark_id} lookup for trigger condition
+        evaluation, where only the ids (not full Location/Landmark objects) are needed."""
+        if not character_ids:
+            return {}
+
+        result = await self._driver.execute_query(
+            """
+            UNWIND $character_ids AS character_id
+            MATCH (c:Character {id: character_id})
+            OPTIONAL MATCH (c)-[:PRESENT_IN]->(direct_location:Location)
+            OPTIONAL MATCH (c)-[:ANCHORED_TO]->(landmark:Landmark)<-[:CONTAINS]-(landmark_location:Location)
+            WITH character_id, coalesce(direct_location, landmark_location) AS location, landmark
+            WHERE location IS NOT NULL
+            RETURN character_id, location.id AS location_id, landmark.id AS landmark_id
+            """,
+            parameters_={"character_ids": character_ids},
+        )
+
+        return {
+            record["character_id"]: {
+                "location_id": record["location_id"],
+                "landmark_id": record["landmark_id"],
+            }
+            for record in result.records
+        }
+
     async def create_landmark(self,
                               landmark: Landmark,
                               location_id: str,

@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from world_simulation_engine.component.simulator.character_simulator import CharacterPerspective, CharacterSimulator
-from world_simulation_engine.misc.enums import ActionType, MemoryStance, MemorySupportType, Salience, \
-    SupportedLanguage, Visibility
-from world_simulation_engine.model import ActionProposal, Character, CurrentActivity, Event, Location, MemoryAtom, \
-    PerceivedCharacter, Simulation, World
+from world_simulation_engine.misc.enums import ActionType, IntentHorizon, IntentStatus, IntentType, MemoryStance, \
+    MemorySupportType, Salience, SupportedLanguage, Visibility
+from world_simulation_engine.model import ActionProposal, Character, CurrentActivity, Event, Intent, Location, \
+    MemoryAtom, PerceivedCharacter, Simulation, World
 from world_simulation_engine.service.database.memory_store import MemoryRecallRecord
 
 
@@ -187,6 +187,7 @@ async def test_build_perspective_recalls_relationships_for_actor_scope():
         perceived_equipment=[],
         perceived_containers=[],
         perceived_landmarks=[],
+        perceived_cues=[],
     ))
     simulator._recall_memory = AsyncMock(return_value=[])
     simulator._recall_intents = AsyncMock(return_value=[])
@@ -256,6 +257,7 @@ async def test_build_perspective_resolves_placeholder_references_without_mutatin
         perceived_equipment=[],
         perceived_containers=[],
         perceived_landmarks=[],
+        perceived_cues=[],
     ))
     simulator._recall_memory = AsyncMock(return_value=[])
     simulator._recall_intents = AsyncMock(return_value=[])
@@ -371,3 +373,46 @@ async def test_character_simulator_falls_back_when_speech_repair_llm_fails():
     )
 
     assert repaired.actions[0].utterance == "Room 7 was occupied before Director Harlan vanished."
+
+
+def make_intent(**overrides) -> Intent:
+    defaults = dict(
+        id="intent_1",
+        type=IntentType.QUEST,
+        name="Find the truth",
+        description="Uncover what really happened.",
+        priority=0.5,
+        urgency=0.5,
+        status=IntentStatus.ACTIVE,
+        horizon=IntentHorizon.SHORT,
+        embedding=[1.0, 0.0],
+    )
+    defaults.update(overrides)
+    return Intent(**defaults)
+
+
+async def test_recall_intents_excludes_resolved_intents_from_embedding_match():
+    """get_character_intents (unlike get_active_intent_candidates) returns every intent
+    regardless of status - a resolved intent must not resurface into context just because it's
+    semantically similar to the current input."""
+    simulation = Simulation(id="simulation_1", name="Simulation", current_time=datetime(2026, 1, 1, 12, 0))
+    character = Character(
+        id="character_1", name="Alex", age=30, gender="unknown", appearance="Plain",
+        description="A character", public_state="Standing", private_state="Focused",
+        current_activity=CurrentActivity(name="idle"),
+    )
+    active_intent = make_intent(id="intent_active", status=IntentStatus.ACTIVE)
+    completed_intent = make_intent(id="intent_completed", status=IntentStatus.COMPLETED)
+
+    database = Mock()
+    database.intent.get_active_intent_candidates = AsyncMock(return_value=[])
+    database.intent.get_character_intents = AsyncMock(return_value=[active_intent, completed_intent])
+    simulator = CharacterSimulator(database=database, langfuse_handler=None)
+    simulator._prepare_embed_service = AsyncMock(return_value=Mock(
+        embed_texts=AsyncMock(return_value=[[1.0, 0.0]]),
+    ))
+
+    recalled = await simulator._recall_intents(simulation=simulation, character=character, user_input="the truth")
+
+    recalled_ids = {entry.intent.id for entry in recalled}
+    assert recalled_ids == {"intent_active"}

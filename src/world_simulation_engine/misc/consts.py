@@ -20,6 +20,8 @@ class Prompts(TypedDict, total=False):
     relationship_updater: list[dict]
     subjective_model_updater: list[dict]
     variable_updater: list[dict]
+    trigger_evaluator: list[dict]
+    trigger_pacing_evaluator: list[dict]
     st_lorebook_classifier: list[dict]
     st_character_extractor: list[dict]
     st_location_extractor: list[dict]
@@ -48,6 +50,7 @@ class Prompts(TypedDict, total=False):
     resolve_perceived_equipment: list[dict]
     resolve_perceived_containers: list[dict]
     resolve_perceived_landmarks: list[dict]
+    resolve_perceived_cues: list[dict]
     turn_image_trigger: list[dict]
 
 
@@ -71,6 +74,8 @@ PROMPT_NAMES = [
     "relationship_updater",
     "subjective_model_updater",
     "variable_updater",
+    "trigger_evaluator",
+    "trigger_pacing_evaluator",
     "st_lorebook_classifier",
     "st_character_extractor",
     "st_background_character_extractor",
@@ -100,6 +105,7 @@ PROMPT_NAMES = [
     "resolve_perceived_equipment",
     "resolve_perceived_containers",
     "resolve_perceived_landmarks",
+    "resolve_perceived_cues",
     "turn_image_trigger",
 ]
 

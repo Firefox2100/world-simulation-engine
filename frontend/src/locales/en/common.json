@@ -461,7 +461,8 @@
         "metadataResourceUrl": "Resource URL",
         "metadataVersion": "Content version",
         "metadataTags": "Tags",
-        "metadataComment": "Notes (for humans, not the LLM)"
+        "metadataComment": "Notes (for humans, not the LLM)",
+        "metadataSectionTitle": "Metadata"
       },
       "characters": {
         "title": "Characters",
@@ -1180,7 +1181,8 @@
         "memories": "Memories",
         "imageGeneration": "Image generation",
         "ttsGeneration": "Voice generation",
-        "landmarks": "Landmarks"
+        "landmarks": "Landmarks",
+        "triggers": "Triggers"
       },
       "create": {
         "locations": "Create location",
@@ -1339,6 +1341,160 @@
         "placeholder": "en-US",
         "tooltip": "The language of the world, as a locale string."
       }
+    }
+  },
+  "triggers": {
+    "saveSourceFirst": "Save the world or simulation before managing triggers.",
+    "empty": "No triggers yet.",
+    "createNew": "Create trigger",
+    "confirmDelete": "Delete trigger \"{{name}}\"?",
+    "conditionSectionTitle": "Condition",
+    "effectSectionTitle": "Effect",
+    "addCondition": "Add condition",
+    "removeCondition": "Remove condition",
+    "addEffect": "Add effect",
+    "removeEffect": "Remove effect",
+    "addOperation": "Add operation",
+    "removeOperation": "Remove operation",
+    "addFieldChange": "Add field change",
+    "removeFieldChange": "Remove field change",
+    "setEntityRef": "Set",
+    "clearEntityRef": "Clear",
+    "enable": "Enable",
+    "disable": "Disable",
+    "invalidJson": "Invalid JSON.",
+    "fields": {
+      "name": "Name",
+      "description": "Description",
+      "conditionType": "Condition type",
+      "characterId": "Character",
+      "locationId": "Location",
+      "landmarkIdOptional": "Landmark (optional)",
+      "ownerId": "Owner (character/item/equipment/...)",
+      "variableName": "Variable name",
+      "operator": "Operator",
+      "valueType": "Value type",
+      "value": "Value",
+      "valueList": "Values (comma-separated)",
+      "statement": "Statement",
+      "relevantCharacterIds": "Relevant characters",
+      "effectKind": "Effect kind",
+      "effectType": "Effect type",
+      "directive": "Directive",
+      "chance": "Chance (0-1, blank = always fires)",
+      "repeatable": "Repeatable",
+      "cooldownTurns": "Cooldown (turns)",
+      "reversible": "Reversible",
+      "gateDescription": "Gate description",
+      "status": "Status",
+      "note": "Note",
+      "operations": "State mutation operations",
+      "operationType": "Operation type",
+      "entity": "Entity",
+      "entityType": "Entity type",
+      "entityId": "Entity ID",
+      "entityName": "Entity name",
+      "fieldChanges": "Field changes",
+      "fieldPath": "Field path",
+      "newValue": "New value",
+      "reason": "Reason",
+      "relationshipType": "Relationship type",
+      "subject": "Subject",
+      "object": "Object",
+      "oldObject": "Old object",
+      "properties": "Properties (JSON)",
+      "ended": "Ended",
+      "proposedId": "Proposed ID (optional)",
+      "sourceEntity": "Source entity",
+      "targetEntityType": "Target entity type",
+      "targetProperties": "Target properties (JSON)",
+      "preserveSourceAsState": "Preserve source as state",
+      "timeValue": "Time",
+      "semanticMode": "Evaluation mode",
+      "characterIds": "Recipients",
+      "cueDescription": "Ambient detail",
+      "expiresAfterTurns": "Expires after (turns)"
+    },
+    "conditionTypes": {
+      "time": "Time",
+      "location": "Location",
+      "variable": "Variable",
+      "semantic": "Semantic (LLM-judged)",
+      "all_of": "All of (AND)",
+      "any_of": "Any of (OR)",
+      "not": "Not"
+    },
+    "operators": {
+      "eq": "equals",
+      "ne": "not equals",
+      "gt": "greater than",
+      "gte": "greater than or equal to",
+      "lt": "less than",
+      "lte": "less than or equal to",
+      "in": "in",
+      "not_in": "not in"
+    },
+    "valueTypes": {
+      "string": "String",
+      "number": "Number",
+      "boolean": "Boolean",
+      "list": "List"
+    },
+    "effectKinds": {
+      "event": "Event (will/may happen)",
+      "gate": "Gate (becomes allowed)"
+    },
+    "effectTypes": {
+      "narrative_beat": "Narrative beat",
+      "forced_action": "Forced action",
+      "state_mutation": "State mutation",
+      "perceived_cue": "Perceived cue"
+    },
+    "operationTypes": {
+      "state_change": "State change",
+      "relationship_change": "Relationship change",
+      "create": "Create entity",
+      "promote": "Promote entity",
+      "no_physical_change": "No physical change"
+    },
+    "entityTypes": {
+      "world": "World",
+      "character": "Character",
+      "background_character": "Background character",
+      "item": "Item",
+      "item_stack": "Item stack",
+      "equipment": "Equipment",
+      "container": "Container",
+      "location": "Location",
+      "landmark": "Landmark",
+      "body": "Body",
+      "unknown": "Unknown"
+    },
+    "relationshipTypes": {
+      "located_at": "located at",
+      "inside": "inside",
+      "held_by": "held by",
+      "owned_by": "owned by",
+      "equipped_by": "equipped by",
+      "wearing": "wearing",
+      "attached_to": "attached to",
+      "near": "near",
+      "part_of": "part of",
+      "derived_from": "derived from",
+      "interacting_with": "interacting with",
+      "emotion_toward": "emotion toward",
+      "state_toward": "state toward",
+      "other": "other"
+    },
+    "statuses": {
+      "dormant": "Dormant",
+      "active": "Active",
+      "consumed": "Consumed",
+      "disabled": "Disabled"
+    },
+    "semanticModes": {
+      "fact": "Fact (is this true now)",
+      "pacing": "Pacing (is now the moment)"
     }
   }
 }

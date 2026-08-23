@@ -1321,6 +1321,34 @@ async def test_route_after_user_memory_summary_stops_after_user_problem():
     assert await simulator.route_after_user_memory_summary(state) == "__end__"
 
 
+async def test_route_after_user_memory_summary_continues_when_a_trigger_requested_it():
+    state = make_state(InputInterpretation(items=[]))
+    state.user_action_coordination = SceneCoordinationResult(status=SceneCoordinationStatus.STOPPED)
+    state.trigger_continuation_requested = True
+    simulator = WorldSimulator(database=Mock())
+
+    assert await simulator.route_after_user_memory_summary(state) == "propose_scheduled_character_actions"
+
+
+async def test_route_after_character_memory_summary_continues_only_for_world_simulator_state():
+    simulator = WorldSimulator(database=Mock())
+
+    world_state = make_state(InputInterpretation(items=[]))
+    world_state.trigger_continuation_requested = True
+    assert await simulator.route_after_character_memory_summary(world_state) == "propose_scheduled_character_actions"
+
+    world_state.trigger_continuation_requested = False
+    assert await simulator.route_after_character_memory_summary(world_state) == "__end__"
+
+    # An explicit CONTINUE_GENERATION/REGENERATION request has no continuation budget of its own
+    # to spend - route_after_character_memory_summary must never loop it, regardless of any field
+    # a WorldSimulatorState would have carried.
+    proposal_state = CharacterActionProposalState(
+        world_id="world_1", simulation_id="simulation_1", character_id="character_1", user_input="",
+    )
+    assert await simulator.route_after_character_memory_summary(proposal_state) == "__end__"
+
+
 async def test_propose_character_reactions_replaces_active_actions_and_preserves_problem_context():
     original_action = make_action("take_glass")
     reaction_action = make_action("pull_hand_back")
@@ -1844,6 +1872,55 @@ async def test_summarize_character_memory_applies_summary_proposal():
     simulator._relationship_updater.update_from_memories.assert_not_awaited()
 
 
+async def test_summarize_character_memory_spends_the_budget_when_a_trigger_fires():
+    coordination = SceneCoordinationResult(status=SceneCoordinationStatus.COMPLETE)
+    turn = Turn(
+        id="turn_1", sequence=1, type=TurnType.SYSTEM_RESPONSE, content="The scene continues.",
+        start_time=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    state = make_state(InputInterpretation(items=[]))
+    state.character_action_coordination = coordination
+    state.committed_turn = turn
+    state.state_commit_proposal = StateCommitProposal()
+    simulator = WorldSimulator(database=Mock())
+    simulator._memory_summarizer.summarize_character_actions = AsyncMock(return_value=MemorySummaryProposal())
+    simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
+    simulator._save_graph_state_snapshot = AsyncMock()
+    simulator._update_relationships_from_memory = AsyncMock(return_value=True)
+
+    result = await simulator.summarize_character_memory(state)
+
+    assert result["trigger_continuation_requested"] is True
+    assert result["trigger_continuation_used"] is True
+    simulator._update_relationships_from_memory.assert_awaited_once()
+
+
+async def test_summarize_character_memory_skips_evaluation_once_the_budget_is_already_spent():
+    coordination = SceneCoordinationResult(status=SceneCoordinationStatus.COMPLETE)
+    turn = Turn(
+        id="turn_1", sequence=1, type=TurnType.SYSTEM_RESPONSE, content="The scene continues.",
+        start_time=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    state = make_state(InputInterpretation(items=[]))
+    state.character_action_coordination = coordination
+    state.committed_turn = turn
+    state.state_commit_proposal = StateCommitProposal()
+    state.trigger_continuation_used = True
+    simulator = WorldSimulator(database=Mock())
+    simulator._memory_summarizer.summarize_character_actions = AsyncMock(return_value=MemorySummaryProposal())
+    simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
+    simulator._save_graph_state_snapshot = AsyncMock()
+    simulator._update_relationships_from_memory = AsyncMock(return_value=True)
+
+    result = await simulator.summarize_character_memory(state)
+
+    # Already spent this generation run - evaluation is skipped entirely (option B), not merely
+    # prevented from looping again; the next real check happens only after the user's next input.
+    simulator._update_relationships_from_memory.assert_not_awaited()
+    assert result["trigger_continuation_requested"] is False
+    assert result["trigger_continuation_used"] is True
+
+
 async def test_memory_relationship_update_uses_committed_evidence_and_action_entities():
     simulator = WorldSimulator(database=Mock())
     simulator._emotion_updater.update_from_memories = AsyncMock()
@@ -1869,8 +1946,10 @@ async def test_memory_relationship_update_uses_committed_evidence_and_action_ent
     })
 
     await simulator._update_relationships_from_memory(
+        world_id="world_1",
         simulation_id="simulation_1",
         turn_id="turn_1",
+        turn_sequence=1,
         memory_apply_result=MemorySummaryApplyResult(
             created_memory_ids=["memory_1"],
             memory_ids_by_character={
@@ -1953,6 +2032,8 @@ async def test_summarize_user_memory_applies_summary_proposal():
 
     assert result == {
         "memory_summary_proposal": proposal,
+        "trigger_continuation_requested": False,
+        "trigger_continuation_used": False,
     }
     simulator._memory_summarizer.summarize_user_actions.assert_awaited_once_with(
         world_id="world_1",
@@ -1967,6 +2048,38 @@ async def test_summarize_user_memory_applies_summary_proposal():
     assert saved_snapshot.turn_id == "turn_1"
     assert saved_snapshot.turn_sequence == 1
     assert saved_snapshot.state["memory_summary_proposal"] == proposal.model_dump(mode="json")
+
+
+async def test_summarize_user_memory_spends_the_budget_only_when_coordination_would_otherwise_stop():
+    """A trigger firing while coordination is already COMPLETE gets a free ride on the character
+    round that was going to happen anyway - the budget stays unspent for later. A trigger firing
+    while coordination is NOT complete is the only thing keeping the generation going, so that
+    does spend the one-shot budget."""
+    turn = Turn(
+        id="turn_1", sequence=1, type=TurnType.USER_INPUT, content="I look around.",
+        start_time=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    database = make_database_mock()
+    simulator = WorldSimulator(database=database)
+    simulator._memory_summarizer.summarize_user_actions = AsyncMock(return_value=MemorySummaryProposal())
+    simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
+    simulator._update_relationships_from_memory = AsyncMock(return_value=True)
+
+    complete_state = make_state(InputInterpretation(items=[]))
+    complete_state.user_action_coordination = SceneCoordinationResult(status=SceneCoordinationStatus.COMPLETE)
+    complete_state.committed_turn = turn
+    complete_state.state_commit_proposal = StateCommitProposal()
+    complete_result = await simulator.summarize_user_memory(complete_state)
+    assert complete_result["trigger_continuation_requested"] is True
+    assert complete_result["trigger_continuation_used"] is False
+
+    stopped_state = make_state(InputInterpretation(items=[]))
+    stopped_state.user_action_coordination = SceneCoordinationResult(status=SceneCoordinationStatus.STOPPED)
+    stopped_state.committed_turn = turn
+    stopped_state.state_commit_proposal = StateCommitProposal()
+    stopped_result = await simulator.summarize_user_memory(stopped_state)
+    assert stopped_result["trigger_continuation_requested"] is True
+    assert stopped_result["trigger_continuation_used"] is True
 
 
 async def test_start_generation_streams_graph_values_and_stores_final_state():

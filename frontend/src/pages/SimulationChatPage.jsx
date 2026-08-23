@@ -69,8 +69,11 @@ import {
 import { deleteCoverImage, getMediaUrl, setCoverImage } from "@/api/media";
 import { ensureAudioUnlockListeners, playAudioUrlSequence } from "@/utils/audioPlayback";
 import { waitForBlocksVoiced } from "@/utils/turnVoicePolling";
+import { GenerateCoverImageButton } from "@/components/GenerateCoverImageButton";
 import { MediaPickerModal } from "@/components/MediaPickerModal";
+import { useImageGenerationAction } from "@/shared/useImageGenerationAction";
 import { PromptAssignmentEditor } from "@/components/PromptAssignmentEditor";
+import { TriggerManagerPanel } from "@/components/TriggerManagerPanel";
 import { VoiceRecorderButton } from "@/components/VoiceRecorderButton";
 import { useMediaQuery } from "@/shared/useMediaQuery";
 import placeholderImage from "@/assets/placeholder/world.svg";
@@ -99,6 +102,7 @@ const detailSections = [
     "events",
     "memories",
     "intents",
+    "triggers",
     "observability",
 ];
 const entityDetailSections = [
@@ -635,39 +639,6 @@ function SegmentVoiceButton({ block, onVoiceGenerated }) {
     );
 }
 
-function useImageGenerationAction(onGenerate) {
-    const [state, setState] = useState("idle");
-    const [error, setError] = useState(null);
-    const resetTimerRef = useRef(null);
-
-    useEffect(() => () => {
-        if (resetTimerRef.current) {
-            clearTimeout(resetTimerRef.current);
-        }
-    }, []);
-
-    async function trigger() {
-        if (state === "generating") {
-            return;
-        }
-
-        setState("generating");
-        setError(null);
-
-        try {
-            await onGenerate();
-            setState("success");
-        } catch (err) {
-            setError(err.message);
-            setState("error");
-        } finally {
-            resetTimerRef.current = setTimeout(() => setState("idle"), 3000);
-        }
-    }
-
-    return { state, error, trigger };
-}
-
 function SegmentImageButton({ label, onGenerate }) {
     const { state, error, trigger } = useImageGenerationAction(onGenerate);
     const title = state === "error" ? error : label;
@@ -683,32 +654,6 @@ function SegmentImageButton({ label, onGenerate }) {
         >
             {state === "generating" ? "…" : state === "success" ? "✓" : state === "error" ? "!" : "🖼"}
         </button>
-    );
-}
-
-function GenerateCoverImageButton({ label, onGenerate }) {
-    const { t } = useTranslation();
-    const { state, error, trigger } = useImageGenerationAction(onGenerate);
-
-    return (
-        <>
-            <button
-                type="button"
-                className="secondary-button"
-                onClick={trigger}
-                disabled={state === "generating"}
-            >
-                {state === "generating" ? t("simulationDetails.generatingCoverImage") : label}
-            </button>
-            {state === "success" ? (
-                <span className="status-text">{t("simulationDetails.coverImageGenerated")}</span>
-            ) : null}
-            {state === "error" ? (
-                <span className="status-text error-text">
-                    {t("simulationDetails.coverImageError", { error })}
-                </span>
-            ) : null}
-        </>
     );
 }
 
@@ -2537,6 +2482,8 @@ function SimulationDetailsModal({
                       ? t("simulationDetails.tabs.ttsGeneration")
                     : activeSection === "prompts"
                       ? t("simulationDetails.tabs.prompts")
+                    : activeSection === "triggers"
+                      ? t("worldCreate.newEditor.tabs.triggers")
                     : activeSection === "observability"
                       ? t("simulationDetails.tabs.observability")
                   : simulation.name;
@@ -2653,7 +2600,9 @@ function SimulationDetailsModal({
                     <header className="simulation-details-header">
                         <div>
                             <p className="simulation-details-eyebrow">
-                                {t(`simulationDetails.tabs.${activeSection}`)}
+                                {t(`simulationDetails.tabs.${activeSection}`, {
+                                    defaultValue: t(`worldCreate.newEditor.tabs.${activeSection}`, { defaultValue: activeSection }),
+                                })}
                             </p>
                             <h2 id="simulation-details-title">{detailsTitle}</h2>
                         </div>
@@ -2723,6 +2672,8 @@ function SimulationDetailsModal({
                             <TtsGenerationConfigEditor simulationId={simulation.id} />
                         ) : activeSection === "prompts" ? (
                             <PromptAssignmentEditor sourceType="simulation" sourceId={simulation.id} />
+                        ) : activeSection === "triggers" ? (
+                            <TriggerManagerPanel sourceType="simulation" sourceId={simulation.id} />
                         ) : activeSection === "observability" ? (
                             <AuditEventTimeline events={auditEvents} />
                         ) : entityDetailSections.includes(activeSection) ? (

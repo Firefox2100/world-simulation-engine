@@ -7,10 +7,11 @@ from langgraph.types import Send
 from langfuse.langchain import CallbackHandler
 from pydantic import BaseModel, Field
 
-from world_simulation_engine.misc.enums import ComponentType, Visibility
+from world_simulation_engine.misc.enums import ComponentType, TriggerEffectType, Visibility
 from world_simulation_engine.model import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, \
-    PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, Character, BackgroundCharacter, Location, \
-    World, Simulation, Landmark, Item, ItemStack, Equipment, Container
+    PerceivedCue, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, Character, \
+    BackgroundCharacter, Location, World, Simulation, Landmark, Item, ItemStack, Equipment, Container, \
+    PerceivedCueEffect
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.service import DatabaseService
 from .simulator_component import SimulatorComponent
@@ -44,6 +45,10 @@ class ResolveGraphState(BaseModel):
     ] = Field(default_factory=list)
     perceived_landmarks: Annotated[
         list[PerceivedLandmark],
+        operator.add,
+    ] = Field(default_factory=list)
+    perceived_cues: Annotated[
+        list[PerceivedCue],
         operator.add,
     ] = Field(default_factory=list)
 
@@ -178,6 +183,28 @@ class LandmarkPerception(PerceivedEntity):
 
 class LandmarkPerceptionResult(BaseModel):
     landmarks: list[LandmarkPerception]
+
+
+class CueCandidate(BaseModel):
+    activation_id: str
+    description: str
+
+
+class ResolvePerceivedCueState(BaseModel):
+    world: World
+    simulation: Simulation
+    observer: Character
+    observer_location: Location
+
+    cues: list[CueCandidate]
+
+
+class CuePerception(PerceivedEntity):
+    activation_id: str
+
+
+class CuePerceptionResult(BaseModel):
+    cues: list[CuePerception]
 
 
 class PerspectiveResolver(SimulatorComponent):
@@ -493,6 +520,65 @@ class PerspectiveResolver(SimulatorComponent):
             ]
         }
 
+    async def _resolve_perceived_cues(self, state: ResolvePerceivedCueState):
+        """Judges pending PerceivedCueEffect activations for this observer exactly like any other
+        perceivable entity - the only trigger-authored content this ever sees is each candidate's
+        `description` (see CueCandidate), never the trigger's name, condition, or the rest of its
+        effect. A candidate judged not perceptible this pass is simply left out and stays pending
+        for a future attempt (see TriggerEngine._expire_stale_perceived_cues for its eventual
+        lifetime bound) - only candidates delivered with real visibility are marked consumed.
+        """
+        data = {
+            "observer": state.observer,
+            "current_location": state.observer_location,
+            "cues": state.cues,
+        }
+
+        prompt = await self._prepare_prompt(
+            simulation_id=state.simulation.id,
+            language=state.world.language,
+            prompt_name="resolve_perceived_cues",
+        )
+
+        llm = await self._prepare_llm_service(
+            simulation_id=state.simulation.id,
+        )
+
+        result = await llm.invoke_structured_with_repair(
+            output_model=CuePerceptionResult,
+            messages=prompt,
+            data=data,
+            repair_instruction="",
+            run_name="perspective.resolve_cues",
+        )
+
+        candidates_by_id = {
+            candidate.activation_id: candidate
+            for candidate in state.cues
+        }
+
+        delivered = [
+            cue for cue in result.cues
+            if cue.activation_id in candidates_by_id and cue.visibility != Visibility.INVISIBLE
+        ]
+        await self._mark_trigger_activations_consumed([cue.activation_id for cue in delivered])
+
+        return {
+            "perceived_cues": [
+                PerceivedCue(
+                    activation_id=cue.activation_id,
+                    description=candidates_by_id[cue.activation_id].description,
+                    visibility=cue.visibility,
+                    distance_hint=cue.distance_hint,
+                    affordances=cue.affordances,
+                    salience=cue.salience,
+                    notes=cue.notes,
+                )
+                for cue in result.cues
+                if cue.activation_id in candidates_by_id
+            ]
+        }
+
     def _graph_resolve_graph(self) -> CompiledStateGraph:
         graph = StateGraph(ResolveGraphState)
 
@@ -502,6 +588,7 @@ class PerspectiveResolver(SimulatorComponent):
         graph.add_node("resolve_perceived_equipment", self._resolve_perceived_equipment)
         graph.add_node("resolve_perceived_containers", self._resolve_perceived_containers)
         graph.add_node("resolve_perceived_landmarks", self._resolve_perceived_landmarks)
+        graph.add_node("resolve_perceived_cues", self._resolve_perceived_cues)
 
         async def route_after_start(state: ResolveGraphState):
             result = []
@@ -627,6 +714,28 @@ class PerspectiveResolver(SimulatorComponent):
                     )
                 ))
 
+            pending_cues = await self._unconsumed_trigger_activations(
+                simulation_id=state.simulation.id,
+                effect_type=TriggerEffectType.PERCEIVED_CUE,
+            )
+            cue_candidates = [
+                CueCandidate(activation_id=activation.id, description=activation.effect.description)
+                for activation in pending_cues
+                if isinstance(activation.effect, PerceivedCueEffect)
+                and state.observer.id in activation.effect.character_ids
+            ]
+            if cue_candidates:
+                result.append(Send(
+                    "resolve_perceived_cues",
+                    ResolvePerceivedCueState(
+                        world=state.world,
+                        simulation=state.simulation,
+                        observer=state.observer,
+                        observer_location=state.location,
+                        cues=cue_candidates,
+                    )
+                ))
+
             return result or END
 
         graph.add_conditional_edges(
@@ -639,6 +748,7 @@ class PerspectiveResolver(SimulatorComponent):
         graph.add_edge("resolve_perceived_equipment", END)
         graph.add_edge("resolve_perceived_containers", END)
         graph.add_edge("resolve_perceived_landmarks", END)
+        graph.add_edge("resolve_perceived_cues", END)
 
         return graph.compile()
 

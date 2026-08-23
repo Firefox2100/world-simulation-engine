@@ -43,6 +43,7 @@ from .relationship_updater import RelationshipUpdater
 from .scene_coordinator import SceneCoordinator
 from .state_committer import StateCommitter
 from .subjective_model_updater import SubjectiveModelUpdater
+from .trigger_evaluator import TriggerEngine
 from .variable_updater import VariableUpdater
 
 
@@ -168,6 +169,8 @@ class WorldSimulatorState(BaseModel):
     memory_summary_proposal: MemorySummaryProposal | None = None
     active_off_scene_generations: list[OffSceneGenerationStatus] = Field(default_factory=list)
     audit_run_id: str | None = None
+    trigger_continuation_requested: bool = False
+    trigger_continuation_used: bool = False
 
 
 class CharacterActionProposalState(BaseModel):
@@ -279,6 +282,10 @@ class WorldSimulator:
             prompt_loader=prompt_loader,
         )
         self._state_committer = StateCommitter(
+            database=database,
+            prompt_loader=prompt_loader,
+        )
+        self._trigger_engine = TriggerEngine(
             database=database,
             prompt_loader=prompt_loader,
         )
@@ -1016,10 +1023,13 @@ class WorldSimulator:
                     turn_id=item.trigger_turn.id,
                 )
                 await self._update_relationships_from_memory(
+                    world_id=state.world.id,
                     simulation_id=state.simulation.id,
                     turn_id=item.trigger_turn.id,
+                    turn_sequence=item.trigger_turn.sequence,
                     memory_apply_result=memory_apply_result,
                     coordination=coordination,
+                    narration=activity_input,
                 )
                 result = OffSceneActivityResult(
                     simulation_id=state.simulation.id,
@@ -2077,19 +2087,37 @@ class WorldSimulator:
             proposal=proposal,
             turn_id=state.committed_turn.id,
         )
-        await self._update_relationships_from_memory(
+        # trigger_continuation_used is always False here - this is the first trigger-evaluation
+        # point of a fresh generation run - but computing spending_now the same way
+        # summarize_character_memory does keeps the two call sites symmetric and correct if that
+        # ever stops being true (e.g. a future entry point that resumes mid-run).
+        continuation_requested = await self._update_relationships_from_memory(
+            world_id=state.world.id,
             simulation_id=state.simulation.id,
             turn_id=state.committed_turn.id,
+            turn_sequence=state.committed_turn.sequence,
             memory_apply_result=memory_apply_result,
             coordination=state.user_action_coordination,
+            narration=Narrator.render_text(state.narration) or state.user_input or "",
+            evaluate_triggers=not state.trigger_continuation_used,
         )
         await self._save_graph_state_snapshot(
             state=state.model_copy(update={"memory_summary_proposal": proposal}),
             type=GraphStateSnapshotType.AFTER_USER_INPUT,
             turn=state.committed_turn,
         )
+        # A continuation request only "spends" the one-shot cap when it's the reason a character
+        # round happens at all - route_after_user_memory_summary already continues unconditionally
+        # when coordination is COMPLETE, so a trigger firing alongside that gets a free ride on an
+        # already-happening round instead of using up the budget.
+        spending_now = (
+            continuation_requested
+            and state.user_action_coordination.status != SceneCoordinationStatus.COMPLETE
+        )
         return {
             "memory_summary_proposal": proposal,
+            "trigger_continuation_requested": continuation_requested,
+            "trigger_continuation_used": state.trigger_continuation_used or spending_now,
         }
 
     async def _user_coordination_from_state(self, state: WorldSimulatorState) -> SceneCoordinationResult:
@@ -2164,33 +2192,59 @@ class WorldSimulator:
             proposal=proposal,
             turn_id=state.committed_turn.id,
         )
-        await self._update_relationships_from_memory(
-            simulation_id=simulation_id,
-            turn_id=state.committed_turn.id,
-            memory_apply_result=memory_apply_result,
-            coordination=state.character_action_coordination,
-        )
+        # Only a WorldSimulatorState carries the one-shot continuation budget at all - an explicit
+        # CONTINUE_GENERATION/REGENERATION request (CharacterActionProposalState) is already the
+        # user asking for another round, so it never grants an *additional* automatic one on top.
+        already_used = isinstance(state, WorldSimulatorState) and state.trigger_continuation_used
+        continuation_requested = False
+        if not already_used:
+            continuation_requested = await self._update_relationships_from_memory(
+                world_id=world_id,
+                simulation_id=simulation_id,
+                turn_id=state.committed_turn.id,
+                turn_sequence=state.committed_turn.sequence,
+                memory_apply_result=memory_apply_result,
+                coordination=state.character_action_coordination,
+                narration=Narrator.render_text(state.narration),
+            )
         if isinstance(state, WorldSimulatorState):
             await self._save_graph_state_snapshot(
                 state=state.model_copy(update={"memory_summary_proposal": proposal}),
                 type=GraphStateSnapshotType.AFTER_CHARACTER_ROUND,
                 turn=state.committed_turn,
             )
-        return {
-            "memory_summary_proposal": proposal,
-        }
+        result = {"memory_summary_proposal": proposal}
+        if isinstance(state, WorldSimulatorState):
+            # Unlike the user-input entry point, nothing else already continues past this node -
+            # every continuation from here is trigger-initiated, so requesting one always spends
+            # the budget (no "already continuing anyway" case to leave unspent).
+            result["trigger_continuation_requested"] = continuation_requested
+            result["trigger_continuation_used"] = already_used or continuation_requested
+        return result
 
     async def _update_relationships_from_memory(
             self,
             *,
+            world_id: str,
             simulation_id: str,
             turn_id: str,
+            turn_sequence: int,
             memory_apply_result: MemorySummaryApplyResult,
             coordination: SceneCoordinationResult,
-    ) -> None:
-        """Run isolated, best-effort updates only for perspectives with committed evidence."""
+            narration: str = "",
+            evaluate_triggers: bool = True,
+    ) -> bool:
+        """Run isolated, best-effort updates only for perspectives with committed evidence.
+
+        Returns whether trigger evaluation (if it ran at all) requested one extra foreground
+        round - see WorldSimulator._evaluate_triggers. `evaluate_triggers=False` skips evaluation
+        entirely, used for the one already-granted extra round itself: a trigger that only became
+        true because of that round's own actions has no further round left to be delivered into
+        this generation, so checking is pure overhead - the very next real evaluation, after the
+        user's next input, checks from scratch with no memory of anything having been skipped.
+        """
         if not isinstance(memory_apply_result, MemorySummaryApplyResult):
-            return
+            return False
         candidate_ids = set(memory_apply_result.memory_ids_by_character)
         for accepted in coordination.accepted_actions:
             candidate_ids.add(accepted.actor_id)
@@ -2213,6 +2267,98 @@ class WorldSimulator:
             )
             for character_id in character_ids[:self._MAX_RELATIONSHIP_UPDATE_PERSPECTIVES]
         ])
+
+        if not evaluate_triggers:
+            return False
+
+        # Runs after every derived update above (variable values must be final before any
+        # VariableCondition is checked) but is otherwise independent of them.
+        return await self._evaluate_triggers(
+            world_id=world_id,
+            simulation_id=simulation_id,
+            turn_id=turn_id,
+            turn_sequence=turn_sequence,
+            narration=narration,
+            memory_ids=sorted({
+                memory_id
+                for memory_ids in memory_apply_result.memory_ids_by_character.values()
+                for memory_id in memory_ids
+            }),
+            candidate_entity_ids=candidate_ids,
+        )
+
+    async def _evaluate_triggers(
+            self,
+            *,
+            world_id: str,
+            simulation_id: str,
+            turn_id: str,
+            turn_sequence: int,
+            narration: str,
+            memory_ids: list[str],
+            candidate_entity_ids: set[str],
+    ) -> bool:
+        """Best-effort: trigger evaluation must never fail the turn it runs after.
+
+        Reads the simulation's current_time fresh from the DB rather than accepting it as a
+        parameter, since the caller may be a CharacterActionProposalState (continuation/
+        regeneration entry) which carries no live Simulation object of its own.
+
+        Returns whether at least one fired trigger warrants one extra foreground round before
+        yielding back to the user - never true when a fired effect names the user's own character
+        (see TriggerFireResult.continuation_eligible), since the engine can only propose actions
+        for NPCs, never on the user's behalf.
+        """
+        try:
+            simulation = await self._db.simulation.get_simulation(simulation_id)
+            if not simulation:
+                return False
+            memories = [
+                memory
+                for memory_id in memory_ids
+                if (memory := await self._db.memory.get_memory(memory_id)) is not None
+            ]
+            results = await self._trigger_engine.process_turn(
+                world_id=world_id,
+                simulation_id=simulation_id,
+                turn_id=turn_id,
+                turn_sequence=turn_sequence,
+                current_time=simulation.current_time,
+                narration=narration,
+                memories=memories,
+                candidate_entity_ids=candidate_entity_ids,
+            )
+            if not results:
+                return False
+
+            user_character = await self._db.character.get_user_character_by_simulation(simulation_id)
+            user_character_id = user_character.id if user_character else None
+            continuation_requested = any(
+                result.continuation_eligible(user_character_id) for result in results
+            )
+            await self._record_audit(
+                simulation_id=simulation_id,
+                turn_id=turn_id,
+                category=SimulationAuditCategory.TRIGGER,
+                stage="trigger_evaluation",
+                summary=f"{len(results)} trigger(s) fired.",
+                details={
+                    "trigger_ids": [result.trigger_id for result in results],
+                    "continuation_requested": continuation_requested,
+                },
+            )
+            return continuation_requested
+        except Exception as exc:
+            await self._record_audit(
+                simulation_id=simulation_id,
+                turn_id=turn_id,
+                category=SimulationAuditCategory.ERROR,
+                status=SimulationAuditStatus.FAILED,
+                stage="trigger_evaluation",
+                summary="Trigger evaluation failed and was skipped.",
+                details=self._error_audit_details(exc),
+            )
+            return False
 
     async def _run_derived_updates_for_character(
             self,
@@ -2333,6 +2479,19 @@ class WorldSimulator:
             raise RuntimeError("No user action coordination supplied")
 
         if state.user_action_coordination.status == SceneCoordinationStatus.COMPLETE:
+            return "propose_scheduled_character_actions"
+
+        if state.trigger_continuation_requested:
+            return "propose_scheduled_character_actions"
+
+        return END
+
+    async def route_after_character_memory_summary(self, state: WorldSimulatorState | CharacterActionProposalState):
+        """Grants at most one extra foreground character round per generation run, only when a
+        trigger fired this pass that doesn't involve the user's own character (see
+        TriggerFireResult.continuation_eligible) - see summarize_character_memory for where the
+        one-shot budget is actually spent."""
+        if isinstance(state, WorldSimulatorState) and state.trigger_continuation_requested:
             return "propose_scheduled_character_actions"
 
         return END
@@ -3096,7 +3255,10 @@ class WorldSimulator:
         graph.add_edge("narrate_turn", "suggest_character_actions")
         graph.add_edge("select_character_event_observers", "commit_character_actions")
         graph.add_edge("commit_character_actions", "summarize_character_memory")
-        graph.add_edge("summarize_character_memory", END)
+        graph.add_conditional_edges(
+            "summarize_character_memory",
+            self.route_after_character_memory_summary,
+        )
         graph.add_edge("suggest_character_actions", END)
 
     def _add_character_round_edges(self, graph: StateGraph, start_node: str):

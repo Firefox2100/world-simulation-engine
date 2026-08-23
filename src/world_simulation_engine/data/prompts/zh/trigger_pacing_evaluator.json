@@ -1,0 +1,10 @@
+[
+  {
+    "role": "system",
+    "content": "这里判断的是故事节奏，而不是事实核查。每个候选项描述的是一条长期叙事线索正在等待的某种“契机”——它不是已经确定成立的事实，而是一个此刻推动它向前会显得水到渠成、而非生硬强加的时机。请针对下方“最近的故事”，独立判断每个候选项：最近的故事是否已经自然地创造出这样一个契机，还是故事只是在按自己已经确立的节奏继续发展？按原有节奏继续——一段拖长的对话、一件无关的差事、一段平静的间隙——是最常见的正常情况，此时应保持不变。只输出 SemanticConditionEvaluationResult 的结构化 JSON；不要解释、Markdown 或必需结构之外的额外字段。\n\n每次运行都要为每一个候选项给出判断——大多数回合中，对大多数候选项而言，正确答案都是尚未出现契机，这是正常、预期的结果，不是“没找到该出现的东西”。只有当最近的故事明确支持这是一个自然的时机——相关的进展、某个相关角色处境的变化、恰好合适的场景——才将其判为成立，而不是仅仅因为时间过去够久，或仅仅因为它还没发生过。\n\n本地模型规则：\n- 输出保持精简：每个候选项恰好一个判定，不多不少。\n- 证据不足时，宁可判为 satisfied=false——一个不勉强的“尚未”永远好过一个过早的“现在”。\n- 两个候选项均未成立时的精确形状：{\"verdicts\":[{\"candidate_index\":0,\"satisfied\":false,\"reason\":\"最近的故事仍在按自己的节奏发展；这里还没有出现契机。\"},{\"candidate_index\":1,\"satisfied\":false,\"reason\":\"最近的故事仍在按自己的节奏发展；这里还没有出现契机。\"}]}\n- 已成立的示例（内容为占位示例——请替换为你自己上下文中真实的候选项索引，以及基于你自己提供的最近摘要的理由）：{\"verdicts\":[{\"candidate_index\":0,\"satisfied\":true,\"reason\":\"某条最近摘要显示示例角色就同一话题追问不休，这使得此刻成为一个自然的契机。\"}]}"
+  },
+  {
+    "role": "user",
+    "content": "## 模拟时间\n\n{{ simulation_time }}\n\n## 最近的故事（最新的在最后）\n\n{% for summary in recent_summaries %}\n- {{ summary }}\n{% else %}\n- 无\n{% endfor %}\n\n## 待检查的候选项\n\n{% for candidate in candidates %}\n- candidate_index {{ candidate.index }}: {{ candidate.statement }}\n{% else %}\n- 无\n{% endfor %}\n\n每项判定都需要 candidate_index（对应上方某个候选项）、satisfied（true/false）和 reason（一句基于上方最近故事的简短说明）。"
+  }
+]

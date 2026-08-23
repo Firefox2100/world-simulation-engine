@@ -16,6 +16,7 @@ from .prompt import prompt_router
 from .sillytavern_import import sillytavern_import_router
 from .simulation import simulation_router
 from .speech_recognition import speech_recognition_router
+from .trigger import trigger_router
 from .turn import turn_router
 from .variable import variable_router
 from .workflow import workflow_router

@@ -73,7 +73,10 @@ async def _build_rich_world(db: DatabaseService, storage: StorageService, driver
 
     turn = Turn(
         id=str(uuid4()), sequence=1, type=TurnType.SYSTEM_RESPONSE,
-        content="Alex arrives at the market.", start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        content=json.dumps({"blocks": [
+            {"type": "speech", "character_id": alex.id, "character_name": "Alex", "text": "I'm here."},
+        ]}),
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
     )
     await db.turn.create_turn(turn, world.id)
     event = Event(id=str(uuid4()), name="Arrival", summary="Alex arrives at the market.")
@@ -276,6 +279,11 @@ async def test_import_world_recreates_full_content(clean_neo4j, tmp_path):
 
     turns = await db.turn.list_turns(source_id=imported_world.id, limit=100)
     assert len(turns) == 1
+    # The turn's serialized NarrationProposal content embeds a SpeechBlock.character_id that must
+    # be rewritten from the source world's character id to the freshly imported copy's id.
+    turn_content = json.loads(turns[0].content)
+    assert turn_content["blocks"][0]["character_id"] == alex_copy.id
+    assert turn_content["blocks"][0]["character_id"] != built["alex"].id
     events = await db.event.list_events(turn_id=turns[0].id)
     assert len(events) == 1
     memories = await db.memory.list_memories(event_id=events[0].id)
@@ -470,7 +478,11 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
         "background_characters": [{"id": "bg-1", "name": "The Guard", "description": "Stands watch at the gate."}],
         "items": [], "item_stacks": [], "equipment": [], "containers": [],
         "turns": [{
-            "id": "turn-1", "sequence": 0, "type": "system_response", "content": "Hi!", "start_time": now,
+            "id": "turn-1", "sequence": 0, "type": "system_response",
+            "content": json.dumps({"blocks": [
+                {"type": "speech", "character_id": "char-1", "character_name": "Example", "text": "Hi!"},
+            ]}),
+            "start_time": now,
         }],
         "events": [{
             "id": "evt-1", "name": "The Project", "summary": "They collaborated.", "turn_ids": ["turn-1"],
@@ -552,3 +564,13 @@ async def test_import_assembled_sections_persists_a_full_world_without_a_zip_arc
     assert variable_set is not None
     assert variable_set.variables[0].name == "hp"
     assert variable_set.variables[0].value == 100
+
+    # The turn's serialized NarrationProposal content embeds a SpeechBlock.character_id that was
+    # assigned by the SillyTavern extraction pipeline ("char-1") before any real Character row
+    # existed - it must be rewritten to the freshly created character's real id, or the turn's
+    # speaker avatar/lookup can never resolve again (see turn_content_remap.py).
+    turns = await db.turn.list_turns(source_id=world.id, limit=10)
+    assert len(turns) == 1
+    turn_content = json.loads(turns[0].content)
+    assert turn_content["blocks"][0]["character_id"] == example.id
+    assert turn_content["blocks"][0]["character_id"] != "char-1"

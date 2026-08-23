@@ -8,6 +8,7 @@ from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidat
     TransientImagePromptProposal, \
     PerceivedEntity, PerceivedCharacter, \
     PerceivedBackgroundCharacter, PerceivedItem, PerceivedEquipment, PerceivedLandmark, PerceivedContainer, \
+    PerceivedCue, \
     ProposedAction, ActionProposal, InputInterpretation, InputSequenceItem, OOCCommand, UserActionSequenceItem, \
     AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, ReactionHistoryEntry, \
     NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, NarrationProposal, \
@@ -20,7 +21,8 @@ from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidat
     EventInvolvementProposal, MemoryCharacterLinkProposal, \
     MemorySummaryApplyResult, MemorySummaryOperation, MemorySummaryProposal, ProposedEventCreation, ProposedEventUpdate, \
     ProposedExistingMemoryLink, ProposedIntentCreation, ProposedIntentUpdate, ProposedMemoryCreation, \
-    ProposedNoAbstractChange, ProposedTurnEventLink
+    ProposedNoAbstractChange, ProposedTurnEventLink, \
+    SemanticConditionEvaluationResult, SemanticConditionVerdict
 from .item import Item, ItemStack, InventoryStack
 from .location import Location, Landmark
 from .memory import MemoryAtom
@@ -37,6 +39,10 @@ from .generation_job import GenerationJob
 from .image_generation_config import ImageGenerationConfig
 from .simulation_audit import SimulationAuditEvent
 from .intent import Intent
+from .trigger import AllOfCondition, AnyOfCondition, DeterministicCondition, ForcedActionEffect, GateEffect, \
+    LocationCondition, NarrativeBeatEffect, NotCondition, PerceivedCueEffect, SemanticCondition, \
+    StateMutationEffect, TimeCondition, Trigger, TriggerActivation, TriggerCondition, TriggerEffectPayload, \
+    VariableCondition
 from .tts_generation_config import TtsGenerationConfig
 from .media import GeneratedImageMediaFile, GeneratedVoiceMediaFile, ImportedImageMediaFile, MediaFile, \
     PromptMediaFile, WorkflowMediaFile

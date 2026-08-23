@@ -101,3 +101,20 @@ class PerceivedContainer(PerceivedEntity):
         ...,
         description="Whether the actor owns the container"
     )
+
+
+class PerceivedCue(PerceivedEntity):
+    """A resolved TriggerActivation(PerceivedCueEffect) - ambient information the observer may or
+    may not have noticed this turn, exactly like any other perceivable entity. `description` is
+    the only trigger-authored content that ever reaches this prompt; the trigger itself, its
+    condition, and every other trigger on the same source stay invisible."""
+
+    activation_id: str = Field(
+        ...,
+        description="The TriggerActivation this resolves - used only to mark it consumed once "
+                    "delivered, never shown to the observer.",
+    )
+    description: str = Field(
+        ...,
+        description="The ambient detail being judged for perceptibility.",
+    )

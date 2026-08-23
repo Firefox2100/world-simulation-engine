@@ -197,6 +197,54 @@ Use each claim only for its observer. A belief is not objective fact and must no
 Treat these as this actor's fallible beliefs, never as objective facts or another actor's knowledge."""
         return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]
 
+    async def _unconsumed_trigger_activations(self, *, simulation_id: str, effect_type) -> list:
+        """Compatibility-safe lookup for tests and older database adapters (see _subjective_claims)."""
+        store = getattr(self._db, "trigger", None)
+        method = getattr(store, "list_unconsumed_activations", None)
+        if not inspect.iscoroutinefunction(method):
+            return []
+        return await method(simulation_id=simulation_id, effect_type=effect_type)
+
+    async def _mark_trigger_activations_consumed(self, activation_ids: list[str]) -> None:
+        if not activation_ids:
+            return
+        store = getattr(self._db, "trigger", None)
+        method = getattr(store, "mark_activations_consumed", None)
+        if not inspect.iscoroutinefunction(method):
+            return
+        await method(activation_ids)
+
+    @staticmethod
+    def _with_trigger_context(prompt: list[PromptMessage]) -> list[PromptMessage]:
+        """Append fired trigger beats as must-include narration content.
+
+        Callers must only invoke this when `trigger_beats` is non-empty - unlike the emotion/
+        relationship/subjective-claim helpers above (always appended, with an inline empty-case
+        fallback), this one is never called at all when there is nothing to inject, so a dormant
+        trigger's mere existence never appears in the prompt even as an empty section header.
+        """
+        content = """## Must-include story beats
+
+{% for beat in trigger_beats %}
+- {{ beat }}
+{% endfor %}
+
+Weave every must-include beat above into this narration naturally, in your own words - do not quote it verbatim or explain why it is happening now."""
+        return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]
+
+    @staticmethod
+    def _with_forced_action_context(prompt: list[PromptMessage]) -> list[PromptMessage]:
+        """Same "only append when there is something to inject" contract as
+        `_with_trigger_context` above - never called when there is no forced directive."""
+        content = """## Forced action this turn
+
+{% for directive in trigger_forced_directives %}
+- {{ directive }}
+{% endfor %}
+
+Propose actions that carry out every forced directive above, in character and in your own words - do not ignore, delay, or contradict it."""
+        return [*prompt, PromptMessage(role=MessageRole.USER, content=content)]
+
     @staticmethod
     def _placeholder_context(**named_entities) -> PlaceholderContext:
         """Build a placeholder roster from already-fetched entities, grouped by keyword.

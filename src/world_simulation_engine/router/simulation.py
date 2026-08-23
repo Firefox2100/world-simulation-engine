@@ -490,6 +490,17 @@ async def create_simulation(world_id: str, db: db_dep):
         character_pairs=character_pairs,
         event_pairs=event_pairs,
     )
+    await db.trigger.copy_triggers(
+        world_id=world_id,
+        simulation_id=created_simulation.id,
+        entity_id_map={
+            pair["source_id"]: pair["copy_id"]
+            for pair in (
+                location_pairs + landmark_pairs + character_pairs + background_character_pairs
+                + item_pairs + stack_pairs + equipment_pairs + container_pairs
+            )
+        },
+    )
     await db.entity_relationship.copy_relationships(
         source_id=world_id,
         target_simulation_id=created_simulation.id,

@@ -40,6 +40,7 @@ class ComponentType(StrEnum):
     PERSPECTIVE_RESOLVER = "perspective_resolver"
     SCENE_COORDINATOR = "scene_coordinator"
     STATE_COMMITTER = "state_committer"
+    TRIGGER_EVALUATOR = "trigger_evaluator"
     CHARACTER_IMAGE_GENERATOR = "character_image_generator"
     CHARACTER_PORTRAIT_IMAGE_GENERATOR = "character_portrait_image_generator"
     LOCATION_IMAGE_GENERATOR = "location_image_generator"
@@ -113,6 +114,61 @@ class IntentType(StrEnum):
     RELATIONSHIP = "relationship"   # involving another character
     HABIT = "habit"                 # routine but not hard constraint, repetitive
     REACTION = "reaction"           # respond to an event
+
+
+class TriggerConditionType(StrEnum):
+    """One node in a Trigger's condition tree. LOCATION/VARIABLE are level predicates evaluated
+    against current DB state; ALL_OF/ANY_OF/NOT combine them; SEMANTIC is free text judged by the
+    trigger_evaluator LLM component instead of code. A single trigger's condition tree is either
+    entirely deterministic (LOCATION/VARIABLE/ALL_OF/ANY_OF/NOT) or a single SEMANTIC leaf, never
+    mixed - see TriggerEngine for why."""
+    LOCATION = "location"        # a character is currently present in a location/landmark
+    VARIABLE = "variable"        # an entity's tracked variable currently satisfies a comparison
+    TIME = "time"                 # the simulation clock currently satisfies a comparison
+    SEMANTIC = "semantic"        # free-text condition judged by an LLM against recent narration/memories
+    ALL_OF = "all_of"
+    ANY_OF = "any_of"
+    NOT = "not"
+
+
+class SemanticConditionMode(StrEnum):
+    """How the trigger_evaluator should judge a SemanticCondition.statement."""
+    FACT = "fact"        # has this specific thing become objectively true right now
+    PACING = "pacing"     # given the recent story trend, would surfacing this feel natural now -
+                          # not "is it true", but "is this the moment" (long-running script beats)
+
+
+class ComparisonOperator(StrEnum):
+    EQ = "eq"
+    NE = "ne"
+    GT = "gt"
+    GTE = "gte"
+    LT = "lt"
+    LTE = "lte"
+    IN = "in"
+    NOT_IN = "not_in"
+
+
+class TriggerEffectKind(StrEnum):
+    EVENT = "event"    # "will happen" / "may happen": fires once on the condition's rising edge
+    GATE = "gate"       # "is allowed to happen": tracks open/closed as a standing permission state
+
+
+class TriggerEffectType(StrEnum):
+    NARRATIVE_BEAT = "narrative_beat"    # queued as a must-include beat for the next narration
+    FORCED_ACTION = "forced_action"      # queued as a forced next action for a specific character
+    STATE_MUTATION = "state_mutation"    # applied immediately as StateCommitOperations
+    PERCEIVED_CUE = "perceived_cue"      # queued as ambient, non-forcing information one or more
+                                          # characters may notice via PerspectiveResolver - never
+                                          # narrated directly, never a command; the character's own
+                                          # proposal decides whether/how to act on it, if at all
+
+
+class TriggerStatus(StrEnum):
+    DORMANT = "dormant"      # condition not currently satisfied (event: not yet fired; gate: closed)
+    ACTIVE = "active"        # gate: currently open. Not used by EVENT-kind triggers.
+    CONSUMED = "consumed"    # event: fired and not repeatable - will never fire again
+    DISABLED = "disabled"    # manually turned off, excluded from evaluation entirely
 
 
 class SceneCoordinationProblemType(StrEnum):
@@ -214,6 +270,7 @@ class SimulationAuditCategory(StrEnum):
     TIME = "time"
     BACKGROUND = "background"
     ERROR = "error"
+    TRIGGER = "trigger"
 
 
 class SimulationAuditOrigin(StrEnum):
