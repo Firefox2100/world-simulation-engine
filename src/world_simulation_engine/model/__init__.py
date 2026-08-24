@@ -13,7 +13,8 @@ from .inter_state import ActionSuggestionResult, ActionValidation, ActionValidat
     AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, ReactionHistoryEntry, \
     NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, NarrationProposal, \
     SpeechAnchor, SpeechBlock, \
-    OOCCharacterActionGuide, OOCEvaluationItem, OOCEvaluationResult, OOCWorldStateMutation, \
+    OOCCharacterActionGuide, OOCEvaluationItem, OOCEvaluationResult, OOCTriggerDirective, OOCTriggerDraft, \
+    OOCWorldStateMutation, \
     SceneActionReference, SceneCoordinationProblem, SceneCoordinationResult, PhysicalEntityType, \
     ProposedEntityCreation, ProposedEntityPromotion, ProposedEntityStateChange, ProposedNoPhysicalChange, \
     ProposedRelationshipChange, RelationshipType, StateCommitEntityRef, StateCommitFieldChange, \
@@ -61,6 +62,8 @@ from .simulation import Simulation
 from .turn import Turn
 from .turn_presentation import PresentedTurn, PresentationBlockType, PresentationCompletion, \
     TurnPresentationBlock, TurnPresentationRendering
+from .turn_version import TurnVersion
 from .variable import EntityVariableSet, ProposedVariableChange, VariableChangeAudit, VariableDefinition, \
     VariableUpdateProposal, VariableValueType
 from .world import Author, World, WorldMetadata
+from .world_state_checkpoint import WorldStateCheckpoint

@@ -231,6 +231,29 @@ class EquipmentStore:
 
         return await self.get_equipment(equipment_id)
 
+    async def overwrite_equipment(self, equipment: Equipment) -> Equipment | None:
+        """Restore-only full field replace of the equipment's own properties - relationship-derived
+        state (owner/holder/location/equipped) is restored separately via change_owner/
+        change_hold_state/place_equipment_in_location - see CharacterStore.overwrite_character."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (equipment:Equipment {id: $id})
+            SET equipment = {id: $id, name: $name, description: $description, quality: $quality}
+            RETURN equipment LIMIT 1
+            """,
+            parameters_={
+                "id": equipment.id,
+                "name": equipment.name,
+                "description": equipment.description,
+                "quality": equipment.quality,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+        return await self.get_equipment(equipment.id)
+
     async def delete_equipment(self, equipment_id: str) -> bool:
         result = await self._driver.execute_query(
             """

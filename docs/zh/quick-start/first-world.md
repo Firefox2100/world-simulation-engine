@@ -1,6 +1,6 @@
 # 创建第一个世界并启动模拟
 
-本快速开始假设后端和前端已经运行。如果还没有，请先阅读[在 Windows 从源码快速本地部署](windows-source.md)。
+本快速开始假设后端和前端已经运行。如果还没有，请先阅读[使用 Docker 最快本地部署](docker.md)或[在 Windows 从源码快速本地部署](windows-source.md)。
 
 ## 1. 创建提供商配置
 
@@ -60,7 +60,7 @@ I look around and greet the nearest person.
 按这个顺序检查：
 
 1. 后端终端是否有提供商认证或连接错误。
-2. 选中的 LLM 模型 id 是否存在于提供商。
+2. 所选的 LLM 模型 id 在该提供商下是否真的存在。
 3. 创建记忆后是否更换过 embedding 模型维度。
 4. 是否有必要组件没有分配 LLM 或 embedding 配置。
 5. 模型是否连续多次返回了无法修复的结构化输出。

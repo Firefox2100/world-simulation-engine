@@ -1,10 +1,10 @@
 # 模拟生命周期
 
-一次模拟生成是由 simulation API 启动的后台任务。普通用户回合会在 `WorldSimulator` 中运行 user-input LangGraph。继续生成和重新生成会从保存的图状态快照恢复 character-round graph。
+Simulation API 会把一次模拟生成作为后台任务启动。普通用户回合会在 `WorldSimulator` 中运行 user-input LangGraph；继续生成和重新生成则会从保存的图状态快照恢复 character-round graph。
 
 ## 单回合序列
 
-下图展示普通回合的数据边界。实际 graph 可能因为无效输入、出戏命令、反应轮或没有计划中的角色活动而分支，但事实边界相同：候选数据和拟议数据在 state commit 应用已接受操作之前都只是临时状态。
+下图展示普通回合的数据边界。实际 graph 可能因为无效输入、出戏命令、trigger 评估、反应轮或没有计划中的角色活动而分支，但事实边界相同：候选数据和拟议数据在 state commit 应用已接受操作之前都只是临时状态。
 
 ```mermaid
 sequenceDiagram
@@ -87,5 +87,5 @@ sequenceDiagram
 
 ## 快照与重新生成
 
-`WorldSimulator` 会在用户输入前和生成基准点后保存图状态快照。继续生成和重新生成加载这些快照，而不是尝试从叙事文本重建执行状态。这样重新运行会基于结构化图状态和模拟器自己的中间状态。
+`WorldSimulator` 会在用户输入前、以及每个生成基准点之后保存图状态快照。继续生成和重新生成直接加载这些快照，不需要从叙事文本反推执行状态——重新运行依据的是结构化图状态和模拟器自身的中间状态。
 

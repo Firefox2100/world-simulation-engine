@@ -24,10 +24,13 @@ Routers are deliberately resource-shaped:
 | Router area | Responsibilities |
 | --- | --- |
 | Worlds and simulations | Create worlds, create simulations, import/export worlds, start generation, stream runs, inspect snapshots. |
-| Domain entities | Characters, background characters, locations, landmarks, items, equipment, containers, intents, events, memories. |
+| Domain entities | Characters, background characters, locations, landmarks, items, equipment, containers, intents, events, memories, variables. |
+| Authors | Author profiles, and attributing a world (or other authored content) to one. |
+| Story scripting | Trigger CRUD and status control (`trigger_router`) for scripted cues that drive story progression. |
+| SillyTavern import | Parse an uploaded card, stream the extraction pipeline over SSE, then commit the reviewed result as a new `World` (`sillytavern_import_router`). |
 | Configuration | Provider connections, LLM/embedding/image/TTS/STT configs, world and simulation component assignments. |
 | Media, prompts, workflows | Upload and link media, prompt JSON, workflow JSON, cover images, prompt/workflow overrides. |
-| Turns and presentation | Turn records, rendered presentation blocks, generated image/audio segment endpoints. |
+| Turns and presentation | Turn records, rendered presentation blocks, generated image/audio segment endpoints, archived turn versions and reverting to one. |
 | Speech recognition | STT transcription endpoint for configured speech recognition backends. |
 
 The simulation router starts generation with `WorldSimulator.start_generation()`. It can then stream graph updates

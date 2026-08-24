@@ -30,3 +30,4 @@ Read these sections for the details:
 - [Image generation](image-generation.md)
 - [TTS and STT](tts-and-stt.md)
 - [Turn presentation](turn-presentation.md)
+- [Turn versioning and state checkpoints](turn-versioning.md)

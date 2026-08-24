@@ -12,14 +12,18 @@ from world_simulation_engine.component.simulator.world_simulator import Characte
     CharacterActionProposalState, CharacterActionValidationRecord, OffSceneGenerationStatus, WorldSimulator, \
     WorldSimulatorState
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
-    SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TurnType
+    SceneCoordinationStatus, SimulationGenerationRequestType, SupportedLanguage, TriggerEffectKind, TriggerStatus, \
+    TurnType, WorldStateCheckpointType
 from world_simulation_engine.model import AcceptedSceneAction, ActionProposal, ActionSuggestionResult, \
     ActionValidation, ActionValidationResult, \
     ActionCandidateSet, CurrentActivity, Character, CharacterActionPlan, GenerationJob, GraphStateSnapshot, InputInterpretation, \
-    MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, OOCCharacterActionGuide, \
-    OOCCommand, OOCEvaluationResult, OOCWorldStateMutation, ProposedAction, ReactionHistoryEntry, \
-    SceneCoordinationResult, Simulation, \
-    PresentationBlockType, SpeechBlock, StateCommitProposal, Turn, World
+    MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, NarrativeBeatEffect, \
+    OOCCharacterActionGuide, \
+    OOCCommand, OOCEvaluationResult, OOCTriggerDirective, OOCTriggerDraft, OOCWorldStateMutation, ProposedAction, \
+    ReactionHistoryEntry, \
+    SceneCoordinationResult, Simulation, TimeCondition, Trigger, \
+    PresentationBlockType, SpeechBlock, StateCommitProposal, Turn, TurnPresentationBlock, TurnVersion, \
+    World, WorldStateCheckpoint
 
 
 def make_state(input_interpretation: InputInterpretation) -> WorldSimulatorState:
@@ -78,6 +82,12 @@ def make_action_proposal(action: ProposedAction) -> ActionProposal:
 def make_database_mock() -> Mock:
     database = Mock()
     database.turn.list_turns = AsyncMock(return_value=[])
+    database.turn.delete_turns_after = AsyncMock(return_value=0)
+    database.turn.get_turn_by_sequence = AsyncMock(return_value=None)
+    database.turn.get_latest_user_input_before = AsyncMock(return_value=None)
+    database.turn_version.archive_version = AsyncMock(side_effect=lambda version: version)
+    database.turn_version.get_version = AsyncMock(return_value=None)
+    database.turn_version.delete_all_for_simulation = AsyncMock()
     database.graph_state_snapshot.save_snapshot = AsyncMock(
         side_effect=lambda snapshot: snapshot
     )
@@ -92,6 +102,32 @@ def make_database_mock() -> Mock:
     database.generation_job.update_job = AsyncMock()
     database.generation_job.mark_completed = AsyncMock()
     database.generation_job.mark_failed = AsyncMock()
+
+    # SimulationStateCheckpointService.capture's read fan-out - empty/no-op defaults so a plain
+    # capture() call during a test that isn't exercising checkpoints itself is a harmless no-op.
+    database.character.list_characters = AsyncMock(return_value=[])
+    database.character.list_background_characters = AsyncMock(return_value=[])
+    database.character.get_position_map = AsyncMock(return_value={})
+    database.character.get_background_position_map = AsyncMock(return_value={})
+    database.item.list_items = AsyncMock(return_value=[])
+    database.item.list_stacks = AsyncMock(return_value=[])
+    database.equipment.list_equipment = AsyncMock(return_value=[])
+    database.equipment.get_hold_types = AsyncMock(return_value={})
+    database.container.list_containers = AsyncMock(return_value=[])
+    database.container.get_unlocking_items = AsyncMock(return_value=[])
+    database.variable.list_variable_sets_by_source = AsyncMock(return_value=[])
+    database.entity_relationship.list_relationships = AsyncMock(return_value=[])
+    database.emotion.get_state = AsyncMock(return_value=None)
+    database.subjective_entity_claim.list_claims = AsyncMock(return_value=[])
+    database.memory.list_memories = AsyncMock(return_value=[])
+    database.memory.get_event_links = AsyncMock(return_value={})
+    database.memory.get_character_links = AsyncMock(return_value={})
+    database.event.list_events = AsyncMock(return_value=[])
+    database.event.get_turn_links = AsyncMock(return_value={})
+    database.event.get_character_involvements = AsyncMock(return_value={})
+    database.world_state_checkpoint.save_checkpoint = AsyncMock(side_effect=lambda checkpoint: checkpoint)
+    database.world_state_checkpoint.get_checkpoint_by_turn_sequence = AsyncMock(return_value=None)
+
     return database
 
 
@@ -518,9 +554,11 @@ async def test_evaluate_ooc_commands_applies_consistent_world_state_mutation():
         start_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
     )
     simulator._db.turn.create_next_turn = AsyncMock(return_value=turn)
+    simulator._db.turn.list_turns = AsyncMock(return_value=[])
     simulator._db.state_commit.apply_state_commit_proposal = AsyncMock()
     simulator._db.turn_presentation.replace_rendering = AsyncMock(side_effect=lambda value: value)
     simulator._db.simulation.update_current_time = AsyncMock(return_value=state.simulation)
+    simulator._checkpoint_service.capture = AsyncMock()
 
     result = await simulator.evaluate_ooc_commands(state)
 
@@ -618,6 +656,277 @@ async def test_evaluate_ooc_commands_forces_character_action_without_committing_
     assert result["ooc_forced_character_actions"] == {"character_2": [forced_action]}
     assert "committed_turn" not in result
     simulator._db.turn.create_next_turn.assert_not_awaited()
+
+
+def make_existing_trigger(**overrides) -> Trigger:
+    defaults = dict(
+        id="trigger_1",
+        source_id="simulation_1",
+        name="Existing trigger",
+        description="A pre-authored trigger.",
+        condition=TimeCondition(operator="gte", value=datetime(2026, 6, 1, tzinfo=UTC)),
+        effect_kind=TriggerEffectKind.EVENT,
+        effects=[NarrativeBeatEffect(directive="Something shifts.", relevant_character_ids=[])],
+        status=TriggerStatus.DORMANT,
+    )
+    defaults.update(overrides)
+    return Trigger(**defaults)
+
+
+def make_trigger_draft(**overrides) -> OOCTriggerDraft:
+    defaults = dict(
+        name="Zombie outbreak begins",
+        description="Long-term script thread.",
+        condition=TimeCondition(operator="gte", value=datetime(2027, 1, 1, tzinfo=UTC)),
+        effect_kind=TriggerEffectKind.EVENT,
+        effects=[NarrativeBeatEffect(directive="Reports of unrest spread.", relevant_character_ids=[])],
+    )
+    defaults.update(overrides)
+    return OOCTriggerDraft(**defaults)
+
+
+async def test_evaluate_ooc_commands_creates_trigger_via_directive():
+    command = OOCCommand(
+        type="ooc",
+        command_text="in 3 months a zombie outbreak begins",
+        normalized_intent="Author a long-term scripted trigger.",
+        source_text="[/OOC: in 3 months a zombie outbreak begins]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    created = make_existing_trigger(id="trigger_new", name="Zombie outbreak begins")
+    database.trigger.create_trigger = AsyncMock(return_value=created)
+    simulator = WorldSimulator(database=database)
+
+    draft = make_trigger_draft()
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCTriggerDirective(
+                category="trigger_directive",
+                command_index=0,
+                command_text=command.command_text,
+                operation="create",
+                draft=draft,
+                consistent=True,
+                issues=[],
+                reason="Authored the zombie outbreak script.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert "committed_turn" not in result
+    simulator._db.trigger.create_trigger.assert_awaited_once()
+    created_arg = simulator._db.trigger.create_trigger.await_args.args[0]
+    assert created_arg.source_id == "simulation_1"
+    assert created_arg.name == draft.name
+    assert created_arg.condition == draft.condition
+
+
+async def test_evaluate_ooc_commands_updates_existing_trigger_via_directive():
+    command = OOCCommand(
+        type="ooc",
+        command_text="push the outbreak back to next year",
+        normalized_intent="Redefine an existing trigger.",
+        source_text="[/OOC: push the outbreak back to next year]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    existing = make_existing_trigger()
+    database.trigger.get_trigger = AsyncMock(return_value=existing)
+    database.trigger.update_trigger = AsyncMock(side_effect=lambda trigger: trigger)
+    simulator = WorldSimulator(database=database)
+
+    draft = make_trigger_draft(name="Zombie outbreak begins (delayed)")
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCTriggerDirective(
+                category="trigger_directive",
+                command_index=0,
+                command_text=command.command_text,
+                operation="update",
+                trigger_id=existing.id,
+                draft=draft,
+                consistent=True,
+                issues=[],
+                reason="Pushed the outbreak trigger's date back.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert "committed_turn" not in result
+    simulator._db.trigger.update_trigger.assert_awaited_once()
+    updated_arg = simulator._db.trigger.update_trigger.await_args.args[0]
+    assert updated_arg.id == existing.id
+    assert updated_arg.name == draft.name
+    assert updated_arg.condition == draft.condition
+    # Runtime-state fields not present on the draft must survive the merge untouched.
+    assert updated_arg.status == existing.status
+
+
+async def test_evaluate_ooc_commands_set_status_via_directive():
+    command = OOCCommand(
+        type="ooc",
+        command_text="disable the outbreak trigger for now",
+        normalized_intent="Disable an existing trigger.",
+        source_text="[/OOC: disable the outbreak trigger for now]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    existing = make_existing_trigger()
+    database.trigger.get_trigger = AsyncMock(return_value=existing)
+    database.trigger.update_trigger_runtime_state = AsyncMock(return_value=existing)
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCTriggerDirective(
+                category="trigger_directive",
+                command_index=0,
+                command_text=command.command_text,
+                operation="set_status",
+                trigger_id=existing.id,
+                status=TriggerStatus.DISABLED,
+                consistent=True,
+                issues=[],
+                reason="Disabled the outbreak trigger.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert "committed_turn" not in result
+    simulator._db.trigger.update_trigger_runtime_state.assert_awaited_once_with(
+        trigger_id=existing.id,
+        status=TriggerStatus.DISABLED,
+        last_condition_result=existing.last_condition_result,
+        last_evaluated_turn_id=existing.last_evaluated_turn_id,
+    )
+
+
+async def test_evaluate_ooc_commands_deletes_trigger_via_directive():
+    command = OOCCommand(
+        type="ooc",
+        command_text="remove the outbreak trigger entirely",
+        normalized_intent="Delete an existing trigger.",
+        source_text="[/OOC: remove the outbreak trigger entirely]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    existing = make_existing_trigger()
+    database.trigger.get_trigger = AsyncMock(return_value=existing)
+    database.trigger.delete_trigger = AsyncMock(return_value=True)
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCTriggerDirective(
+                category="trigger_directive",
+                command_index=0,
+                command_text=command.command_text,
+                operation="delete",
+                trigger_id=existing.id,
+                consistent=True,
+                issues=[],
+                reason="Removed the outbreak trigger.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert "committed_turn" not in result
+    simulator._db.trigger.delete_trigger.assert_awaited_once_with(existing.id)
+
+
+async def test_evaluate_ooc_commands_skips_trigger_directive_targeting_unknown_trigger():
+    command = OOCCommand(
+        type="ooc",
+        command_text="disable the trigger about the harvest festival",
+        normalized_intent="Disable an existing trigger.",
+        source_text="[/OOC: disable the trigger about the harvest festival]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.trigger.get_trigger = AsyncMock(return_value=None)
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCTriggerDirective(
+                category="trigger_directive",
+                command_index=0,
+                command_text=command.command_text,
+                operation="set_status",
+                trigger_id="trigger_does_not_exist",
+                status=TriggerStatus.DISABLED,
+                consistent=True,
+                issues=[],
+                reason="Disabled the harvest festival trigger.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+    simulator._db.trigger.update_trigger_runtime_state = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert "committed_turn" not in result
+    simulator._db.trigger.update_trigger_runtime_state.assert_not_awaited()
+
+
+async def test_evaluate_ooc_commands_skips_inconsistent_trigger_directive():
+    command = OOCCommand(
+        type="ooc",
+        command_text="do something vague about a trigger",
+        normalized_intent="Ambiguous trigger request.",
+        source_text="[/OOC: do something vague about a trigger]",
+    )
+    state = make_state(InputInterpretation(items=[command]))
+    database = Mock()
+    database.character.get_user_character_by_simulation = AsyncMock(return_value=make_character())
+    database.trigger.create_trigger = AsyncMock()
+    simulator = WorldSimulator(database=database)
+
+    evaluation = OOCEvaluationResult(
+        items=[
+            OOCTriggerDirective(
+                category="trigger_directive",
+                command_index=0,
+                command_text=command.command_text,
+                operation="create",
+                draft=make_trigger_draft(),
+                consistent=False,
+                issues=["The command does not describe a checkable trigger condition."],
+                reason="Could not ground this as a trigger.",
+            )
+        ],
+    )
+    simulator._ooc_handler.evaluate_commands = AsyncMock(return_value=evaluation)
+    simulator._db.turn.create_next_turn = AsyncMock()
+
+    result = await simulator.evaluate_ooc_commands(state)
+
+    assert "committed_turn" not in result
+    simulator._db.trigger.create_trigger.assert_not_awaited()
 
 
 async def test_propose_scheduled_character_actions_uses_forced_action_without_llm():
@@ -1886,6 +2195,7 @@ async def test_summarize_character_memory_spends_the_budget_when_a_trigger_fires
     simulator._memory_summarizer.summarize_character_actions = AsyncMock(return_value=MemorySummaryProposal())
     simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
     simulator._save_graph_state_snapshot = AsyncMock()
+    simulator._checkpoint_service.capture = AsyncMock()
     simulator._update_relationships_from_memory = AsyncMock(return_value=True)
 
     result = await simulator.summarize_character_memory(state)
@@ -1910,6 +2220,7 @@ async def test_summarize_character_memory_skips_evaluation_once_the_budget_is_al
     simulator._memory_summarizer.summarize_character_actions = AsyncMock(return_value=MemorySummaryProposal())
     simulator._db.memory_summary.apply_memory_summary_proposal = AsyncMock()
     simulator._save_graph_state_snapshot = AsyncMock()
+    simulator._checkpoint_service.capture = AsyncMock()
     simulator._update_relationships_from_memory = AsyncMock(return_value=True)
 
     result = await simulator.summarize_character_memory(state)
@@ -2122,6 +2433,10 @@ async def test_start_generation_streams_graph_values_and_stores_final_state():
     saved_snapshot = database.graph_state_snapshot.save_snapshot.await_args.args[0]
     assert saved_snapshot.type == GraphStateSnapshotType.BEFORE_USER_INPUT
     assert saved_snapshot.turn_id == "turn_40"
+    # A genuinely new user turn prunes every archived swipe alternate for the simulation - only
+    # whichever version was left selected (already made live via revert_to_turn_version if it
+    # wasn't the tip) survives past this point.
+    database.turn_version.delete_all_for_simulation.assert_awaited_once_with("simulation_1")
     assert saved_snapshot.turn_sequence == 40
     created_job = database.generation_job.create_job.await_args.args[0]
     assert created_job.id == thread_id
@@ -2131,6 +2446,34 @@ async def test_start_generation_streams_graph_values_and_stores_final_state():
         thread_id,
         final_turn_id="turn_1",
     )
+
+
+async def test_continue_generation_does_not_wipe_turn_versions():
+    graph = FakeStreamingGraph(chunks=[{"narration": "Continued."}])
+    database = make_database_mock()
+    snapshot_state = make_state(InputInterpretation(items=[]))
+    database.graph_state_snapshot.get_latest_generation_base_snapshot = AsyncMock(return_value=GraphStateSnapshot(
+        simulation_id="simulation_1",
+        type=GraphStateSnapshotType.AFTER_CHARACTER_ROUND,
+        turn_id="turn_42",
+        turn_sequence=42,
+        state=snapshot_state.model_dump(mode="json"),
+    ))
+    simulator = WorldSimulator(database=database)
+    simulator._character_round_graph = graph
+    state = make_state(InputInterpretation(items=[]))
+    state.user_input = None
+
+    thread_id = await simulator.start_generation(
+        state,
+        request_type=SimulationGenerationRequestType.CONTINUE_GENERATION,
+    )
+    await simulator.get_generation_final_state(thread_id)
+
+    # Only a genuinely new user turn (USER_INPUT_GENERATION) closes the swipe window - continuing
+    # or regenerating within it must not prune history the user might still want to browse back
+    # through.
+    database.turn_version.delete_all_for_simulation.assert_not_awaited()
 
 
 async def test_start_generation_returns_existing_job_for_same_idempotency_key():
@@ -2222,7 +2565,10 @@ async def test_continue_generation_uses_latest_character_round_base():
     await simulator.get_generation_final_state(thread_id)
 
     assert graph.state.request_type == SimulationGenerationRequestType.CONTINUE_GENERATION
-    assert graph.state.user_input is None
+    # user_input survives the snapshot round-trip (see _character_round_state_from_snapshot) -
+    # CharacterSimulator.propose_actions and commit_character_actions's SYSTEM_RESPONSE/
+    # SYSTEM_CONTINUE typing both depend on it still reflecting what the user originally said.
+    assert graph.state.user_input == "Original user input."
     assert graph.state.character_actions == []
     database.graph_state_snapshot.get_latest_generation_base_snapshot.assert_awaited_once_with(
         simulation_id="simulation_1",
@@ -2242,8 +2588,18 @@ async def test_regeneration_uses_base_before_requested_turn():
     graph = FakeStreamingGraph(chunks=[{"narration": "Regenerated."}])
     database = make_database_mock()
     database.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence = AsyncMock(return_value=snapshot)
+    world_state_checkpoint = WorldStateCheckpoint(
+        simulation_id="simulation_1",
+        type=WorldStateCheckpointType.AFTER_USER_INPUT,
+        turn_id="turn_41",
+        turn_sequence=41,
+    )
+    database.world_state_checkpoint.get_checkpoint_by_turn_sequence = AsyncMock(
+        return_value=world_state_checkpoint,
+    )
     simulator = WorldSimulator(database=database)
     simulator._character_round_graph = graph
+    simulator._checkpoint_service.restore = AsyncMock()
     state = make_state(InputInterpretation(items=[]))
     state.user_input = None
 
@@ -2255,11 +2611,206 @@ async def test_regeneration_uses_base_before_requested_turn():
     await simulator.get_generation_final_state(thread_id)
 
     assert graph.state.request_type == SimulationGenerationRequestType.REGENERATION
-    assert graph.state.user_input is None
+    # user_input survives the snapshot round-trip (see _character_round_state_from_snapshot) -
+    # make_state's default user_input ("I look around.") was baked into the saved snapshot state.
+    assert graph.state.user_input == "I look around."
     database.graph_state_snapshot.get_generation_base_snapshot_by_turn_sequence.assert_awaited_once_with(
         simulation_id="simulation_1",
         turn_sequence=41,
     )
+    database.world_state_checkpoint.get_checkpoint_by_turn_sequence.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        turn_sequence=41,
+    )
+    simulator._checkpoint_service.restore.assert_awaited_once_with(
+        simulation_id="simulation_1",
+        checkpoint=world_state_checkpoint,
+    )
+
+
+def make_turn(**overrides) -> Turn:
+    defaults = dict(
+        id="turn_42",
+        sequence=42,
+        type=TurnType.SYSTEM_RESPONSE,
+        content="Alice looks up.",
+        start_time=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    defaults.update(overrides)
+    return Turn(**defaults)
+
+
+def make_presentation_block(**overrides) -> TurnPresentationBlock:
+    defaults = dict(
+        id="block_1",
+        turn_id="turn_42",
+        sequence=0,
+        type=PresentationBlockType.NARRATION,
+        text="Alice looks up.",
+        created_at=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, 12, 1, tzinfo=UTC),
+    )
+    defaults.update(overrides)
+    return TurnPresentationBlock(**defaults)
+
+
+async def test_archive_current_turn_slot_is_noop_when_nothing_at_that_sequence():
+    database = make_database_mock()
+    database.turn.get_turn_by_sequence = AsyncMock(return_value=None)
+    simulator = WorldSimulator(database=database)
+
+    await simulator._archive_current_turn_slot(simulation_id="simulation_1", turn_sequence=42)
+
+    database.turn_version.archive_version.assert_not_awaited()
+
+
+async def test_archive_current_turn_slot_captures_turn_presentation_input_and_checkpoint():
+    database = make_database_mock()
+    turn = make_turn()
+    block = make_presentation_block()
+    checkpoint = WorldStateCheckpoint(
+        id="checkpoint_1",
+        simulation_id="simulation_1",
+        type=WorldStateCheckpointType.AFTER_CHARACTER_ROUND,
+        turn_sequence=42,
+    )
+    user_input_turn = make_turn(
+        id="turn_41", sequence=41, type=TurnType.USER_INPUT, content="I look around.",
+    )
+    database.turn.get_turn_by_sequence = AsyncMock(return_value=turn)
+    database.turn_presentation.list_blocks = AsyncMock(return_value=[block])
+    database.world_state_checkpoint.get_checkpoint_by_turn_sequence = AsyncMock(return_value=checkpoint)
+    database.turn.get_latest_user_input_before = AsyncMock(return_value=user_input_turn)
+    simulator = WorldSimulator(database=database)
+
+    await simulator._archive_current_turn_slot(simulation_id="simulation_1", turn_sequence=42)
+
+    database.turn_version.archive_version.assert_awaited_once()
+    archived = database.turn_version.archive_version.await_args.args[0]
+    assert archived.simulation_id == "simulation_1"
+    assert archived.turn_sequence == 42
+    assert archived.turn["id"] == "turn_42"
+    assert archived.presentation_blocks[0]["id"] == "block_1"
+    assert archived.user_input == "I look around."
+    assert archived.checkpoint_id == "checkpoint_1"
+
+
+async def test_revert_to_turn_version_returns_none_when_version_missing():
+    database = make_database_mock()
+    database.turn_version.get_version = AsyncMock(return_value=None)
+    database.generation_job.get_active_job = AsyncMock(return_value=None)
+    simulator = WorldSimulator(database=database)
+
+    result = await simulator.revert_to_turn_version(simulation_id="simulation_1", version_id="missing")
+
+    assert result is None
+
+
+async def test_revert_to_turn_version_rejects_when_generation_active():
+    database = make_database_mock()
+    database.generation_job.get_active_job = AsyncMock(return_value=Mock())
+    simulator = WorldSimulator(database=database)
+
+    with pytest.raises(RuntimeError):
+        await simulator.revert_to_turn_version(simulation_id="simulation_1", version_id="version_1")
+
+
+async def test_revert_to_turn_version_recreates_turn_and_restores_checkpoint():
+    database = make_database_mock()
+    database.generation_job.get_active_job = AsyncMock(return_value=None)
+    archived_turn = make_turn()
+    archived_block = make_presentation_block()
+    version = TurnVersion(
+        id="version_1",
+        simulation_id="simulation_1",
+        turn_sequence=42,
+        turn=archived_turn.model_dump(mode="json"),
+        presentation_blocks=[archived_block.model_dump(mode="json")],
+        user_input="I look around.",
+        checkpoint_id="checkpoint_1",
+    )
+    database.turn_version.get_version = AsyncMock(return_value=version)
+    # Nothing currently live at that slot in this test - only the recreate/restore path matters.
+    database.turn.get_turn_by_sequence = AsyncMock(side_effect=[
+        None,  # _archive_current_turn_slot's lookup of the current live turn (none - no-op)
+        make_turn(id="turn_41", sequence=41),  # previous_turn lookup for NEXT-chain linking
+    ])
+    database.turn.delete_turns_after = AsyncMock(return_value=0)
+    database.turn.create_turn = AsyncMock(return_value=archived_turn)
+    database.turn_presentation.replace_rendering = AsyncMock(side_effect=lambda rendering: rendering)
+    checkpoint = WorldStateCheckpoint(
+        id="checkpoint_1",
+        simulation_id="simulation_1",
+        type=WorldStateCheckpointType.AFTER_CHARACTER_ROUND,
+        turn_sequence=42,
+    )
+    database.world_state_checkpoint.get_checkpoint_by_id = AsyncMock(return_value=checkpoint)
+    simulator = WorldSimulator(database=database)
+    simulator._checkpoint_service.restore = AsyncMock()
+
+    result = await simulator.revert_to_turn_version(simulation_id="simulation_1", version_id="version_1")
+
+    assert result == archived_turn
+    database.turn.delete_turns_after.assert_awaited_once_with("simulation_1", 41)
+    database.turn.create_turn.assert_awaited_once()
+    create_kwargs = database.turn.create_turn.await_args.kwargs
+    assert create_kwargs["source_id"] == "simulation_1"
+    assert create_kwargs["previous_turn_id"] == "turn_41"
+    database.turn_presentation.replace_rendering.assert_awaited_once()
+    simulator._checkpoint_service.restore.assert_awaited_once_with(
+        simulation_id="simulation_1", checkpoint=checkpoint,
+    )
+
+
+async def test_revert_to_turn_version_skips_checkpoint_restore_when_checkpoint_pruned():
+    database = make_database_mock()
+    database.generation_job.get_active_job = AsyncMock(return_value=None)
+    archived_turn = make_turn()
+    version = TurnVersion(
+        id="version_1",
+        simulation_id="simulation_1",
+        turn_sequence=42,
+        turn=archived_turn.model_dump(mode="json"),
+        presentation_blocks=[],
+        checkpoint_id="checkpoint_pruned",
+    )
+    database.turn_version.get_version = AsyncMock(return_value=version)
+    database.turn.get_turn_by_sequence = AsyncMock(return_value=None)
+    database.turn.create_turn = AsyncMock(return_value=archived_turn)
+    database.world_state_checkpoint.get_checkpoint_by_id = AsyncMock(return_value=None)
+    simulator = WorldSimulator(database=database)
+    simulator._checkpoint_service.restore = AsyncMock()
+
+    result = await simulator.revert_to_turn_version(simulation_id="simulation_1", version_id="version_1")
+
+    assert result == archived_turn
+    simulator._checkpoint_service.restore.assert_not_awaited()
+
+
+async def test_revert_to_turn_version_archives_the_currently_live_turn_first():
+    database = make_database_mock()
+    database.generation_job.get_active_job = AsyncMock(return_value=None)
+    archived_turn = make_turn()
+    version = TurnVersion(
+        id="version_1",
+        simulation_id="simulation_1",
+        turn_sequence=42,
+        turn=archived_turn.model_dump(mode="json"),
+        presentation_blocks=[],
+    )
+    database.turn_version.get_version = AsyncMock(return_value=version)
+    live_turn = make_turn(id="turn_42_live", content="Alice shrugs instead.")
+    database.turn.get_turn_by_sequence = AsyncMock(side_effect=[live_turn, None])
+    database.turn_presentation.list_blocks = AsyncMock(return_value=[])
+    database.turn.create_turn = AsyncMock(return_value=archived_turn)
+    database.world_state_checkpoint.get_checkpoint_by_id = AsyncMock(return_value=None)
+    simulator = WorldSimulator(database=database)
+
+    await simulator.revert_to_turn_version(simulation_id="simulation_1", version_id="version_1")
+
+    database.turn_version.archive_version.assert_awaited_once()
+    archived = database.turn_version.archive_version.await_args.args[0]
+    assert archived.turn["id"] == "turn_42_live"
 
 
 async def test_start_generation_allows_one_active_run_per_simulation():

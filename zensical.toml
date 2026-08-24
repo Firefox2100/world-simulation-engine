@@ -15,7 +15,8 @@ site_dir = "site"
 nav = [
   { "Home" = "index.md" },
   { "Quick Start" = [
-    { "Fast local deploy on Windows" = "quick-start/windows-source.md" },
+    { "Fastest local deploy with Docker" = "quick-start/docker.md" },
+    { "Fast local deploy on Windows from source" = "quick-start/windows-source.md" },
     { "Create first world and simulation" = "quick-start/first-world.md" },
     { "Expose a Linux server with Cloudflare" = "quick-start/cloudflare-linux.md" },
   ] },
@@ -28,6 +29,7 @@ nav = [
     { "Image generation" = "features/image-generation.md" },
     { "TTS and STT" = "features/tts-and-stt.md" },
     { "Turn presentation" = "features/turn-presentation.md" },
+    { "Turn versioning and state checkpoints" = "features/turn-versioning.md" },
   ] },
   { "Installation" = "installation.md" },
   { "Configuration" = [

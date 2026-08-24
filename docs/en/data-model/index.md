@@ -11,9 +11,10 @@ This section is a contributor reference for the main node labels, relationships,
 | World structure | [World and location](world-and-location.md) | `Author`, `World`, `Simulation`, `Location`, `Landmark` |
 | People | [Characters](characters.md) | `Character`, `BackgroundCharacter`, `Intent`, `CharacterTtsConfig` |
 | Physical state | [Items and containers](items-and-containers.md) | `Item`, `ItemStack`, `Equipment`, `Container` |
-| Turn history | [Events, turns, and actions](events-turns-and-actions.md) | `Turn`, `TurnPresentationBlock`, `Event`, `Intent`, `GenerationJob`, `GraphStateSnapshot`, `SimulationAuditEvent` |
+| Turn history | [Events, turns, and actions](events-turns-and-actions.md) | `Turn`, `TurnPresentationBlock`, `Event`, `Intent`, `Trigger`, `TriggerActivation`, `GenerationJob`, `GraphStateSnapshot`, `TurnVersion`, `WorldStateCheckpoint`, `SimulationAuditEvent` |
 | Memory and belief | [Memories and claims](memories-and-claims.md) | `MemoryAtom`, `SubjectiveEntityClaim`, `SubjectiveClaimChangeAudit` |
 | Social state | [Relationships and emotions](relationships-and-emotions.md) | `EntityRelationship`, `EmotionState`, `RelationshipChangeAudit`, `EmotionChangeAudit` |
+| Tracked variables | Cross-cutting; see [Characters](characters.md) for the `Character` case | `EntityVariableSet`, `VariableChangeAudit` |
 | Assets and service config | [Media and configuration](media-and-configuration.md) | `Media`, `ConnectionConfig`, model config nodes, generation config nodes |
 
 ## Complete entity-relationship diagram
@@ -55,8 +56,14 @@ flowchart LR
     TtsGenerationConfig["TtsGenerationConfig"]
     CharacterTtsConfig["CharacterTtsConfig"]
     GraphStateSnapshot["GraphStateSnapshot"]
+    TurnVersion["TurnVersion"]
+    WorldStateCheckpoint["WorldStateCheckpoint"]
     GenerationJob["GenerationJob"]
     SimulationAuditEvent["SimulationAuditEvent"]
+    Trigger["Trigger"]
+    TriggerActivation["TriggerActivation"]
+    EntityVariableSet["EntityVariableSet"]
+    VariableChangeAudit["VariableChangeAudit"]
 
     Author -->|CREATED| World
     World -->|NEW_VERSION_OF| World
@@ -81,7 +88,18 @@ flowchart LR
     Simulation -->|CONTAINS| EmotionState
     Simulation -->|HAS_GENERATION_JOB| GenerationJob
     Simulation -->|HAS_GRAPH_STATE_SNAPSHOT| GraphStateSnapshot
+    Simulation -->|HAS_TURN_VERSION| TurnVersion
+    Simulation -->|HAS_STATE_CHECKPOINT| WorldStateCheckpoint
     Simulation -->|HAS_AUDIT_EVENT| SimulationAuditEvent
+    World -->|CONTAINS| Trigger
+    Simulation -->|CONTAINS| Trigger
+    Simulation -->|CONTAINS| TriggerActivation
+    Trigger -->|FIRED| TriggerActivation
+    World -->|CONTAINS| EntityVariableSet
+    Simulation -->|CONTAINS| EntityVariableSet
+    Character -->|HAS_VARIABLES| EntityVariableSet
+    Turn -->|TRIGGERED| VariableChangeAudit
+    VariableChangeAudit -->|CHANGED| EntityVariableSet
 
     Location -->|CONTAINS| Location
     Location -->|CONTAINS| Landmark
@@ -187,3 +205,7 @@ flowchart LR
 - Physical placement is exclusive in normal state: an object is either in a location, held/equipped by another entity, or contained by a container.
 - Turns record proposals with `PROPOSED_STATE_CHANGE`; the graph becomes committed truth only when the state committer writes the proposed changes.
 - Private context is modeled on character fields, subjective claims, relationship visibility, memories, and emotion state. Presentation APIs should expose only the appropriate rendered view.
+- Tracked variables are generic: any entity (not only `Character`) can own one `EntityVariableSet` via `HAS_VARIABLES`, holding its own bounded/typed `VariableDefinition`s (mirroring a SillyTavern MVU variable schema). Changes are audited the same way as relationships and emotion, through `VariableChangeAudit`.
+- `TurnVersion` and `WorldStateCheckpoint` are not permanent history: they exist to make turn regeneration and revert
+  safe, and are pruned once the story moves forward for real (see [Events, turns, and
+  actions](events-turns-and-actions.md#turn-versioning-and-state-checkpoints)).

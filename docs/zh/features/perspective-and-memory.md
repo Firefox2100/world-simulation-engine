@@ -43,7 +43,7 @@
 
 ## 记忆模型
 
-`MemoryAtom` 是一个小型可召回单元，包含 summary、keywords 和可选 embedding。它不是全局拥有的。它会连接到：
+`MemoryAtom` 是一个小型可召回单元，包含 summary、keywords 和可选 embedding，并非全局共享，而是分别连接到：
 
 - 通过 `SUPPORTS` 连接到一个 `Event`，其中包含支持类型；
 - 通过 `REMEMBERS` 连接到一个或多个 `Character` 节点；

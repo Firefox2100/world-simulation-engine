@@ -17,8 +17,9 @@ from world_simulation_engine.model import (
     Turn,
     TurnPresentationBlock,
     TurnPresentationRendering,
+    TurnVersion,
 )
-from .utils import db_dep, storage_dep
+from .utils import db_dep, simulator_dep, storage_dep
 
 
 turn_router = APIRouter(
@@ -419,3 +420,50 @@ async def get_turn_by_sequence(simulation_id: str, sequence: int, db: db_dep):
         )
 
     return turn
+
+
+@turn_router.get("/simulations/{simulation_id}/turn-versions", response_model=list[TurnVersion])
+async def list_turn_versions(
+        simulation_id: str,
+        db: db_dep,
+        turn_sequence: int = Query(..., description="The turn slot to list archived alternates for"),
+):
+    """Archived alternates for one turn slot, most recently discarded first - populated whenever
+    that slot gets regenerated or reverted (see WorldSimulator._archive_current_turn_slot)."""
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    return await db.turn_version.list_versions(simulation_id=simulation_id, turn_sequence=turn_sequence)
+
+
+@turn_router.post("/simulations/{simulation_id}/turn-versions/{version_id}/revert", response_model=Turn)
+async def revert_turn_version(simulation_id: str, version_id: str, simulator: simulator_dep, db: db_dep):
+    """Bring an archived version back as the live turn for its slot - restoring its world state
+    too when the paired checkpoint hasn't since been pruned. See
+    WorldSimulator.revert_to_turn_version."""
+    simulation = await db.simulation.get_simulation(simulation_id)
+    if not simulation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Simulation {simulation_id} not found",
+        )
+
+    try:
+        reverted = await simulator.revert_to_turn_version(simulation_id=simulation_id, version_id=version_id)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    if not reverted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Turn version {version_id} not found in simulation {simulation_id}",
+        )
+
+    return reverted

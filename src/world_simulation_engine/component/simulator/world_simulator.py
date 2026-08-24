@@ -16,20 +16,21 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from world_simulation_engine.misc.enums import ActionType, GraphStateSnapshotType, SceneCoordinationProblemType, \
     SceneCoordinationStatus, SimulationAuditCategory, SimulationAuditOrigin, SimulationAuditStatus, \
-    SimulationGenerationRequestType, TurnType
+    SimulationGenerationRequestType, TurnType, WorldStateCheckpointType
 from world_simulation_engine.model import AcceptedSceneAction, ActionValidationResult, GenerationJob, World, \
     Simulation, InputInterpretation, \
     ActionCandidateSet, ActionProposal, CharacterActionPlan, OOCCharacterActionGuide, OOCEvaluationResult, \
-    OOCWorldStateMutation, ProposedAction, SceneCoordinationResult, \
+    OOCTriggerDirective, OOCWorldStateMutation, ProposedAction, SceneCoordinationResult, \
     GraphStateSnapshot, MemorySummaryApplyResult, MemorySummaryProposal, NarrationBlock, NarrationProposal, \
-    PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Turn, \
-    TurnPresentationBlock, TurnPresentationRendering, SimulationAuditEvent
+    PresentationBlockType, PresentationCompletion, ReactionHistoryEntry, SpeechBlock, StateCommitProposal, Trigger, \
+    Turn, TurnPresentationBlock, TurnPresentationRendering, TurnVersion, SimulationAuditEvent
 from world_simulation_engine.component.image_generator import TurnImageTrigger
 from world_simulation_engine.component.tts_generator import TurnVoiceTrigger
 from world_simulation_engine.component.prompt_loader import PromptLoader
 from world_simulation_engine.component.workflow_loader import WorkflowLoader
 from world_simulation_engine.service import DatabaseService
 from world_simulation_engine.service.audit_service import AuditService
+from world_simulation_engine.service.simulation_state_checkpoint_service import SimulationStateCheckpointService
 from world_simulation_engine.service.storage_service import StorageService
 from .action_suggester import ActionSuggester
 from .action_validator import ActionValidator
@@ -217,6 +218,7 @@ class WorldSimulator:
                  ):
         self._db = database
         self._audit = AuditService(database)
+        self._checkpoint_service = SimulationStateCheckpointService(database=database)
         self._prompt_loader = prompt_loader
         self._langfuse_handler = langfuse_handler
         self._turn_image_trigger = TurnImageTrigger(
@@ -399,6 +401,29 @@ class WorldSimulator:
                     request_type=request_type,
                     regenerate_turn_sequence=regenerate_turn_sequence,
                 )
+                if request_type == SimulationGenerationRequestType.REGENERATION:
+                    # regenerate_turn_sequence is guaranteed set here - _prepare_generation_state
+                    # already raised RuntimeError above if it were None for this request_type.
+                    # Archive whatever is currently live at that slot before it gets tail-deleted
+                    # below, so a regeneration the user doesn't like can be reverted rather than
+                    # simply lost.
+                    await self._archive_current_turn_slot(
+                        simulation_id=state.simulation.id,
+                        turn_sequence=regenerate_turn_sequence,
+                    )
+                    world_state_checkpoint = await self._db.world_state_checkpoint.get_checkpoint_by_turn_sequence(
+                        simulation_id=state.simulation.id,
+                        turn_sequence=regenerate_turn_sequence - 1,
+                    )
+                    if not world_state_checkpoint:
+                        raise RuntimeError(
+                            f"Cannot regenerate turn {regenerate_turn_sequence}: no saved state "
+                            f"checkpoint after turn {regenerate_turn_sequence - 1}"
+                        )
+                    await self._checkpoint_service.restore(
+                        simulation_id=state.simulation.id,
+                        checkpoint=world_state_checkpoint,
+                    )
                 # Snapshot-backed continuation/regeneration can replace the supplied state.
                 # Inject the live process registry only after that restoration has completed.
                 state = state.model_copy(update={
@@ -411,11 +436,22 @@ class WorldSimulator:
                 self._run_registry[thread_id] = run
                 self._completed_run_registry.pop(thread_id, None)
                 if state.request_type == SimulationGenerationRequestType.USER_INPUT_GENERATION:
+                    latest_turn = await self._latest_turn(state.simulation.id)
                     await self._save_graph_state_snapshot(
                         state=state,
                         type=GraphStateSnapshotType.BEFORE_USER_INPUT,
-                        turn=await self._latest_turn(state.simulation.id),
+                        turn=latest_turn,
                     )
+                    await self._checkpoint_service.capture(
+                        simulation_id=state.simulation.id,
+                        type=WorldStateCheckpointType.BEFORE_USER_INPUT,
+                        turn=latest_turn,
+                    )
+                    # The conversation is moving forward for real - whichever swipe the frontend
+                    # left selected is already the live Turn (restored via revert_to_turn_version
+                    # if it wasn't), so every other archived alternate for this simulation is now
+                    # unreachable and safe to drop, same retention window as the checkpoints above.
+                    await self._db.turn_version.delete_all_for_simulation(state.simulation.id)
             except BaseException:
                 self._run_registry.pop(thread_id, None)
                 try:
@@ -1219,6 +1255,49 @@ class WorldSimulator:
             "input_interpretation": interpretation,
         }
 
+    async def _apply_ooc_trigger_directive(
+            self,
+            *,
+            item: OOCTriggerDirective,
+            simulation_id: str,
+    ) -> str | None:
+        """Apply one already-consistency-checked trigger_directive item: create/redefine/arm-or-
+        disable/remove a trigger, the OOC-driven authoring path for long-term scripted story
+        threads (see model/trigger.py, model/inter_state/ooc_evaluation.py). Returns a short skip
+        reason on failure, or None on success."""
+        if item.operation == "create":
+            created = await self._db.trigger.create_trigger(
+                Trigger(source_id=simulation_id, **item.draft.model_dump())
+            )
+            return None if created else "failed to create the trigger"
+
+        existing = await self._db.trigger.get_trigger(item.trigger_id) if item.trigger_id else None
+        if not existing or existing.source_id != simulation_id:
+            return "the referenced trigger was not found in this simulation"
+
+        if item.operation == "update":
+            # Trigger.model_copy() does not re-run validators - build via model_validate() instead,
+            # same as router/trigger.py's update_trigger endpoint, so an update that violates
+            # _validate_effect_shape can't silently bypass that check.
+            candidate = Trigger.model_validate({
+                **existing.model_dump(mode="json"),
+                **item.draft.model_dump(mode="json"),
+            })
+            updated = await self._db.trigger.update_trigger(candidate)
+            return None if updated else "failed to update the trigger"
+
+        if item.operation == "set_status":
+            updated = await self._db.trigger.update_trigger_runtime_state(
+                trigger_id=existing.id,
+                status=item.status,
+                last_condition_result=existing.last_condition_result,
+                last_evaluated_turn_id=existing.last_evaluated_turn_id,
+            )
+            return None if updated else "failed to update the trigger's status"
+
+        deleted = await self._db.trigger.delete_trigger(existing.id)
+        return None if deleted else "failed to delete the trigger"
+
     async def evaluate_ooc_commands(self, state: WorldSimulatorState):
         if not state.input_interpretation:
             raise RuntimeError("No input interpretation supplied")
@@ -1252,6 +1331,7 @@ class WorldSimulator:
         mutation_operations = []
         notices: list[str] = []
         skipped_notes: list[str] = []
+        applied_trigger_operations: list[str] = []
 
         for item in evaluation.items:
             if isinstance(item, OOCWorldStateMutation):
@@ -1273,9 +1353,33 @@ class WorldSimulator:
                     continue
                 forced_actions.setdefault(item.character_id, []).extend(item.actions)
                 notices.append(f"OOC: {item.reason}")
+            elif isinstance(item, OOCTriggerDirective):
+                if not item.consistent:
+                    skipped_notes.append(
+                        f"Skipped OOC command \"{item.command_text}\": "
+                        f"{'; '.join(item.issues) if item.issues else 'failed the basic consistency check'}."
+                    )
+                    continue
+                skip_reason = await self._apply_ooc_trigger_directive(
+                    item=item,
+                    simulation_id=state.simulation.id,
+                )
+                if skip_reason:
+                    skipped_notes.append(f"Skipped OOC command \"{item.command_text}\": {skip_reason}.")
+                    continue
+                applied_trigger_operations.append(item.operation)
+                notices.append(f"OOC: {item.reason}")
 
         committed_turn = None
         if mutation_operations:
+            # Capture only, no restore trigger/UI yet - reuses the same checkpoint primitive
+            # turn regeneration relies on, so a future "undo my last OOC command" feature has the
+            # data it needs without this call itself doing anything more than recording it.
+            await self._checkpoint_service.capture(
+                simulation_id=state.simulation.id,
+                type=WorldStateCheckpointType.BEFORE_OOC_MUTATION,
+                turn=await self._latest_turn(state.simulation.id),
+            )
             proposal = StateCommitProposal(
                 operations=mutation_operations,
                 committer_notes=[f"Applied {len(mutation_operations)} OOC-forced state operation(s)."],
@@ -1307,6 +1411,7 @@ class WorldSimulator:
             details={
                 "mutation_operation_count": len(mutation_operations),
                 "forced_character_ids": sorted(forced_actions),
+                "applied_trigger_operations": applied_trigger_operations,
                 "skipped_notes": skipped_notes,
             },
             simulation_time=simulation.current_time,
@@ -2106,6 +2211,11 @@ class WorldSimulator:
             type=GraphStateSnapshotType.AFTER_USER_INPUT,
             turn=state.committed_turn,
         )
+        await self._checkpoint_service.capture(
+            simulation_id=state.simulation.id,
+            type=WorldStateCheckpointType.AFTER_USER_INPUT,
+            turn=state.committed_turn,
+        )
         # A continuation request only "spends" the one-shot cap when it's the reason a character
         # round happens at all - route_after_user_memory_summary already continues unconditionally
         # when coordination is COMPLETE, so a trigger firing alongside that gets a free ride on an
@@ -2211,6 +2321,11 @@ class WorldSimulator:
             await self._save_graph_state_snapshot(
                 state=state.model_copy(update={"memory_summary_proposal": proposal}),
                 type=GraphStateSnapshotType.AFTER_CHARACTER_ROUND,
+                turn=state.committed_turn,
+            )
+            await self._checkpoint_service.capture(
+                simulation_id=simulation_id,
+                type=WorldStateCheckpointType.AFTER_CHARACTER_ROUND,
                 turn=state.committed_turn,
             )
         result = {"memory_summary_proposal": proposal}
@@ -2448,6 +2563,17 @@ class WorldSimulator:
         if any(item.type == "action" for item in state.input_interpretation.items):
             return "validate_user_action"
 
+        # OOC-only input (no accompanying in-world action) is the user reaching for explicit,
+        # self-contained control - e.g. adjusting world state or a trigger - not a request to
+        # continue the story, so it stops here rather than falling through to a full character
+        # round. The one exception is a character_action_guide directive: it queued a forced
+        # action in state.ooc_forced_character_actions that only propose_scheduled_character_actions
+        # knows how to turn into a narrated, committed turn, so that one node still runs. Because
+        # state.perceiving_character_ids was never populated on this OOC-only path (that only
+        # happens in select_user_event_observers, downstream of a real user action), that node's
+        # own candidate selection naturally narrows to just the forced character(s) - nobody else
+        # is scheduled to react. A user who wants the wider cast to react sends a real turn or an
+        # explicit continue_generation request instead.
         if state.ooc_forced_character_actions:
             return "propose_scheduled_character_actions"
 
@@ -3177,7 +3303,12 @@ class WorldSimulator:
         return WorldSimulatorState.model_validate(snapshot.state).model_copy(
             update={
                 "request_type": request_type,
-                "user_input": None,
+                # user_input deliberately survives the round-trip (unlike every other field reset
+                # here): the snapshot already carries whatever text was active when it was
+                # captured, and clearing it would both discard context
+                # CharacterSimulator.propose_actions uses for the regenerated round and silently
+                # reclassify the resulting turn from SYSTEM_RESPONSE to SYSTEM_CONTINUE in
+                # commit_character_actions.
                 "ooc_evaluation": None,
                 "ooc_forced_character_actions": {},
                 "character_actions": [],
@@ -3199,6 +3330,82 @@ class WorldSimulator:
             limit=1,
         )
         return turns[0] if turns else None
+
+    async def _archive_current_turn_slot(self, *, simulation_id: str, turn_sequence: int) -> None:
+        """Snapshot whatever turn currently occupies `turn_sequence` - content, presentation, the
+        user input that produced it, and a pointer to its own world-state checkpoint - before it's
+        about to be replaced (by a fresh regeneration or by reverting to a different version). A
+        no-op if nothing is there yet (first-ever generation for that slot)."""
+        turn = await self._db.turn.get_turn_by_sequence(simulation_id, turn_sequence)
+        if not turn:
+            return
+
+        blocks = await self._db.turn_presentation.list_blocks(turn_ids=[turn.id])
+        checkpoint = await self._db.world_state_checkpoint.get_checkpoint_by_turn_sequence(
+            simulation_id=simulation_id,
+            turn_sequence=turn_sequence,
+        )
+        user_input_turn = await self._db.turn.get_latest_user_input_before(simulation_id, turn_sequence)
+
+        await self._db.turn_version.archive_version(TurnVersion(
+            simulation_id=simulation_id,
+            turn_sequence=turn_sequence,
+            turn=turn.model_dump(mode="json"),
+            presentation_blocks=[block.model_dump(mode="json") for block in blocks],
+            user_input=user_input_turn.content if user_input_turn else None,
+            checkpoint_id=checkpoint.id if checkpoint else None,
+        ))
+
+    async def revert_to_turn_version(self, *, simulation_id: str, version_id: str) -> Turn | None:
+        """Bring an archived turn version back as the live turn for its slot - the "undo my last
+        regenerate" counterpart to REGENERATION. Restores world state too when the version's own
+        checkpoint hasn't since been pruned by a later real user turn (see WorldStateCheckpoint's
+        retention policy); otherwise falls back to restoring just the turn/presentation content.
+        Symmetric with regeneration: whatever is currently live at the slot is archived first, so
+        reverting never destroys a branch the user might want to come back to."""
+        active_job = await self._db.generation_job.get_active_job(simulation_id)
+        if active_job:
+            raise RuntimeError(f"Simulation {simulation_id} already has an active generation")
+
+        version = await self._db.turn_version.get_version(version_id)
+        if not version or version.simulation_id != simulation_id:
+            return None
+
+        await self._archive_current_turn_slot(simulation_id=simulation_id, turn_sequence=version.turn_sequence)
+        await self._db.turn.delete_turns_after(simulation_id, version.turn_sequence - 1)
+
+        previous_turn = await self._db.turn.get_turn_by_sequence(simulation_id, version.turn_sequence - 1)
+        restored_turn = Turn.model_validate(version.turn)
+        created_turn = await self._db.turn.create_turn(
+            restored_turn,
+            source_id=simulation_id,
+            previous_turn_id=previous_turn.id if previous_turn else None,
+        )
+        if not created_turn:
+            return None
+
+        if version.presentation_blocks:
+            renderings: dict[tuple[str, str | None], list[TurnPresentationBlock]] = {}
+            for block_dump in version.presentation_blocks:
+                block = TurnPresentationBlock.model_validate(block_dump)
+                renderings.setdefault((block.rendering_id, block.locale), []).append(block)
+            for (rendering_id, locale), blocks in renderings.items():
+                await self._db.turn_presentation.replace_rendering(TurnPresentationRendering(
+                    turn_id=created_turn.id,
+                    rendering_id=rendering_id,
+                    locale=locale,
+                    blocks=blocks,
+                ))
+
+        # Recreate the turn (and its presentation) before restoring the checkpoint: the
+        # checkpoint's captured events/memories reference this turn_id and need the node to
+        # already exist to relink against, the same order the original generation ran in.
+        if version.checkpoint_id:
+            checkpoint = await self._db.world_state_checkpoint.get_checkpoint_by_id(version.checkpoint_id)
+            if checkpoint:
+                await self._checkpoint_service.restore(simulation_id=simulation_id, checkpoint=checkpoint)
+
+        return created_turn
 
     async def _save_graph_state_snapshot(
             self,

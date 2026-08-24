@@ -67,9 +67,9 @@ class WorldExportService:
         landmark_locations = await db.location.get_landmark_location_map(world_id)
 
         characters = await db.character.list_characters(world_id=world_id)
-        character_positions = await db.character.get_position_map(world_id)
+        character_positions = await db.character.get_position_map(source_id=world_id)
         background_characters = await db.character.list_background_characters(world_id=world_id)
-        background_positions = await db.character.get_background_position_map(world_id)
+        background_positions = await db.character.get_background_position_map(source_id=world_id)
 
         items = await db.item.list_items(world_id=world_id)
         stacks = await db.item.list_stacks(world_id=world_id)

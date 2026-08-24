@@ -1348,6 +1348,12 @@ body {
     pointer-events: auto;
 }
 
+.chat-record-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 8px 8px;
+}
+
 .segment-voice-button,
 .segment-image-button {
     width: 28px;
@@ -1390,6 +1396,46 @@ body {
 .segment-image-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.swipe-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: white;
+    padding: 2px;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+}
+
+.swipe-arrow {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #6b7280;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.swipe-arrow:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #111827;
+}
+
+.swipe-arrow:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.swipe-counter {
+    font-size: 0.75rem;
+    color: #6b7280;
+    min-width: 28px;
+    text-align: center;
 }
 
 .cover-image-generate-control {

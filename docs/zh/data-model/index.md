@@ -11,9 +11,10 @@ World Simulation Engine 把叙事状态存储为结构化图数据。这个图�
 | 世界结构 | [世界与地点](world-and-location.md) | `Author`, `World`, `Simulation`, `Location`, `Landmark` |
 | 人物 | [角色](characters.md) | `Character`, `BackgroundCharacter`, `Intent`, `CharacterTtsConfig` |
 | 物理状态 | [物品与容器](items-and-containers.md) | `Item`, `ItemStack`, `Equipment`, `Container` |
-| 回合历史 | [事件、回合与动作](events-turns-and-actions.md) | `Turn`, `TurnPresentationBlock`, `Event`, `Intent`, `GenerationJob`, `GraphStateSnapshot`, `SimulationAuditEvent` |
+| 回合历史 | [事件、回合与动作](events-turns-and-actions.md) | `Turn`, `TurnPresentationBlock`, `Event`, `Intent`, `Trigger`, `TriggerActivation`, `GenerationJob`, `GraphStateSnapshot`, `TurnVersion`, `WorldStateCheckpoint`, `SimulationAuditEvent` |
 | 记忆与信念 | [记忆与主观断言](memories-and-claims.md) | `MemoryAtom`, `SubjectiveEntityClaim`, `SubjectiveClaimChangeAudit` |
 | 社交状态 | [关系与情绪](relationships-and-emotions.md) | `EntityRelationship`, `EmotionState`, `RelationshipChangeAudit`, `EmotionChangeAudit` |
+| 追踪变量 | 跨领域机制；`Character` 的情况见[角色](characters.md) | `EntityVariableSet`, `VariableChangeAudit` |
 | 资产与服务配置 | [媒体与配置](media-and-configuration.md) | `Media`, `ConnectionConfig`, 模型配置节点、生成配置节点 |
 
 ## 完整实体关系图
@@ -55,8 +56,14 @@ flowchart LR
     TtsGenerationConfig["TtsGenerationConfig"]
     CharacterTtsConfig["CharacterTtsConfig"]
     GraphStateSnapshot["GraphStateSnapshot"]
+    TurnVersion["TurnVersion"]
+    WorldStateCheckpoint["WorldStateCheckpoint"]
     GenerationJob["GenerationJob"]
     SimulationAuditEvent["SimulationAuditEvent"]
+    Trigger["Trigger"]
+    TriggerActivation["TriggerActivation"]
+    EntityVariableSet["EntityVariableSet"]
+    VariableChangeAudit["VariableChangeAudit"]
 
     Author -->|CREATED| World
     World -->|NEW_VERSION_OF| World
@@ -77,10 +84,22 @@ flowchart LR
     Simulation -->|CONTAINS| Turn
     Simulation -->|CONTAINS| EntityRelationship
     Simulation -->|CONTAINS| SubjectiveEntityClaim
+    World -->|CONTAINS| SubjectiveEntityClaim
     Simulation -->|CONTAINS| EmotionState
     Simulation -->|HAS_GENERATION_JOB| GenerationJob
     Simulation -->|HAS_GRAPH_STATE_SNAPSHOT| GraphStateSnapshot
+    Simulation -->|HAS_TURN_VERSION| TurnVersion
+    Simulation -->|HAS_STATE_CHECKPOINT| WorldStateCheckpoint
     Simulation -->|HAS_AUDIT_EVENT| SimulationAuditEvent
+    World -->|CONTAINS| Trigger
+    Simulation -->|CONTAINS| Trigger
+    Simulation -->|CONTAINS| TriggerActivation
+    Trigger -->|FIRED| TriggerActivation
+    World -->|CONTAINS| EntityVariableSet
+    Simulation -->|CONTAINS| EntityVariableSet
+    Character -->|HAS_VARIABLES| EntityVariableSet
+    Turn -->|TRIGGERED| VariableChangeAudit
+    VariableChangeAudit -->|CHANGED| EntityVariableSet
 
     Location -->|CONTAINS| Location
     Location -->|CONTAINS| Landmark
@@ -186,4 +205,7 @@ flowchart LR
 - 正常状态下物理位置是互斥的：对象要么在地点中，要么被其他实体持有/装备，要么在容器中。
 - Turn 使用 `PROPOSED_STATE_CHANGE` 记录提案；只有 state committer 写入拟议变更后，图才成为已提交事实。
 - 私有上下文体现在角色字段、主观断言、关系 visibility、记忆和情绪状态中。呈现 API 应只暴露合适的渲染视图。
+- 追踪变量是通用机制：任何实体（不只是 `Character`）都可以通过 `HAS_VARIABLES` 拥有一个 `EntityVariableSet`，其中保存自己的有类型/有边界的 `VariableDefinition`（对应 SillyTavern MVU variable schema）。变更审计方式与关系、情绪相同，通过 `VariableChangeAudit` 记录。
+- `TurnVersion` 和 `WorldStateCheckpoint` 不是永久历史记录：它们的作用是让 turn 的重新生成和回退更安全，一旦故事真正
+  向前推进就会被清理（见[事件、回合与动作](events-turns-and-actions.md#turn-版本与状态检查点)）。
 

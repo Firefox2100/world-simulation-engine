@@ -17,6 +17,7 @@ The React router defines these main routes:
 | `/media` | `MediaPage` | Uploaded/generated media management. |
 | `/prompts` | `PromptsPage` | Prompt media creation and editing. |
 | `/connections` and `/configurations` | `ConfigurationsPage` | Provider connections and reusable model configs. |
+| `/worlds/import/sillytavern` | `SillyTavernImportPage` | SillyTavern character card import: parse, review/edit, streamed extraction, and commit into a new world. Rendered outside the shared `AppLayout` chrome. |
 
 ## API shape
 
@@ -33,6 +34,7 @@ per-world/per-simulation assignments stay consistent.
 - follows generation status and run output,
 - exposes simulation tabs for config assignments, image generation, TTS generation, prompt overrides, observability,
   and entity details,
+- offers regenerating a turn ("swipe") and browsing/reverting to its archived alternates,
 - triggers manual media generation when configured,
 - shows generated scene, character, location, item, and voice media where available.
 

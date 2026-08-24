@@ -9,7 +9,7 @@ World and location entities define the authored setting and the runtime spatial 
 | Entity | Important properties |
 | --- | --- |
 | `Author` | `id`, `name`, `url` |
-| `World` | `id`, `name`, `description`, `starting_time`, `version`, `url`, `language` |
+| `World` | `id`, `name`, `description`, `starting_time`, `version` (integer, starts at 1), `url`, `language`, `metadata_json`, `creation_time` |
 | `Simulation` | `id`, `name`, `description`, `current_time`, `emotion_enabled`, `suggested_actions` |
 | `Location` | `id`, `name`, `description` |
 | `Landmark` | `id`, `name`, `description` |
@@ -43,6 +43,8 @@ Deleting a world removes its contained authored graph and refuses or protects ca
 - A landmark belongs to a location, not directly to a world or simulation.
 - Nested locations should remain within the same source scope.
 - `current_time` is simulation state; `starting_time` is world template state.
+- `World.version` is an integer that starts at 1; it is distinct from `metadata_json`'s own optional `version` string, which records the *content's* original author-set version (e.g. an imported card's version), not this record's.
+- `metadata_json` (`WorldMetadata`: `author`, `author_url`, `resource_url`, `comment`, `version`, `tags`) is human-facing provenance/notes only, stored as a JSON string property, and is never included in LLM prompts.
 
 ## Example Cypher representation
 
@@ -53,8 +55,9 @@ CREATE (world:World {
   name: "Harbor of Glass",
   description: "A coastal city of guilds and machines.",
   starting_time: datetime("1894-04-16T08:00:00Z"),
-  version: "1.0.0",
-  language: "en"
+  version: 1,
+  language: "en",
+  metadata_json: "{\"tags\": [\"coastal\", \"guilds\"]}"
 })
 CREATE (simulation:Simulation {
   id: "sim-1",

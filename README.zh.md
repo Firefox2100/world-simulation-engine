@@ -8,6 +8,13 @@ World Simulation Engine 是一个实验性的、由 LLM 驱动的世界模拟器
 
 这是一个研究/爱好项目，不是生产级产品。它的存在是为了探索下面这些设计问题；代码库、prompt 和数据模型都仍在演进中。
 
+## 文档
+
+完整文档（包括快速开始指南、配置参考、架构说明和数据模型）发布在
+**[firefox2100.github.io/world-simulation-engine/zh](https://firefox2100.github.io/world-simulation-engine/zh/)**
+（[English](https://firefox2100.github.io/world-simulation-engine/)）。下面的内容只是简要总结；如果只是想先把应用
+跑起来，建议直接看文档站的[使用 Docker 最快本地部署](https://firefox2100.github.io/world-simulation-engine/zh/quick-start/docker/)。
+
 ## 它探索什么
 
 - **带时间约束的模拟。** 每个角色活动都有预期持续时间和是否可打断的标记，模拟根据显式的 `current_time` 推进，而不是简单地“一条消息对应一次回复”。Turns 不只是“下一条聊天消息”，而是可被调度的事件：角色可能正在进行、等待或被打断。
@@ -18,7 +25,7 @@ World Simulation Engine 是一个实验性的、由 LLM 驱动的世界模拟器
 
 ## 架构速览
 
-- **后端**（`src/world_simulation_engine`）：FastAPI 应用、由 Neo4j 支撑的 `DatabaseService`（每个实体类型一个 store class，不使用 ORM）、由 LangGraph 编排的模拟流水线（`WorldSimulator` 及其组件阶段），以及按 connection config 选择的 provider-agnostic LLM/embedding 服务。Chat models 支持 Ollama、OpenAI、Anthropic、OpenRouter、Google GenAI、Mistral AI、Cohere、Perplexity、Groq、DeepSeek、xAI 和 Cloudflare；embeddings 当前支持 Ollama 和 OpenAI。
+- **后端**（`src/world_simulation_engine`）：FastAPI 应用、由 Neo4j 支撑的 `DatabaseService`（每个实体类型一个 store class，不使用 ORM）、由 LangGraph 编排的模拟流水线（`WorldSimulator` 及其组件阶段），以及按 connection config 选择的 provider-agnostic LLM/embedding 服务。Chat models 支持 Ollama、OpenAI、Anthropic、OpenRouter、Google GenAI、Mistral AI、Cohere、Perplexity、Groq、DeepSeek、xAI 和 Cloudflare；embeddings 当前支持 Ollama、OpenAI、Google GenAI、Mistral AI、Cohere、Perplexity 和 Cloudflare。
 - **前端**（`frontend/`）：React + Vite 管理/聊天 UI，用于管理 worlds、connections、prompts 和 simulations。
 
 ## 部署

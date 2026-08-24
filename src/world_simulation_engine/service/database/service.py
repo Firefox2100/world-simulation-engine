@@ -25,7 +25,9 @@ from .state_commit_store import StateCommitStore
 from .trigger_store import TriggerStore
 from .turn_store import TurnStore
 from .turn_presentation_store import TurnPresentationStore
+from .turn_version_store import TurnVersionStore
 from .variable_store import VariableStore
+from .world_state_checkpoint_store import WorldStateCheckpointStore
 from .world_store import WorldStore
 
 if TYPE_CHECKING:
@@ -66,7 +68,9 @@ class DatabaseService:
         self._trigger = TriggerStore(self._driver)
         self._turn = TurnStore(self._driver)
         self._turn_presentation = TurnPresentationStore(self._driver)
+        self._turn_version = TurnVersionStore(self._driver)
         self._variable = VariableStore(self._driver)
+        self._world_state_checkpoint = WorldStateCheckpointStore(self._driver)
         self._world = WorldStore(self._driver)
 
     async def close(self):
@@ -165,8 +169,16 @@ class DatabaseService:
         return self._turn_presentation
 
     @property
+    def turn_version(self) -> TurnVersionStore:
+        return self._turn_version
+
+    @property
     def variable(self) -> VariableStore:
         return self._variable
+
+    @property
+    def world_state_checkpoint(self) -> WorldStateCheckpointStore:
+        return self._world_state_checkpoint
 
     @property
     def world(self) -> WorldStore:

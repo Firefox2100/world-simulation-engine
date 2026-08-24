@@ -15,6 +15,7 @@ React router 定义了这些主要路由：
 | `/media` | `MediaPage` | 上传/生成媒体管理。 |
 | `/prompts` | `PromptsPage` | Prompt media 创建和编辑。 |
 | `/connections` 和 `/configurations` | `ConfigurationsPage` | 供应商连接和可复用模型配置。 |
+| `/worlds/import/sillytavern` | `SillyTavernImportPage` | SillyTavern 角色卡导入：解析、审阅/编辑、流式提取，并提交为一个新世界。渲染时不使用共享的 `AppLayout` 外壳。 |
 
 ## API 形状
 
@@ -28,6 +29,7 @@ React router 定义了这些主要路由：
 - 向 generation API 发送用户输入；
 - 跟踪生成状态和运行输出；
 - 暴露模拟 tabs，用于配置分配、图像生成、TTS 生成、prompt overrides、可观测性和实体详情；
+- 提供重新生成某个 turn（「swipe」）的入口，以及浏览、回退到其归档备份版本；
 - 在配置为手动模式时触发媒体生成；
 - 在可用时显示生成的场景、角色、地点、物品和语音媒体。
 

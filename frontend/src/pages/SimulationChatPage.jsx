@@ -63,6 +63,9 @@ import {
     getSimulationLandmarkImageUrl,
     getSimulationLocationImageUrl,
     getSimulationCoverUrl,
+    listTurnVersions,
+    normalizeTurn,
+    revertTurnVersion,
     sendSimulationInput,
     setCharacterTtsConfig,
 } from "@/api/simulations";
@@ -657,6 +660,42 @@ function SegmentImageButton({ label, onGenerate }) {
     );
 }
 
+// SillyTavern-style swipe control for the AI's reply to the last user turn - only ever shown on
+// the most recent non-user record. Left/right just move the pointer through already-fetched
+// candidates (no backend call - see SimulationChatPage's swipeCandidates); right past the last
+// candidate triggers an actual regenerate. Errors and the in-flight state are surfaced through the
+// same sendError/sendDisabled the composer already uses, since regenerating is just another
+// generation run.
+function SwipeControl({ index, count, onLeft, onRight, disabled }) {
+    const { t } = useTranslation();
+
+    return (
+        <span className="swipe-control">
+            <button
+                type="button"
+                className="swipe-arrow"
+                onClick={onLeft}
+                disabled={disabled || index <= 0}
+                title={t("simulationChat.swipeLeft")}
+                aria-label={t("simulationChat.swipeLeft")}
+            >
+                ‹
+            </button>
+            <span className="swipe-counter">{index + 1}/{count}</span>
+            <button
+                type="button"
+                className="swipe-arrow"
+                onClick={onRight}
+                disabled={disabled}
+                title={t("simulationChat.swipeRight")}
+                aria-label={t("simulationChat.swipeRight")}
+            >
+                ›
+            </button>
+        </span>
+    );
+}
+
 function CoverImageActions({ error, onChoose, onRemove }) {
     const { t } = useTranslation();
 
@@ -917,6 +956,12 @@ function ChatRecord({
     userCharacter,
     canGenerateScene = false,
     canGeneratePortrait = false,
+    isLatest = false,
+    swipeIndex = 0,
+    swipeCount = 0,
+    onSwipeLeft = null,
+    onSwipeRight = null,
+    swipeDisabled = false,
 }) {
     const { t } = useTranslation();
     const userRecord = isUserRecord(record);
@@ -925,20 +970,36 @@ function ChatRecord({
     const hasBlocks = blocks?.length > 0;
     const { images, activeIndex, setActiveIndex, addImage } = useBubbleImages("turn", hasBlocks ? null : record.id);
 
+    // Swiping only ever applies to the AI's own reply, and only the most recent one - a user's
+    // own turn has nothing to regenerate, and swiping an older turn would leave it inconsistent
+    // with everything narrated after it.
+    const swipeControl = isLatest && !userRecord && swipeCount > 0 && onSwipeLeft && onSwipeRight ? (
+        <SwipeControl
+            index={swipeIndex}
+            count={swipeCount}
+            onLeft={onSwipeLeft}
+            onRight={onSwipeRight}
+            disabled={swipeDisabled}
+        />
+    ) : null;
+
     if (hasBlocks) {
         return (
-            <NarrationBlocks
-                blocks={blocks}
-                simulationId={simulation?.id}
-                charactersById={charactersById}
-                userCharacter={userCharacter}
-                userRecord={userRecord}
-                allowVoice
-                turnId={record.id}
-                userCharacterId={userCharacter?.id ?? null}
-                canGenerateScene={canGenerateScene}
-                canGeneratePortrait={canGeneratePortrait}
-            />
+            <>
+                <NarrationBlocks
+                    blocks={blocks}
+                    simulationId={simulation?.id}
+                    charactersById={charactersById}
+                    userCharacter={userCharacter}
+                    userRecord={userRecord}
+                    allowVoice
+                    turnId={record.id}
+                    userCharacterId={userCharacter?.id ?? null}
+                    canGenerateScene={canGenerateScene}
+                    canGeneratePortrait={canGeneratePortrait}
+                />
+                {swipeControl ? <div className="chat-record-actions">{swipeControl}</div> : null}
+            </>
         );
     }
 
@@ -981,7 +1042,12 @@ function ChatRecord({
                     ) : null}
                 </div>
             </div>
-            {imageButton ? <span className="chat-message-actions">{imageButton}</span> : null}
+            {imageButton || swipeControl ? (
+                <span className="chat-message-actions">
+                    {imageButton}
+                    {swipeControl}
+                </span>
+            ) : null}
         </article>
     );
 }
@@ -3201,6 +3267,64 @@ export function SimulationChatPage() {
     const voiceInputDisabled = sending || Boolean(streamingRecord?.active);
     const sendDisabled = sending || streamingRecord?.active || Boolean(inputFormatError) || voiceBusy;
 
+    const latestRecord = !streamingRecord && records.length > 0 ? records[records.length - 1] : null;
+    const latestRecordIsRegenerable = Boolean(latestRecord) && !isUserRecord(latestRecord);
+
+    // Swipe history for the last AI turn: every archived alternate (oldest first) plus the
+    // currently live one last. Left/right just move swipeIndex through this already-fetched
+    // array - no backend call - until the right arrow is pressed past the end, which is when it
+    // actually regenerates (see handleSwipeRight).
+    const [swipeCandidates, setSwipeCandidates] = useState([]);
+    const [swipeIndex, setSwipeIndex] = useState(0);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadCandidates() {
+            if (!latestRecordIsRegenerable || !simulationId) {
+                setSwipeCandidates([]);
+                setSwipeIndex(0);
+                return;
+            }
+
+            try {
+                const versions = await listTurnVersions({
+                    simulationId,
+                    turnSequence: latestRecord.turn_number,
+                });
+                const archived = versions
+                    .slice()
+                    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+                    .map((version) => ({
+                        key: version.id,
+                        versionId: version.id,
+                        record: normalizeTurn({
+                            turn: version.turn,
+                            presentation_blocks: version.presentation_blocks,
+                        }),
+                    }));
+                const candidates = [
+                    ...archived,
+                    { key: latestRecord.id, versionId: null, record: latestRecord },
+                ];
+                if (!cancelled) {
+                    setSwipeCandidates(candidates);
+                    setSwipeIndex(candidates.length - 1);
+                }
+            } catch {
+                if (!cancelled) {
+                    setSwipeCandidates([]);
+                    setSwipeIndex(0);
+                }
+            }
+        }
+
+        loadCandidates();
+        return () => {
+            cancelled = true;
+        };
+    }, [simulationId, latestRecordIsRegenerable, latestRecord]);
+
     async function refreshSimulationDetails(id) {
         try {
             const detail = await fetchSimulation(id);
@@ -3798,6 +3922,25 @@ export function SimulationChatPage() {
         });
     }
 
+    // If the user has swiped away from the tip (viewing an earlier discarded alternate) and is
+    // about to send a new request, that selected alternate needs to become the live turn - world
+    // state included - before the new turn is generated on top of it. A no-op when already
+    // viewing the live candidate (the common case). The backend prunes every other alternate for
+    // this simulation once the new request actually starts (see WorldSimulator.start_generation's
+    // BEFORE_USER_INPUT branch), so only the selected one survives.
+    async function restoreSelectedSwipeIfNeeded() {
+        if (swipeCandidates.length === 0) {
+            return;
+        }
+
+        const selected = swipeCandidates[swipeIndex];
+        if (!selected || selected.versionId === null) {
+            return;
+        }
+
+        await revertTurnVersion({ simulationId, versionId: selected.versionId });
+    }
+
     async function handleSend() {
         if (sendDisabled) {
             if (inputFormatError) {
@@ -3816,6 +3959,8 @@ export function SimulationChatPage() {
             setSending(true);
             setSendError(null);
             setInput("");
+
+            await restoreSelectedSwipeIfNeeded();
 
             if (userInput !== null) {
                 setRecords((current) => [
@@ -3852,6 +3997,68 @@ export function SimulationChatPage() {
         } finally {
             setSending(false);
         }
+    }
+
+    async function handleRegenerate(record) {
+        if (sendDisabled || !record?.id) {
+            return;
+        }
+
+        const turnSequence = record.turn_number;
+        if (turnSequence === null || turnSequence === undefined) {
+            return;
+        }
+
+        lastRecordIdBeforeRunRef.current = records.at(-1)?.id ?? null;
+
+        try {
+            setSending(true);
+            setSendError(null);
+
+            const data = await sendSimulationInput({
+                simulationId,
+                userInput: null,
+                regenerateTurnSequence: turnSequence,
+            });
+
+            setStreamingRecord({
+                runId: data.run_id,
+                message: "",
+                blocks: [],
+                stageName: "",
+                pendingError: null,
+                error: null,
+                active: true,
+            });
+            connectRunEvents(data.run_id);
+        } catch (err) {
+            setSendError(err.message);
+        } finally {
+            setSending(false);
+        }
+    }
+
+    function handleSwipeLeft() {
+        if (sendDisabled || swipeIndex <= 0) {
+            return;
+        }
+
+        setSwipeIndex((current) => Math.max(0, current - 1));
+    }
+
+    async function handleSwipeRight() {
+        if (sendDisabled) {
+            return;
+        }
+
+        if (swipeIndex < swipeCandidates.length - 1) {
+            setSwipeIndex((current) => Math.min(swipeCandidates.length - 1, current + 1));
+            return;
+        }
+
+        // Already at the tip - "swiping right" here means generating a genuinely new alternate.
+        const liveCandidate = swipeCandidates[swipeCandidates.length - 1];
+        await handleRegenerate(liveCandidate?.record ?? latestRecord);
     }
 
     function handleSuggestionClick(suggestion) {
@@ -3945,17 +4152,30 @@ export function SimulationChatPage() {
                         ) : records.length === 0 && !streamingRecord ? (
                             <p className="status-text">{t("simulationChat.emptyRecords")}</p>
                         ) : (
-                            records.map((record) => (
-                                <ChatRecord
-                                    key={record.id}
-                                    record={record}
-                                    simulation={selectedSimulation}
-                                    charactersById={selectedCharactersById}
-                                    userCharacter={userCharacter}
-                                    canGenerateScene={canGenerateSceneImage}
-                                    canGeneratePortrait={canGeneratePortraitImage}
-                                />
-                            ))
+                            records.map((record, index) => {
+                                const isLast = !streamingRecord && index === records.length - 1;
+                                const displayRecord = isLast && swipeCandidates.length > 0
+                                    ? (swipeCandidates[swipeIndex]?.record ?? record)
+                                    : record;
+
+                                return (
+                                    <ChatRecord
+                                        key={record.id}
+                                        record={displayRecord}
+                                        simulation={selectedSimulation}
+                                        charactersById={selectedCharactersById}
+                                        userCharacter={userCharacter}
+                                        canGenerateScene={canGenerateSceneImage}
+                                        canGeneratePortrait={canGeneratePortraitImage}
+                                        isLatest={isLast}
+                                        swipeIndex={swipeIndex}
+                                        swipeCount={isLast ? swipeCandidates.length : 0}
+                                        onSwipeLeft={handleSwipeLeft}
+                                        onSwipeRight={handleSwipeRight}
+                                        swipeDisabled={sendDisabled}
+                                    />
+                                );
+                            })
                         )}
 
                         {streamingRecord ? (

@@ -29,7 +29,7 @@ Memories 和 claims 建模角色视角。`MemoryAtom` 节点存储带 keywords �
 
 Memories 由 events 产生，然后附着到记住它们的 characters。一个 memory 可以被多个 characters 共享，但每条 `REMEMBERS` relationship 可以携带角色特定的 relevance。
 
-Subjective claims 属于一个 simulation 和一个 observer character。它们从该 observer 的视角描述 subject entity，并随着 simulator proposals 和 state commits 被修订。
+Subjective claims 属于一个 simulation 和一个 observer character。它们从该 observer 的视角描述 subject entity，并会随着 simulator proposals 和 state commits 不断修订。
 
 ## 创建与删除行为
 

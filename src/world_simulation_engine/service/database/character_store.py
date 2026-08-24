@@ -147,18 +147,19 @@ class CharacterStore:
             for record in result.records
         ]
 
-    async def get_position_map(self, world_id: str) -> dict[str, dict]:
+    async def get_position_map(self, source_id: str) -> dict[str, dict]:
         """Character doesn't carry location/landmark as fields (unlike Equipment/Container/ItemStack's
-        owner/holder), so exporting them needs this dedicated lookup."""
+        owner/holder), so exporting them needs this dedicated lookup. source_id may be a World or a
+        Simulation id."""
         result = await self._driver.execute_query(
             """
-            MATCH (:World {id: $world_id})-[:CONTAINS]->(c:Character)
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(c:Character)
             OPTIONAL MATCH (c)-[present:PRESENT_IN]->(location:Location)
             OPTIONAL MATCH (c)-[:ANCHORED_TO]->(landmark:Landmark)
             RETURN c.id AS character_id, location.id AS location_id, present.position AS position,
                 landmark.id AS landmark_id
             """,
-            parameters_={"world_id": world_id},
+            parameters_={"source_id": source_id},
         )
 
         return {
@@ -214,6 +215,41 @@ class CharacterStore:
             return None
 
         return self.character_from_node(record["c"])
+
+    async def overwrite_character(self, character: Character) -> Character | None:
+        """Restore-only full field replace (SET c = {...}), bypassing update_character's
+        None-filtering partial merge - used by SimulationStateCheckpointService.restore to put a
+        character's own fields back to a captured checkpoint exactly, never by normal simulation
+        writes. Relationship-derived state (location/landmark) is restored separately via
+        move_to_location/anchor_to_landmark, not by this method."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:Character {id: $id})
+            SET c = {
+                id: $id, user_controlled: $user_controlled, name: $name, age: $age, gender: $gender,
+                appearance: $appearance, description: $description, public_state: $public_state,
+                private_state: $private_state, current_activity: $current_activity,
+                speech_style: $speech_style
+            }
+            RETURN c LIMIT 1
+            """,
+            parameters_={
+                "id": character.id,
+                "user_controlled": character.user_controlled,
+                "name": character.name,
+                "age": character.age,
+                "gender": character.gender,
+                "appearance": character.appearance,
+                "description": character.description,
+                "public_state": character.public_state,
+                "private_state": character.private_state,
+                "current_activity": character.current_activity.model_dump_json(),
+                "speech_style": character.speech_style,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.character_from_node(record["c"]) if record else None
 
     async def delete_character(self, character_id: str) -> bool:
         result = await self._driver.execute_query(
@@ -527,17 +563,18 @@ class CharacterStore:
             for record in result.records
         ]
 
-    async def get_background_position_map(self, world_id: str) -> dict[str, dict]:
-        """Same rationale as get_position_map, for BackgroundCharacter."""
+    async def get_background_position_map(self, source_id: str) -> dict[str, dict]:
+        """Same rationale as get_position_map, for BackgroundCharacter. source_id may be a World or
+        a Simulation id."""
         result = await self._driver.execute_query(
             """
-            MATCH (:World {id: $world_id})-[:CONTAINS]->(c:BackgroundCharacter)
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(c:BackgroundCharacter)
             OPTIONAL MATCH (c)-[present:PRESENT_IN]->(location:Location)
             OPTIONAL MATCH (c)-[:ANCHORED_TO]->(landmark:Landmark)
             RETURN c.id AS character_id, location.id AS location_id, present.position AS position,
                 landmark.id AS landmark_id
             """,
-            parameters_={"world_id": world_id},
+            parameters_={"source_id": source_id},
         )
 
         return {
@@ -588,6 +625,24 @@ class CharacterStore:
             return None
 
         return self.background_character_from_node(record["c"])
+
+    async def overwrite_background_character(self, character: BackgroundCharacter) -> BackgroundCharacter | None:
+        """Restore-only full field replace - see overwrite_character for rationale."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (c:BackgroundCharacter {id: $id})
+            SET c = {id: $id, name: $name, description: $description}
+            RETURN c LIMIT 1
+            """,
+            parameters_={
+                "id": character.id,
+                "name": character.name,
+                "description": character.description,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.background_character_from_node(record["c"]) if record else None
 
     async def delete_background_character(self, character_id: str) -> bool:
         result = await self._driver.execute_query(

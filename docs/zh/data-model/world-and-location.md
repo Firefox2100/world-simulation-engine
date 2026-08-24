@@ -9,7 +9,7 @@
 | 实体 | 重要属性 |
 | --- | --- |
 | `Author` | `id`, `name`, `url` |
-| `World` | `id`, `name`, `description`, `starting_time`, `version`, `url`, `language` |
+| `World` | `id`, `name`, `description`, `starting_time`, `version`（整数，从 1 开始）, `url`, `language`, `metadata_json`, `creation_time` |
 | `Simulation` | `id`, `name`, `description`, `current_time`, `emotion_enabled`, `suggested_actions` |
 | `Location` | `id`, `name`, `description` |
 | `Landmark` | `id`, `name`, `description` |
@@ -26,7 +26,7 @@
 
 ## 归属与生命周期
 
-Author 通过 `CREATED` 拥有 worlds。World 通过 `CONTAINS` 拥有作者态图。Simulation 通过 `CONTAINS` 拥有运行时状态，并通过 `BASED_ON` 指回源 world。
+Author 通过 `CREATED` 拥有 worlds，World 通过 `CONTAINS` 拥有自己的作者态图；Simulation 则通过 `CONTAINS` 拥有运行时状态，并借 `BASED_ON` 指回源 world。
 
 Location 的作用域属于 world 或 simulation。Simulation 可以读取 world locations 作为继承上下文，但当运行需要分叉时，运行时变更应写入 simulation 作用域副本。
 
@@ -43,6 +43,8 @@ Location 的作用域属于 world 或 simulation。Simulation 可以读取 world
 - Landmark 属于 location，而不是直接属于 world 或 simulation。
 - 嵌套 locations 应保持在同一个 source scope 中。
 - `current_time` 是 simulation 状态；`starting_time` 是 world 模板状态。
+- `World.version` 是一个从 1 开始的整数；它与 `metadata_json` 里那个可选的 `version` 字符串是两回事——后者记录的是*内容本身*由原作者设定的版本（例如所导入卡片的版本），而不是这条记录自身的版本。
+- `metadata_json`（`WorldMetadata`：`author`、`author_url`、`resource_url`、`comment`、`version`、`tags`）只是面向人类的溯源/备注信息，以 JSON 字符串形式存储为一个属性，永远不会出现在 LLM prompt 中。
 
 ## 示例 Cypher 表示
 
@@ -53,8 +55,9 @@ CREATE (world:World {
   name: "Harbor of Glass",
   description: "A coastal city of guilds and machines.",
   starting_time: datetime("1894-04-16T08:00:00Z"),
-  version: "1.0.0",
-  language: "en"
+  version: 1,
+  language: "en",
+  metadata_json: "{\"tags\": [\"coastal\", \"guilds\"]}"
 })
 CREATE (simulation:Simulation {
   id: "sim-1",

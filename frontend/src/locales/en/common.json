@@ -78,6 +78,8 @@
     "inputPlaceholder": "Action text, *thought*, **emphasis**, \"speech\"...",
     "send": "Send",
     "sendError": "Unable to send message: {{error}}",
+    "swipeLeft": "Previous version",
+    "swipeRight": "Next version / regenerate",
     "cancelled": "Generation was cancelled.",
     "playVoice": "Play voice",
     "generateVoice": "Generate voice",

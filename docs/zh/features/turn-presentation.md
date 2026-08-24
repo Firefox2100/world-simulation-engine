@@ -1,6 +1,6 @@
 # Turn 呈现
 
-一个 canonical turn 是模拟历史中一个已提交单元。前端不必把这个 turn 渲染成一个气泡。世界模拟引擎保存了一个独立、非权威的 presentation layer，可以把一个 turn 拆成有序 display blocks。
+canonical turn 是模拟历史中一次已提交的记录，前端不必把它渲染成单个气泡。世界模拟引擎单独保存了一层独立、非权威的 presentation layer，可以把一个 turn 拆成多个有序的 display blocks。
 
 关键模型包括：
 

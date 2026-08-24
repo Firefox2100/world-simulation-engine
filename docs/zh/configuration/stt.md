@@ -4,7 +4,7 @@
 
 <!-- Screenshot placeholder: STT config editor with whisper.cpp connection, language, translate, temperature, and initial prompt fields. -->
 
-系统只预期存在一个 STT 后端。它被所有模拟共享，而不是按世界或组件分配。
+系统只预期存在一个 STT 后端，所有模拟共用这一个后端，而不是按世界或组件单独分配。
 
 ## 字段
 

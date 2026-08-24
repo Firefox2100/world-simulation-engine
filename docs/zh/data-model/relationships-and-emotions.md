@@ -32,7 +32,7 @@ Relationships 和 emotions 让社交与情感状态在图中显式化。`EntityR
 
 Relationships 以 world 或 simulation 为作用域。World-scoped relationships 是作者态背景事实。Simulation-scoped relationships 是运行时事实，可以引用继承的 world entities 或 simulation entities。
 
-Emotion state 属于 simulation scope，并由 character 拥有。它预期会随着 turns 产出的 events 和 memories 而改变。Baseline vector 表示更慢变化的情感倾向；immediate vector 表示短期反应。
+Emotion state 属于 simulation scope，由 character 拥有。随着 turns 不断产出新的 events 和 memories，情绪状态也会随之变化。Baseline vector 表示更慢变化的情感倾向；immediate vector 表示短期反应。
 
 ## 创建与删除行为
 

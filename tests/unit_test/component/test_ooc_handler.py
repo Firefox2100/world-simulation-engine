@@ -76,6 +76,7 @@ def make_database():
     database.equipment.get_equipment_by_location = AsyncMock(return_value=[])
     database.container.get_containers_by_location = AsyncMock(return_value=[])
     database.location.get_landmarks_by_location = AsyncMock(return_value=[])
+    database.trigger.list_triggers = AsyncMock(return_value=[])
 
     return database
 

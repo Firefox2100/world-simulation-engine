@@ -253,6 +253,18 @@ class GraphStateSnapshotType(StrEnum):
     AFTER_CHARACTER_ROUND = "after_character_round"
 
 
+class WorldStateCheckpointType(StrEnum):
+    """Boundaries a WorldStateCheckpoint can be captured/restored at. The first three line up by
+    value with GraphStateSnapshotType (paired 1:1 at the same save points), plus a fourth boundary
+    (BEFORE_OOC_MUTATION) that only WorldStateCheckpoint needs, since undoing an OOC-forced world
+    state mutation has no corresponding LangGraph proposal state to roll back."""
+
+    BEFORE_USER_INPUT = "before_user_input"
+    AFTER_USER_INPUT = "after_user_input"
+    AFTER_CHARACTER_ROUND = "after_character_round"
+    BEFORE_OOC_MUTATION = "before_ooc_mutation"
+
+
 class GenerationJobStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"

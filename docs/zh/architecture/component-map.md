@@ -17,6 +17,7 @@ flowchart TD
         AppState["App state<br/>database, storage, prompt/workflow loaders, simulator"]
         Simulator["WorldSimulator"]
         Services["服务层<br/>LLM, embedding, image, TTS, STT, import/export"]
+        CheckpointService["SimulationStateCheckpointService"]
     end
 
     subgraph Simulation["模拟组件"]
@@ -47,6 +48,8 @@ flowchart TD
     AppState --> Simulator
     AppState --> DatabaseService
     AppState --> Storage
+    Simulator --> CheckpointService
+    CheckpointService --> Stores
     Simulator --> Interpreter
     Simulator --> Validator
     Simulator --> Character
@@ -75,6 +78,7 @@ flowchart TD
 | 组件 | 读取 | 产出 | 事实边界 |
 | --- | --- | --- | --- |
 | `InputInterpreter` | 用户文本和当前模拟上下文 | 结构化候选用户动作或 OOC 检测 | 只是提案。 |
+| `OOCHandler` | out-of-character 指令、已感知场景状态、现有 trigger | 已评估的 OOC 条目：世界状态变更、针对某个 NPC 的动作指导，或 trigger 的 create/update/status/delete 指令 | 只是提案；仍会经过正常的 state commit 和 trigger 路径校验/应用。 |
 | `ActionValidator` | 拟议动作和图状态 | 校验结果和返工反馈 | 只是提案。 |
 | `CharacterSimulator` | 私有 `CharacterPerspective` | 角色动作或反应提案 | 只是提案。 |
 | `PerspectiveResolver` | 图中的感知候选 | actor 作用域内可感知实体 | 私有上下文。 |
@@ -86,6 +90,7 @@ flowchart TD
 | `EmotionUpdater` | 记忆、动作、角色状态 | 私有情绪向量更新 | store 应用后的私有派生事实。 |
 | `Narrator` | 已接受或已提交回合上下文 | `NarrationProposal` / 呈现文本 | 显示层，不是物理事实。 |
 | `ActionSuggester` | 最近回合上下文 | 建议用户动作 | 仅 UI 辅助。 |
+| `SemanticTriggerEvaluator` | 一批休眠 trigger 的 `SemanticCondition` 语句，加上最近的叙事/记忆 | 关于某个条件当前是否成立的 fact 或 pacing 判断 | 只是提案；trigger 只有在条件（语义或确定性）被确认后才会触发。 |
 
 ## 服务组件
 
@@ -98,6 +103,7 @@ flowchart TD
 | `TurnVoiceTrigger` | 为 turn presentation 片段执行已配置的 TTS 生成副作用。 |
 | `StorageService` | 存储和读取内容寻址媒体与 JSON artifact。 |
 | `AuditService` | 为生成、校验、协调、提交、时间和错误记录结构化审计事件。 |
+| `SimulationStateCheckpointService` | 捕获和恢复完整的已持久化实体图，支撑 turn 的重新生成、回退，以及将来的 OOC 变更撤销。 |
 
 ## 配置流
 

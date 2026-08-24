@@ -30,9 +30,10 @@ Please refer to the corresponding sections in the documentation for more details
 
 ## Quick Start
 
-- [Fast local deploy on Windows](quick-start/windows-source.md)
-- [Create your first world and start the simulation](quick-start/first-world.md)
-- [Expose a Linux server with Cloudflare](quick-start/cloudflare-linux.md)
+- [Fastest local deploy with Docker](quick-start/docker.md) — recommended starting point, works on any OS.
+- [Fast local deploy on Windows from source](quick-start/windows-source.md) — for developing against the source tree.
+- [Create your first world and start the simulation](quick-start/first-world.md) — after either path above.
+- [Expose a Linux server with Cloudflare](quick-start/cloudflare-linux.md) — once it's running locally.
 
 Feature deep dives:
 

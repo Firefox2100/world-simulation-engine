@@ -2,6 +2,11 @@
 
 The recommended way to install the World Simulation Engine is to use Docker. This ensures that all dependencies are correctly installed and configured, and allows for easy updates and management of the software.
 
+!!! tip
+    In a hurry? [Fastest local deploy with Docker](quick-start/docker.md) walks through the same Docker path step by
+    step, with a first working check at the end. Come back to this page for the full reference, including
+    from-source installs and provider extras.
+
 ## Installing with Docker
 
 There are two containers needed -- the main software container and Neo4j as its database. The main software container can be built from the source code, which handles all dependencies and reverse proxy automatically, using supervisord. The quickest way is to use docker compose:

@@ -29,7 +29,7 @@ Container `state` 是 `hidden`, `locked`, `unlocked`, `open` 之一。
 
 `Item` 节点描述对象是什么。`ItemStack` 节点描述该物品实例在哪里、有多少、质量如何。Equipment 和 containers 本身就是具体实例，因此不指向单独的类型节点。
 
-物理位置由 holder、container 或 location 关系表示。所有权和占有是分开的：物品可以由一个实体拥有，同时当前被另一个实体持有。
+物理位置由 holder、container 或 location 关系表示。所有权和占有相互独立：一个实体拥有某件物品，并不妨碍它当前被另一个实体持有。
 
 ## 创建与删除行为
 

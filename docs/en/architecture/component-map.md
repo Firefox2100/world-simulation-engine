@@ -18,6 +18,7 @@ flowchart TD
         AppState["App state<br/>database, storage, prompt/workflow loaders, simulator"]
         Simulator["WorldSimulator"]
         Services["Service layer<br/>LLM, embedding, image, TTS, STT, import/export"]
+        CheckpointService["SimulationStateCheckpointService"]
     end
 
     subgraph Simulation["Simulation components"]
@@ -48,6 +49,8 @@ flowchart TD
     AppState --> Simulator
     AppState --> DatabaseService
     AppState --> Storage
+    Simulator --> CheckpointService
+    CheckpointService --> Stores
     Simulator --> Interpreter
     Simulator --> Validator
     Simulator --> Character
@@ -76,6 +79,7 @@ flowchart TD
 | Component | Reads | Produces | Truth boundary |
 | --- | --- | --- | --- |
 | `InputInterpreter` | User text and current simulation context | Structured candidate user actions or OOC detection | Proposal only. |
+| `OOCHandler` | Out-of-character commands, perceived scene state, existing triggers | Evaluated OOC items: world-state mutations, action guidance for an NPC, or trigger create/update/status/delete directives | Proposal only; still validated/applied through the normal state-commit and trigger paths. |
 | `ActionValidator` | Proposed actions and graph state | Validation results and rework feedback | Proposal only. |
 | `CharacterSimulator` | Private `CharacterPerspective` | Character action or reaction proposals | Proposal only. |
 | `PerspectiveResolver` | Graph perception candidates | Actor-scoped perceived entities | Private context. |
@@ -87,6 +91,7 @@ flowchart TD
 | `EmotionUpdater` | Memories, actions, character state | Private emotion vector update | Private derived truth after store application. |
 | `Narrator` | Accepted or committed turn context | `NarrationProposal` / presentation text | Display layer, not physical truth. |
 | `ActionSuggester` | Recent turn context | Suggested user actions | UI aid only. |
+| `SemanticTriggerEvaluator` | A bounded set of dormant triggers' `SemanticCondition` statements plus recent narration/memories | Fact or pacing judgments on whether a condition is now true | Proposal only; a trigger fires only once its condition (semantic or deterministic) is confirmed. |
 
 ## Service components
 
@@ -99,6 +104,7 @@ flowchart TD
 | `TurnVoiceTrigger` | Run configured TTS generation for turn presentation segments as a side effect. |
 | `StorageService` | Store and retrieve content-addressed media and JSON artifacts. |
 | `AuditService` | Record structured audit events for generation, validation, coordination, commit, time, and errors. |
+| `SimulationStateCheckpointService` | Capture and restore the full persisted entity graph, powering turn regeneration, revert, and (later) OOC-mutation undo. |
 
 ## Configuration flow
 

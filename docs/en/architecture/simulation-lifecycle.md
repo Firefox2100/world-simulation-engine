@@ -7,8 +7,8 @@ saved graph state snapshot.
 ## One-turn sequence
 
 This diagram shows the intended data boundary for a normal turn. The exact graph can branch for invalid input,
-out-of-character commands, reaction rounds, or no scheduled character activity, but the truth boundary is the same:
-candidate and proposed data remain provisional until state commit applies accepted operations.
+out-of-character commands, trigger evaluation, reaction rounds, or no scheduled character activity, but the truth
+boundary is the same: candidate and proposed data remain provisional until state commit applies accepted operations.
 
 ```mermaid
 sequenceDiagram

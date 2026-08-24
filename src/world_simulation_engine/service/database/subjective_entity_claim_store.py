@@ -213,6 +213,39 @@ class SubjectiveEntityClaimStore:
                 and set(old.supporting_memory_ids).issubset(new.supporting_memory_ids)
                 and set(old.contradicting_memory_ids).issubset(new.contradicting_memory_ids))
 
+    async def force_set_claim(self, claim: SubjectiveEntityClaim) -> SubjectiveEntityClaim | None:
+        """Restore-only: full field replace skipping update_claim's _valid_update invariants
+        (monotonic version, non-decreasing last_updated_at, evidence-id superset) - those exist to
+        protect concurrent simulation writes, which a deliberate rollback is not. Used by
+        SimulationStateCheckpointService.restore only."""
+        result = await self._driver.execute_query(
+            """MATCH (claim:SubjectiveEntityClaim {id:$id})-[:ABOUT]->(subject)
+            SET claim.statement=$statement, claim.normalized_statement=$normalized_statement, claim.stance=$stance,
+              claim.confidence=$confidence, claim.supporting_memory_ids=$supporting_memory_ids,
+              claim.contradicting_memory_ids=$contradicting_memory_ids,
+              claim.first_observed_at=$first_observed_at, claim.last_updated_at=$last_updated_at,
+              claim.version=$version, claim.active=$active
+            RETURN claim, subject, claim.supporting_memory_ids AS supporting_memory_ids,
+              claim.contradicting_memory_ids AS contradicting_memory_ids""",
+            parameters_=self._params(claim),
+        )
+        return self._from_record(result.records[0]) if result.records else None
+
+    async def delete_claim(self, claim_id: str) -> bool:
+        """Restore-only: a claim created after a checkpoint has no equivalent in the checkpoint to
+        restore, so it must be removed entirely rather than overwritten."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (claim:SubjectiveEntityClaim {id: $id})
+            WITH collect(claim) AS claims
+            FOREACH (claim IN claims | DETACH DELETE claim)
+            RETURN size(claims) AS deleted
+            """,
+            parameters_={"id": claim_id},
+        )
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
     async def create_change_audit(self, audit: SubjectiveClaimChangeAudit) -> SubjectiveClaimChangeAudit | None:
         result = await self._driver.execute_query(
             """MATCH (simulation:Simulation {id:$simulation_id})-[:CONTAINS]->(claim:SubjectiveEntityClaim {id:$claim_id})

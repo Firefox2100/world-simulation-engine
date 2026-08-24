@@ -23,10 +23,13 @@
 | 路由区域 | 职责 |
 | --- | --- |
 | 世界和模拟 | 创建世界、创建模拟、导入/导出世界、启动生成、流式运行、检查快照。 |
-| 领域实体 | 角色、背景角色、地点、地标、物品、装备、容器、intent、事件、记忆。 |
+| 领域实体 | 角色、背景角色、地点、地标、物品、装备、容器、intent、事件、记忆、variable。 |
+| 作者 | 作者档案，以及把世界（或其他 authored content）归属给某个作者。 |
+| 故事脚本化 | Trigger 的增删改查和状态控制（`trigger_router`），用于驱动故事推进的脚本化 cue。 |
+| SillyTavern 导入 | 解析上传的角色卡、通过 SSE 流式执行提取流水线，再把审阅后的结果提交为新的 `World`（`sillytavern_import_router`）。 |
 | 配置 | 供应商连接、LLM/embedding/image/TTS/STT 配置、世界和模拟组件分配。 |
 | 媒体、prompt、workflow | 上传并关联媒体、prompt JSON、workflow JSON、封面图、prompt/workflow 覆盖。 |
-| 回合和呈现 | 回合记录、已渲染呈现块、生成图像/音频片段端点。 |
+| 回合和呈现 | 回合记录、已渲染呈现块、生成图像/音频片段端点、归档 turn 版本以及回退到某个版本。 |
 | 语音识别 | 面向已配置语音识别后端的 STT 转写端点。 |
 
 simulation router 使用 `WorldSimulator.start_generation()` 启动生成。随后可以通过 `WorldSimulator.stream_generation()` 流式传输图更新，让前端在后台任务运行时更新。

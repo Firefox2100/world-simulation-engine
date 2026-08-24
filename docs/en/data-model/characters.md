@@ -12,6 +12,7 @@ Character entities represent agents inside a world. `Character` nodes can be sim
 | `BackgroundCharacter` | `id`, `name`, `description` |
 | `CurrentActivity` value | `name`, `started_at`, `expected_end`, `interruptible`, `constraints` |
 | `CharacterTtsConfig` | `id`, `character_voice`, `rvc_character_voice`, `rvc_character_pitch`, `backend` |
+| `EntityVariableSet` | `id`, `owner_id`, `variables` (list of `VariableDefinition`: `name`, `value_type`, `value`, `default_value`, `description`, bounds) |
 
 ## Relationships
 
@@ -27,6 +28,8 @@ Character entities represent agents inside a world. `Character` nodes can be sim
 - `(:Character)-[:HAS_EMOTION_STATE]->(:EmotionState)`
 - `(:Character)-[:HAS_CONFIG]->(:CharacterTtsConfig)`
 - `(:CharacterTtsConfig)-[:USE_CONFIG]->(:TtsModelConfig)`
+- `(:Character)-[:HAS_VARIABLES]->(:EntityVariableSet)` — not exclusive to characters; any entity type can own one the same way.
+- `(:World|Simulation)-[:CONTAINS]->(:EntityVariableSet)`
 
 ## Ownership and lifecycle
 
@@ -73,6 +76,7 @@ CREATE (character)-[:PRESENT_IN {position: "by the gate"}]->(pier);
 - `/characters`, `/characters/{character_id}`, `/worlds/{world_id}/characters`, `/simulations/{simulation_id}/characters`
 - `/characters/{character_id}/location`, `/characters/{character_id}/landmark`, `/characters/{character_id}/inventory`
 - `/characters/{character_id}/tts-config`
+- `/entities/{owner_id}/variables` (GET/PUT; not character-specific, works for any entity type)
 - `/background-characters`, `/background-characters/{character_id}`, `/worlds/{world_id}/background-characters`, `/simulations/{simulation_id}/background-characters`
 - `/background-characters/{character_id}/location`, `/background-characters/{character_id}/landmark`
 

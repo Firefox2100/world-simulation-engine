@@ -283,6 +283,28 @@ class MemoryStore:
 
         return self.memory_from_node(record["memory"])
 
+    async def overwrite_memory(self, memory: MemoryAtom) -> MemoryAtom | None:
+        """Restore-only full field replace of the memory's own properties (summary/keywords/
+        embedding) - the SUPPORTS/REMEMBERS edges are restored separately via
+        link_memory_event/replace_character_memories, same split as
+        CharacterStore.overwrite_character's own-fields-only scope."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (memory:MemoryAtom {id: $id})
+            SET memory = {id: $id, summary: $summary, keywords: $keywords, embedding: $embedding}
+            RETURN memory LIMIT 1
+            """,
+            parameters_={
+                "id": memory.id,
+                "summary": memory.summary,
+                "keywords": memory.keywords,
+                "embedding": memory.embedding,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.memory_from_node(record["memory"]) if record else None
+
     async def update_embeddings(self, rows: list[dict]) -> int:
         """Cache lazily generated semantic vectors without changing memory meaning."""
         if not rows:

@@ -41,6 +41,6 @@ Complex provider parameters, such as `model_kwargs`, custom headers, response sc
 
 After creating LLM configs, assign them to a world or simulation from the world editor or simulation detail page.
 
-LLM-capable simulation components include `input_interpreter`, `action_validator`, `character_simulator`, `scene_coordinator`, `state_committer`, `memory_summarizer`, `perspective_resolver`, and `narrator`.
+LLM-capable simulation components include `input_interpreter`, `ooc_handler`, `action_validator`, `character_simulator`, `scene_coordinator`, `state_committer`, `memory_summarizer`, `perspective_resolver`, `trigger_evaluator`, `action_suggester`, and `narrator`.
 
 Image-related chat components include `character_image_generator`, `character_portrait_image_generator`, `location_image_generator`, `item_image_generator`, `scene_image_generator`, and `turn_image_trigger`.

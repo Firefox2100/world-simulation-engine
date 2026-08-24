@@ -201,6 +201,30 @@ class ContainerStore:
 
         return await self.get_container(container_id)
 
+    async def overwrite_container(self, container: Container) -> Container | None:
+        """Restore-only full field replace of the container's own properties - relationship-derived
+        state (owner/holder/location/held entities/unlocking items) is restored separately via
+        assign_container/place_container_in_location/replace_held_*/replace_unlocking_items - see
+        CharacterStore.overwrite_character."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (container:Container {id: $id})
+            SET container = {id: $id, name: $name, description: $description, state: $state}
+            RETURN container LIMIT 1
+            """,
+            parameters_={
+                "id": container.id,
+                "name": container.name,
+                "description": container.description,
+                "state": container.state,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+        return await self.get_container(container.id)
+
     async def delete_container(self, container_id: str) -> bool:
         result = await self._driver.execute_query(
             """

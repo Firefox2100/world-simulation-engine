@@ -12,7 +12,8 @@ The backend uses `DatabaseService` as a facade over typed store classes. Each st
 | World and simulation | Worlds, simulations, current time, copied world state. |
 | Physical state | Characters, locations, landmarks, items, equipment, containers, location and inventory relationships. |
 | Cognitive state | Memories, intents, relationships, subjective claims, emotions. |
-| Generation state | Turns, turn presentation, generation jobs, graph state snapshots, audit records. |
+| Generation state | Turns, turn presentation, generation jobs, graph state snapshots, turn versions, world state checkpoints, audit records. |
+| Story scripting | Triggers and their fired activations (`TriggerStore`). |
 | Configuration | Provider connections, model configs, component assignments, prompt and workflow assignments. |
 | Media links | Media records and relationships from worlds, simulations, entities, prompts, workflows, and turns. |
 
@@ -43,6 +44,23 @@ Graph state snapshots persist generation state around important boundaries:
 
 Snapshots are not a replacement for the graph. They capture the simulator's execution state so later continuation or
 regeneration can resume from a known structured boundary.
+
+## World state checkpoints and turn versions
+
+Graph state snapshots only capture the LangGraph run's transient proposal state, not what has actually been
+committed to Neo4j. `WorldStateCheckpoint` fills that gap: a full capture of the simulation's persisted entities
+(characters, items, containers, variables, relationships, emotions, claims, memories, events) at the same three
+boundaries as `GraphStateSnapshotType`, plus a fourth, checkpoint-only `BEFORE_OOC_MUTATION` boundary with no
+LangGraph counterpart.
+
+`TurnVersion` pairs with this to archive a turn slot's previous content right before a regeneration or revert
+replaces it. Regenerating a turn restores the checkpoint from just before that slot before generating again;
+reverting restores an archived version's content and, if its checkpoint hasn't been pruned, the world state that
+went with it too. `SimulationStateCheckpointService.restore` always applies a checkpoint in the same three
+phases — create/overwrite in dependency order, re-home placement relationships, then delete anything extra
+leaf-to-root — so a restore can never leave the graph half-applied. Both checkpoints and versions are pruned once
+the story genuinely moves forward, so discarded alternates don't accumulate. See [Turn versioning and state
+checkpoints](../features/turn-versioning.md) for the full flow.
 
 ## Turn presentation
 

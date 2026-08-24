@@ -30,3 +30,4 @@ flowchart LR
 - [图像生成](image-generation.md)
 - [TTS 与 STT](tts-and-stt.md)
 - [Turn 呈现](turn-presentation.md)
+- [Turn 版本与状态检查点](turn-versioning.md)

@@ -15,6 +15,7 @@ site_dir = "site/zh"
 nav = [
   { "概览" = "index.md" },
   { "快速开始" = [
+    { "使用 Docker 最快本地部署" = "quick-start/docker.md" },
     { "Windows 本地源码部署" = "quick-start/windows-source.md" },
     { "创建第一个世界与模拟" = "quick-start/first-world.md" },
     { "通过 Cloudflare 暴露 Linux 服务器" = "quick-start/cloudflare-linux.md" },
@@ -28,6 +29,7 @@ nav = [
     { "图像生成" = "features/image-generation.md" },
     { "TTS 与 STT" = "features/tts-and-stt.md" },
     { "Turn 呈现" = "features/turn-presentation.md" },
+    { "Turn 版本与状态检查点" = "features/turn-versioning.md" },
   ] },
   { "安装" = "installation.md" },
   { "配置" = [

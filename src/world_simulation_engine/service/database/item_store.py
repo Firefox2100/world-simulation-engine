@@ -173,6 +173,25 @@ class ItemStore:
 
         return self.item_from_node(record["i"])
 
+    async def overwrite_item(self, item: Item) -> Item | None:
+        """Restore-only full field replace - see CharacterStore.overwrite_character for rationale."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (i:Item {id: $id})
+            SET i = {id: $id, name: $name, description: $description, unique: $unique}
+            RETURN i LIMIT 1
+            """,
+            parameters_={
+                "id": item.id,
+                "name": item.name,
+                "description": item.description,
+                "unique": item.unique,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.item_from_node(record["i"]) if record else None
+
     async def delete_item(self, item_id: str) -> bool:
         result = await self._driver.execute_query(
             """
@@ -597,6 +616,28 @@ class ItemStore:
             return None
 
         return await self.get_stack(stack_id)
+
+    async def overwrite_stack(self, stack: ItemStack) -> ItemStack | None:
+        """Restore-only full field replace of the stack's own properties (quantity/quality) -
+        relationship-derived state (owner/holder/location) is restored separately via
+        assign_stack/place_stack_in_location - see CharacterStore.overwrite_character."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (stack:ItemStack {id: $id})-[:OF_TYPE]->(item:Item)
+            SET stack = {id: $id, quantity: $quantity, quality: $quality}
+            RETURN stack, item LIMIT 1
+            """,
+            parameters_={
+                "id": stack.id,
+                "quantity": stack.quantity,
+                "quality": stack.quality,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        if not record:
+            return None
+        return await self.get_stack(stack.id)
 
     async def delete_stack(self, stack_id: str) -> bool:
         result = await self._driver.execute_query(

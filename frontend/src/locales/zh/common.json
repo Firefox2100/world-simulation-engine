@@ -78,6 +78,8 @@
     "inputPlaceholder": "行动文本、*内心*、**强调**、\"台词\"...",
     "send": "发送",
     "sendError": "无法发送消息：{{error}}",
+    "swipeLeft": "上一版本",
+    "swipeRight": "下一版本/重新生成",
     "cancelled": "生成已取消。",
     "playVoice": "播放语音",
     "generateVoice": "生成语音",

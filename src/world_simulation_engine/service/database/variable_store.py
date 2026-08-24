@@ -112,6 +112,40 @@ class VariableStore:
         )
         return self._variable_set_from_node(result.records[0]["set"]) if result.records else None
 
+    async def force_set_variable_set(self, variable_set: EntityVariableSet) -> EntityVariableSet | None:
+        """Restore-only: full field replace skipping update_variable_set's optimistic-lock
+        `expected_version` gate entirely - that gate exists to protect concurrent simulation
+        writes, which a deliberate rollback is not. Used by SimulationStateCheckpointService.restore
+        only."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (stored:EntityVariableSet {id: $id, owner_id: $owner_id})
+            SET stored.source_id = $source_id,
+                stored.owner_type = $owner_type,
+                stored.variables_json = $variables_json,
+                stored.last_updated_at = $last_updated_at,
+                stored.version = $version
+            RETURN stored AS set
+            """,
+            parameters_=self._variable_set_parameters(variable_set),
+        )
+        return self._variable_set_from_node(result.records[0]["set"]) if result.records else None
+
+    async def delete_variable_set(self, variable_set_id: str) -> bool:
+        """Restore-only: an owner's variable set created after a checkpoint has no equivalent in
+        the checkpoint to restore, so it must be removed entirely rather than overwritten."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (set:EntityVariableSet {id: $id})
+            WITH collect(set) AS sets
+            FOREACH (set IN sets | DETACH DELETE set)
+            RETURN size(sets) AS deleted
+            """,
+            parameters_={"id": variable_set_id},
+        )
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
     async def create_change_audit(self, audit: VariableChangeAudit) -> VariableChangeAudit | None:
         """Link an immutable change record to its turn and evidence memories."""
         result = await self._driver.execute_query(

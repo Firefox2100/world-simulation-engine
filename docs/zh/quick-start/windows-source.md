@@ -2,6 +2,9 @@
 
 这条路径在 Windows 上从源码运行后端和前端，Python 与 Node.js/npm 使用官方发布包安装。这里仅用 Docker 运行 Neo4j，因为应用需要带 APOC 和 Graph Data Science 的 Neo4j。
 
+如果你想在源码树上开发，或者不想让应用本身跑在 Docker 里，可以走这条路径。如果只是想尽快把应用跑起来，改用
+[使用 Docker 最快本地部署](docker.md) 会更简单——只需要 Docker，在 Windows、macOS 和 Linux 上步骤完全一样。
+
 ## 1. 安装前置依赖
 
 先安装：

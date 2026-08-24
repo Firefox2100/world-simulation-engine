@@ -29,6 +29,7 @@ This allows different pipeline stages to use different providers, models, prompt
 | `SubjectiveModelUpdater` | Updates private entity claims held by a character. | During post-turn memory/relationship processing. |
 | `EmotionUpdater` | Updates private emotion state used as a soft constraint. | During post-turn character state processing when emotions are enabled. |
 | `ActionSuggester` | Produces suggested user actions without changing committed state. | In parallel after a user or character turn is ready to present. |
+| `SemanticTriggerEvaluator` | Judges dormant triggers' free-text conditions against a just-committed turn's narration and memories; deterministic (time/location/variable) conditions are checked in code, not by this component. | Best-effort, after a turn is committed and memory-summarized, run by `TriggerEngine`. |
 
 Image and voice generators follow the same overall pattern but run as media side effects rather than core state simulation.
 

@@ -2,6 +2,8 @@
 
 This path runs the backend and frontend from the source tree on Windows, using Python and Node.js/npm installed from their official release packages. It uses Docker only for Neo4j, because the app expects Neo4j with APOC and Graph Data Science available.
 
+Use this if you want to develop against the source or don't want the app itself running in Docker. If you just want the app running as fast as possible, use [Fastest local deploy with Docker](docker.md) instead — it needs only Docker and works the same way on Windows, macOS, and Linux.
+
 ## 1. Install prerequisites
 
 Install these first:

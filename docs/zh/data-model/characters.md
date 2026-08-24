@@ -2,7 +2,7 @@
 
 ## 目的
 
-角色实体表示世界中的 agents。`Character` 节点可以带着公开状态、私有状态、当前活动、库存、情绪状态、记忆、信念和服务配置进行模拟。`BackgroundCharacter` 节点表示较轻量的离场或环境人物，但仍可以占据地点、锚定到地标并持有物品。
+角色实体表示世界中的 agents。`Character` 节点可以拥有公开状态、私有状态、当前活动、库存、情绪状态、记忆、信念和服务配置，并据此参与模拟。`BackgroundCharacter` 节点表示较轻量的离场或环境人物，但仍可以占据地点、锚定到地标并持有物品。
 
 ## 重要属性
 
@@ -12,6 +12,7 @@
 | `BackgroundCharacter` | `id`, `name`, `description` |
 | `CurrentActivity` value | `name`, `started_at`, `expected_end`, `interruptible`, `constraints` |
 | `CharacterTtsConfig` | `id`, `character_voice`, `rvc_character_voice`, `rvc_character_pitch`, `backend` |
+| `EntityVariableSet` | `id`, `owner_id`, `variables`（`VariableDefinition` 列表：`name`, `value_type`, `value`, `default_value`, `description`, 取值边界） |
 
 ## 关系
 
@@ -27,10 +28,12 @@
 - `(:Character)-[:HAS_EMOTION_STATE]->(:EmotionState)`
 - `(:Character)-[:HAS_CONFIG]->(:CharacterTtsConfig)`
 - `(:CharacterTtsConfig)-[:USE_CONFIG]->(:TtsModelConfig)`
+- `(:Character)-[:HAS_VARIABLES]->(:EntityVariableSet)`——不是角色专属，任何实体类型都可以用同样方式拥有一个。
+- `(:World|Simulation)-[:CONTAINS]->(:EntityVariableSet)`
 
 ## 归属与生命周期
 
-World-scoped characters 是作者态模板角色。Simulation-scoped characters 是运行时参与者。创建运行或把作者态角色引入运行时，simulation 可以复制 world characters。
+World-scoped characters 是作者态模板角色，Simulation-scoped characters 才是运行时的实际参与者。Simulation 会在创建运行、或是把作者态角色引入运行时的过程中，复制这些 world characters。
 
 `private_state`、记忆、主观断言、private visibility 关系和情绪状态都属于角色上下文数据。模拟组件会使用它们，但默认不应把它们当作公开叙事。
 
@@ -73,6 +76,7 @@ CREATE (character)-[:PRESENT_IN {position: "by the gate"}]->(pier);
 - `/characters`, `/characters/{character_id}`, `/worlds/{world_id}/characters`, `/simulations/{simulation_id}/characters`
 - `/characters/{character_id}/location`, `/characters/{character_id}/landmark`, `/characters/{character_id}/inventory`
 - `/characters/{character_id}/tts-config`
+- `/entities/{owner_id}/variables`（GET/PUT；不限于角色，适用于任何实体类型）
 - `/background-characters`, `/background-characters/{character_id}`, `/worlds/{world_id}/background-characters`, `/simulations/{simulation_id}/background-characters`
 - `/background-characters/{character_id}/location`, `/background-characters/{character_id}/landmark`
 

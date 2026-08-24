@@ -18213,6 +18213,116 @@
         }
       }
     },
+    "/simulations/{simulation_id}/turn-versions": {
+      "get": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "List Turn Versions",
+        "description": "Archived alternates for one turn slot, most recently discarded first - populated whenever\nthat slot gets regenerated or reverted (see WorldSimulator._archive_current_turn_slot).",
+        "operationId": "list_turn_versions_simulations__simulation_id__turn_versions_get",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "turn_sequence",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "The turn slot to list archived alternates for",
+              "title": "Turn Sequence"
+            },
+            "description": "The turn slot to list archived alternates for"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TurnVersion"
+                  },
+                  "title": "Response List Turn Versions Simulations  Simulation Id  Turn Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulations/{simulation_id}/turn-versions/{version_id}/revert": {
+      "post": {
+        "tags": [
+          "Turn"
+        ],
+        "summary": "Revert Turn Version",
+        "description": "Bring an archived version back as the live turn for its slot - restoring its world state\ntoo when the paired checkpoint hasn't since been pruned. See\nWorldSimulator.revert_to_turn_version.",
+        "operationId": "revert_turn_version_simulations__simulation_id__turn_versions__version_id__revert_post",
+        "parameters": [
+          {
+            "name": "simulation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Simulation Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Turn"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/entities/{owner_id}/variables": {
       "get": {
         "tags": [
@@ -35036,6 +35146,70 @@
         "type": "object",
         "title": "TurnUpdate",
         "description": "DTO model for updating a turn. `sequence` is deliberately not editable here - it drives\nNEXT-chain ordering established at creation time, per create_world_turn's own strict\nprevious-sequence-plus-one check."
+      },
+      "TurnVersion": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "simulation_id": {
+            "type": "string",
+            "title": "Simulation Id"
+          },
+          "turn_sequence": {
+            "type": "integer",
+            "title": "Turn Sequence"
+          },
+          "turn": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Turn"
+          },
+          "presentation_blocks": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Presentation Blocks"
+          },
+          "user_input": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Input"
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "simulation_id",
+          "turn_sequence",
+          "turn"
+        ],
+        "title": "TurnVersion",
+        "description": "One archived alternate of a turn slot (a specific `turn_sequence`), captured right before\nthat slot's live turn is about to be replaced - by a regeneration, or by reverting to a\ndifferent archived version. Lets a user browse back through discarded regenerations instead of\na swipe destroying the previous one outright.\n\n`turn`/`presentation_blocks` are opaque JSON dumps (Turn.model_dump(mode=\"json\") and each\nTurnPresentationBlock's, respectively) - the same \"arbitrarily nested, not a flat graph\nproperty\" pattern used elsewhere (TriggerStore, WorldStateCheckpoint) - captured with the\nturn's own original id preserved, so re-materializing a version reuses that id rather than\nminting a new one, keeping any WorldStateCheckpoint-captured Event/Memory turn_id links valid.\n\n`user_input` is stored per-version (the user message that led to this particular generation)\neven though every version of one slot shares the same value today, since regeneration always\nreplays the same input - this is forward-looking for a future \"edit your message and\nregenerate\" feature, where different versions of a slot could genuinely have different inputs.\n\n`checkpoint_id` points at the WorldStateCheckpoint capturing world state right after this\nversion committed, letting a revert restore the world exactly as it was under this version -\nnot just the text. It can go stale (the checkpoint may have since been pruned by the next real\nuser turn's retention wipe - see WorldStateCheckpointStore); reverting then falls back to\nrestoring the turn/presentation content alone."
       },
       "UnlockingItemRelationshipUpdate": {
         "properties": {

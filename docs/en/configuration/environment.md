@@ -41,6 +41,21 @@ These variables do not choose a TTS provider. They only control backend behavior
 | `WSE_TTS_MAX_CONCURRENCY` | `3` | Maximum number of concurrent outbound TTS generation requests. Lower this if the TTS backend becomes unstable under load. |
 | `WSE_TTS_MEDIA_RETENTION_TURNS` | `50` | Number of most-recent turns whose generated voice media are retained per simulation before older generated files are pruned. |
 
+## SillyTavern import limits
+
+These variables tune the SillyTavern character card import pipeline. They do not need to be set for normal
+simulation use.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `WSE_SILLYTAVERN_IMPORT_MAX_CONCURRENCY` | `4` | Maximum concurrent LLM calls within one import pipeline stage (e.g. classifying many lorebook entries at once). |
+| `WSE_SILLYTAVERN_IMAGE_DOWNLOAD_MAX_CONCURRENCY` | `4` | Maximum concurrent outbound HEAD/GET requests when probing or downloading image links found in a card. |
+| `WSE_SILLYTAVERN_IMAGE_DOWNLOAD_MAX_BYTES` | `10485760` | Maximum response body size (bytes) accepted for a candidate image download. |
+| `WSE_SILLYTAVERN_IMAGE_DOWNLOAD_CONNECT_TIMEOUT` | `5.0` | Connect timeout, in seconds, for outbound image link requests. |
+| `WSE_SILLYTAVERN_IMAGE_DOWNLOAD_READ_TIMEOUT` | `10.0` | Read timeout, in seconds, for outbound image link GET requests. |
+| `WSE_SILLYTAVERN_IMAGE_DOWNLOAD_HEAD_TIMEOUT` | `5.0` | Total timeout, in seconds, for the cheaper HEAD probe used before offering a non-whitelisted image link for review. |
+| `WSE_SILLYTAVERN_IMAGE_DOWNLOAD_MAX_REDIRECTS` | `3` | Maximum redirect hops followed when downloading a candidate image link; each hop is re-validated against the SSRF filter. |
+
 ## Example `.env`
 
 ```dotenv

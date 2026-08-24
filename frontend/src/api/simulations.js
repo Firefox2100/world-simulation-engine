@@ -224,16 +224,25 @@ export async function deleteSimulation(simulationId) {
     });
 }
 
-export async function sendSimulationInput({ simulationId, userInput, clientRequestId = crypto.randomUUID() }) {
+export async function sendSimulationInput({
+    simulationId,
+    userInput,
+    regenerateTurnSequence = null,
+    clientRequestId = crypto.randomUUID(),
+}) {
     const hasUserInput = userInput !== null && userInput !== undefined && String(userInput).trim().length > 0;
+    const requestType = regenerateTurnSequence !== null
+        ? "regeneration"
+        : (hasUserInput ? "user_input_generation" : "continue_generation");
     const run = await apiRequest(`/simulations/${simulationId}/input`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            request_type: hasUserInput ? "user_input_generation" : "continue_generation",
-            user_input: hasUserInput ? userInput : null,
+            request_type: requestType,
+            user_input: requestType === "user_input_generation" ? userInput : null,
+            regenerate_turn_sequence: regenerateTurnSequence,
             client_request_id: clientRequestId,
         }),
     });
@@ -242,6 +251,19 @@ export async function sendSimulationInput({ simulationId, userInput, clientReque
         ...run,
         run_id: run.run_id ?? run.thread_id,
     };
+}
+
+export async function listTurnVersions({ simulationId, turnSequence }) {
+    const params = new URLSearchParams();
+    params.set("turn_sequence", String(turnSequence));
+
+    return apiRequest(`/simulations/${simulationId}/turn-versions?${params.toString()}`);
+}
+
+export async function revertTurnVersion({ simulationId, versionId }) {
+    return apiRequest(`/simulations/${simulationId}/turn-versions/${versionId}/revert`, {
+        method: "POST",
+    });
 }
 
 export function getSimulationRunUrl({ simulationId, threadId }) {
@@ -293,7 +315,7 @@ function normalizeSimulation(simulation) {
     };
 }
 
-function normalizeTurn(presentedTurn) {
+export function normalizeTurn(presentedTurn) {
     const turn = presentedTurn.turn;
     const presentationBlocks = presentedTurn.presentation_blocks ?? [];
     return {

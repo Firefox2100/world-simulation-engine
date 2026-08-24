@@ -1,6 +1,6 @@
 # Create the First World and Start a Simulation
 
-This quick start assumes the backend and frontend are already running. If not, start with [Fast local deploy on Windows from source](windows-source.md).
+This quick start assumes the backend and frontend are already running. If not, start with [Fastest local deploy with Docker](docker.md) or [Fast local deploy on Windows from source](windows-source.md).
 
 ## 1. Create provider configs
 

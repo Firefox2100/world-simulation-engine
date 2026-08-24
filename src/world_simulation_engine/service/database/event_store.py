@@ -257,6 +257,28 @@ class EventStore:
 
         return self.event_from_node(record["event"])
 
+    async def overwrite_event(self, event: Event) -> Event | None:
+        """Restore-only full field replace of the event's own properties (including outcome, which
+        update_event never touches) - the PART_OF/INVOLVES edges are restored separately via
+        replace_event_turns/replace_character_involvements, same split as
+        CharacterStore.overwrite_character's own-fields-only scope."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (event:Event {id: $id})
+            SET event = {id: $id, name: $name, summary: $summary, outcome: $outcome}
+            RETURN event LIMIT 1
+            """,
+            parameters_={
+                "id": event.id,
+                "name": event.name,
+                "summary": event.summary,
+                "outcome": event.outcome,
+            },
+        )
+
+        record = result.records[0] if result.records else None
+        return self.event_from_node(record["event"]) if record else None
+
     async def delete_event(self, event_id: str) -> bool:
         result = await self._driver.execute_query(
             """

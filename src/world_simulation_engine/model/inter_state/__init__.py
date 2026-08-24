@@ -9,7 +9,8 @@ from .memory_summary import EventInvolvementProposal, MemoryCharacterLinkProposa
     ProposedTurnEventLink
 from .narration import NarrationBlock, NarrationInsertion, NarrationInsertionProposal, NarrationOutputBlock, \
     NarrationProposal, SpeechAnchor, SpeechBlock
-from .ooc_evaluation import OOCCharacterActionGuide, OOCEvaluationItem, OOCEvaluationResult, OOCWorldStateMutation
+from .ooc_evaluation import OOCCharacterActionGuide, OOCEvaluationItem, OOCEvaluationResult, OOCTriggerDirective, \
+    OOCTriggerDraft, OOCWorldStateMutation
 from .perceived_entity import PerceivedEntity, PerceivedCharacter, PerceivedBackgroundCharacter, PerceivedItem, \
     PerceivedEquipment, PerceivedLandmark, PerceivedContainer, PerceivedCue
 from .scene_coordination import AcceptedSceneAction, ActionCandidateSet, CharacterActionPlan, PendingSceneAction, \

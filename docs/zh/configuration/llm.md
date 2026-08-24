@@ -41,6 +41,6 @@
 
 创建 LLM 配置后，可以从世界编辑器或模拟详情页把它们分配给世界或模拟。
 
-可使用 LLM 的模拟组件包括 `input_interpreter`、`action_validator`、`character_simulator`、`scene_coordinator`、`state_committer`、`memory_summarizer`、`perspective_resolver` 和 `narrator`。
+可使用 LLM 的模拟组件包括 `input_interpreter`、`ooc_handler`、`action_validator`、`character_simulator`、`scene_coordinator`、`state_committer`、`memory_summarizer`、`perspective_resolver`、`trigger_evaluator`、`action_suggester` 和 `narrator`。
 
 图像相关聊天组件包括 `character_image_generator`、`character_portrait_image_generator`、`location_image_generator`、`item_image_generator`、`scene_image_generator` 和 `turn_image_trigger`。

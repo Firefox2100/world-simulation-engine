@@ -190,6 +190,46 @@ class TurnStore:
 
         return bool(record["deletable"])
 
+    async def delete_turns_after(self, source_id: str, sequence: int) -> int:
+        """Restore-only tail truncation: delete every turn (and its TurnPresentationBlock) with
+        sequence > `sequence` for this World/Simulation. Unlike `delete_world_turn`, this is not
+        restricted to a single childless tail turn - regeneration always targets the actual current
+        tail, so deleting everything strictly after the checkpoint's own turn boundary in one pass
+        needs no NEXT-chain relinking (nothing survives past the new tail to relink). Event/
+        MemoryAtom cleanup for anything only reachable through a deleted turn is handled separately
+        by SimulationStateCheckpointService.restore's id-diff against the checkpoint, not here."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(turn:Turn)
+            WHERE turn.sequence > $sequence
+            OPTIONAL MATCH (turn)-[:HAS_PRESENTATION]->(block:TurnPresentationBlock)
+            WITH collect(DISTINCT turn) AS turns, collect(DISTINCT block) AS blocks
+            WITH turns + blocks AS nodes, size(turns) AS deleted
+            FOREACH (node IN nodes | DETACH DELETE node)
+            RETURN deleted
+            """,
+            parameters_={"source_id": source_id, "sequence": sequence},
+        )
+
+        record = result.records[0] if result.records else None
+        return record["deleted"] if record else 0
+
+    async def get_latest_user_input_before(self, source_id: str, sequence: int) -> Turn | None:
+        """The most recent user_input turn at or before `sequence` - used to attribute a
+        character-round turn (which carries no user text of its own) back to whichever message
+        actually produced it, for turn-version archiving."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:World|Simulation {id: $source_id})-[:CONTAINS]->(turn:Turn {type: 'user_input'})
+            WHERE turn.sequence <= $sequence
+            RETURN turn ORDER BY turn.sequence DESC LIMIT 1
+            """,
+            parameters_={"source_id": source_id, "sequence": sequence},
+        )
+
+        record = result.records[0] if result.records else None
+        return self.turn_from_node(record["turn"]) if record else None
+
     async def get_simulation_id_for_turn(self, turn_id: str) -> str | None:
         result = await self._driver.execute_query(
             """

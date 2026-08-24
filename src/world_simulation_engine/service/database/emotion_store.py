@@ -154,6 +154,41 @@ class EmotionStore:
         )
         return self._state_from_node(result.records[0]["state"]) if result.records else None
 
+    async def force_set_state(self, state: EmotionState) -> EmotionState | None:
+        """Restore-only: full field replace skipping update_state's version and non-decreasing-
+        last_updated_at gates - those exist to protect concurrent simulation writes, which a
+        deliberate rollback is not. Used by SimulationStateCheckpointService.restore only."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (:Simulation {id: $simulation_id})-[:CONTAINS]->
+                (stored:EmotionState {id: $id, character_id: $character_id})
+            SET stored.baseline_json = $baseline_json,
+                stored.immediate_json = $immediate_json,
+                stored.baseline_half_life_seconds = $baseline_half_life_seconds,
+                stored.immediate_half_life_seconds = $immediate_half_life_seconds,
+                stored.last_updated_at = $last_updated_at,
+                stored.version = $version
+            RETURN stored AS state
+            """,
+            parameters_=self._state_parameters(state),
+        )
+        return self._state_from_node(result.records[0]["state"]) if result.records else None
+
+    async def delete_state(self, emotion_state_id: str) -> bool:
+        """Restore-only: an emotion state created after a checkpoint has no equivalent in the
+        checkpoint to restore, so it must be removed entirely rather than overwritten."""
+        result = await self._driver.execute_query(
+            """
+            MATCH (state:EmotionState {id: $id})
+            WITH collect(state) AS states
+            FOREACH (state IN states | DETACH DELETE state)
+            RETURN size(states) AS deleted
+            """,
+            parameters_={"id": emotion_state_id},
+        )
+        record = result.records[0] if result.records else None
+        return bool(record and record["deleted"])
+
     async def create_change_audit(
             self,
             audit: EmotionChangeAudit,

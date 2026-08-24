@@ -319,6 +319,53 @@ class EntityRelationshipStore:
             and set(existing.evidence_memory_ids).issubset(candidate.evidence_memory_ids)
         )
 
+    async def force_set_relationship(
+            self,
+            relationship: EntityRelationship,
+    ) -> EntityRelationship | None:
+        """Restore-only: full field replace skipping update_relationship's _is_valid_update
+        invariants (monotonic version, non-decreasing last_changed_at, evidence-id superset) - those
+        exist to protect concurrent simulation writes, which a deliberate rollback is not. Resyncs
+        EVIDENCE_FOR edges to exactly the captured evidence_memory_ids. Used by
+        SimulationStateCheckpointService.restore only; source/target/scope are matched, not
+        changed - a relationship's endpoints never move between checkpoint and restore since restore
+        always targets an id that already exists with those same endpoints."""
+        parameters = self._parameters(relationship)
+        result = await self._driver.execute_query(
+            """
+            MATCH (scope:World|Simulation {id: $scope_id})-[:CONTAINS]->
+                (relationship:EntityRelationship {id: $id})
+            MATCH (source)-[:RELATIONSHIP_SOURCE]->(relationship)
+                -[:RELATIONSHIP_TARGET]->(target)
+            WHERE source.id = $source_id AND target.id = $target_id
+            OPTIONAL MATCH (:MemoryAtom)-[old_evidence:EVIDENCE_FOR]->(relationship)
+            DELETE old_evidence
+            WITH scope, relationship, source, target
+            OPTIONAL MATCH (evidence:MemoryAtom)
+            WHERE evidence.id IN $evidence_memory_ids
+            WITH relationship, source, target, collect(DISTINCT evidence) AS evidence_memories
+            SET relationship.label = $label,
+                relationship.public_description = $public_description,
+                relationship.private_description = $private_description,
+                relationship.visibility = $visibility,
+                relationship.perspective_character_id = $perspective_character_id,
+                relationship.confidence = $confidence,
+                relationship.details_json = $details_json,
+                relationship.created_at = $created_at,
+                relationship.last_changed_at = $last_changed_at,
+                relationship.version = $version,
+                relationship.active = $active
+            FOREACH (memory IN evidence_memories |
+                MERGE (memory)-[:EVIDENCE_FOR]->(relationship)
+            )
+            RETURN relationship, source, target,
+                [memory IN evidence_memories | memory.id] AS evidence_memory_ids
+            """,
+            parameters_=parameters,
+        )
+        record = result.records[0] if result.records else None
+        return self.relationship_from_record(record) if record else None
+
     async def delete_relationship(self, relationship_id: str) -> bool:
         """Delete a relationship explicitly, primarily for authoring workflows."""
         result = await self._driver.execute_query(

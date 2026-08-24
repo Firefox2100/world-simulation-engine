@@ -13,6 +13,14 @@ LLM connections, and chatting with a simulation.
 This is a research/hobby project, not a production product — it exists to explore the design questions below, and
 the codebase, prompts, and data model are all still evolving.
 
+## Documentation
+
+Full documentation, including quick-start guides, configuration reference, architecture, and the data model, is
+published at **[firefox2100.github.io/world-simulation-engine](https://firefox2100.github.io/world-simulation-engine/)**
+([中文版](https://firefox2100.github.io/world-simulation-engine/zh/)). The sections below are a short summary; if
+you just want the app running, follow the docs site's [Fastest local deploy with
+Docker](https://firefox2100.github.io/world-simulation-engine/quick-start/docker/) guide instead.
+
 ## What it explores
 
 - **Time-constrained simulation.** Every character activity carries an expected duration and an interruptibility
@@ -54,7 +62,7 @@ the codebase, prompts, and data model are all still evolving.
   entity type, no ORM), a LangGraph-orchestrated simulation pipeline (`WorldSimulator` and its component stages), and
   provider-agnostic LLM/embedding services selected per connection config. Chat models support Ollama, OpenAI,
   Anthropic, OpenRouter, Google GenAI, Mistral AI, Cohere, Perplexity, Groq, DeepSeek, xAI, and Cloudflare;
-  embeddings currently support Ollama and OpenAI.
+  embeddings currently support Ollama, OpenAI, Google GenAI, Mistral AI, Cohere, Perplexity, and Cloudflare.
 - **Frontend** (`frontend/`): React + Vite admin/chat UI for managing worlds, connections, prompts, and simulations.
 
 ## Deployment
